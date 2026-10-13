@@ -17,7 +17,8 @@ npm install
 node src/server/main.ts serve <path-to-lean-project>      # then open http://127.0.0.1:4173/
 ```
 
-- Needs Node ≥ 23.6 (TypeScript runs directly) and the project's Lean toolchain through elan.
+- Needs Node 22.18 or later in 22, or 24.2 or later, and the project's Lean toolchain through
+  elan.
 - The project must have been built: VisualProof reads what `lake build` left in `.lake/` and
   never builds the project. A build in progress or a broken one is shown as such (see Live), with
   the last graph that could be read. It writes nothing into the project: what it keeps is in the

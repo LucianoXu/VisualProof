@@ -6,7 +6,8 @@ VisualProof is to be distributed as an npm package, `visualproof`, whose `visual
 runs the server. The package holds compiled JavaScript: Node does not run TypeScript from
 `node_modules`. To run, it needs:
 
-- Node ≥ 23.6;
+- Node 22.18 or later in 22, or 24.2 or later (the versions that run TypeScript as it is and
+  have `import.meta.main`);
 - elan, which installs each project's Lean toolchain. The project must have been built with
   `lake build`: VisualProof never builds it;
 - Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), which reads the library's PDFs;

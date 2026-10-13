@@ -27,7 +27,7 @@ keep a record of the review.
 
 ## Requirements
 
-- Node ≥ 23.6.
+- Node 22.18 or later in 22, or 24.2 or later.
 - [elan](https://github.com/leanprover/elan), which installs each project's Lean toolchain. Lean
   v4.28.0 to v4.35.0 are supported.
 - Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`).
