@@ -5,7 +5,7 @@
 // sent compressed.
 
 import assert from "node:assert/strict";
-import { get } from "node:http";
+import { get, request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -43,6 +43,38 @@ test("a body too large is answered 413, as JSON ({error, hint} on the agents' AP
     assert.equal((await S.ask("POST", "/api/review", { comment: "x".repeat(9 << 20) }, { "x-visualproof-name": "Alice" })).status, 413);
     // and the server goes on
     assert.equal((await S.ask("GET", "/api/status")).status, 200);
+  } finally {
+    await S.close();
+  }
+});
+
+test("a body too large is answered once it has all come, so that the client reads the answer; one never ending, after a grace", async () => {
+  const S = await site();
+  try {
+    // a client that finishes sending reads the 413, and nothing the handler answered meanwhile
+    const big = await fetch(`${S.base}/api/presence`, { method: "POST", headers: { "content-type": "application/json" }, body: "x".repeat(32 << 20) });
+    assert.equal(big.status, 413);
+    assert.match((await big.json()).error, /larger than 16 KB/);
+    // one that never stops is answered all the same, and cut off
+    const u = new URL(`${S.base}/api/presence`);
+    const started = Date.now();
+    const status = await new Promise<number>((ok, no) => {
+      const req = request({ host: u.hostname, port: u.port, path: u.pathname, method: "POST", headers: { "content-type": "application/json" } }, (res) => {
+        ok(res.statusCode ?? 0);
+        res.resume();
+        req.destroy();
+      });
+      req.on("error", (e) => (Date.now() - started > 1000 ? undefined : no(e)));
+      const chunk = Buffer.alloc(64 << 10, 120);
+      const pump = () => {
+        while (!req.destroyed && req.write(chunk));
+      };
+      req.on("drain", pump);
+      pump();
+    });
+    assert.equal(status, 413);
+    assert.ok(Date.now() - started >= 1500, "after the grace");
+    assert.equal((await S.ask("GET", "/api/status")).status, 200, "and the server goes on");
   } finally {
     await S.close();
   }

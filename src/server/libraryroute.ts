@@ -75,10 +75,23 @@ export async function readUpload(req: IncomingMessage, res: ServerResponse): Pro
     return await readBytes(req, MAX_FILE);
   } catch (e) {
     if (!(e instanceof TooLarge)) throw e;
-    res.setHeader("connection", "close");
-    sendJson(res, { error: `The file is larger than ${Math.round(MAX_FILE / (1024 * 1024))} MB, the most a file of the library may be.`, hint: "Add a smaller file." }, 413);
-    // the rest of a body too large is not read: the connection goes once the answer is out
-    setTimeout(() => req.destroy(), 2000).unref();
+    // the rest is read and thrown away, and the answer goes once it has all come, as main.ts's
+    // tooLarge does: a connection closed while the client still sends is reset on some systems
+    let done = false;
+    const answer = () => {
+      if (done) return;
+      done = true;
+      res.setHeader("connection", "close");
+      sendJson(res, { error: `The file is larger than ${Math.round(MAX_FILE / (1024 * 1024))} MB, the most a file of the library may be.`, hint: "Add a smaller file." }, 413);
+    };
+    req.on("data", () => {});
+    req.on("end", answer);
+    req.resume();
+    if (req.readableEnded) answer();
+    setTimeout(() => {
+      answer();
+      setTimeout(() => req.destroy(), 500).unref();
+    }, 2000).unref();
     return null;
   }
 }

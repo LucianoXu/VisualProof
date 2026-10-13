@@ -889,6 +889,7 @@ function acceptsGzip(req: IncomingMessage | undefined): boolean {
 const files = new Map<string, { mtime: number; size: number; body: Buffer; gz: Buffer | null; etag: string }>();
 
 function sendFile(req: IncomingMessage, res: ServerResponse, file: string): void {
+  if (refused.has(res)) return;
   if (!existsSync(file)) return sendJson(res, { error: "not found" }, 404);
   const st = statSync(file);
   let f = files.get(file);
@@ -913,8 +914,9 @@ function sendFile(req: IncomingMessage, res: ServerResponse, file: string): void
 
 /** the most an agent's request body may be (docs/agent-api/requests.md: 1 MB) */
 const AGENT_BODY = 1 << 20;
-/** how long a connection whose body was refused as too large is kept to say so: long enough for
- *  the answer to be read, not for the rest of the body to be */
+/** how long the rest of a body refused as too large is read before it is answered all the same,
+ *  and the connection cut: long enough for a client to finish sending what it began, not for an
+ *  endless body */
 const TOO_LARGE_GRACE_MS = 2000;
 
 class TooLarge extends Error {}
@@ -938,21 +940,37 @@ function readBody(req: IncomingMessage, limit: number): Promise<string> {
   });
 }
 
-/** Answer 413 to a body too large and close the connection: the answer goes first, the client
- *  sending the rest meanwhile is read and thrown away (a client still sending when the connection
- *  is cut may never read the answer), and after a short grace the connection goes whatever it
- *  still sends. */
+/** Responses refused as too large and not answered yet (tooLarge): what the handler that asked for
+ *  the body answers meanwhile is not sent. */
+const refused = new WeakSet<ServerResponse>();
+
+/** Answer 413 to a body too large and close the connection. The rest of the body is read and thrown
+ *  away first, and the answer goes once it has all come: a connection closed while the client is
+ *  still sending is reset on some systems (macOS), and the client never reads the answer. A client
+ *  still sending after a short grace is answered all the same, and cut off. */
 function tooLarge(req: IncomingMessage, res: ServerResponse, body: object): void {
+  refused.add(res);
+  let done = false;
+  const answer = () => {
+    if (done) return;
+    done = true;
+    refused.delete(res);
+    sendJson(res, body, 413, { connection: "close" });
+  };
   req.on("data", () => {});
+  req.on("end", answer);
   req.resume();
-  sendJson(res, body, 413, { connection: "close" });
-  setTimeout(() => req.socket.destroy(), TOO_LARGE_GRACE_MS).unref();
+  if (req.readableEnded) answer();
+  setTimeout(() => {
+    answer();
+    setTimeout(() => req.socket.destroy(), 500).unref();
+  }, TOO_LARGE_GRACE_MS).unref();
 }
 
 /** Send a JSON answer, once: a handler that answers after something else already did (a body too
  *  large, answered as it was read) is not heard. */
 function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Record<string, string> = {}): void {
-  if (res.headersSent || res.writableEnded) return;
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
   const text = JSON.stringify(body);
   // a small answer is not worth compressing; a status with its build log, a source file, are
   if (text.length > JSON_GZIP_FROM && acceptsGzip(res.req)) {
@@ -966,7 +984,7 @@ function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Recor
 /** Send a text that is not JSON (the agents' documentation, the MCP server's file), compressed
  *  where the client takes it. */
 function sendText(req: IncomingMessage, res: ServerResponse, text: string, type: string, code = 200): void {
-  if (res.headersSent || res.writableEnded) return;
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
   const head = { "content-type": type, "cache-control": "no-store", vary: "accept-encoding" };
   if (text.length > JSON_GZIP_FROM && acceptsGzip(req)) {
     res.writeHead(code, { ...head, "content-encoding": "gzip" });
@@ -978,7 +996,7 @@ function sendText(req: IncomingMessage, res: ServerResponse, text: string, type:
 
 /** Send a file to download (a typeset document): as it is, never cached, named for the disk. */
 function sendDownload(res: ServerResponse, f: ExportFile): void {
-  if (res.headersSent || res.writableEnded) return;
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
   res.writeHead(200, { "content-type": f.type, "content-length": String(f.body.length), "content-disposition": `attachment; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, "_")}"`, "cache-control": "no-store" });
   res.end(f.body);
 }
@@ -1009,6 +1027,7 @@ const gzTags = new WeakMap<Buffer, string>();
 
 /** A part of the graph, gzipped already: tagged, so that a page that has it gets 304. */
 function sendGz(req: IncomingMessage, res: ServerResponse, gz: Buffer, type: string): void {
+  if (refused.has(res)) return;
   let etag = gzTags.get(gz);
   if (!etag) gzTags.set(gz, (etag = tagOf(gz)));
   const head = { "content-type": type, "cache-control": "private, no-cache", etag };
