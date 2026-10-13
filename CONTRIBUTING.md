@@ -15,8 +15,8 @@ runs the server. The package holds compiled JavaScript: Node does not run TypeSc
 
 ## Working from a checkout
 
-A checkout needs the same. There is no build step: Node runs the TypeScript in `src/` as it is,
-and the page is bundled when the server starts, into the cache directory.
+A checkout needs the same. Working needs no build step: Node runs the TypeScript in `src/` as it
+is, and the page is bundled when the server starts, into the cache directory.
 
 ```bash
 npm install
@@ -25,6 +25,13 @@ npm test                    # the whole suite, on the fixture's own toolchain
 npm run test:toolchains     # the whole suite once per toolchain of test/toolchains.json
 node src/server/main.ts serve <a built Lean project>     # then open http://127.0.0.1:4173/
 ```
+
+The package is built (`npm run build`, scripts/build.mjs, which `npm pack` runs) into `dist/`:
+the server compiled to JavaScript, laid out as `src/` is, and the page bundled beside it.
+`test/package.test.ts` builds it into a temporary folder and runs it; CI also packs it, installs
+it into a prefix of its own and serves the fixture with it. `npm install --global` straight from
+a git URL does not work: npm leaves a link to a deleted folder for a package that is built before
+it is packed. Pack it, then install the file.
 
 ## Tests
 

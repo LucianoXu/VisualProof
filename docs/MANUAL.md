@@ -13,9 +13,12 @@ is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/Canv
 ## Run
 
 ```bash
-npm install
-node src/server/main.ts serve <path-to-lean-project>      # then open http://127.0.0.1:4173/
+visualproof doctor <path-to-lean-project>     # what is missing, if anything, and what to do
+visualproof serve <path-to-lean-project>      # then open http://127.0.0.1:4173/
 ```
+
+The README says how to install the `visualproof` command. A checkout also runs as it is, after
+`npm install`: `node src/server/main.ts` in place of `visualproof`.
 
 - Needs Node 22.18 or later in 22, or 24.2 or later, and the project's Lean toolchain through
   elan. `visualproof doctor <path>` checks this machine and the project, and says what to do.
@@ -85,7 +88,7 @@ node src/server/main.ts serve <path-to-lean-project>      # then open http://127
   their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
   address. Without it, the prompt carries the address the person's browser used.
 - `--library-limit <GB>` (default 2): the most the project's library of papers and images may take,
-  all its files together (see References). `node src/server/main.ts purge-file <path> <sha256>` deletes a
+  all its files together (see References). `visualproof purge-file <path> <sha256>` deletes a
   file's bytes from the library for good (a file added by mistake); nothing else does. Poppler
   (`pdfinfo`, `pdftotext`, `pdftoppm`) reads the PDFs on the server.
 - `GET /api/status` says how the server is: the graph, Lean (running, crashed and restarted), the
@@ -98,7 +101,7 @@ node src/server/main.ts serve <path-to-lean-project>      # then open http://127
   only over HTTPS.
 - `docs/deploy/visualproof.service.example` is an example systemd user unit that serves a project this
   way: copy it and fill in its placeholders (it says how).
-- `node src/server/main.ts export <path> -o page.html` writes one self-contained HTML file (page, data
+- `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data
   and sources, 2.5 MB for flt-regular) that opens from disk with no server. It is frozen
   (`--label` names it).
 

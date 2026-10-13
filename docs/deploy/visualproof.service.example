@@ -10,8 +10,8 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-WorkingDirectory=<path to this repository>
-# elan's lean and lake (the extractor, the Lean server) and the Node the server runs on
+# elan's lean and lake (the extractor, the Lean server), and the Node the server runs on, beside
+# which `npm install --global` put the visualproof command (`dirname $(which visualproof)`)
 Environment=PATH=%h/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
 # --jobs: how many modules the usage pass (notation, exact contexts) elaborates at once; about a
 # quarter of the cores: import is bound by memory bandwidth, and each worker takes 400 MB or more.
@@ -23,7 +23,7 @@ Environment=PATH=%h/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
 # readable by the server's user alone (create it first, owned by that user). Without --site it is
 # under ~/.local/share/visualproof/sites/; given here so that the backup knows where it is. The
 # caches go in ~/.cache/visualproof unless --cache names another place; a rebuild makes them again.
-ExecStart=<path to node> src/server/main.ts serve <path to the Lean project> --port 4173 --host 0.0.0.0 --access-key-file <key file> --site /var/lib/visualproof/<name> --jobs 8 --public-url https://<host>
+ExecStart=<directory of node>/visualproof serve <path to the Lean project> --port 4173 --host 0.0.0.0 --access-key-file <key file> --site /var/lib/visualproof/<name> --jobs 8 --public-url https://<host>
 Restart=on-failure
 RestartSec=10
 
