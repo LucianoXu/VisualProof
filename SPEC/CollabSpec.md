@@ -94,6 +94,36 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
     - Agents ask too, at advise and full (AgentSpec decision 8); agents cannot be asked.
     - The server relays requests and answers through its live events and keeps nothing beyond a
       request's life.
+11. **Read-only access.** *Not implemented yet.* A read-only reader sees what a guest sees, changes
+    nothing that is shared, and is seen by nobody: a way to show a project, a showcase above all.
+    - **By a link of its own**, Share's *Read-only link*, which anyone let in may make. It lasts until
+      revoked; the server keeps only its digest; people with a name list and revoke these links as
+      they do personal links (decision 9), and revoking cuts their pages off at once. A read-only
+      reader's Share holds this tab alone and gives the link they came by, so revoking one link cuts
+      off everyone it reached. Behind `--identity-header` there are none.
+    - **Without a token only by the owner's choice.** `--public` (with `--access-key-file`) makes
+      everyone who comes without the key or a link of their own a read-only reader, where decision 7
+      answers 404; the read-only link is then the address alone. Without `--public` no address shows
+      the project to someone not given a link, so no reader can make a private project public.
+    - **What they do stays theirs**: the selection, the tool, the camera, folds, windows, the build
+      browsed in the Time Machine, search, sources and Lean's hovers, the library's files and links.
+      What a guest's page would share (folds, the views it opens) stays in the page and is gone on
+      reload. Pins, notes, the review (opinions, targets, key marks, trust), views (made, renamed or
+      changed), re-layout, undo, uploads, fetching by URL and talking to agents are not offered, and
+      the server refuses them (403) whatever the page sends.
+    - **What costs the server is bounded.** Lean's hovers are answered from a cache per build where
+      they can be, and within bounds per address and in all (429 beyond). The printed document is of
+      the view as it is shared, never of a reader's folds, so the export's cache answers most
+      requests; one typesetting at a time for all read-only readers. Their event streams have a bound
+      of their own, so they never take the places of the people working ("Bounds").
+    - **Nobody sees them**: not listed, not counted (not even as private, decision 8), not in the
+      timeline (they record nothing); they cannot be followed or asked to follow, and ask nobody.
+      They see the others and may follow them; whoever does not want to be seen by them goes private.
+    - **No agents**: a read-only reader makes no agent token, and neither `--public` nor a read-only
+      link reaches the agents' API.
+    - **Share's tabs** become *Guest link* (decision 7's *Public link*, renamed: it makes guests),
+      *Read-only link*, *Invite a person* and *AI agent*. "Exactly what I see" (decision 7) holds for
+      a read-only link as for the others.
 
 ## What the page shows
 
