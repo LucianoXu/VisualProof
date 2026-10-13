@@ -13,11 +13,12 @@
 //                         temporary folder)
 //
 // Per project: the time to the graph and to the end of the usage pass, the most memory the server
-// and its children (the usage pass's workers, Lean's language server) held at once, Lean's first
+// and its children (the usage pass's workers, Lean's language server) held at once (shared pages
+// counted once, on Linux), Lean's first
 // answer, a restart from the caches; then, warm: the target's TCB, keys and why, its review set
 // (and its document), a snapshot's graph, and a Lean worker's memory once its module is open.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -68,6 +69,19 @@ function processes() {
     });
 }
 
+/** A process's memory in MB, shared pages counted once (PSS) where Linux says so: the usage pass's
+ *  workers all map the same .olean files, which resident sizes count again in each. Elsewhere its
+ *  resident size. */
+function pss(p) {
+  try {
+    const kb = /^Pss:\s+(\d+)/m.exec(readFileSync(`/proc/${p.pid}/smaps_rollup`, "utf8"));
+    if (kb) return Math.round(Number(kb[1]) / 1024);
+  } catch {
+    // gone, or not Linux
+  }
+  return p.mb;
+}
+
 /** the server's memory, and its descendants' */
 function memory(pid) {
   const all = processes();
@@ -78,8 +92,9 @@ function memory(pid) {
     desc.push(k);
     kids.push(...all.filter((p) => p.ppid === k.pid));
   }
-  const self = all.find((p) => p.pid === pid)?.mb ?? 0;
-  return { self, total: self + desc.reduce((n, p) => n + p.mb, 0), procs: desc };
+  const server = all.find((p) => p.pid === pid);
+  const self = server ? pss(server) : 0;
+  return { self, total: self + desc.reduce((n, p) => n + pss(p), 0), resident: (server?.mb ?? 0) + desc.reduce((n, p) => n + p.mb, 0), procs: desc };
 }
 
 async function call(base, path, init = {}) {
@@ -99,7 +114,7 @@ async function serve(project, dir, phase, probe) {
   child.stdout.on("data", (b) => (log += b));
   child.stderr.on("data", (b) => (log += b));
   const closed = new Promise((ok) => child.on("close", ok));
-  const r = { graphS: null, usageS: null, usage: null, peakMB: 0, peakServerMB: 0, peakWorkers: 0 };
+  const r = { graphS: null, usageS: null, usage: null, peakMB: 0, peakResidentMB: 0, peakServerMB: 0, peakWorkers: 0 };
   for (;;) {
     await sleep(1000);
     if (child.exitCode !== null) {
@@ -108,6 +123,7 @@ async function serve(project, dir, phase, probe) {
     }
     const m = memory(child.pid);
     r.peakMB = Math.max(r.peakMB, m.total);
+    r.peakResidentMB = Math.max(r.peakResidentMB, m.resident);
     r.peakServerMB = Math.max(r.peakServerMB, m.self);
     r.peakWorkers = Math.max(r.peakWorkers, m.procs.filter((p) => /Usage|vp-usage/.test(p.args)).length);
     let st;
@@ -195,7 +211,7 @@ async function probe(base, meta, pid, r) {
   r.lean.againMs = (await call(base, `/api/hover/describe?module=${encodeURIComponent(mod)}&name=${q}`)).ms;
   const m = memory(pid);
   r.lean.memoryMB = m.total;
-  r.lean.workersMB = m.procs.filter((p) => /lean/.test(p.args)).map((p) => p.mb);
+  r.lean.workersMB = m.procs.filter((p) => /lean/.test(p.args)).map(pss);
 }
 
 const results = {};
