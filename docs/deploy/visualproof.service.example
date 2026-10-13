@@ -1,0 +1,31 @@
+# An example systemd user unit for a VisualProof server. Copy it to
+# ~/.config/systemd/user/visualproof.service, replace the placeholders in <…>, then:
+#   systemctl --user daemon-reload && systemctl --user enable --now visualproof
+# To keep it running without a login: loginctl enable-linger <user>
+# Logs: journalctl --user -u visualproof
+
+[Unit]
+Description=VisualProof for <project>
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=<path to this repository>
+# elan's lean and lake (the extractor, the Lean server) and the Node the server runs on
+Environment=PATH=%h/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
+# --jobs: how many modules the usage pass (notation, exact contexts) elaborates at once; about a
+# quarter of the cores: import is bound by memory bandwidth, and each worker takes 400 MB or more.
+# --host 0.0.0.0 with --access-key-file lets in only those given the link; put a proxy with TLS in
+# front of it (and give --public-url) when the server is reached over the internet.
+# --site: the site's folder: the review's logs and what this site accumulates (the history of
+# builds, the library, views, the timeline, conversations with agents). It holds secrets (agents'
+# tokens, personal links) and what cannot be derived again: back it up, never commit it, and keep it
+# readable by the server's user alone (create it first, owned by that user). Without --site it is
+# under ~/.local/share/visualproof/sites/; given here so that the backup knows where it is. The
+# caches go in ~/.cache/visualproof unless --cache names another place; a rebuild makes them again.
+ExecStart=<path to node> src/server/main.ts serve <path to the Lean project> --port 4173 --host 0.0.0.0 --access-key-file <key file> --site /var/lib/visualproof/<name> --jobs 8 --public-url https://<host>
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

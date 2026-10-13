@@ -1,0 +1,134 @@
+# The whole suite once per Lean toolchain of test/toolchains.json (VP_TOOLCHAIN, test/fixturecopy.ts),
+# when what reads Lean's output changes, and every week; and, allowed to fail, on the newest stable
+# release and on a release candidate newer than it, to hear early what the next release changes.
+# Every week also the typesetting, with XeLaTeX. A workflow of its own because `paths` is a
+# workflow's, not a job's.
+name: toolchains
+
+on:
+  push:
+    paths:
+      - src/extractor/**
+      - src/server/extract.ts
+      - src/server/usage.ts
+      - src/server/status.ts
+      - src/server/hover.ts
+      - test/**
+      - .github/workflows/toolchains.yml
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# a newer push to the same branch makes the run before it pointless
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    outputs:
+      toolchains: ${{ steps.list.outputs.toolchains }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "toolchains=$(jq -c .toolchains test/toolchains.json)" >> "$GITHUB_OUTPUT"
+
+  supported:
+    needs: list
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        toolchain: ${{ fromJSON(needs.list.outputs.toolchains) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "leanprover/lean4:${{ matrix.toolchain }}"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - run: lake --version
+      - run: npm ci
+      - run: npm test
+        env:
+          VP_TOOLCHAIN: ${{ matrix.toolchain }}
+
+  newest:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: [stable, rc]
+    steps:
+      # the newest stable release; a release candidate only when it is of a release newer than
+      # that one (an rc of a release already out says nothing new), else nothing runs
+      - id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stable=$(gh api repos/leanprover/lean4/releases/latest --jq .tag_name)
+          if [ "${{ matrix.channel }}" = stable ]; then
+            echo "toolchain=$stable" >> "$GITHUB_OUTPUT"
+          else
+            rc=$(gh api 'repos/leanprover/lean4/releases?per_page=30' --jq '[.[] | select(.prerelease)][0].tag_name')
+            base=${rc%%-*}
+            if [ "$base" != "$stable" ] && [ "$(printf '%s\n%s\n' "$stable" "$base" | sort -V | tail -n1)" = "$base" ]; then
+              echo "toolchain=$rc" >> "$GITHUB_OUTPUT"
+            else
+              echo "no release candidate newer than $stable"
+            fi
+          fi
+      - if: steps.version.outputs.toolchain
+        uses: actions/checkout@v4
+      - if: steps.version.outputs.toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.version.outputs.toolchain
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - if: steps.version.outputs.toolchain
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "leanprover/lean4:${{ steps.version.outputs.toolchain }}"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - if: steps.version.outputs.toolchain
+        run: lake --version
+      - if: steps.version.outputs.toolchain
+        run: npm ci
+      - if: steps.version.outputs.toolchain
+        run: npm test
+        env:
+          VP_TOOLCHAIN: ${{ steps.version.outputs.toolchain }}
+
+  # the exported document typeset with XeLaTeX, whose installation takes minutes: every week and by
+  # hand, never on a push. Libertinus (texlive-fonts-extra, gigabytes) is left out, so the document
+  # is set in Latin Modern, as the style file falls back to
+  typeset:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils texlive-xetex \
+            texlive-latex-recommended texlive-latex-extra texlive-pictures fonts-lmodern lmodern
+      - run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$(cat test/fixture/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - run: lake --version
+      # the tests that typeset skip without it, and must not here
+      - run: xelatex --version
+      - run: npm ci
+      - run: npm test

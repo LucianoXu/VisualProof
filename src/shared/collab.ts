@@ -1,0 +1,358 @@
+// What the server and the page share about the people on a server (CollabSpec.md): names, the
+// colour each name has, and what a reader tells the others about where they are.
+
+/** the most characters a name may have */
+export const MAX_NAME = 60;
+
+/** A name someone can be known by: 1–60 characters, no line breaks or other control characters. */
+export function validName(s: string): boolean {
+  const t = s.trim();
+  return t.length > 0 && t.length <= MAX_NAME && t === s && !/[\u0000-\u001f\u007f]/.test(t);
+}
+
+/** `s` within `room` characters (counted as validName counts them): itself, or cut short with "…",
+ *  never inside a character. */
+export function cutShort(s: string, room: number): string {
+  if (s.length <= room) return s;
+  let out = "";
+  for (const ch of s) {
+    if (out.length + ch.length > room - 1) break;
+    out += ch;
+  }
+  return out + "…";
+}
+
+/** The name Share gives an agent unless its person writes another (AgentSpec decision 7): "Alice's
+ *  AI", within the characters a name may have — a long name is cut short. */
+export function defaultAgentName(by: string): string {
+  return `${cutShort(by.trim(), MAX_NAME - "'s AI".length)}'s AI`;
+}
+
+/** An agent's name told apart from the names `taken` (the tokens in force), whatever the case: the
+ *  name itself, else numbered — "Alice's AI 2", "Alice's AI 3" — within the characters a name may
+ *  have, the name cut short to make room for the number. */
+export function uniqueName(name: string, taken: Iterable<string>): string {
+  const seen = new Set([...taken].map((t) => t.toLowerCase()));
+  for (let n = 1; ; n++) {
+    const s = n === 1 ? name : `${cutShort(name, MAX_NAME - ` ${n}`.length)} ${n}`;
+    if (!seen.has(s.toLowerCase())) return s;
+  }
+}
+
+/** Whether two names are the same name to a reader: whatever the case, and however Unicode writes
+ *  the same letters. A guest cannot take a name someone invited by a personal link holds in this
+ *  sense (CollabSpec decision 9), so that "alice" does not pass for "Alice". */
+export function sameName(a: string, b: string): boolean {
+  const key = (s: string) => s.trim().normalize("NFKC").toLowerCase();
+  return key(a) === key(b);
+}
+
+/** Someone invited by a personal link (CollabSpec decision 9, server/invites.ts), as Share lists
+ *  them: never the link itself, which is shown once, to whoever made it. */
+export interface PersonInvite {
+  /** who they are: the link's id, part of the link, no secret */
+  id: string;
+  /** the name they go by now */
+  name: string;
+  /** every name they went by, from the one they were invited under, with when they took it */
+  names: { name: string; at: string }[];
+  /** who made the link, and when */
+  by: string;
+  created: string;
+  revoked: string | null;
+  revokedBy: string | null;
+  lastUsed: string | null;
+}
+
+/** What every page is told of the people invited by a personal link (`people`), so that what one
+ *  of them did shows under the name they go by now, with its mark: their id, that name, the ones
+ *  they had before, and whether their link was revoked. */
+export interface Invited {
+  id: string;
+  name: string;
+  was: string[];
+  revoked?: true;
+}
+
+/** Up to two letters for a name's round badge: the first letters of its first two words. */
+export function initials(name: string): string {
+  const words = name.trim().split(/[\s._-]+/).filter(Boolean);
+  const first = (w: string) => [...w][0] ?? "";
+  return ((words.length > 1 ? first(words[0]) + first(words[1]) : [...name.trim()].slice(0, 2).join("")) || "?").toUpperCase();
+}
+
+/** A person's colour, fixed by their name: the same on every page and every server. */
+export function colorOf(name: string): string {
+  let h = 2166136261;
+  for (const ch of name) {
+    h ^= ch.codePointAt(0)!;
+    h = Math.imul(h, 16777619);
+  }
+  // hues spread around the wheel, saturated and dark enough to read white initials on
+  const hue = ((h >>> 0) % 360 + 360) % 360;
+  return `hsl(${hue} 62% 46%)`;
+}
+
+/** the most source windows a reader pins at once (web/src/sources.ts): a few declarations side by
+ *  side, not a wall of them */
+export const MAX_PINNED = 6;
+
+/** A source window a reader pinned (ReviewSpec, "The source window"): the declaration it stays on,
+ *  by name, and whether it is collapsed to its pill. */
+export interface PinnedWindow {
+  decl: string;
+  collapsed: boolean;
+}
+
+/** Where a reader is: what the others see of them, and what following them restores. */
+export interface PresenceView {
+  /** the tool, how a click selects (the Mode buttons: plain; the steps of Rests on, deps, tcb, keys;
+   *  apps) */
+  mode: string;
+  /** the name of the declaration the reader's panel tells of */
+  sel: string | null;
+  /** what the reader selected, as a query's text (web/src/selection.ts): a follower selects the
+   *  same; absent from a page or an agent that does not say */
+  selection?: string | null;
+  /** the source window that follows the selection is open on it */
+  source: boolean;
+  /** that window is collapsed to its pill; absent when it is not, or closed */
+  sourceCollapsed?: boolean;
+  /** the source windows the reader pinned, the first pinned first (decided 2026-10-09: a follower's
+   *  windows mirror them too); absent when there are none, or from an agent, which pins none */
+  pinned?: PinnedWindow[];
+  /** the board's clustering */
+  clusterMode: string;
+  cam: { x: number; y: number; k: number } | null;
+  /** the view the reader is on (ViewSpec.md), by its id; null for the Project */
+  view: string | null;
+  /** that view's scope as text, when it is not kept: a follower opens the same query */
+  scope: string | null;
+  /** the views the reader has open (their tabs): a view nobody keeps lives while one is */
+  tabs: string[];
+  /** in the Time Machine (HistorySpec decision 18): the snapshot the reader browses, on their view;
+   *  a follower opens the same */
+  history?: { snapshot: number };
+  /** the reader's own focus on their view (ViewSpec decision 28): a target, or null for none; absent,
+   *  the view's own. A follower takes it */
+  focus?: string | null;
+  /** the reader's visitors on their view (ViewSpec decision 27; web/src/visitors.ts), oldest first:
+   *  declarations it does not hold that they went to, each with what it was reached from, its place
+   *  (`in`, the key of the board's cluster the outermost of what it brings stands in, "" for the top
+   *  level, and `spot`, where in that cluster's coordinates; since 2026-10-11) and where it is drawn in
+   *  the board's world (`at`, which pages of before read). A follower draws them; nobody else sees them */
+  visitors?: { decl: string; at?: [number, number]; from?: string; in?: string; spot?: [number, number] }[];
+  /** the reference window (AttachmentSpec decision 11): the file it shows, by hash, at which page, the
+   *  link it was opened on, and whether it is collapsed; absent where it is closed. A follower's
+   *  shows the same */
+  paper?: PaperWindow;
+  // What the panels and the board show besides (CollabSpec decision 4, the owner's decision of
+  // 2026-10-11: what you see is followed). A page from before that day, and an agent, say none of
+  // them: whoever follows it keeps their own.
+  /** Activity (CollabSpec decision 5): open or closed, and its filters */
+  activity?: ActivityView;
+  /** the lost-and-found (HistorySpec decisions 12–14): open or closed */
+  lostFound?: { open: boolean };
+  /** the colouring the board is drawn in: the legend's Kind or Status (CanvasSpec, "Colour schemes") */
+  scheme?: ColourScheme;
+  /** the edges drawn, and the proof edges (CanvasSpec, "Edges") */
+  edges?: boolean;
+  proofEdges?: boolean;
+}
+
+/** The legend's schemes (CanvasSpec, "Colour schemes"). */
+export const SCHEMES = ["kind", "status"] as const;
+export type ColourScheme = (typeof SCHEMES)[number];
+/** Activity's filters: the kind of event, and whose (web/src/activity.ts). */
+export const ACTIVITY_KINDS = ["all", "review", "build", "change"] as const;
+export const ACTIVITY_WHO = ["all", "agents", "people"] as const;
+
+/** Activity as presence carries it: open or closed, the kind of event shown, whose, and — "My
+ *  targets" — the reader whose targets it keeps to: their own name, or the name of the reader whose
+ *  Activity they took it from by following them; absent, everyone's. */
+export interface ActivityView {
+  open: boolean;
+  kind: (typeof ACTIVITY_KINDS)[number];
+  who: (typeof ACTIVITY_WHO)[number];
+  mine?: string;
+}
+
+/** What the reference window shows, as presence carries it. */
+export interface PaperWindow {
+  file: string;
+  page?: number;
+  link?: string;
+  collapsed?: boolean;
+}
+
+/** One open page, as every page is told; a private one is not (CollabSpec decision 8). */
+export interface Peer {
+  /** the page's event stream, as the server names it to everyone (server/live.ts), or an agent's
+   *  entry; never what the page calls itself, nor the secret its heartbeats carry */
+  id: string;
+  /** null for a reader who has not given a name */
+  name: string | null;
+  view: PresenceView | null;
+  /** no input for five minutes, or the page is in the background; for an agent without a token,
+   *  no request for a minute; with one, offline */
+  idle: boolean;
+  /** an agent working through the API (AgentSpec decision 1), not a page */
+  agent?: true;
+  /** a page of someone invited by a personal link (CollabSpec decision 9): the name is theirs */
+  verified?: true;
+  /** an agent with a token of its own (AgentSpec decisions 7 and 8): its state, as the server
+   *  infers it from what the agent does; absent for any other */
+  talk?: AgentTalk;
+  /** who shared with it */
+  by?: string;
+}
+
+/** What an agent with a token of its own is doing, as the server infers it from its requests
+ *  (AgentSpec decision 8, server/talk.ts): *listening* while a wait for messages is open;
+ *  *thinking* from the moment messages were handed to it until it replies; *working* when it
+ *  makes requests with nothing to answer; *offline* once it has had no wait open and made no
+ *  request for its longest wait plus a minute. Only an offline agent cannot be written to. */
+export type AgentState = "listening" | "thinking" | "working" | "offline";
+
+export interface AgentTalk {
+  state: AgentState;
+  /** when the state began: for thinking, when the messages were handed over */
+  since: string;
+  /** what its latest request did, in words ("reading `A.b`"), while thinking or working */
+  doing: string | null;
+  /** the line it set itself (POST /api/agent/status), until it replies or waits again */
+  status: string | null;
+  /** the last message handed to it: people's messages after it wait for its next wait */
+  read: number;
+  /** its last request, or the end of its last wait; null before the first */
+  lastSeen: string | null;
+}
+
+/** A token an agent was given by Share (AgentSpec decision 7, server/tokens.ts), as the page and the
+ *  agents' API list it: never the token itself, whose prompt Share asks for apart. */
+export interface AgentTokenInfo {
+  /** names it in lists: part of the token, no secret */
+  id: string;
+  /** the name it acts under, fixed for its life: the one the person gave ("Alice's AI"), numbered
+   *  when another in force had it */
+  name: string;
+  level: "read" | "advise" | "full";
+  /** who made it */
+  by: string;
+  created: string;
+  expires: string;
+  revoked: string | null;
+  revokedBy: string | null;
+  lastUsed: string | null;
+}
+
+/** One message of a conversation with an agent (AgentSpec decision 8, server/talk.ts), as pages
+ *  and the agent are told it; or a divider, where someone started a new conversation (the owner's
+ *  decision of 2026-10-11): `from` is who did, and its text the notice the agent is handed. */
+export interface ChatMessage {
+  /** its place in the conversation, from 1 */
+  id: number;
+  at: string;
+  from: string;
+  kind: "person" | "agent" | "divider";
+  text: string;
+  /** where the writer was: in words, and the view, declaration and selection */
+  where?: { inWords: string; view: string; declaration: string | null; selection: string | null } | null;
+}
+
+/** A session id: what a page calls itself for as long as it is open, in its event stream's address
+ *  only (the server keeps a page's streams few by it); it is never told to the others. */
+export function validSession(s: unknown): s is string {
+  return typeof s === "string" && /^[0-9a-f-]{8,64}$/.test(s);
+}
+
+/** What the server tells a page alone when its event stream opens (`hello`): the id everyone knows
+ *  the page by, and the secret its heartbeats and arrangements carry to say they are its own. It is
+ *  told again, with a new id, when the page goes private or shows itself again (CollabSpec decision
+ *  8); `private` says the server counts it among the private readers. */
+export interface StreamHello {
+  id: string;
+  token: string;
+  private?: true;
+}
+
+/** How many private readers are on the server (CollabSpec decision 8), as every page is told it
+ *  beside the list of the others (`private`): a count, never who. */
+export interface PrivateCount {
+  count: number;
+}
+
+/** A view as a page sent it, checked and bounded; null when it is not one. */
+export function cleanView(v: unknown): PresenceView | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const str = (x: unknown, max = 2000) => (typeof x === "string" && x.length <= max ? x : null);
+  const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : null);
+  const cam = o.cam && typeof o.cam === "object" ? (o.cam as Record<string, unknown>) : null;
+  const cx = num(cam?.x), cy = num(cam?.y), ck = num(cam?.k);
+  const selection = str(o.selection, 20000);
+  const h = o.history && typeof o.history === "object" ? (o.history as Record<string, unknown>).snapshot : null;
+  const snapshot = typeof h === "number" && Number.isInteger(h) && h > 0 && h < 1e9 ? h : null;
+  const source = o.source === true;
+  // the visitors, at most a trail's worth (web/src/visitors.ts, TRAIL), each a name, where it was
+  // reached from and its place: the cluster and the spot in it, and where it is drawn
+  const pair = (p: unknown): [number, number] | null =>
+    Array.isArray(p) && p.length === 2 && p.every((n) => num(n) !== null && Math.abs(n as number) < 1e8) ? [p[0] as number, p[1] as number] : null;
+  const visitors = (Array.isArray(o.visitors) ? o.visitors.slice(0, 8) : []).flatMap((w): NonNullable<PresenceView["visitors"]> => {
+    const x = w && typeof w === "object" ? (w as Record<string, unknown>) : null;
+    const decl = x ? str(x.decl) : null;
+    if (!decl) return [];
+    const at = pair(x!.at), spot = pair(x!.spot), from = str(x!.from), inn = typeof x!.in === "string" ? str(x!.in) : null;
+    return [{ decl, ...(at ? { at } : {}), ...(from ? { from } : {}), ...(inn !== null && spot ? { in: inn, spot } : {}) }];
+  });
+  // the reference window: a file by its hash, a page, the link it was opened on
+  const pw = o.paper && typeof o.paper === "object" ? (o.paper as Record<string, unknown>) : null;
+  const paper: PaperWindow | null =
+    pw && typeof pw.file === "string" && /^[0-9a-f]{64}$/.test(pw.file)
+      ? {
+          file: pw.file,
+          ...(Number.isInteger(pw.page) && (pw.page as number) >= 1 && (pw.page as number) <= 100000 ? { page: pw.page as number } : {}),
+          ...(typeof pw.link === "string" && /^l[0-9a-f]{12}$/.test(pw.link) ? { link: pw.link } : {}),
+          ...(pw.collapsed === true ? { collapsed: true } : {}),
+        }
+      : null;
+  // what the panels and the board show besides, each said or not at all (an older page says none)
+  const av = o.activity && typeof o.activity === "object" ? (o.activity as Record<string, unknown>) : null;
+  const one = <T extends string>(xs: readonly T[], x: unknown): T | null => (xs.includes(x as T) ? (x as T) : null);
+  const kind = one(ACTIVITY_KINDS, av?.kind), who = one(ACTIVITY_WHO, av?.who);
+  const activity: ActivityView | null =
+    av && typeof av.open === "boolean" && kind && who ? { open: av.open, kind, who, ...(typeof av.mine === "string" && validName(av.mine) ? { mine: av.mine } : {}) } : null;
+  const lost = o.lostFound && typeof o.lostFound === "object" ? (o.lostFound as Record<string, unknown>).open : undefined;
+  const scheme = one(SCHEMES, o.scheme);
+  const pinned = Array.isArray(o.pinned)
+    ? o.pinned
+        .slice(0, MAX_PINNED)
+        .map((w): PinnedWindow | null => {
+          const decl = w && typeof w === "object" ? str((w as Record<string, unknown>).decl) : null;
+          return decl ? { decl, collapsed: (w as Record<string, unknown>).collapsed === true } : null;
+        })
+        .filter((w): w is PinnedWindow => w !== null)
+    : [];
+  return {
+    mode: str(o.mode, 16) ?? "tcb",
+    sel: str(o.sel),
+    ...(selection !== null ? { selection } : {}),
+    source,
+    ...(source && o.sourceCollapsed === true ? { sourceCollapsed: true } : {}),
+    ...(pinned.length ? { pinned } : {}),
+    clusterMode: str(o.clusterMode, 16) ?? "namespace",
+    cam: cx !== null && cy !== null && ck !== null ? { x: cx, y: cy, k: ck } : null,
+    view: str(o.view, 300),
+    scope: str(o.scope, 4000),
+    tabs: Array.isArray(o.tabs) ? o.tabs.slice(0, 50).map((t) => str(t, 300)).filter((t): t is string => t !== null) : [],
+    ...(snapshot !== null ? { history: { snapshot } } : {}),
+    ...(o.focus === null || str(o.focus) ? { focus: o.focus as string | null } : {}),
+    ...(visitors.length ? { visitors } : {}),
+    ...(paper ? { paper } : {}),
+    ...(activity ? { activity } : {}),
+    ...(typeof lost === "boolean" ? { lostFound: { open: lost } } : {}),
+    ...(scheme ? { scheme } : {}),
+    ...(typeof o.edges === "boolean" ? { edges: o.edges } : {}),
+    ...(typeof o.proofEdges === "boolean" ? { proofEdges: o.proofEdges } : {}),
+  };
+}

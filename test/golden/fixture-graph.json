@@ -1,0 +1,6602 @@
+{
+ "toolchain": "leanprover/lean4:v4.33.1",
+ "roots": [
+  "Fixture",
+  "Fixture.Notation",
+  "Fixture.Kinds",
+  "FixtureModule"
+ ],
+ "strict": {
+  "edge Fixture.Kinds.HasBound -> Fixture.Kinds.HasSize": 1,
+  "edge Fixture.Kinds.Num.zero -> Fixture.Kinds.Num": 3,
+  "edge Fixture.Kinds.Point3 -> Fixture.Point": 1,
+  "edge Fixture.Kinds.Vec.length -> Fixture.Kinds.Vec": 7,
+  "edge Fixture.Kinds.evenW -> Fixture.Kinds.oddW": 2,
+  "edge Fixture.Kinds.instHasSizeColor -> Fixture.Kinds.Color": 3,
+  "edge Fixture.Kinds.instHasSizeColor -> Fixture.Kinds.HasSize": 3,
+  "edge Fixture.Kinds.instHasSizeNat -> Fixture.Kinds.HasSize": 3,
+  "edge Fixture.Kinds.isEven -> Fixture.Kinds.isOdd": 2,
+  "edge Fixture.Kinds.isOdd -> Fixture.Kinds.isEven": 2,
+  "edge Fixture.Kinds.length_nil -> Fixture.Kinds.Color": 5,
+  "edge Fixture.Kinds.length_nil -> Fixture.Kinds.Vec": 5,
+  "edge Fixture.Kinds.length_nil -> Fixture.Kinds.Vec.length": 5,
+  "edge Fixture.Kinds.length_nil -> Fixture.Kinds.sumTo": 1,
+  "edge Fixture.Kinds.oddW -> Fixture.Kinds.evenW": 2,
+  "edge Fixture.Kinds.ping -> Fixture.Kinds.pong": 2,
+  "edge Fixture.Kinds.point3_size -> Fixture.Kinds.Point3": 5,
+  "edge Fixture.Kinds.point3_size -> Fixture.Point": 1,
+  "edge Fixture.Kinds.point3_size -> Fixture.Point.size": 5,
+  "edge Fixture.Kinds.pong -> Fixture.Kinds.ping": 2,
+  "edge Fixture.Kinds.sumTo -> Fixture.Kinds.sumTo.go": 2,
+  "edge Fixture.Kinds.visible -> Fixture.Kinds.hidden": 2,
+  "edge Fixture.Kinds.visibleOld -> Fixture.Kinds.visible": 2,
+  "edge Fixture.Kinds.visible_eq -> Fixture.Kinds.visible": 5,
+  "edge Fixture.Pair -> Fixture.bad": 4,
+  "edge Fixture.Point.size -> Fixture.Point": 3,
+  "edge Fixture.Sized -> Fixture.Point": 1,
+  "edge Fixture.Sized -> Fixture.Point.size": 1,
+  "edge Fixture.Sized -> Fixture.succSize": 1,
+  "edge Fixture.bounded -> Fixture.Point": 3,
+  "edge Fixture.bounded -> Fixture.Point.size": 2,
+  "edge Fixture.bounded -> Fixture.size_le": 4,
+  "edge Fixture.double -> Fixture.Point": 3,
+  "edge Fixture.elabTrip -> Fixture.tripStx": 8,
+  "edge Fixture.firstTag -> Fixture.Pair": 3,
+  "edge Fixture.helper_eq -> Fixture.helper": 5,
+  "edge Fixture.instDecidableEqPoint -> Fixture.Point": 7,
+  "edge Fixture.instInhabitedPoint -> Fixture.Point": 3,
+  "edge Fixture.instLawfulNat -> Fixture.Lawful": 3,
+  "edge Fixture.leaf -> Fixture.Point": 5,
+  "edge Fixture.leaf -> Fixture.Point.size": 1,
+  "edge Fixture.leaf -> Fixture.bounded": 5,
+  "edge Fixture.main_thm -> Fixture.Point": 5,
+  "edge Fixture.main_thm -> Fixture.Point.size": 5,
+  "edge Fixture.main_thm -> Fixture.double": 5,
+  "edge Fixture.main_thm -> Fixture.helper": 4,
+  "edge Fixture.main_thm -> Fixture.helper_eq": 4,
+  "edge Fixture.onePos -> Fixture.Pos": 3,
+  "edge Fixture.origin -> Fixture.Point": 3,
+  "edge Fixture.origin -> Fixture.instInhabitedPoint": 2,
+  "edge Fixture.same -> Fixture.Point": 3,
+  "edge Fixture.same -> Fixture.instDecidableEqPoint": 4,
+  "edge Fixture.size_comm -> Fixture.Point": 5,
+  "edge Fixture.size_comm -> Fixture.Point.size": 5,
+  "edge Fixture.size_comm -> Fixture.bad": 4,
+  "edge Fixture.size_le -> Fixture.Point": 5,
+  "edge Fixture.size_le -> Fixture.Point.size": 1,
+  "edge Fixture.size_succ_pos -> Fixture.Point": 5,
+  "edge Fixture.size_succ_pos -> Fixture.Point.size": 5,
+  "edge Fixture.size_twice -> Fixture.Point": 5,
+  "edge Fixture.size_twice -> Fixture.Point.size": 5,
+  "edge Fixture.size_twice -> Fixture.size_comm": 4,
+  "edge Fixture.sized -> Fixture.Point": 3,
+  "edge Fixture.sized -> Fixture.Point.size": 2,
+  "edge Fixture.succSize -> Fixture.Point": 3,
+  "edge Fixture.succSize -> Fixture.Point.size": 2,
+  "edge Fixture.succSize -> Fixture.size_succ_pos": 4,
+  "edge Fixture.succSize_val -> Fixture.Point": 5,
+  "edge Fixture.succSize_val -> Fixture.Point.size": 1,
+  "edge Fixture.succSize_val -> Fixture.succSize": 5,
+  "edge Fixture.termDbl!_.macro_rules -> Fixture.termDbl!_": 8,
+  "edge Fixture.termDbl!_.macro_rules -> Fixture.twiceOf": 2,
+  "edge Fixture.termPick!_.macro_rules -> Fixture.termPick!_": 8,
+  "edge Fixture.termPick!_.macro_rules_2 -> Fixture.termPick!_": 8,
+  "edge Fixture.termQuad!_.macro_rules -> Fixture.termQuad!_": 8,
+  "edge Fixture.termSq!_.elab_rules -> Fixture.termSq!_": 8,
+  "edge Fixture.termWrap!_.elab_rules -> Fixture.termWrap!_": 8,
+  "edge Fixture.twoPos -> Fixture.Pos": 3,
+  "edge FixtureModule.inSection -> FixtureModule.triple": 2,
+  "edge FixtureModule.use_viaHelper -> FixtureModule.viaHelper": 5,
+  "edge FixtureModule.use_viaHelper -> FixtureModule.viaHelper_eq": 4,
+  "edge FixtureModule.viaHelper -> FixtureModule.helper": 2,
+  "edge FixtureModule.viaHelper_eq -> FixtureModule.viaHelper": 5,
+  "modules": [
+   {
+    "name": "Fixture",
+    "imports": [
+     "Fixture.Axioms",
+     "Fixture.Basic",
+     "Fixture.Leaf",
+     "Fixture.Tagged",
+     "Fixture.Use"
+    ]
+   },
+   {
+    "name": "Fixture.Axioms",
+    "imports": [
+     "Fixture.Basic"
+    ]
+   },
+   {
+    "name": "Fixture.Basic",
+    "imports": []
+   },
+   {
+    "name": "Fixture.Kinds",
+    "imports": [
+     "Fixture.Basic"
+    ]
+   },
+   {
+    "name": "Fixture.Leaf",
+    "imports": [
+     "Fixture.Use"
+    ]
+   },
+   {
+    "name": "Fixture.Notation",
+    "imports": [
+     "Fixture.Basic"
+    ]
+   },
+   {
+    "name": "Fixture.Tagged",
+    "imports": [
+     "Fixture.Axioms"
+    ]
+   },
+   {
+    "name": "Fixture.Use",
+    "imports": [
+     "Fixture.Basic"
+    ]
+   },
+   {
+    "name": "FixtureModule",
+    "imports": [
+     "FixtureModule.Defs",
+     "FixtureModule.Use"
+    ]
+   },
+   {
+    "name": "FixtureModule.Defs",
+    "imports": []
+   },
+   {
+    "name": "FixtureModule.Use",
+    "imports": [
+     "FixtureModule.Defs"
+    ]
+   }
+  ],
+  "node Fixture.Kinds.Color": {
+   "doc": "An enumeration with derived instances: each deriving handler writes declarations. ",
+   "kind": "inductive",
+   "module": "Fixture.Kinds",
+   "range": [
+    47,
+    0,
+    51,
+    54
+   ],
+   "type": "Type",
+   "axioms": []
+  },
+  "node Fixture.Kinds.Even": {
+   "doc": "An inductive predicate. ",
+   "kind": "inductive",
+   "module": "Fixture.Kinds",
+   "range": [
+    66,
+    0,
+    69,
+    42
+   ],
+   "type": "Nat → Prop",
+   "axioms": []
+  },
+  "node Fixture.Kinds.HasBound": {
+   "kind": "class",
+   "module": "Fixture.Kinds",
+   "range": [
+    41,
+    0,
+    42,
+    13
+   ],
+   "type": "Type → Type",
+   "axioms": []
+  },
+  "node Fixture.Kinds.HasSize": {
+   "doc": "A class, and one that extends it. ",
+   "kind": "class",
+   "module": "Fixture.Kinds",
+   "range": [
+    37,
+    0,
+    39,
+    16
+   ],
+   "type": "Type → Type",
+   "axioms": []
+  },
+  "node Fixture.Kinds.Num": {
+   "doc": "An abbreviation. ",
+   "kind": "abbrev",
+   "module": "Fixture.Kinds",
+   "range": [
+    9,
+    0,
+    10,
+    17
+   ],
+   "type": "Type",
+   "axioms": []
+  },
+  "node Fixture.Kinds.Num.zero": {
+   "doc": "A protected name. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    27,
+    0,
+    28,
+    33
+   ],
+   "type": "Fixture.Kinds.Num",
+   "axioms": []
+  },
+  "node Fixture.Kinds.Point3": {
+   "doc": "A structure that extends another: its parent projection is generated. ",
+   "kind": "structure",
+   "module": "Fixture.Kinds",
+   "range": [
+    30,
+    0,
+    32,
+    9
+   ],
+   "type": "Type",
+   "axioms": []
+  },
+  "node Fixture.Kinds.Vec": {
+   "doc": "An inductive family. ",
+   "kind": "inductive",
+   "module": "Fixture.Kinds",
+   "range": [
+    56,
+    0,
+    59,
+    48
+   ],
+   "type": "Type → Nat → Type",
+   "axioms": []
+  },
+  "node Fixture.Kinds.Vec.length": {
+   "doc": "Structural recursion over it. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    61,
+    0,
+    64,
+    29
+   ],
+   "type": "{α : Type} → {n : Nat} → Fixture.Kinds.Vec α n → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.chosen": {
+   "doc": "A noncomputable definition, by choice. ",
+   "flags": [
+    "noncomputable"
+   ],
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    119,
+    0,
+    120,
+    54
+   ],
+   "type": "Nat",
+   "axioms": [
+    "Classical.choice"
+   ]
+  },
+  "node Fixture.Kinds.collatz": {
+   "doc": "A partial function. ",
+   "kind": "opaque",
+   "module": "Fixture.Kinds",
+   "range": [
+    108,
+    0,
+    110,
+    75
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.evenW": {
+   "doc": "Mutual well-founded recursion: even. Both bodies go into one generated `_mutual`. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    83,
+    0,
+    87,
+    21
+   ],
+   "type": "Nat → Bool",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "node Fixture.Kinds.hidden": {
+   "doc": "A private helper. ",
+   "flags": [
+    "private"
+   ],
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    15,
+    0,
+    16,
+    43
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.instHasSizeColor": {
+   "doc": "An anonymous instance: its name is made by Lean. ",
+   "kind": "instance",
+   "module": "Fixture.Kinds",
+   "range": [
+    53,
+    0,
+    54,
+    40
+   ],
+   "type": "Fixture.Kinds.HasSize Fixture.Kinds.Color",
+   "axioms": []
+  },
+  "node Fixture.Kinds.instHasSizeNat": {
+   "doc": "A named instance. ",
+   "kind": "instance",
+   "module": "Fixture.Kinds",
+   "range": [
+    44,
+    0,
+    45,
+    45
+   ],
+   "type": "Fixture.Kinds.HasSize Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.isEven": {
+   "doc": "Mutual structural recursion: even. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    72,
+    0,
+    75,
+    20
+   ],
+   "type": "Nat → Bool",
+   "axioms": []
+  },
+  "node Fixture.Kinds.isOdd": {
+   "doc": "Mutual structural recursion: odd. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    76,
+    0,
+    79,
+    21
+   ],
+   "type": "Nat → Bool",
+   "axioms": []
+  },
+  "node Fixture.Kinds.length_nil": {
+   "doc": "A statement resting on several of the above. ",
+   "kind": "theorem",
+   "module": "Fixture.Kinds",
+   "range": [
+    122,
+    0,
+    123,
+    68
+   ],
+   "type": "Fixture.Kinds.Vec.nil.length = Fixture.Kinds.sumTo 0",
+   "axioms": []
+  },
+  "node Fixture.Kinds.log2": {
+   "doc": "Well-founded recursion: Lean generates the unary function, the induction principle and the\nequation lemmas. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    95,
+    0,
+    99,
+    19
+   ],
+   "type": "Nat → Nat",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.Kinds.oddW": {
+   "doc": "Mutual well-founded recursion: odd. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    88,
+    0,
+    92,
+    21
+   ],
+   "type": "Nat → Bool",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "node Fixture.Kinds.ping": {
+   "doc": "Mutual partial functions: each one's code calls the other's `_unsafe_rec`. ",
+   "kind": "opaque",
+   "module": "Fixture.Kinds",
+   "range": [
+    113,
+    0,
+    114,
+    69
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.point3_size": {
+   "doc": "The statement rests on the parent's definitions through the projection. ",
+   "kind": "theorem",
+   "module": "Fixture.Kinds",
+   "range": [
+    34,
+    0,
+    35,
+    68
+   ],
+   "type": "∀ (p : Fixture.Kinds.Point3), ‖p.toPoint‖ₚ = p.x + p.y",
+   "axioms": []
+  },
+  "node Fixture.Kinds.pong": {
+   "doc": "The other half. ",
+   "kind": "opaque",
+   "module": "Fixture.Kinds",
+   "range": [
+    115,
+    0,
+    116,
+    69
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.secret": {
+   "doc": "An opaque constant: a statement can rest on it, its value is not known. ",
+   "kind": "opaque",
+   "module": "Fixture.Kinds",
+   "range": [
+    12,
+    0,
+    13,
+    19
+   ],
+   "type": "Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.sumTo": {
+   "doc": "A `where` helper. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    101,
+    0,
+    106,
+    38
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.sumTo.go": {
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    104,
+    2,
+    106,
+    38
+   ],
+   "type": "Nat → Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.two_lt_three": {
+   "doc": "Decided by evaluation. ",
+   "kind": "theorem",
+   "module": "Fixture.Kinds",
+   "range": [
+    125,
+    0,
+    126,
+    41
+   ],
+   "type": "2 < 3",
+   "axioms": []
+  },
+  "node Fixture.Kinds.visible": {
+   "doc": "Uses the private helper in its body. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    18,
+    0,
+    19,
+    39
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.visibleOld": {
+   "doc": "A deprecated alias. ",
+   "kind": "def",
+   "module": "Fixture.Kinds",
+   "range": [
+    24,
+    0,
+    25,
+    89
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.Kinds.visible_eq": {
+   "doc": "A simp lemma about it. ",
+   "kind": "theorem",
+   "module": "Fixture.Kinds",
+   "range": [
+    21,
+    0,
+    22,
+    63
+   ],
+   "type": "∀ (n : Nat), Fixture.Kinds.visible n = n + 1",
+   "axioms": []
+  },
+  "node Fixture.Lawful": {
+   "doc": "An operation with a law. ",
+   "kind": "class",
+   "module": "Fixture.Notation",
+   "range": [
+    125,
+    0,
+    129,
+    38
+   ],
+   "type": "Type → Type",
+   "axioms": []
+  },
+  "node Fixture.Pair": {
+   "kind": "def",
+   "module": "Fixture.Tagged",
+   "range": [
+    27,
+    0,
+    27,
+    11
+   ],
+   "type": "Type",
+   "axioms": [
+    "Fixture.bad"
+   ]
+  },
+  "node Fixture.Point": {
+   "doc": "A point in the plane. ",
+   "kind": "structure",
+   "module": "Fixture.Basic",
+   "range": [
+    5,
+    0,
+    8,
+    9
+   ],
+   "type": "Type",
+   "axioms": []
+  },
+  "node Fixture.Point.size": {
+   "doc": "Taxicab size. ",
+   "kind": "def",
+   "module": "Fixture.Basic",
+   "range": [
+    10,
+    0,
+    11,
+    45
+   ],
+   "type": "Fixture.Point → Nat",
+   "axioms": []
+  },
+  "node Fixture.Pos": {
+   "doc": "A positive number: a `by` in a signature is the statement's, never cut. ",
+   "kind": "structure",
+   "module": "Fixture.Notation",
+   "range": [
+    120,
+    0,
+    123,
+    28
+   ],
+   "type": "Type",
+   "axioms": []
+  },
+  "node Fixture.Sized": {
+   "doc": "A type reaches what its constructor's fields do: here the open proof, through `succSize`. ",
+   "kind": "structure",
+   "module": "Fixture.Axioms",
+   "range": [
+    26,
+    0,
+    29,
+    40
+   ],
+   "type": "Type",
+   "axioms": [
+    "sorryAx"
+   ]
+  },
+  "node Fixture.bad": {
+   "doc": "An axiom no statement mentions. ",
+   "kind": "axiom",
+   "module": "Fixture.Axioms",
+   "range": [
+    7,
+    0,
+    8,
+    17
+   ],
+   "type": "False",
+   "axioms": [
+    "Fixture.bad"
+   ]
+  },
+  "node Fixture.bounded": {
+   "doc": "Data whose invariant is proved by a lemma: the lemma sits in a proof position. ",
+   "kind": "def",
+   "module": "Fixture.Basic",
+   "range": [
+    15,
+    0,
+    16,
+    71
+   ],
+   "type": "(p : Fixture.Point) → { n // p.x ≤ n }",
+   "axioms": []
+  },
+  "node Fixture.bumped": {
+   "doc": "Written with the local notation. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    109,
+    0,
+    110,
+    36
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.classify": {
+   "doc": "Defined by pattern matching, so it owns a matcher. ",
+   "kind": "def",
+   "module": "Fixture.Basic",
+   "range": [
+    18,
+    0,
+    21,
+    17
+   ],
+   "type": "Nat → Bool",
+   "axioms": []
+  },
+  "node Fixture.commandTagged_": {
+   "display": "macro · tagged",
+   "doc": "`tagged T` declares `T` and, beneath it, the inductive `T.Tag` it is made of and a lemma about\nit. Only `T` has a name in the text: the others are made with names of their own (`mkIdent`), so\ntheir selection range is the whole command. The lemma's proof rests on the axiom `bad`, which\nnothing written in the text mentions. ",
+   "flags": [
+    "meta"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Tagged",
+   "range": [
+    12,
+    0,
+    24,
+    56
+   ],
+   "rules": [],
+   "type": "Lean.ParserDescr",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "node Fixture.dbl_eq": {
+   "doc": "Written with `dbl!` in its statement. ",
+   "kind": "theorem",
+   "module": "Fixture.Notation",
+   "range": [
+    74,
+    0,
+    75,
+    53
+   ],
+   "type": "∀ (n : Nat), n + n = 2 * n",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.double": {
+   "kind": "def",
+   "module": "Fixture.Use",
+   "range": [
+    5,
+    0,
+    5,
+    52
+   ],
+   "type": "Fixture.Point → Fixture.Point",
+   "axioms": []
+  },
+  "node Fixture.elabTrip": {
+   "doc": "The elaborator of `trip!`, written as a declaration with an attribute. ",
+   "flags": [
+    "meta"
+   ],
+   "interprets": [
+    "Fixture.tripStx"
+   ],
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    64,
+    0,
+    69,
+    36
+   ],
+   "type": "Lean.Elab.Term.TermElab",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.firstPlus": {
+   "doc": "A `by` in the middle of a term, on two lines. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    149,
+    0,
+    152,
+    14
+   ],
+   "type": "(xs : Array Nat) → 0 < xs.size → Nat",
+   "axioms": []
+  },
+  "node Fixture.firstTag": {
+   "doc": "Uses the generated type by its constructor: the reference is one to the unit `Pair`. ",
+   "kind": "def",
+   "module": "Fixture.Tagged",
+   "range": [
+    29,
+    0,
+    30,
+    32
+   ],
+   "type": "Fixture.Pair.Tag",
+   "axioms": []
+  },
+  "node Fixture.four_mul": {
+   "doc": "Written with `quad!` in its proof only. ",
+   "kind": "theorem",
+   "module": "Fixture.Notation",
+   "range": [
+    77,
+    0,
+    80,
+    9
+   ],
+   "type": "∀ (n : Nat), n + n + (n + n) = 4 * n",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.fromFalse": {
+   "doc": "Data by dot notation on a proof: the proof's name is not cut out of the name. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    154,
+    0,
+    155,
+    41
+   ],
+   "type": "False → Nat",
+   "axioms": []
+  },
+  "node Fixture.halve": {
+   "doc": "A `decreasing_by` proof. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    157,
+    0,
+    159,
+    19
+   ],
+   "type": "Nat → Nat",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.helper": {
+   "doc": "A helper used only inside a proof. ",
+   "kind": "def",
+   "module": "Fixture.Use",
+   "range": [
+    7,
+    0,
+    8,
+    35
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.helper_eq": {
+   "kind": "theorem",
+   "module": "Fixture.Use",
+   "range": [
+    10,
+    0,
+    10,
+    49
+   ],
+   "type": "∀ (n : Nat), Fixture.helper n = n",
+   "axioms": []
+  },
+  "node Fixture.instDecidableEqPoint": {
+   "doc": "Equality of points decided by hand: an instance of a class whose instances are all equal. ",
+   "kind": "instance",
+   "module": "Fixture.Basic",
+   "range": [
+    25,
+    0,
+    28,
+    56
+   ],
+   "type": "DecidableEq Fixture.Point",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "node Fixture.instInhabitedPoint": {
+   "kind": "instance",
+   "module": "Fixture.Basic",
+   "range": [
+    23,
+    0,
+    23,
+    38
+   ],
+   "type": "Inhabited Fixture.Point",
+   "axioms": []
+  },
+  "node Fixture.instLawfulNat": {
+   "kind": "instance",
+   "module": "Fixture.Notation",
+   "range": [
+    131,
+    0,
+    137,
+    25
+   ],
+   "type": "Fixture.Lawful Nat",
+   "axioms": []
+  },
+  "node Fixture.leaf": {
+   "kind": "theorem",
+   "module": "Fixture.Leaf",
+   "range": [
+    5,
+    0,
+    5,
+    58
+   ],
+   "type": "∀ (p : Fixture.Point), (Fixture.bounded p).val = ‖p‖ₚ",
+   "axioms": []
+  },
+  "node Fixture.main_thm": {
+   "doc": "The statement mentions `double` and `Point.size`; the proof uses `helper_eq`. ",
+   "kind": "theorem",
+   "module": "Fixture.Use",
+   "range": [
+    12,
+    0,
+    16,
+    7
+   ],
+   "type": "∀ (p : Fixture.Point), ‖Fixture.double p‖ₚ = 2 * ‖p‖ₚ",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.onePos": {
+   "doc": "A structure instance with a `by` field. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    139,
+    0,
+    140,
+    50
+   ],
+   "type": "Fixture.Pos",
+   "axioms": []
+  },
+  "node Fixture.origin": {
+   "doc": "A default point: `Inhabited` carries data, its default value, so its instance stays. ",
+   "kind": "def",
+   "module": "Fixture.Basic",
+   "range": [
+    34,
+    0,
+    35,
+    29
+   ],
+   "type": "Fixture.Point",
+   "axioms": []
+  },
+  "node Fixture.picked": {
+   "doc": "Only the numeral rule of `pick!` runs, in a `by` block whose goal is data. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    85,
+    0,
+    86,
+    36
+   ],
+   "type": "Nat",
+   "axioms": []
+  },
+  "node Fixture.quadruple": {
+   "doc": "Written with `quad!` in its body: `dbl!` comes from the rule of `quad!`, not from here. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    82,
+    0,
+    83,
+    40
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.same": {
+   "doc": "Whether two points are the same: the instance it decides with is left out of its TCB, as a\nproof is. ",
+   "kind": "def",
+   "module": "Fixture.Basic",
+   "range": [
+    30,
+    0,
+    32,
+    47
+   ],
+   "type": "Fixture.Point → Fixture.Point → Bool",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "node Fixture.size_comm": {
+   "doc": "An honest statement with a proof from `bad`. ",
+   "kind": "theorem",
+   "module": "Fixture.Axioms",
+   "range": [
+    10,
+    0,
+    11,
+    62
+   ],
+   "type": "∀ (p : Fixture.Point), ‖p‖ₚ = p.y + p.x",
+   "axioms": [
+    "Fixture.bad"
+   ]
+  },
+  "node Fixture.size_le": {
+   "kind": "theorem",
+   "module": "Fixture.Basic",
+   "range": [
+    13,
+    0,
+    13,
+    66
+   ],
+   "type": "∀ (p : Fixture.Point), p.x ≤ ‖p‖ₚ",
+   "axioms": []
+  },
+  "node Fixture.size_succ_pos": {
+   "doc": "A proof left open. ",
+   "kind": "theorem",
+   "module": "Fixture.Axioms",
+   "range": [
+    13,
+    0,
+    14,
+    62
+   ],
+   "type": "∀ (p : Fixture.Point), 0 < ‖p‖ₚ + 1",
+   "axioms": [
+    "sorryAx"
+   ]
+  },
+  "node Fixture.size_twice": {
+   "doc": "Reaches `bad` only through the proof of `size_comm`, which it uses in its own proof. ",
+   "kind": "theorem",
+   "module": "Fixture.Axioms",
+   "range": [
+    16,
+    0,
+    18,
+    18
+   ],
+   "type": "∀ (p : Fixture.Point), ‖p‖ₚ + ‖p‖ₚ = ‖p‖ₚ + (p.y + p.x)",
+   "axioms": [
+    "Fixture.bad"
+   ]
+  },
+  "node Fixture.sized": {
+   "doc": "Written with a `notation`, which bundles its syntax and its rule. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    97,
+    0,
+    98,
+    35
+   ],
+   "type": "Fixture.Point → Nat",
+   "axioms": []
+  },
+  "node Fixture.square": {
+   "doc": "An elaborated notation in a body. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    88,
+    0,
+    89,
+    35
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.succSize": {
+   "doc": "Data whose invariant is the open `size_succ_pos`, in a proof position. ",
+   "kind": "def",
+   "module": "Fixture.Axioms",
+   "range": [
+    20,
+    0,
+    21,
+    80
+   ],
+   "type": "Fixture.Point → { n // 0 < n }",
+   "axioms": [
+    "sorryAx"
+   ]
+  },
+  "node Fixture.succSize_val": {
+   "doc": "The statement mentions `succSize`, which mentions `size_succ_pos` only inside a proof. ",
+   "kind": "theorem",
+   "module": "Fixture.Axioms",
+   "range": [
+    23,
+    0,
+    24,
+    71
+   ],
+   "type": "∀ (p : Fixture.Point), (Fixture.succSize p).val = ‖p‖ₚ + 1",
+   "axioms": [
+    "sorryAx"
+   ]
+  },
+  "node Fixture.termBump_.Notation": {
+   "display": "macro · bump · in Notation",
+   "flags": [
+    "private",
+    "meta"
+   ],
+   "kind": "notation",
+   "leanName": "Fixture.termBump_",
+   "module": "Fixture.Notation",
+   "range": [
+    107,
+    0,
+    107,
+    33
+   ],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node Fixture.termDbl!_": {
+   "display": "syntax · dbl!",
+   "doc": "`dbl! x` is `x + x`. ",
+   "flags": [
+    "meta",
+    "grammar"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Notation",
+   "range": [
+    21,
+    0,
+    22,
+    30
+   ],
+   "rules": [
+    "Fixture.termDbl!_.macro_rules"
+   ],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node Fixture.termDbl!_.macro_rules": {
+   "display": "macro_rules · dbl!",
+   "flags": [
+    "meta"
+   ],
+   "interprets": [
+    "Fixture.termDbl!_"
+   ],
+   "kind": "notation",
+   "leanName": "Fixture._aux_Fixture_Notation___macroRules_Fixture_termDbl!__1",
+   "module": "Fixture.Notation",
+   "range": [
+    24,
+    0,
+    25,
+    27
+   ],
+   "type": "Lean.Macro",
+   "axioms": []
+  },
+  "node Fixture.termPick!_": {
+   "display": "syntax · pick!",
+   "doc": "`pick! x`: two rules, the later tried first. ",
+   "flags": [
+    "meta",
+    "grammar"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Notation",
+   "range": [
+    33,
+    0,
+    34,
+    31
+   ],
+   "rules": [
+    "Fixture.termPick!_.macro_rules_2",
+    "Fixture.termPick!_.macro_rules"
+   ],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node Fixture.termPick!_.macro_rules": {
+   "display": "macro_rules · pick!",
+   "doc": "The general rule: `x * 3`. ",
+   "flags": [
+    "meta"
+   ],
+   "interprets": [
+    "Fixture.termPick!_"
+   ],
+   "kind": "notation",
+   "leanName": "Fixture._aux_Fixture_Notation___macroRules_Fixture_termPick!__1",
+   "module": "Fixture.Notation",
+   "range": [
+    37,
+    0,
+    38,
+    28
+   ],
+   "type": "Lean.Macro",
+   "axioms": []
+  },
+  "node Fixture.termPick!_.macro_rules_2": {
+   "display": "macro_rules #2 · pick!",
+   "doc": "The rule for a numeral, `n + 1`: it fires on numerals, and passes anything else to the first. ",
+   "flags": [
+    "meta"
+   ],
+   "interprets": [
+    "Fixture.termPick!_"
+   ],
+   "kind": "notation",
+   "leanName": "Fixture._aux_Fixture_Notation___macroRules_Fixture_termPick!__2",
+   "module": "Fixture.Notation",
+   "range": [
+    41,
+    0,
+    42,
+    32
+   ],
+   "type": "Lean.Macro",
+   "axioms": []
+  },
+  "node Fixture.termQuad!_": {
+   "display": "syntax · quad!",
+   "doc": "`quad! x` is `dbl! (dbl! x)`: its rule emits another notation of the project. ",
+   "flags": [
+    "meta",
+    "grammar"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Notation",
+   "range": [
+    27,
+    0,
+    28,
+    31
+   ],
+   "rules": [
+    "Fixture.termQuad!_.macro_rules"
+   ],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node Fixture.termQuad!_.macro_rules": {
+   "display": "macro_rules · quad!",
+   "flags": [
+    "meta"
+   ],
+   "interprets": [
+    "Fixture.termQuad!_"
+   ],
+   "kind": "notation",
+   "leanName": "Fixture._aux_Fixture_Notation___macroRules_Fixture_termQuad!__1",
+   "module": "Fixture.Notation",
+   "range": [
+    30,
+    0,
+    31,
+    36
+   ],
+   "type": "Lean.Macro",
+   "axioms": []
+  },
+  "node Fixture.termSq!_": {
+   "display": "syntax · sq!",
+   "doc": "`sq! x` is `x * x`, elaborated. ",
+   "flags": [
+    "meta",
+    "grammar"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Notation",
+   "range": [
+    44,
+    0,
+    45,
+    29
+   ],
+   "rules": [
+    "Fixture.termSq!_.elab_rules"
+   ],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node Fixture.termSq!_.elab_rules": {
+   "display": "elab_rules · sq!",
+   "flags": [
+    "meta"
+   ],
+   "interprets": [
+    "Fixture.termSq!_"
+   ],
+   "kind": "notation",
+   "leanName": "Fixture._aux_Fixture_Notation___elabRules_Fixture_termSq!__1",
+   "module": "Fixture.Notation",
+   "range": [
+    47,
+    0,
+    50,
+    41
+   ],
+   "type": "Lean.Elab.Term.TermElab",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.termWrap!_": {
+   "display": "syntax · wrap!",
+   "doc": "`wrap! x` elaborates `x` after expanding the macros in it by hand: the rules that run inside\nleave no trace in the info tree, only in the text. ",
+   "flags": [
+    "meta",
+    "grammar"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Notation",
+   "range": [
+    52,
+    0,
+    54,
+    31
+   ],
+   "rules": [
+    "Fixture.termWrap!_.elab_rules"
+   ],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node Fixture.termWrap!_.elab_rules": {
+   "display": "elab_rules · wrap!",
+   "flags": [
+    "meta"
+   ],
+   "interprets": [
+    "Fixture.termWrap!_"
+   ],
+   "kind": "notation",
+   "leanName": "Fixture._aux_Fixture_Notation___elabRules_Fixture_termWrap!__1",
+   "module": "Fixture.Notation",
+   "range": [
+    56,
+    0,
+    59,
+    30
+   ],
+   "type": "Lean.Elab.Term.TermElab",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node Fixture.three": {
+   "doc": "A `by` block that is data, with data and a proof nested in it. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    145,
+    0,
+    147,
+    33
+   ],
+   "type": "Fin 5",
+   "axioms": []
+  },
+  "node Fixture.tripStx": {
+   "display": "syntax · trip!",
+   "doc": "`trip! x` is `3 * x`, elaborated by a declaration registered for its kind. ",
+   "flags": [
+    "meta",
+    "grammar"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Notation",
+   "range": [
+    61,
+    0,
+    62,
+    49
+   ],
+   "rules": [
+    "Fixture.elabTrip"
+   ],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node Fixture.tripled": {
+   "doc": "Written with a syntax whose elaborator is a declaration registered for it. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    94,
+    0,
+    95,
+    38
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.twiceOf": {
+   "doc": "A meta helper: the rule of `dbl!` calls it. ",
+   "flags": [
+    "meta"
+   ],
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    18,
+    0,
+    19,
+    70
+   ],
+   "type": "Lean.TSyntax `term → Lean.MacroM (Lean.TSyntax `term)",
+   "axioms": []
+  },
+  "node Fixture.twoPos": {
+   "doc": "A term-mode proof. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    142,
+    0,
+    143,
+    75
+   ],
+   "type": "Fixture.Pos",
+   "axioms": []
+  },
+  "node Fixture.withK": {
+   "doc": "Takes `α`, its instance, and `k`; not `unused`. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    104,
+    0,
+    105,
+    64
+   ],
+   "type": "{α : Type} → [Inhabited α] → Nat → α → α × Nat",
+   "axioms": []
+  },
+  "node Fixture.wrapped": {
+   "doc": "`dbl!` inside `wrap!`: the rule of `dbl!` runs in the hand expansion, and only the text says so. ",
+   "kind": "def",
+   "module": "Fixture.Notation",
+   "range": [
+    91,
+    0,
+    92,
+    45
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node Fixture.«term‖_‖ₚ»": {
+   "display": "notation · ‖ … ‖ₚ",
+   "doc": "`‖p‖ₚ` is `p.size`, with an unexpander that prints it back: it only changes how a term shows. ",
+   "flags": [
+    "meta"
+   ],
+   "kind": "notation",
+   "module": "Fixture.Notation",
+   "range": [
+    71,
+    0,
+    72,
+    35
+   ],
+   "rules": [],
+   "type": "Lean.ParserDescr",
+   "axioms": []
+  },
+  "node FixtureModule.helper": {
+   "doc": "A helper: in a module, a declaration is private unless made public. ",
+   "flags": [
+    "private"
+   ],
+   "kind": "def",
+   "module": "FixtureModule.Defs",
+   "range": [
+    9,
+    0,
+    10,
+    35
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node FixtureModule.inSection": {
+   "doc": "Public by its section. ",
+   "kind": "def",
+   "module": "FixtureModule.Defs",
+   "range": [
+    25,
+    0,
+    26,
+    41
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node FixtureModule.triple": {
+   "doc": "An exposed definition: its body is exported too. ",
+   "kind": "def",
+   "module": "FixtureModule.Defs",
+   "range": [
+    15,
+    0,
+    16,
+    56
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node FixtureModule.use_viaHelper": {
+   "doc": "Rests on `viaHelper`, from another module. ",
+   "kind": "theorem",
+   "module": "FixtureModule.Use",
+   "range": [
+    9,
+    0,
+    12,
+    7
+   ],
+   "type": "∀ (n : Nat), FixtureModule.viaHelper (n + 1) = 2 * n + 2",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "node FixtureModule.viaHelper": {
+   "doc": "A public definition whose body, not exported, uses the private helper. ",
+   "kind": "def",
+   "module": "FixtureModule.Defs",
+   "range": [
+    12,
+    0,
+    13,
+    48
+   ],
+   "type": "Nat → Nat",
+   "axioms": []
+  },
+  "node FixtureModule.viaHelper_eq": {
+   "doc": "A public theorem whose statement rests on `viaHelper`, and through its body on `helper`. ",
+   "kind": "theorem",
+   "module": "FixtureModule.Defs",
+   "range": [
+    18,
+    0,
+    21,
+    7
+   ],
+   "type": "∀ (n : Nat), FixtureModule.viaHelper n = 2 * n",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "roots": [
+   "Fixture",
+   "Fixture.Notation",
+   "Fixture.Kinds",
+   "FixtureModule"
+  ],
+  "tcb Fixture.Kinds.Color": [
+   "Fixture.Kinds.Color"
+  ],
+  "tcb Fixture.Kinds.Even": [
+   "Fixture.Kinds.Even"
+  ],
+  "tcb Fixture.Kinds.HasBound": [
+   "Fixture.Kinds.HasBound",
+   "Fixture.Kinds.HasSize"
+  ],
+  "tcb Fixture.Kinds.HasSize": [
+   "Fixture.Kinds.HasSize"
+  ],
+  "tcb Fixture.Kinds.Num": [
+   "Fixture.Kinds.Num"
+  ],
+  "tcb Fixture.Kinds.Num.zero": [
+   "Fixture.Kinds.Num",
+   "Fixture.Kinds.Num.zero"
+  ],
+  "tcb Fixture.Kinds.Point3": [
+   "Fixture.Kinds.Point3",
+   "Fixture.Point"
+  ],
+  "tcb Fixture.Kinds.Vec": [
+   "Fixture.Kinds.Vec"
+  ],
+  "tcb Fixture.Kinds.Vec.length": [
+   "Fixture.Kinds.Vec",
+   "Fixture.Kinds.Vec.length"
+  ],
+  "tcb Fixture.Kinds.chosen": [
+   "Fixture.Kinds.chosen"
+  ],
+  "tcb Fixture.Kinds.collatz": [
+   "Fixture.Kinds.collatz"
+  ],
+  "tcb Fixture.Kinds.evenW": [
+   "Fixture.Kinds.evenW",
+   "Fixture.Kinds.oddW"
+  ],
+  "tcb Fixture.Kinds.hidden": [
+   "Fixture.Kinds.hidden"
+  ],
+  "tcb Fixture.Kinds.instHasSizeColor": [
+   "Fixture.Kinds.Color",
+   "Fixture.Kinds.HasSize",
+   "Fixture.Kinds.instHasSizeColor"
+  ],
+  "tcb Fixture.Kinds.instHasSizeNat": [
+   "Fixture.Kinds.HasSize",
+   "Fixture.Kinds.instHasSizeNat"
+  ],
+  "tcb Fixture.Kinds.isEven": [
+   "Fixture.Kinds.isEven",
+   "Fixture.Kinds.isOdd"
+  ],
+  "tcb Fixture.Kinds.isOdd": [
+   "Fixture.Kinds.isEven",
+   "Fixture.Kinds.isOdd"
+  ],
+  "tcb Fixture.Kinds.length_nil": [
+   "Fixture.Kinds.Color",
+   "Fixture.Kinds.Vec",
+   "Fixture.Kinds.Vec.length",
+   "Fixture.Kinds.length_nil",
+   "Fixture.Kinds.sumTo",
+   "Fixture.Kinds.sumTo.go"
+  ],
+  "tcb Fixture.Kinds.log2": [
+   "Fixture.Kinds.log2"
+  ],
+  "tcb Fixture.Kinds.oddW": [
+   "Fixture.Kinds.evenW",
+   "Fixture.Kinds.oddW"
+  ],
+  "tcb Fixture.Kinds.ping": [
+   "Fixture.Kinds.ping",
+   "Fixture.Kinds.pong"
+  ],
+  "tcb Fixture.Kinds.point3_size": [
+   "Fixture.Kinds.Point3",
+   "Fixture.Kinds.point3_size",
+   "Fixture.Point",
+   "Fixture.Point.size"
+  ],
+  "tcb Fixture.Kinds.pong": [
+   "Fixture.Kinds.ping",
+   "Fixture.Kinds.pong"
+  ],
+  "tcb Fixture.Kinds.secret": [
+   "Fixture.Kinds.secret"
+  ],
+  "tcb Fixture.Kinds.sumTo": [
+   "Fixture.Kinds.sumTo",
+   "Fixture.Kinds.sumTo.go"
+  ],
+  "tcb Fixture.Kinds.sumTo.go": [
+   "Fixture.Kinds.sumTo.go"
+  ],
+  "tcb Fixture.Kinds.two_lt_three": [
+   "Fixture.Kinds.two_lt_three"
+  ],
+  "tcb Fixture.Kinds.visible": [
+   "Fixture.Kinds.hidden",
+   "Fixture.Kinds.visible"
+  ],
+  "tcb Fixture.Kinds.visibleOld": [
+   "Fixture.Kinds.hidden",
+   "Fixture.Kinds.visible",
+   "Fixture.Kinds.visibleOld"
+  ],
+  "tcb Fixture.Kinds.visible_eq": [
+   "Fixture.Kinds.hidden",
+   "Fixture.Kinds.visible",
+   "Fixture.Kinds.visible_eq"
+  ],
+  "tcb Fixture.Lawful": [
+   "Fixture.Lawful"
+  ],
+  "tcb Fixture.Pair": [
+   "Fixture.Pair"
+  ],
+  "tcb Fixture.Point": [
+   "Fixture.Point"
+  ],
+  "tcb Fixture.Point.size": [
+   "Fixture.Point",
+   "Fixture.Point.size"
+  ],
+  "tcb Fixture.Pos": [
+   "Fixture.Pos"
+  ],
+  "tcb Fixture.Sized": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.Sized",
+   "Fixture.succSize"
+  ],
+  "tcb Fixture.bad": [
+   "Fixture.bad"
+  ],
+  "tcb Fixture.bounded": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.bounded"
+  ],
+  "tcb Fixture.bumped": [
+   "Fixture.bumped"
+  ],
+  "tcb Fixture.classify": [
+   "Fixture.classify"
+  ],
+  "tcb Fixture.commandTagged_": [
+   "Fixture.commandTagged_"
+  ],
+  "tcb Fixture.dbl_eq": [
+   "Fixture.dbl_eq"
+  ],
+  "tcb Fixture.double": [
+   "Fixture.Point",
+   "Fixture.double"
+  ],
+  "tcb Fixture.elabTrip": [
+   "Fixture.elabTrip"
+  ],
+  "tcb Fixture.firstPlus": [
+   "Fixture.firstPlus"
+  ],
+  "tcb Fixture.firstTag": [
+   "Fixture.Pair",
+   "Fixture.firstTag"
+  ],
+  "tcb Fixture.four_mul": [
+   "Fixture.four_mul"
+  ],
+  "tcb Fixture.fromFalse": [
+   "Fixture.fromFalse"
+  ],
+  "tcb Fixture.halve": [
+   "Fixture.halve"
+  ],
+  "tcb Fixture.helper": [
+   "Fixture.helper"
+  ],
+  "tcb Fixture.helper_eq": [
+   "Fixture.helper",
+   "Fixture.helper_eq"
+  ],
+  "tcb Fixture.instDecidableEqPoint": [
+   "Fixture.Point",
+   "Fixture.instDecidableEqPoint"
+  ],
+  "tcb Fixture.instInhabitedPoint": [
+   "Fixture.Point",
+   "Fixture.instInhabitedPoint"
+  ],
+  "tcb Fixture.instLawfulNat": [
+   "Fixture.Lawful",
+   "Fixture.instLawfulNat"
+  ],
+  "tcb Fixture.leaf": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.bounded",
+   "Fixture.leaf"
+  ],
+  "tcb Fixture.main_thm": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.double",
+   "Fixture.main_thm"
+  ],
+  "tcb Fixture.onePos": [
+   "Fixture.Pos",
+   "Fixture.onePos"
+  ],
+  "tcb Fixture.origin": [
+   "Fixture.Point",
+   "Fixture.instInhabitedPoint",
+   "Fixture.origin"
+  ],
+  "tcb Fixture.picked": [
+   "Fixture.picked"
+  ],
+  "tcb Fixture.quadruple": [
+   "Fixture.quadruple"
+  ],
+  "tcb Fixture.same": [
+   "Fixture.Point",
+   "Fixture.same"
+  ],
+  "tcb Fixture.size_comm": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.size_comm"
+  ],
+  "tcb Fixture.size_le": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.size_le"
+  ],
+  "tcb Fixture.size_succ_pos": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.size_succ_pos"
+  ],
+  "tcb Fixture.size_twice": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.size_twice"
+  ],
+  "tcb Fixture.sized": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.sized"
+  ],
+  "tcb Fixture.square": [
+   "Fixture.square"
+  ],
+  "tcb Fixture.succSize": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.succSize"
+  ],
+  "tcb Fixture.succSize_val": [
+   "Fixture.Point",
+   "Fixture.Point.size",
+   "Fixture.succSize",
+   "Fixture.succSize_val"
+  ],
+  "tcb Fixture.termBump_.Notation": [
+   "Fixture.termBump_.Notation"
+  ],
+  "tcb Fixture.termDbl!_": [
+   "Fixture.termDbl!_"
+  ],
+  "tcb Fixture.termDbl!_.macro_rules": [
+   "Fixture.termDbl!_.macro_rules",
+   "Fixture.twiceOf"
+  ],
+  "tcb Fixture.termPick!_": [
+   "Fixture.termPick!_"
+  ],
+  "tcb Fixture.termPick!_.macro_rules": [
+   "Fixture.termPick!_.macro_rules"
+  ],
+  "tcb Fixture.termPick!_.macro_rules_2": [
+   "Fixture.termPick!_.macro_rules_2"
+  ],
+  "tcb Fixture.termQuad!_": [
+   "Fixture.termQuad!_"
+  ],
+  "tcb Fixture.termQuad!_.macro_rules": [
+   "Fixture.termQuad!_.macro_rules"
+  ],
+  "tcb Fixture.termSq!_": [
+   "Fixture.termSq!_"
+  ],
+  "tcb Fixture.termSq!_.elab_rules": [
+   "Fixture.termSq!_.elab_rules"
+  ],
+  "tcb Fixture.termWrap!_": [
+   "Fixture.termWrap!_"
+  ],
+  "tcb Fixture.termWrap!_.elab_rules": [
+   "Fixture.termWrap!_.elab_rules"
+  ],
+  "tcb Fixture.three": [
+   "Fixture.three"
+  ],
+  "tcb Fixture.tripStx": [
+   "Fixture.tripStx"
+  ],
+  "tcb Fixture.tripled": [
+   "Fixture.tripled"
+  ],
+  "tcb Fixture.twiceOf": [
+   "Fixture.twiceOf"
+  ],
+  "tcb Fixture.twoPos": [
+   "Fixture.Pos",
+   "Fixture.twoPos"
+  ],
+  "tcb Fixture.withK": [
+   "Fixture.withK"
+  ],
+  "tcb Fixture.wrapped": [
+   "Fixture.wrapped"
+  ],
+  "tcb Fixture.«term‖_‖ₚ»": [
+   "Fixture.«term‖_‖ₚ»"
+  ],
+  "tcb FixtureModule.helper": [
+   "FixtureModule.helper"
+  ],
+  "tcb FixtureModule.inSection": [
+   "FixtureModule.inSection",
+   "FixtureModule.triple"
+  ],
+  "tcb FixtureModule.triple": [
+   "FixtureModule.triple"
+  ],
+  "tcb FixtureModule.use_viaHelper": [
+   "FixtureModule.helper",
+   "FixtureModule.use_viaHelper",
+   "FixtureModule.viaHelper"
+  ],
+  "tcb FixtureModule.viaHelper": [
+   "FixtureModule.helper",
+   "FixtureModule.viaHelper"
+  ],
+  "tcb FixtureModule.viaHelper_eq": [
+   "FixtureModule.helper",
+   "FixtureModule.viaHelper",
+   "FixtureModule.viaHelper_eq"
+  ]
+ },
+ "lenient": {
+  "also Fixture.Kinds.Color": [
+   "Fixture.Kinds.instBEqColor",
+   "Fixture.Kinds.instBEqColor.beq",
+   "Fixture.Kinds.instDecidableEqColor",
+   "Fixture.Kinds.instHashableColor",
+   "Fixture.Kinds.instHashableColor.hash",
+   "Fixture.Kinds.instInhabitedColor",
+   "Fixture.Kinds.instReprColor",
+   "Fixture.Kinds.instReprColor.repr"
+  ],
+  "also Fixture.Pair": [
+   "Fixture.Pair.Tag",
+   "Fixture.Pair.Tag_ne",
+   "Fixture.Pair.instDecidableEqTag"
+  ],
+  "also Fixture.commandTagged_": [
+   "Fixture._aux_Fixture_Tagged___macroRules_Fixture_commandTagged__1"
+  ],
+  "also Fixture.termBump_.Notation": [
+   "Fixture._aux_Fixture_Notation___macroRules__private_Fixture_Notation_0_Fixture_termBump__1"
+  ],
+  "also Fixture.«term‖_‖ₚ»": [
+   "Fixture._aux_Fixture_Notation___unexpand_Fixture_Point_size_1",
+   "Fixture.«_aux_Fixture_Notation___macroRules_Fixture_term‖_‖ₚ_1»"
+  ],
+  "edge Fixture.Kinds.Color -> ext:BEq": 3,
+  "edge Fixture.Kinds.Color -> ext:Bool": 1,
+  "edge Fixture.Kinds.Color -> ext:Decidable": 4,
+  "edge Fixture.Kinds.Color -> ext:DecidableEq": 4,
+  "edge Fixture.Kinds.Color -> ext:Eq": 4,
+  "edge Fixture.Kinds.Color -> ext:Eq.mp": 4,
+  "edge Fixture.Kinds.Color -> ext:False": 4,
+  "edge Fixture.Kinds.Color -> ext:GE.ge": 2,
+  "edge Fixture.Kinds.Color -> ext:Hashable": 3,
+  "edge Fixture.Kinds.Color -> ext:Inhabited": 3,
+  "edge Fixture.Kinds.Color -> ext:Int": 2,
+  "edge Fixture.Kinds.Color -> ext:Nat": 7,
+  "edge Fixture.Kinds.Color -> ext:Nat.ble": 4,
+  "edge Fixture.Kinds.Color -> ext:Nat.decLe": 4,
+  "edge Fixture.Kinds.Color -> ext:Not": 4,
+  "edge Fixture.Kinds.Color -> ext:OfNat": 6,
+  "edge Fixture.Kinds.Color -> ext:Repr": 3,
+  "edge Fixture.Kinds.Color -> ext:Repr.addAppParen": 2,
+  "edge Fixture.Kinds.Color -> ext:Std.Format": 3,
+  "edge Fixture.Kinds.Color -> ext:Std.Format.FlattenBehavior": 2,
+  "edge Fixture.Kinds.Color -> ext:UInt64": 3,
+  "edge Fixture.Kinds.Color -> ext:UInt64.instOfNat": 2,
+  "edge Fixture.Kinds.Color -> ext:Unit": 2,
+  "edge Fixture.Kinds.Color -> ext:Unit.unit": 2,
+  "edge Fixture.Kinds.Color -> ext:absurd": 4,
+  "edge Fixture.Kinds.Color -> ext:cond": 4,
+  "edge Fixture.Kinds.Color -> ext:congrArg": 4,
+  "edge Fixture.Kinds.Color -> ext:dite": 4,
+  "edge Fixture.Kinds.Color -> ext:instBEqOfDecidableEq": 2,
+  "edge Fixture.Kinds.Color -> ext:instDecidableEqNat": 4,
+  "edge Fixture.Kinds.Color -> ext:instLENat": 2,
+  "edge Fixture.Kinds.Color -> ext:instOfNat": 2,
+  "edge Fixture.Kinds.Color -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.Color -> ext:ite": 2,
+  "edge Fixture.Kinds.Even -> ext:HAdd": 1,
+  "edge Fixture.Kinds.Even -> ext:Nat": 1,
+  "edge Fixture.Kinds.Even -> ext:OfNat": 1,
+  "edge Fixture.Kinds.Even -> ext:instAddNat": 1,
+  "edge Fixture.Kinds.Even -> ext:instHAdd": 1,
+  "edge Fixture.Kinds.Even -> ext:instOfNatNat": 1,
+  "edge Fixture.Kinds.HasBound -> ext:Nat": 1,
+  "edge Fixture.Kinds.HasSize -> ext:Nat": 1,
+  "edge Fixture.Kinds.Num -> ext:Nat": 2,
+  "edge Fixture.Kinds.Num.zero -> ext:OfNat": 2,
+  "edge Fixture.Kinds.Num.zero -> ext:instOfNatNat": 2,
+  "edge Fixture.Kinds.Point3 -> ext:Nat": 1,
+  "edge Fixture.Kinds.Vec -> ext:HAdd": 1,
+  "edge Fixture.Kinds.Vec -> ext:Nat": 1,
+  "edge Fixture.Kinds.Vec -> ext:OfNat": 1,
+  "edge Fixture.Kinds.Vec -> ext:instAddNat": 1,
+  "edge Fixture.Kinds.Vec -> ext:instHAdd": 1,
+  "edge Fixture.Kinds.Vec -> ext:instOfNatNat": 1,
+  "edge Fixture.Kinds.Vec.length -> ext:Eq": 6,
+  "edge Fixture.Kinds.Vec.length -> ext:Eq.symm": 4,
+  "edge Fixture.Kinds.Vec.length -> ext:HAdd": 6,
+  "edge Fixture.Kinds.Vec.length -> ext:HEq": 6,
+  "edge Fixture.Kinds.Vec.length -> ext:Nat": 7,
+  "edge Fixture.Kinds.Vec.length -> ext:OfNat": 6,
+  "edge Fixture.Kinds.Vec.length -> ext:PProd": 2,
+  "edge Fixture.Kinds.Vec.length -> ext:Unit": 2,
+  "edge Fixture.Kinds.Vec.length -> ext:Unit.unit": 2,
+  "edge Fixture.Kinds.Vec.length -> ext:eq_of_heq": 4,
+  "edge Fixture.Kinds.Vec.length -> ext:instAddNat": 6,
+  "edge Fixture.Kinds.Vec.length -> ext:instHAdd": 6,
+  "edge Fixture.Kinds.Vec.length -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.chosen -> ext:Classical.choice": 2,
+  "edge Fixture.Kinds.chosen -> ext:Nat": 7,
+  "edge Fixture.Kinds.chosen -> ext:Nonempty": 4,
+  "edge Fixture.Kinds.chosen -> ext:OfNat": 4,
+  "edge Fixture.Kinds.chosen -> ext:instOfNatNat": 4,
+  "edge Fixture.Kinds.collatz -> ext:Eq": 2,
+  "edge Fixture.Kinds.collatz -> ext:HAdd": 2,
+  "edge Fixture.Kinds.collatz -> ext:HDiv": 2,
+  "edge Fixture.Kinds.collatz -> ext:HMod": 6,
+  "edge Fixture.Kinds.collatz -> ext:HMul": 2,
+  "edge Fixture.Kinds.collatz -> ext:LE": 2,
+  "edge Fixture.Kinds.collatz -> ext:Nat": 7,
+  "edge Fixture.Kinds.collatz -> ext:Nat.decLe": 4,
+  "edge Fixture.Kinds.collatz -> ext:Nat.instDiv": 2,
+  "edge Fixture.Kinds.collatz -> ext:Nat.instMod": 6,
+  "edge Fixture.Kinds.collatz -> ext:OfNat": 6,
+  "edge Fixture.Kinds.collatz -> ext:instAddNat": 2,
+  "edge Fixture.Kinds.collatz -> ext:instDecidableEqNat": 4,
+  "edge Fixture.Kinds.collatz -> ext:instHAdd": 2,
+  "edge Fixture.Kinds.collatz -> ext:instHDiv": 2,
+  "edge Fixture.Kinds.collatz -> ext:instHMod": 6,
+  "edge Fixture.Kinds.collatz -> ext:instHMul": 2,
+  "edge Fixture.Kinds.collatz -> ext:instLENat": 2,
+  "edge Fixture.Kinds.collatz -> ext:instMulNat": 2,
+  "edge Fixture.Kinds.collatz -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.collatz -> ext:ite": 2,
+  "edge Fixture.Kinds.evenW -> ext:Bool": 3,
+  "edge Fixture.Kinds.evenW -> ext:HAdd": 4,
+  "edge Fixture.Kinds.evenW -> ext:InvImage": 6,
+  "edge Fixture.Kinds.evenW -> ext:LT": 6,
+  "edge Fixture.Kinds.evenW -> ext:Nat": 7,
+  "edge Fixture.Kinds.evenW -> ext:Nat.lt_add_one": 4,
+  "edge Fixture.Kinds.evenW -> ext:OfNat": 6,
+  "edge Fixture.Kinds.evenW -> ext:PSum": 6,
+  "edge Fixture.Kinds.evenW -> ext:Unit": 2,
+  "edge Fixture.Kinds.evenW -> ext:Unit.unit": 2,
+  "edge Fixture.Kinds.evenW -> ext:WellFounded.Nat.fix": 2,
+  "edge Fixture.Kinds.evenW -> ext:id": 4,
+  "edge Fixture.Kinds.evenW -> ext:instAddNat": 4,
+  "edge Fixture.Kinds.evenW -> ext:instHAdd": 4,
+  "edge Fixture.Kinds.evenW -> ext:instLTNat": 6,
+  "edge Fixture.Kinds.evenW -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.evenW -> ext:of_eq_true": 4,
+  "edge Fixture.Kinds.hidden -> ext:HAdd": 2,
+  "edge Fixture.Kinds.hidden -> ext:Nat": 3,
+  "edge Fixture.Kinds.hidden -> ext:OfNat": 2,
+  "edge Fixture.Kinds.hidden -> ext:instAddNat": 2,
+  "edge Fixture.Kinds.hidden -> ext:instHAdd": 2,
+  "edge Fixture.Kinds.hidden -> ext:instOfNatNat": 2,
+  "edge Fixture.Kinds.instHasSizeColor -> ext:Nat": 2,
+  "edge Fixture.Kinds.instHasSizeColor -> ext:OfNat": 2,
+  "edge Fixture.Kinds.instHasSizeColor -> ext:instOfNatNat": 2,
+  "edge Fixture.Kinds.instHasSizeNat -> ext:Nat": 3,
+  "edge Fixture.Kinds.instHasSizeNat -> ext:id": 2,
+  "edge Fixture.Kinds.isEven -> ext:Bool": 3,
+  "edge Fixture.Kinds.isEven -> ext:Nat": 3,
+  "edge Fixture.Kinds.isEven -> ext:OfNat": 2,
+  "edge Fixture.Kinds.isEven -> ext:PProd": 2,
+  "edge Fixture.Kinds.isEven -> ext:Unit": 2,
+  "edge Fixture.Kinds.isEven -> ext:Unit.unit": 2,
+  "edge Fixture.Kinds.isEven -> ext:instOfNatNat": 2,
+  "edge Fixture.Kinds.isOdd -> ext:Bool": 3,
+  "edge Fixture.Kinds.isOdd -> ext:Nat": 3,
+  "edge Fixture.Kinds.isOdd -> ext:OfNat": 2,
+  "edge Fixture.Kinds.isOdd -> ext:PProd": 2,
+  "edge Fixture.Kinds.isOdd -> ext:Unit": 2,
+  "edge Fixture.Kinds.isOdd -> ext:Unit.unit": 2,
+  "edge Fixture.Kinds.isOdd -> ext:instOfNatNat": 2,
+  "edge Fixture.Kinds.length_nil -> ext:Eq": 1,
+  "edge Fixture.Kinds.length_nil -> ext:Nat": 5,
+  "edge Fixture.Kinds.length_nil -> ext:OfNat": 5,
+  "edge Fixture.Kinds.length_nil -> ext:instOfNatNat": 5,
+  "edge Fixture.Kinds.length_nil -> ext:rfl": 4,
+  "edge Fixture.Kinds.log2 -> ext:Bool": 4,
+  "edge Fixture.Kinds.log2 -> ext:Decidable.byContradiction": 4,
+  "edge Fixture.Kinds.log2 -> ext:Decidable.decide": 4,
+  "edge Fixture.Kinds.log2 -> ext:Eq": 4,
+  "edge Fixture.Kinds.log2 -> ext:Eq.symm": 4,
+  "edge Fixture.Kinds.log2 -> ext:Eq.trans": 4,
+  "edge Fixture.Kinds.log2 -> ext:HAdd": 6,
+  "edge Fixture.Kinds.log2 -> ext:HDiv": 6,
+  "edge Fixture.Kinds.log2 -> ext:HMul": 4,
+  "edge Fixture.Kinds.log2 -> ext:HSub": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.add_one_le_of_lt": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.decLt": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instAdd": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instDecidableEq": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instDiv": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instLEInt": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instLTInt": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instMul": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instNegInt": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.instSub": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.lt_mul_ediv_self_add": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.mul_ediv_self_le": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.natCast_ediv": 4,
+  "edge Fixture.Kinds.log2 -> ext:Int.sub_nonneg_of_le": 4,
+  "edge Fixture.Kinds.log2 -> ext:InvImage": 6,
+  "edge Fixture.Kinds.log2 -> ext:LT": 6,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Coeffs.isZero": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Coeffs.ofList": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Constraint": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Constraint.addInequality_sat": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Constraint.combine_sat'": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Constraint.isImpossible": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Constraint.not_sat'_of_isImpossible": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Int.add_congr": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Int.mul_congr": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Int.ofNat_le_of_le": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.Int.sub_congr": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.add_eval": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.coordinate": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.coordinate_eval_0": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.coordinate_eval_1": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.eval": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.instAdd": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.instSub": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.mul": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.mul_eval": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.LinearCombo.sub_eval": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.combo_sat'": 4,
+  "edge Fixture.Kinds.log2 -> ext:Lean.Omega.tidy_sat": 4,
+  "edge Fixture.Kinds.log2 -> ext:List": 4,
+  "edge Fixture.Kinds.log2 -> ext:List.decidableBAll": 4,
+  "edge Fixture.Kinds.log2 -> ext:Nat": 7,
+  "edge Fixture.Kinds.log2 -> ext:Nat.cast": 4,
+  "edge Fixture.Kinds.log2 -> ext:Nat.decLt": 4,
+  "edge Fixture.Kinds.log2 -> ext:Nat.instDiv": 6,
+  "edge Fixture.Kinds.log2 -> ext:Nat.le_of_not_lt": 4,
+  "edge Fixture.Kinds.log2 -> ext:Ne": 4,
+  "edge Fixture.Kinds.log2 -> ext:Neg": 4,
+  "edge Fixture.Kinds.log2 -> ext:Not": 6,
+  "edge Fixture.Kinds.log2 -> ext:OfNat": 6,
+  "edge Fixture.Kinds.log2 -> ext:Option": 4,
+  "edge Fixture.Kinds.log2 -> ext:Or": 4,
+  "edge Fixture.Kinds.log2 -> ext:WellFounded.Nat.fix": 2,
+  "edge Fixture.Kinds.log2 -> ext:dite": 2,
+  "edge Fixture.Kinds.log2 -> ext:id": 4,
+  "edge Fixture.Kinds.log2 -> ext:instAddNat": 2,
+  "edge Fixture.Kinds.log2 -> ext:instDecidableEqBool": 4,
+  "edge Fixture.Kinds.log2 -> ext:instDecidableNot": 4,
+  "edge Fixture.Kinds.log2 -> ext:instDecidableOr": 4,
+  "edge Fixture.Kinds.log2 -> ext:instHAdd": 6,
+  "edge Fixture.Kinds.log2 -> ext:instHDiv": 6,
+  "edge Fixture.Kinds.log2 -> ext:instHMul": 4,
+  "edge Fixture.Kinds.log2 -> ext:instHSub": 4,
+  "edge Fixture.Kinds.log2 -> ext:instLTNat": 6,
+  "edge Fixture.Kinds.log2 -> ext:instNatCastInt": 4,
+  "edge Fixture.Kinds.log2 -> ext:instOfNat": 4,
+  "edge Fixture.Kinds.log2 -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.log2 -> ext:le_of_le_of_eq": 4,
+  "edge Fixture.Kinds.log2 -> ext:of_decide_eq_true": 4,
+  "edge Fixture.Kinds.oddW -> ext:Bool": 3,
+  "edge Fixture.Kinds.oddW -> ext:HAdd": 4,
+  "edge Fixture.Kinds.oddW -> ext:InvImage": 6,
+  "edge Fixture.Kinds.oddW -> ext:LT": 6,
+  "edge Fixture.Kinds.oddW -> ext:Nat": 7,
+  "edge Fixture.Kinds.oddW -> ext:Nat.lt_add_one": 4,
+  "edge Fixture.Kinds.oddW -> ext:OfNat": 6,
+  "edge Fixture.Kinds.oddW -> ext:PSum": 6,
+  "edge Fixture.Kinds.oddW -> ext:Unit": 2,
+  "edge Fixture.Kinds.oddW -> ext:Unit.unit": 2,
+  "edge Fixture.Kinds.oddW -> ext:WellFounded.Nat.fix": 2,
+  "edge Fixture.Kinds.oddW -> ext:id": 4,
+  "edge Fixture.Kinds.oddW -> ext:instAddNat": 4,
+  "edge Fixture.Kinds.oddW -> ext:instHAdd": 4,
+  "edge Fixture.Kinds.oddW -> ext:instLTNat": 6,
+  "edge Fixture.Kinds.oddW -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.oddW -> ext:of_eq_true": 4,
+  "edge Fixture.Kinds.ping -> ext:Eq": 2,
+  "edge Fixture.Kinds.ping -> ext:HSub": 2,
+  "edge Fixture.Kinds.ping -> ext:Nat": 7,
+  "edge Fixture.Kinds.ping -> ext:OfNat": 6,
+  "edge Fixture.Kinds.ping -> ext:instDecidableEqNat": 4,
+  "edge Fixture.Kinds.ping -> ext:instHSub": 2,
+  "edge Fixture.Kinds.ping -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.ping -> ext:instSubNat": 2,
+  "edge Fixture.Kinds.ping -> ext:ite": 2,
+  "edge Fixture.Kinds.point3_size -> ext:Eq": 1,
+  "edge Fixture.Kinds.point3_size -> ext:HAdd": 1,
+  "edge Fixture.Kinds.point3_size -> ext:Nat": 5,
+  "edge Fixture.Kinds.point3_size -> ext:instAddNat": 1,
+  "edge Fixture.Kinds.point3_size -> ext:instHAdd": 1,
+  "edge Fixture.Kinds.point3_size -> ext:rfl": 4,
+  "edge Fixture.Kinds.pong -> ext:Eq": 2,
+  "edge Fixture.Kinds.pong -> ext:HSub": 2,
+  "edge Fixture.Kinds.pong -> ext:Nat": 7,
+  "edge Fixture.Kinds.pong -> ext:OfNat": 6,
+  "edge Fixture.Kinds.pong -> ext:instDecidableEqNat": 4,
+  "edge Fixture.Kinds.pong -> ext:instHSub": 2,
+  "edge Fixture.Kinds.pong -> ext:instOfNatNat": 6,
+  "edge Fixture.Kinds.pong -> ext:instSubNat": 2,
+  "edge Fixture.Kinds.pong -> ext:ite": 2,
+  "edge Fixture.Kinds.secret -> ext:Nat": 1,
+  "edge Fixture.Kinds.sumTo -> ext:Nat": 3,
+  "edge Fixture.Kinds.sumTo -> ext:OfNat": 2,
+  "edge Fixture.Kinds.sumTo -> ext:instOfNatNat": 2,
+  "edge Fixture.Kinds.sumTo.go -> ext:HAdd": 2,
+  "edge Fixture.Kinds.sumTo.go -> ext:Nat": 3,
+  "edge Fixture.Kinds.sumTo.go -> ext:OfNat": 2,
+  "edge Fixture.Kinds.sumTo.go -> ext:PProd": 2,
+  "edge Fixture.Kinds.sumTo.go -> ext:instAddNat": 2,
+  "edge Fixture.Kinds.sumTo.go -> ext:instHAdd": 2,
+  "edge Fixture.Kinds.sumTo.go -> ext:instOfNatNat": 2,
+  "edge Fixture.Kinds.two_lt_three -> ext:Bool": 4,
+  "edge Fixture.Kinds.two_lt_three -> ext:Decidable.decide": 4,
+  "edge Fixture.Kinds.two_lt_three -> ext:Eq": 4,
+  "edge Fixture.Kinds.two_lt_three -> ext:LT": 5,
+  "edge Fixture.Kinds.two_lt_three -> ext:Nat": 5,
+  "edge Fixture.Kinds.two_lt_three -> ext:Nat.decLt": 4,
+  "edge Fixture.Kinds.two_lt_three -> ext:OfNat": 5,
+  "edge Fixture.Kinds.two_lt_three -> ext:id": 4,
+  "edge Fixture.Kinds.two_lt_three -> ext:instLTNat": 5,
+  "edge Fixture.Kinds.two_lt_three -> ext:instOfNatNat": 5,
+  "edge Fixture.Kinds.two_lt_three -> ext:of_decide_eq_true": 4,
+  "edge Fixture.Kinds.visible -> ext:Nat": 3,
+  "edge Fixture.Kinds.visibleOld -> ext:Nat": 3,
+  "edge Fixture.Kinds.visible_eq -> ext:Eq": 1,
+  "edge Fixture.Kinds.visible_eq -> ext:HAdd": 1,
+  "edge Fixture.Kinds.visible_eq -> ext:Nat": 5,
+  "edge Fixture.Kinds.visible_eq -> ext:OfNat": 1,
+  "edge Fixture.Kinds.visible_eq -> ext:instAddNat": 1,
+  "edge Fixture.Kinds.visible_eq -> ext:instHAdd": 1,
+  "edge Fixture.Kinds.visible_eq -> ext:instOfNatNat": 1,
+  "edge Fixture.Kinds.visible_eq -> ext:rfl": 4,
+  "edge Fixture.Lawful -> ext:Eq": 1,
+  "edge Fixture.Pair -> ext:Decidable": 4,
+  "edge Fixture.Pair -> ext:DecidableEq": 4,
+  "edge Fixture.Pair -> ext:Eq": 4,
+  "edge Fixture.Pair -> ext:Eq.mp": 4,
+  "edge Fixture.Pair -> ext:False": 4,
+  "edge Fixture.Pair -> ext:False.elim": 4,
+  "edge Fixture.Pair -> ext:Nat": 4,
+  "edge Fixture.Pair -> ext:Nat.ble": 4,
+  "edge Fixture.Pair -> ext:Ne": 5,
+  "edge Fixture.Pair -> ext:Not": 4,
+  "edge Fixture.Pair -> ext:absurd": 4,
+  "edge Fixture.Pair -> ext:cond": 4,
+  "edge Fixture.Pair -> ext:congrArg": 4,
+  "edge Fixture.Pair -> ext:dite": 4,
+  "edge Fixture.Pair -> ext:instDecidableEqNat": 4,
+  "edge Fixture.Point -> ext:Nat": 1,
+  "edge Fixture.Point.size -> ext:HAdd": 2,
+  "edge Fixture.Point.size -> ext:Nat": 3,
+  "edge Fixture.Point.size -> ext:instAddNat": 2,
+  "edge Fixture.Point.size -> ext:instHAdd": 2,
+  "edge Fixture.Pos -> ext:Array.empty": 1,
+  "edge Fixture.Pos -> ext:Array.push": 1,
+  "edge Fixture.Pos -> ext:LT": 1,
+  "edge Fixture.Pos -> ext:Lean.Name.mkStr1": 1,
+  "edge Fixture.Pos -> ext:Lean.Name.mkStr4": 1,
+  "edge Fixture.Pos -> ext:Lean.SourceInfo": 1,
+  "edge Fixture.Pos -> ext:Lean.Syntax": 1,
+  "edge Fixture.Pos -> ext:Lean.mkAtom": 1,
+  "edge Fixture.Pos -> ext:Nat": 1,
+  "edge Fixture.Pos -> ext:OfNat": 1,
+  "edge Fixture.Pos -> ext:autoParam": 1,
+  "edge Fixture.Pos -> ext:instLTNat": 1,
+  "edge Fixture.Pos -> ext:instOfNatNat": 1,
+  "edge Fixture.Sized -> ext:Eq": 1,
+  "edge Fixture.Sized -> ext:HAdd": 1,
+  "edge Fixture.Sized -> ext:LT": 1,
+  "edge Fixture.Sized -> ext:Nat": 1,
+  "edge Fixture.Sized -> ext:OfNat": 1,
+  "edge Fixture.Sized -> ext:Subtype": 1,
+  "edge Fixture.Sized -> ext:instAddNat": 1,
+  "edge Fixture.Sized -> ext:instHAdd": 1,
+  "edge Fixture.Sized -> ext:instLTNat": 1,
+  "edge Fixture.Sized -> ext:instOfNatNat": 1,
+  "edge Fixture.bad -> ext:False": 1,
+  "edge Fixture.bounded -> ext:LE": 3,
+  "edge Fixture.bounded -> ext:Nat": 3,
+  "edge Fixture.bounded -> ext:Subtype": 3,
+  "edge Fixture.bounded -> ext:instLENat": 3,
+  "edge Fixture.bumped -> ext:HAdd": 2,
+  "edge Fixture.bumped -> ext:Nat": 3,
+  "edge Fixture.bumped -> ext:OfNat": 2,
+  "edge Fixture.bumped -> ext:instAddNat": 2,
+  "edge Fixture.bumped -> ext:instHAdd": 2,
+  "edge Fixture.bumped -> ext:instOfNatNat": 2,
+  "edge Fixture.classify -> ext:Bool": 3,
+  "edge Fixture.classify -> ext:Nat": 3,
+  "edge Fixture.classify -> ext:OfNat": 2,
+  "edge Fixture.classify -> ext:Unit": 2,
+  "edge Fixture.classify -> ext:Unit.unit": 2,
+  "edge Fixture.classify -> ext:instOfNatNat": 2,
+  "edge Fixture.commandTagged_ -> ext:Applicative": 2,
+  "edge Fixture.commandTagged_ -> ext:Array.mkArray0": 2,
+  "edge Fixture.commandTagged_ -> ext:Bind": 2,
+  "edge Fixture.commandTagged_ -> ext:Bool": 6,
+  "edge Fixture.commandTagged_ -> ext:EStateM": 2,
+  "edge Fixture.commandTagged_ -> ext:EStateM.instMonad": 2,
+  "edge Fixture.commandTagged_ -> ext:EStateM.instMonadExceptOfOfBacktrackable": 2,
+  "edge Fixture.commandTagged_ -> ext:EStateM.nonBacktrackable": 2,
+  "edge Fixture.commandTagged_ -> ext:Eq": 2,
+  "edge Fixture.commandTagged_ -> ext:Functor": 2,
+  "edge Fixture.commandTagged_ -> ext:HAppend": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Macro": 1,
+  "edge Fixture.commandTagged_ -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Macro.State": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Macro.instMonadQuotationMacroM": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Macro.instMonadRefMacroM": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.MacroM": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.MacroScope": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.MonadQuotation": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.MonadRef.mkInfoFromRefPos": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Name": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.commandTagged_ -> ext:Lean.Name.mkStr3": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Name.mkStr4": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.commandTagged_ -> ext:Lean.SourceInfo": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.Ident": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.Preresolved": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.node1": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.node2": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.node3": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.node4": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.node5": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.Syntax.node7": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.TSyntax": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.TSyntax.getId": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.addMacroScope": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.identKind": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.instAppendName": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.mkIdent": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.mkNode": 2,
+  "edge Fixture.commandTagged_ -> ext:Lean.mkNullNode": 2,
+  "edge Fixture.commandTagged_ -> ext:List": 2,
+  "edge Fixture.commandTagged_ -> ext:List.toArray": 2,
+  "edge Fixture.commandTagged_ -> ext:Monad": 2,
+  "edge Fixture.commandTagged_ -> ext:MonadExcept": 2,
+  "edge Fixture.commandTagged_ -> ext:Nat": 2,
+  "edge Fixture.commandTagged_ -> ext:OfNat": 2,
+  "edge Fixture.commandTagged_ -> ext:PUnit": 2,
+  "edge Fixture.commandTagged_ -> ext:Prod": 2,
+  "edge Fixture.commandTagged_ -> ext:Pure": 2,
+  "edge Fixture.commandTagged_ -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.commandTagged_ -> ext:ReaderT.instFunctorOfMonad": 2,
+  "edge Fixture.commandTagged_ -> ext:ReaderT.instMonad": 2,
+  "edge Fixture.commandTagged_ -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.commandTagged_ -> ext:String": 2,
+  "edge Fixture.commandTagged_ -> ext:String.toRawSubstring'": 2,
+  "edge Fixture.commandTagged_ -> ext:instDecidableEqBool": 4,
+  "edge Fixture.commandTagged_ -> ext:instHAppendOfAppend": 2,
+  "edge Fixture.commandTagged_ -> ext:instMonadExceptOfMonadExceptOf": 2,
+  "edge Fixture.commandTagged_ -> ext:instOfNatNat": 2,
+  "edge Fixture.commandTagged_ -> ext:ite": 2,
+  "edge Fixture.dbl_eq -> ext:Bool": 4,
+  "edge Fixture.dbl_eq -> ext:Decidable.byContradiction": 4,
+  "edge Fixture.dbl_eq -> ext:Decidable.decide": 4,
+  "edge Fixture.dbl_eq -> ext:Eq": 5,
+  "edge Fixture.dbl_eq -> ext:Eq.symm": 4,
+  "edge Fixture.dbl_eq -> ext:Eq.trans": 4,
+  "edge Fixture.dbl_eq -> ext:False": 4,
+  "edge Fixture.dbl_eq -> ext:GT.gt": 4,
+  "edge Fixture.dbl_eq -> ext:HAdd": 5,
+  "edge Fixture.dbl_eq -> ext:HMul": 5,
+  "edge Fixture.dbl_eq -> ext:HSub": 4,
+  "edge Fixture.dbl_eq -> ext:Int": 4,
+  "edge Fixture.dbl_eq -> ext:Int.add_one_le_of_lt": 4,
+  "edge Fixture.dbl_eq -> ext:Int.instAdd": 4,
+  "edge Fixture.dbl_eq -> ext:Int.instDecidableEq": 4,
+  "edge Fixture.dbl_eq -> ext:Int.instLEInt": 4,
+  "edge Fixture.dbl_eq -> ext:Int.instMul": 4,
+  "edge Fixture.dbl_eq -> ext:Int.instNegInt": 4,
+  "edge Fixture.dbl_eq -> ext:Int.instSub": 4,
+  "edge Fixture.dbl_eq -> ext:Int.natCast_add": 4,
+  "edge Fixture.dbl_eq -> ext:Int.natCast_mul": 4,
+  "edge Fixture.dbl_eq -> ext:Int.sub_nonneg_of_le": 4,
+  "edge Fixture.dbl_eq -> ext:LT": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Coeffs.isZero": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Coeffs.ofList": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Constraint": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Constraint.addInequality_sat": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Constraint.isImpossible": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Constraint.not_sat'_of_isImpossible": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Int.add_congr": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Int.mul_congr": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Int.ofNat_lt_of_lt": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.Int.sub_congr": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.add_eval": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.coordinate": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.coordinate_eval_0": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.eval": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.instAdd": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.instSub": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.mul": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.mul_eval": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.LinearCombo.sub_eval": 4,
+  "edge Fixture.dbl_eq -> ext:Lean.Omega.tidy_sat": 4,
+  "edge Fixture.dbl_eq -> ext:List": 4,
+  "edge Fixture.dbl_eq -> ext:List.decidableBAll": 4,
+  "edge Fixture.dbl_eq -> ext:Nat": 5,
+  "edge Fixture.dbl_eq -> ext:Nat.cast": 4,
+  "edge Fixture.dbl_eq -> ext:Nat.lt_or_gt_of_ne": 4,
+  "edge Fixture.dbl_eq -> ext:Neg": 4,
+  "edge Fixture.dbl_eq -> ext:Not": 4,
+  "edge Fixture.dbl_eq -> ext:OfNat": 5,
+  "edge Fixture.dbl_eq -> ext:Option": 4,
+  "edge Fixture.dbl_eq -> ext:Or": 4,
+  "edge Fixture.dbl_eq -> ext:Or.elim": 4,
+  "edge Fixture.dbl_eq -> ext:id": 4,
+  "edge Fixture.dbl_eq -> ext:instAddNat": 5,
+  "edge Fixture.dbl_eq -> ext:instDecidableEqBool": 4,
+  "edge Fixture.dbl_eq -> ext:instDecidableEqNat": 4,
+  "edge Fixture.dbl_eq -> ext:instDecidableOr": 4,
+  "edge Fixture.dbl_eq -> ext:instHAdd": 5,
+  "edge Fixture.dbl_eq -> ext:instHMul": 5,
+  "edge Fixture.dbl_eq -> ext:instHSub": 4,
+  "edge Fixture.dbl_eq -> ext:instLTNat": 4,
+  "edge Fixture.dbl_eq -> ext:instMulNat": 5,
+  "edge Fixture.dbl_eq -> ext:instNatCastInt": 4,
+  "edge Fixture.dbl_eq -> ext:instOfNat": 4,
+  "edge Fixture.dbl_eq -> ext:instOfNatNat": 5,
+  "edge Fixture.dbl_eq -> ext:le_of_le_of_eq": 4,
+  "edge Fixture.dbl_eq -> ext:of_decide_eq_true": 4,
+  "edge Fixture.double -> ext:HMul": 2,
+  "edge Fixture.double -> ext:Nat": 2,
+  "edge Fixture.double -> ext:OfNat": 2,
+  "edge Fixture.double -> ext:instHMul": 2,
+  "edge Fixture.double -> ext:instMulNat": 2,
+  "edge Fixture.double -> ext:instOfNatNat": 2,
+  "edge Fixture.elabTrip -> ext:Applicative": 2,
+  "edge Fixture.elabTrip -> ext:Bind": 2,
+  "edge Fixture.elabTrip -> ext:Bool": 6,
+  "edge Fixture.elabTrip -> ext:Eq": 2,
+  "edge Fixture.elabTrip -> ext:IO.RealWorld": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Core.CoreM": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Elab.Term.Context": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Elab.Term.State": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Elab.Term.TermElab": 1,
+  "edge Fixture.elabTrip -> ext:Lean.Elab.Term.TermElabM": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Elab.Term.elabTerm": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Elab.Term.instMonadTermElabM": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Elab.throwUnsupportedSyntax": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Exception": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Expr": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Level": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Meta.Context": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Meta.MetaM": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Meta.State": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Meta.instMonadMetaM": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.elabTrip -> ext:Lean.Syntax": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.elabTrip -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.elabTrip -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.elabTrip -> ext:Lean.TSyntax": 2,
+  "edge Fixture.elabTrip -> ext:Lean.instMonadExceptOfExceptionCoreM": 2,
+  "edge Fixture.elabTrip -> ext:Lean.mkApp2": 2,
+  "edge Fixture.elabTrip -> ext:Lean.mkConst": 2,
+  "edge Fixture.elabTrip -> ext:Lean.mkNatLit": 2,
+  "edge Fixture.elabTrip -> ext:List": 2,
+  "edge Fixture.elabTrip -> ext:Monad": 2,
+  "edge Fixture.elabTrip -> ext:Nat": 2,
+  "edge Fixture.elabTrip -> ext:OfNat": 2,
+  "edge Fixture.elabTrip -> ext:Option": 2,
+  "edge Fixture.elabTrip -> ext:Pure": 2,
+  "edge Fixture.elabTrip -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.elabTrip -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.elabTrip -> ext:StateRefT'": 2,
+  "edge Fixture.elabTrip -> ext:StateRefT'.instMonad": 2,
+  "edge Fixture.elabTrip -> ext:StateRefT'.instMonadExceptOf": 2,
+  "edge Fixture.elabTrip -> ext:instDecidableEqBool": 4,
+  "edge Fixture.elabTrip -> ext:instOfNatNat": 2,
+  "edge Fixture.elabTrip -> ext:ite": 2,
+  "edge Fixture.firstPlus -> ext:Array": 3,
+  "edge Fixture.firstPlus -> ext:Array.instGetElemNatLtSize": 2,
+  "edge Fixture.firstPlus -> ext:Array.size": 3,
+  "edge Fixture.firstPlus -> ext:GetElem": 2,
+  "edge Fixture.firstPlus -> ext:HAdd": 2,
+  "edge Fixture.firstPlus -> ext:LT": 3,
+  "edge Fixture.firstPlus -> ext:Nat": 3,
+  "edge Fixture.firstPlus -> ext:OfNat": 3,
+  "edge Fixture.firstPlus -> ext:instAddNat": 2,
+  "edge Fixture.firstPlus -> ext:instHAdd": 2,
+  "edge Fixture.firstPlus -> ext:instLTNat": 3,
+  "edge Fixture.firstPlus -> ext:instOfNatNat": 3,
+  "edge Fixture.four_mul -> ext:Bool": 4,
+  "edge Fixture.four_mul -> ext:Decidable.byContradiction": 4,
+  "edge Fixture.four_mul -> ext:Decidable.decide": 4,
+  "edge Fixture.four_mul -> ext:Eq": 5,
+  "edge Fixture.four_mul -> ext:Eq.symm": 4,
+  "edge Fixture.four_mul -> ext:Eq.trans": 4,
+  "edge Fixture.four_mul -> ext:False": 4,
+  "edge Fixture.four_mul -> ext:GT.gt": 4,
+  "edge Fixture.four_mul -> ext:HAdd": 5,
+  "edge Fixture.four_mul -> ext:HMul": 5,
+  "edge Fixture.four_mul -> ext:HSub": 4,
+  "edge Fixture.four_mul -> ext:Int": 4,
+  "edge Fixture.four_mul -> ext:Int.add_one_le_of_lt": 4,
+  "edge Fixture.four_mul -> ext:Int.instAdd": 4,
+  "edge Fixture.four_mul -> ext:Int.instDecidableEq": 4,
+  "edge Fixture.four_mul -> ext:Int.instLEInt": 4,
+  "edge Fixture.four_mul -> ext:Int.instMul": 4,
+  "edge Fixture.four_mul -> ext:Int.instNegInt": 4,
+  "edge Fixture.four_mul -> ext:Int.instSub": 4,
+  "edge Fixture.four_mul -> ext:Int.natCast_add": 4,
+  "edge Fixture.four_mul -> ext:Int.natCast_mul": 4,
+  "edge Fixture.four_mul -> ext:Int.sub_nonneg_of_le": 4,
+  "edge Fixture.four_mul -> ext:LT": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Coeffs.isZero": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Coeffs.ofList": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Constraint": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Constraint.addInequality_sat": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Constraint.isImpossible": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Constraint.not_sat'_of_isImpossible": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Int.add_congr": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Int.mul_congr": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Int.ofNat_lt_of_lt": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.Int.sub_congr": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.add_eval": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.coordinate": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.coordinate_eval_0": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.eval": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.instAdd": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.instSub": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.mul": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.mul_eval": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.LinearCombo.sub_eval": 4,
+  "edge Fixture.four_mul -> ext:Lean.Omega.tidy_sat": 4,
+  "edge Fixture.four_mul -> ext:List": 4,
+  "edge Fixture.four_mul -> ext:List.decidableBAll": 4,
+  "edge Fixture.four_mul -> ext:Nat": 5,
+  "edge Fixture.four_mul -> ext:Nat.cast": 4,
+  "edge Fixture.four_mul -> ext:Nat.lt_or_gt_of_ne": 4,
+  "edge Fixture.four_mul -> ext:Neg": 4,
+  "edge Fixture.four_mul -> ext:Not": 4,
+  "edge Fixture.four_mul -> ext:OfNat": 5,
+  "edge Fixture.four_mul -> ext:Option": 4,
+  "edge Fixture.four_mul -> ext:Or": 4,
+  "edge Fixture.four_mul -> ext:Or.elim": 4,
+  "edge Fixture.four_mul -> ext:id": 4,
+  "edge Fixture.four_mul -> ext:instAddNat": 5,
+  "edge Fixture.four_mul -> ext:instDecidableEqBool": 4,
+  "edge Fixture.four_mul -> ext:instDecidableEqNat": 4,
+  "edge Fixture.four_mul -> ext:instDecidableOr": 4,
+  "edge Fixture.four_mul -> ext:instHAdd": 5,
+  "edge Fixture.four_mul -> ext:instHMul": 5,
+  "edge Fixture.four_mul -> ext:instHSub": 4,
+  "edge Fixture.four_mul -> ext:instLTNat": 4,
+  "edge Fixture.four_mul -> ext:instMulNat": 5,
+  "edge Fixture.four_mul -> ext:instNatCastInt": 4,
+  "edge Fixture.four_mul -> ext:instOfNat": 4,
+  "edge Fixture.four_mul -> ext:instOfNatNat": 5,
+  "edge Fixture.four_mul -> ext:le_of_le_of_eq": 4,
+  "edge Fixture.four_mul -> ext:of_decide_eq_true": 4,
+  "edge Fixture.fromFalse -> ext:False": 3,
+  "edge Fixture.fromFalse -> ext:False.elim": 2,
+  "edge Fixture.fromFalse -> ext:Nat": 3,
+  "edge Fixture.halve -> ext:Bool": 4,
+  "edge Fixture.halve -> ext:Decidable.byContradiction": 4,
+  "edge Fixture.halve -> ext:Decidable.decide": 4,
+  "edge Fixture.halve -> ext:Eq": 6,
+  "edge Fixture.halve -> ext:Eq.symm": 4,
+  "edge Fixture.halve -> ext:Eq.trans": 4,
+  "edge Fixture.halve -> ext:False": 4,
+  "edge Fixture.halve -> ext:GT.gt": 4,
+  "edge Fixture.halve -> ext:HAdd": 6,
+  "edge Fixture.halve -> ext:HDiv": 6,
+  "edge Fixture.halve -> ext:HMul": 4,
+  "edge Fixture.halve -> ext:HSub": 4,
+  "edge Fixture.halve -> ext:Int": 4,
+  "edge Fixture.halve -> ext:Int.add_one_le_of_lt": 4,
+  "edge Fixture.halve -> ext:Int.decLt": 4,
+  "edge Fixture.halve -> ext:Int.instAdd": 4,
+  "edge Fixture.halve -> ext:Int.instDecidableEq": 4,
+  "edge Fixture.halve -> ext:Int.instDiv": 4,
+  "edge Fixture.halve -> ext:Int.instLEInt": 4,
+  "edge Fixture.halve -> ext:Int.instLTInt": 4,
+  "edge Fixture.halve -> ext:Int.instMul": 4,
+  "edge Fixture.halve -> ext:Int.instNegInt": 4,
+  "edge Fixture.halve -> ext:Int.instSub": 4,
+  "edge Fixture.halve -> ext:Int.lt_mul_ediv_self_add": 4,
+  "edge Fixture.halve -> ext:Int.mul_ediv_self_le": 4,
+  "edge Fixture.halve -> ext:Int.natCast_ediv": 4,
+  "edge Fixture.halve -> ext:Int.natCast_nonneg": 4,
+  "edge Fixture.halve -> ext:Int.sub_nonneg_of_le": 4,
+  "edge Fixture.halve -> ext:InvImage": 6,
+  "edge Fixture.halve -> ext:LT": 6,
+  "edge Fixture.halve -> ext:Lean.Omega.Coeffs.isZero": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Coeffs.ofList": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Constraint": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Constraint.addInequality_sat": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Constraint.combine_sat'": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Constraint.isImpossible": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Constraint.not_sat'_of_isImpossible": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Int.add_congr": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Int.mul_congr": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Int.ofNat_le_of_le": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Int.ofNat_lt_of_lt": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.Int.sub_congr": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.add_eval": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.coordinate": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.coordinate_eval_0": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.coordinate_eval_1": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.eval": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.instAdd": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.instSub": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.mul": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.mul_eval": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.LinearCombo.sub_eval": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.combo_sat'": 4,
+  "edge Fixture.halve -> ext:Lean.Omega.tidy_sat": 4,
+  "edge Fixture.halve -> ext:List": 4,
+  "edge Fixture.halve -> ext:List.decidableBAll": 4,
+  "edge Fixture.halve -> ext:Nat": 7,
+  "edge Fixture.halve -> ext:Nat.cast": 4,
+  "edge Fixture.halve -> ext:Nat.decLt": 4,
+  "edge Fixture.halve -> ext:Nat.instDiv": 6,
+  "edge Fixture.halve -> ext:Nat.le_of_not_lt": 4,
+  "edge Fixture.halve -> ext:Nat.lt_or_gt_of_ne": 4,
+  "edge Fixture.halve -> ext:Ne": 4,
+  "edge Fixture.halve -> ext:Neg": 4,
+  "edge Fixture.halve -> ext:Not": 6,
+  "edge Fixture.halve -> ext:OfNat": 6,
+  "edge Fixture.halve -> ext:Option": 4,
+  "edge Fixture.halve -> ext:Or": 4,
+  "edge Fixture.halve -> ext:Or.elim": 4,
+  "edge Fixture.halve -> ext:WellFounded.Nat.fix": 2,
+  "edge Fixture.halve -> ext:dite": 2,
+  "edge Fixture.halve -> ext:id": 4,
+  "edge Fixture.halve -> ext:instAddNat": 2,
+  "edge Fixture.halve -> ext:instDecidableEqBool": 4,
+  "edge Fixture.halve -> ext:instDecidableEqNat": 4,
+  "edge Fixture.halve -> ext:instDecidableNot": 4,
+  "edge Fixture.halve -> ext:instDecidableOr": 4,
+  "edge Fixture.halve -> ext:instHAdd": 6,
+  "edge Fixture.halve -> ext:instHDiv": 6,
+  "edge Fixture.halve -> ext:instHMul": 4,
+  "edge Fixture.halve -> ext:instHSub": 4,
+  "edge Fixture.halve -> ext:instLTNat": 6,
+  "edge Fixture.halve -> ext:instNatCastInt": 4,
+  "edge Fixture.halve -> ext:instOfNat": 4,
+  "edge Fixture.halve -> ext:instOfNatNat": 6,
+  "edge Fixture.halve -> ext:le_of_le_of_eq": 4,
+  "edge Fixture.halve -> ext:of_decide_eq_true": 4,
+  "edge Fixture.helper -> ext:HAdd": 2,
+  "edge Fixture.helper -> ext:Nat": 3,
+  "edge Fixture.helper -> ext:OfNat": 2,
+  "edge Fixture.helper -> ext:instAddNat": 2,
+  "edge Fixture.helper -> ext:instHAdd": 2,
+  "edge Fixture.helper -> ext:instOfNatNat": 2,
+  "edge Fixture.helper_eq -> ext:Eq": 1,
+  "edge Fixture.helper_eq -> ext:Nat": 5,
+  "edge Fixture.helper_eq -> ext:rfl": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:And": 6,
+  "edge Fixture.instDecidableEqPoint -> ext:Decidable": 2,
+  "edge Fixture.instDecidableEqPoint -> ext:DecidableEq": 1,
+  "edge Fixture.instDecidableEqPoint -> ext:Eq": 6,
+  "edge Fixture.instDecidableEqPoint -> ext:Eq.symm": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:Eq.trans": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:False": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:Nat": 6,
+  "edge Fixture.instDecidableEqPoint -> ext:Not": 6,
+  "edge Fixture.instDecidableEqPoint -> ext:True": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:congr": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:congrArg": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:congrFun'": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:dite": 2,
+  "edge Fixture.instDecidableEqPoint -> ext:eq_self": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:id": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:instDecidableAnd": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:instDecidableEqNat": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:of_eq_true": 4,
+  "edge Fixture.instDecidableEqPoint -> ext:rfl": 4,
+  "edge Fixture.instInhabitedPoint -> ext:Inhabited": 3,
+  "edge Fixture.instInhabitedPoint -> ext:Nat": 2,
+  "edge Fixture.instInhabitedPoint -> ext:OfNat": 2,
+  "edge Fixture.instInhabitedPoint -> ext:instOfNatNat": 2,
+  "edge Fixture.instLawfulNat -> ext:Nat": 7,
+  "edge Fixture.instLawfulNat -> ext:Nat.add": 2,
+  "edge Fixture.instLawfulNat -> ext:Nat.add_assoc": 4,
+  "edge Fixture.instLawfulNat -> ext:Nat.add_comm": 4,
+  "edge Fixture.leaf -> ext:Eq": 1,
+  "edge Fixture.leaf -> ext:LE": 5,
+  "edge Fixture.leaf -> ext:Nat": 5,
+  "edge Fixture.leaf -> ext:Subtype": 5,
+  "edge Fixture.leaf -> ext:instLENat": 5,
+  "edge Fixture.leaf -> ext:rfl": 4,
+  "edge Fixture.main_thm -> ext:Bool": 4,
+  "edge Fixture.main_thm -> ext:Decidable.byContradiction": 4,
+  "edge Fixture.main_thm -> ext:Decidable.decide": 4,
+  "edge Fixture.main_thm -> ext:Eq": 5,
+  "edge Fixture.main_thm -> ext:Eq.symm": 4,
+  "edge Fixture.main_thm -> ext:Eq.trans": 4,
+  "edge Fixture.main_thm -> ext:False": 4,
+  "edge Fixture.main_thm -> ext:GT.gt": 4,
+  "edge Fixture.main_thm -> ext:HAdd": 4,
+  "edge Fixture.main_thm -> ext:HMul": 5,
+  "edge Fixture.main_thm -> ext:HSub": 4,
+  "edge Fixture.main_thm -> ext:Int": 4,
+  "edge Fixture.main_thm -> ext:Int.add_one_le_of_lt": 4,
+  "edge Fixture.main_thm -> ext:Int.instAdd": 4,
+  "edge Fixture.main_thm -> ext:Int.instDecidableEq": 4,
+  "edge Fixture.main_thm -> ext:Int.instLEInt": 4,
+  "edge Fixture.main_thm -> ext:Int.instMul": 4,
+  "edge Fixture.main_thm -> ext:Int.instNegInt": 4,
+  "edge Fixture.main_thm -> ext:Int.instSub": 4,
+  "edge Fixture.main_thm -> ext:Int.natCast_add": 4,
+  "edge Fixture.main_thm -> ext:Int.natCast_mul": 4,
+  "edge Fixture.main_thm -> ext:Int.sub_nonneg_of_le": 4,
+  "edge Fixture.main_thm -> ext:LT": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Coeffs.isZero": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Coeffs.ofList": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Constraint": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Constraint.addInequality_sat": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Constraint.isImpossible": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Constraint.not_sat'_of_isImpossible": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Int.add_congr": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Int.mul_congr": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Int.ofNat_lt_of_lt": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.Int.sub_congr": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.add_eval": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.coordinate": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.coordinate_eval_1": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.coordinate_eval_2": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.eval": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.instAdd": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.instSub": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.mul": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.mul_eval": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.LinearCombo.sub_eval": 4,
+  "edge Fixture.main_thm -> ext:Lean.Omega.tidy_sat": 4,
+  "edge Fixture.main_thm -> ext:List": 4,
+  "edge Fixture.main_thm -> ext:List.decidableBAll": 4,
+  "edge Fixture.main_thm -> ext:Nat": 5,
+  "edge Fixture.main_thm -> ext:Nat.cast": 4,
+  "edge Fixture.main_thm -> ext:Nat.lt_or_gt_of_ne": 4,
+  "edge Fixture.main_thm -> ext:Neg": 4,
+  "edge Fixture.main_thm -> ext:Not": 4,
+  "edge Fixture.main_thm -> ext:OfNat": 5,
+  "edge Fixture.main_thm -> ext:Option": 4,
+  "edge Fixture.main_thm -> ext:Or": 4,
+  "edge Fixture.main_thm -> ext:Or.elim": 4,
+  "edge Fixture.main_thm -> ext:id": 4,
+  "edge Fixture.main_thm -> ext:instAddNat": 4,
+  "edge Fixture.main_thm -> ext:instDecidableEqBool": 4,
+  "edge Fixture.main_thm -> ext:instDecidableEqNat": 4,
+  "edge Fixture.main_thm -> ext:instDecidableOr": 4,
+  "edge Fixture.main_thm -> ext:instHAdd": 4,
+  "edge Fixture.main_thm -> ext:instHMul": 5,
+  "edge Fixture.main_thm -> ext:instHSub": 4,
+  "edge Fixture.main_thm -> ext:instLTNat": 4,
+  "edge Fixture.main_thm -> ext:instMulNat": 5,
+  "edge Fixture.main_thm -> ext:instNatCastInt": 4,
+  "edge Fixture.main_thm -> ext:instOfNat": 4,
+  "edge Fixture.main_thm -> ext:instOfNatNat": 5,
+  "edge Fixture.main_thm -> ext:le_of_le_of_eq": 4,
+  "edge Fixture.main_thm -> ext:of_decide_eq_true": 4,
+  "edge Fixture.onePos -> ext:Bool": 4,
+  "edge Fixture.onePos -> ext:Decidable.decide": 4,
+  "edge Fixture.onePos -> ext:Eq": 4,
+  "edge Fixture.onePos -> ext:LT": 4,
+  "edge Fixture.onePos -> ext:Nat": 6,
+  "edge Fixture.onePos -> ext:Nat.decLt": 4,
+  "edge Fixture.onePos -> ext:OfNat": 6,
+  "edge Fixture.onePos -> ext:id": 4,
+  "edge Fixture.onePos -> ext:instLTNat": 4,
+  "edge Fixture.onePos -> ext:instOfNatNat": 6,
+  "edge Fixture.onePos -> ext:of_decide_eq_true": 4,
+  "edge Fixture.origin -> ext:Inhabited": 2,
+  "edge Fixture.picked -> ext:HAdd": 2,
+  "edge Fixture.picked -> ext:Nat": 3,
+  "edge Fixture.picked -> ext:OfNat": 2,
+  "edge Fixture.picked -> ext:instAddNat": 2,
+  "edge Fixture.picked -> ext:instHAdd": 2,
+  "edge Fixture.picked -> ext:instOfNatNat": 2,
+  "edge Fixture.quadruple -> ext:HAdd": 2,
+  "edge Fixture.quadruple -> ext:Nat": 3,
+  "edge Fixture.quadruple -> ext:instAddNat": 2,
+  "edge Fixture.quadruple -> ext:instHAdd": 2,
+  "edge Fixture.same -> ext:Bool": 1,
+  "edge Fixture.same -> ext:Decidable.decide": 2,
+  "edge Fixture.same -> ext:Eq": 2,
+  "edge Fixture.size_comm -> ext:Eq": 5,
+  "edge Fixture.size_comm -> ext:False.elim": 4,
+  "edge Fixture.size_comm -> ext:HAdd": 5,
+  "edge Fixture.size_comm -> ext:Nat": 5,
+  "edge Fixture.size_comm -> ext:instAddNat": 5,
+  "edge Fixture.size_comm -> ext:instHAdd": 5,
+  "edge Fixture.size_le -> ext:LE": 1,
+  "edge Fixture.size_le -> ext:Nat": 1,
+  "edge Fixture.size_le -> ext:Nat.le_add_right": 4,
+  "edge Fixture.size_le -> ext:instLENat": 1,
+  "edge Fixture.size_succ_pos -> ext:Bool": 4,
+  "edge Fixture.size_succ_pos -> ext:HAdd": 5,
+  "edge Fixture.size_succ_pos -> ext:LT": 5,
+  "edge Fixture.size_succ_pos -> ext:Lean.Name": 4,
+  "edge Fixture.size_succ_pos -> ext:Nat": 5,
+  "edge Fixture.size_succ_pos -> ext:OfNat": 5,
+  "edge Fixture.size_succ_pos -> ext:instAddNat": 5,
+  "edge Fixture.size_succ_pos -> ext:instHAdd": 5,
+  "edge Fixture.size_succ_pos -> ext:instLTNat": 5,
+  "edge Fixture.size_succ_pos -> ext:instOfNatNat": 5,
+  "edge Fixture.size_succ_pos -> ext:sorryAx": 4,
+  "edge Fixture.size_twice -> ext:Eq": 5,
+  "edge Fixture.size_twice -> ext:Eq.mpr": 4,
+  "edge Fixture.size_twice -> ext:Eq.symm": 4,
+  "edge Fixture.size_twice -> ext:HAdd": 5,
+  "edge Fixture.size_twice -> ext:Nat": 5,
+  "edge Fixture.size_twice -> ext:congrArg": 4,
+  "edge Fixture.size_twice -> ext:id": 4,
+  "edge Fixture.size_twice -> ext:instAddNat": 5,
+  "edge Fixture.size_twice -> ext:instHAdd": 5,
+  "edge Fixture.sized -> ext:Nat": 1,
+  "edge Fixture.square -> ext:Nat": 3,
+  "edge Fixture.square -> ext:Nat.mul": 2,
+  "edge Fixture.succSize -> ext:HAdd": 2,
+  "edge Fixture.succSize -> ext:LT": 3,
+  "edge Fixture.succSize -> ext:Nat": 3,
+  "edge Fixture.succSize -> ext:OfNat": 3,
+  "edge Fixture.succSize -> ext:Subtype": 3,
+  "edge Fixture.succSize -> ext:instAddNat": 2,
+  "edge Fixture.succSize -> ext:instHAdd": 2,
+  "edge Fixture.succSize -> ext:instLTNat": 3,
+  "edge Fixture.succSize -> ext:instOfNatNat": 3,
+  "edge Fixture.succSize_val -> ext:Eq": 1,
+  "edge Fixture.succSize_val -> ext:HAdd": 1,
+  "edge Fixture.succSize_val -> ext:LT": 5,
+  "edge Fixture.succSize_val -> ext:Nat": 5,
+  "edge Fixture.succSize_val -> ext:OfNat": 5,
+  "edge Fixture.succSize_val -> ext:Subtype": 5,
+  "edge Fixture.succSize_val -> ext:instAddNat": 1,
+  "edge Fixture.succSize_val -> ext:instHAdd": 1,
+  "edge Fixture.succSize_val -> ext:instLTNat": 5,
+  "edge Fixture.succSize_val -> ext:instOfNatNat": 5,
+  "edge Fixture.succSize_val -> ext:rfl": 4,
+  "edge Fixture.termBump_.Notation -> ext:Applicative": 2,
+  "edge Fixture.termBump_.Notation -> ext:Bind": 2,
+  "edge Fixture.termBump_.Notation -> ext:Bool": 6,
+  "edge Fixture.termBump_.Notation -> ext:EStateM": 2,
+  "edge Fixture.termBump_.Notation -> ext:EStateM.instMonad": 2,
+  "edge Fixture.termBump_.Notation -> ext:EStateM.instMonadExceptOfOfBacktrackable": 2,
+  "edge Fixture.termBump_.Notation -> ext:EStateM.nonBacktrackable": 2,
+  "edge Fixture.termBump_.Notation -> ext:Eq": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Macro": 1,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Macro.State": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Macro.instMonadQuotationMacroM": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Macro.instMonadRefMacroM": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.MacroM": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.MacroScope": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.MonadQuotation": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.MonadRef.mkInfoFromRefPos": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Name": 6,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Name.mkNum": 6,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Name.mkStr": 6,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.termBump_.Notation -> ext:Lean.SourceInfo": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Syntax": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Syntax.node1": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.Syntax.node3": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.termBump_.Notation -> ext:Lean.TSyntax": 2,
+  "edge Fixture.termBump_.Notation -> ext:List": 2,
+  "edge Fixture.termBump_.Notation -> ext:Monad": 2,
+  "edge Fixture.termBump_.Notation -> ext:MonadExcept": 2,
+  "edge Fixture.termBump_.Notation -> ext:Nat": 6,
+  "edge Fixture.termBump_.Notation -> ext:OfNat": 6,
+  "edge Fixture.termBump_.Notation -> ext:PUnit": 2,
+  "edge Fixture.termBump_.Notation -> ext:Pure": 2,
+  "edge Fixture.termBump_.Notation -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.termBump_.Notation -> ext:ReaderT.instMonad": 2,
+  "edge Fixture.termBump_.Notation -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.termBump_.Notation -> ext:instDecidableEqBool": 4,
+  "edge Fixture.termBump_.Notation -> ext:instMonadExceptOfMonadExceptOf": 2,
+  "edge Fixture.termBump_.Notation -> ext:instOfNatNat": 6,
+  "edge Fixture.termBump_.Notation -> ext:ite": 2,
+  "edge Fixture.termDbl!_ -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termDbl!_ -> ext:Lean.Name.mkStr2": 2,
+  "edge Fixture.termDbl!_ -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.termDbl!_ -> ext:Nat": 2,
+  "edge Fixture.termDbl!_ -> ext:OfNat": 2,
+  "edge Fixture.termDbl!_ -> ext:instOfNatNat": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Applicative": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Bind": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Bool": 6,
+  "edge Fixture.termDbl!_.macro_rules -> ext:EStateM": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:EStateM.instMonad": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:EStateM.instMonadExceptOfOfBacktrackable": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:EStateM.nonBacktrackable": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Eq": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Macro": 1,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Macro.State": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.MacroM": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Syntax": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Lean.TSyntax": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:List": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Monad": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:MonadExcept": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Nat": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:OfNat": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:PUnit": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:Pure": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:ReaderT": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:ReaderT.instMonad": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:instDecidableEqBool": 4,
+  "edge Fixture.termDbl!_.macro_rules -> ext:instMonadExceptOfMonadExceptOf": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:instOfNatNat": 2,
+  "edge Fixture.termDbl!_.macro_rules -> ext:ite": 2,
+  "edge Fixture.termPick!_ -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termPick!_ -> ext:Lean.Name.mkStr2": 2,
+  "edge Fixture.termPick!_ -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.termPick!_ -> ext:Nat": 2,
+  "edge Fixture.termPick!_ -> ext:OfNat": 2,
+  "edge Fixture.termPick!_ -> ext:instOfNatNat": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Applicative": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Bind": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Bool": 6,
+  "edge Fixture.termPick!_.macro_rules -> ext:EStateM": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:EStateM.instMonad": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:EStateM.instMonadExceptOfOfBacktrackable": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:EStateM.nonBacktrackable": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Eq": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Macro": 1,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Macro.State": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Macro.instMonadQuotationMacroM": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Macro.instMonadRefMacroM": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.MacroM": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.MacroScope": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.MonadQuotation": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.MonadRef.mkInfoFromRefPos": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Name": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.SourceInfo": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Syntax": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Syntax.node1": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.Syntax.node3": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Lean.TSyntax": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:List": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Monad": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:MonadExcept": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Nat": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:OfNat": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:PUnit": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:Pure": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:ReaderT.instMonad": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:instDecidableEqBool": 4,
+  "edge Fixture.termPick!_.macro_rules -> ext:instMonadExceptOfMonadExceptOf": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:instOfNatNat": 2,
+  "edge Fixture.termPick!_.macro_rules -> ext:ite": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Applicative": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Bind": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Bool": 6,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Bool.or": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:EStateM": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:EStateM.instMonad": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:EStateM.instMonadExceptOfOfBacktrackable": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:EStateM.nonBacktrackable": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Eq": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Macro": 1,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Macro.State": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Macro.instMonadQuotationMacroM": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Macro.instMonadRefMacroM": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.MacroM": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.MacroScope": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.MonadQuotation": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.MonadRef.mkInfoFromRefPos": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Name": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.SourceInfo": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Syntax": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Syntax.node1": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.Syntax.node3": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.TSyntax": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Lean.numLitKind": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:List": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Monad": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:MonadExcept": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Nat": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:OfNat": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:PUnit": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:Pure": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:ReaderT.instMonad": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:cond": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:instDecidableEqBool": 4,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:instMonadExceptOfMonadExceptOf": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:instOfNatNat": 2,
+  "edge Fixture.termPick!_.macro_rules_2 -> ext:ite": 2,
+  "edge Fixture.termQuad!_ -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termQuad!_ -> ext:Lean.Name.mkStr2": 2,
+  "edge Fixture.termQuad!_ -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.termQuad!_ -> ext:Nat": 2,
+  "edge Fixture.termQuad!_ -> ext:OfNat": 2,
+  "edge Fixture.termQuad!_ -> ext:instOfNatNat": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Applicative": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Bind": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Bool": 6,
+  "edge Fixture.termQuad!_.macro_rules -> ext:EStateM": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:EStateM.instMonad": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:EStateM.instMonadExceptOfOfBacktrackable": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:EStateM.nonBacktrackable": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Eq": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Macro": 1,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Macro.State": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Macro.instMonadQuotationMacroM": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Macro.instMonadRefMacroM": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.MacroM": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.MacroScope": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.MonadQuotation": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.MonadRef.mkInfoFromRefPos": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Name": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Name.mkStr4": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.SourceInfo": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Syntax": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Syntax.Preresolved": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Syntax.node1": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Syntax.node2": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.Syntax.node3": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.TSyntax": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Lean.addMacroScope": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:List": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Monad": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:MonadExcept": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Nat": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:OfNat": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:PUnit": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:Pure": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:ReaderT.instMonad": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:String.toRawSubstring'": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:instDecidableEqBool": 4,
+  "edge Fixture.termQuad!_.macro_rules -> ext:instMonadExceptOfMonadExceptOf": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:instOfNatNat": 2,
+  "edge Fixture.termQuad!_.macro_rules -> ext:ite": 2,
+  "edge Fixture.termSq!_ -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termSq!_ -> ext:Lean.Name.mkStr2": 2,
+  "edge Fixture.termSq!_ -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.termSq!_ -> ext:Nat": 2,
+  "edge Fixture.termSq!_ -> ext:OfNat": 2,
+  "edge Fixture.termSq!_ -> ext:instOfNatNat": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Applicative": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Bind": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Bool": 6,
+  "edge Fixture.termSq!_.elab_rules -> ext:Eq": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:IO.RealWorld": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Core.CoreM": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Elab.Term.Context": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Elab.Term.State": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Elab.Term.TermElab": 1,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Elab.Term.TermElabM": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Elab.Term.elabTerm": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Elab.Term.instMonadTermElabM": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Elab.throwUnsupportedSyntax": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Exception": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Expr": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Level": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Meta.Context": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Meta.MetaM": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Meta.State": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Meta.instMonadMetaM": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Syntax": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.TSyntax": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.instMonadExceptOfExceptionCoreM": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.mkApp2": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Lean.mkConst": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:List": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Monad": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Nat": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:OfNat": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Option": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:Pure": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:StateRefT'": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:StateRefT'.instMonad": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:StateRefT'.instMonadExceptOf": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:instDecidableEqBool": 4,
+  "edge Fixture.termSq!_.elab_rules -> ext:instOfNatNat": 2,
+  "edge Fixture.termSq!_.elab_rules -> ext:ite": 2,
+  "edge Fixture.termWrap!_ -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termWrap!_ -> ext:Lean.Name.mkStr2": 2,
+  "edge Fixture.termWrap!_ -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.termWrap!_ -> ext:Nat": 2,
+  "edge Fixture.termWrap!_ -> ext:OfNat": 2,
+  "edge Fixture.termWrap!_ -> ext:instOfNatNat": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Bind": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Bool": 6,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Eq": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:IO": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:IO.RealWorld": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Core.CoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Core.instMonadCoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Core.instMonadLiftIOCoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Core.instMonadOptionsCoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Core.instMonadRecDepthCoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Core.instMonadResolveNameCoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Core.instMonadTraceCoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.MonadMacroAdapter": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.Context": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.State": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.TermElab": 1,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.TermElabM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.elabTerm": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.instAddErrorMessageContextTermElabM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.instMonadMacroAdapterTermElabM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.Term.instMonadTermElabM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.liftMacroM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Elab.throwUnsupportedSyntax": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Exception": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Expr": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Meta.Context": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Meta.MetaM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Meta.State": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Meta.instAddMessageContextMetaM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Meta.instMonadEnvMetaM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Meta.instMonadMetaM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.MonadError": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.MonadQuotation": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Name.instBEq": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Name.mkStr4": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Syntax": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Syntax.getArg": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.SyntaxNodeKind": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.TSyntax": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.expandMacros": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instAddMessageContextOfMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instMonadEnvOfMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instMonadExceptOfExceptionCoreM": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instMonadOptionsOfMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instMonadRecDepthReaderT": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instMonadRecDepthStateRefT'OfMonad": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instMonadResolveNameOfMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Lean.instMonadTraceOfMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:List": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Monad": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Nat": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:OfNat": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:Option": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:ReaderT.instMonadExceptOf": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:ReaderT.instMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:StateRefT'": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:StateRefT'.instMonadExceptOf": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:StateRefT'.instMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:bne": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:instDecidableEqBool": 4,
+  "edge Fixture.termWrap!_.elab_rules -> ext:instMonadLiftT": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:instMonadLiftTOfMonadLift": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:instOfNatNat": 2,
+  "edge Fixture.termWrap!_.elab_rules -> ext:ite": 2,
+  "edge Fixture.three -> ext:Bool": 4,
+  "edge Fixture.three -> ext:Decidable.decide": 4,
+  "edge Fixture.three -> ext:Eq": 4,
+  "edge Fixture.three -> ext:Fin": 3,
+  "edge Fixture.three -> ext:LT": 4,
+  "edge Fixture.three -> ext:Nat": 7,
+  "edge Fixture.three -> ext:Nat.decLt": 4,
+  "edge Fixture.three -> ext:OfNat": 7,
+  "edge Fixture.three -> ext:id": 4,
+  "edge Fixture.three -> ext:instLTNat": 4,
+  "edge Fixture.three -> ext:instOfNatNat": 7,
+  "edge Fixture.three -> ext:of_decide_eq_true": 4,
+  "edge Fixture.tripStx -> ext:Lean.Name.mkStr1": 2,
+  "edge Fixture.tripStx -> ext:Lean.Name.mkStr2": 2,
+  "edge Fixture.tripStx -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.tripStx -> ext:Nat": 2,
+  "edge Fixture.tripStx -> ext:OfNat": 2,
+  "edge Fixture.tripStx -> ext:instOfNatNat": 2,
+  "edge Fixture.tripled -> ext:Nat": 3,
+  "edge Fixture.tripled -> ext:Nat.mul": 2,
+  "edge Fixture.tripled -> ext:OfNat": 2,
+  "edge Fixture.tripled -> ext:instOfNatNat": 2,
+  "edge Fixture.twiceOf -> ext:Applicative": 2,
+  "edge Fixture.twiceOf -> ext:Bind": 2,
+  "edge Fixture.twiceOf -> ext:EStateM": 2,
+  "edge Fixture.twiceOf -> ext:EStateM.instMonad": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Macro.State": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Macro.instMonadQuotationMacroM": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Macro.instMonadRefMacroM": 2,
+  "edge Fixture.twiceOf -> ext:Lean.MacroM": 3,
+  "edge Fixture.twiceOf -> ext:Lean.MacroScope": 2,
+  "edge Fixture.twiceOf -> ext:Lean.MonadQuotation": 2,
+  "edge Fixture.twiceOf -> ext:Lean.MonadRef.mkInfoFromRefPos": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Name": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Name.mkStr1": 3,
+  "edge Fixture.twiceOf -> ext:Lean.SourceInfo": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Syntax": 2,
+  "edge Fixture.twiceOf -> ext:Lean.Syntax.node3": 2,
+  "edge Fixture.twiceOf -> ext:Lean.SyntaxNodeKind": 3,
+  "edge Fixture.twiceOf -> ext:Lean.TSyntax": 3,
+  "edge Fixture.twiceOf -> ext:List": 3,
+  "edge Fixture.twiceOf -> ext:Monad": 2,
+  "edge Fixture.twiceOf -> ext:Pure": 2,
+  "edge Fixture.twiceOf -> ext:ReaderT.instApplicativeOfMonad": 2,
+  "edge Fixture.twiceOf -> ext:ReaderT.instMonad": 2,
+  "edge Fixture.twoPos -> ext:LT": 4,
+  "edge Fixture.twoPos -> ext:Nat": 6,
+  "edge Fixture.twoPos -> ext:Nat.le_succ": 4,
+  "edge Fixture.twoPos -> ext:Nat.lt_of_lt_of_le": 4,
+  "edge Fixture.twoPos -> ext:Nat.zero_lt_one": 4,
+  "edge Fixture.twoPos -> ext:OfNat": 6,
+  "edge Fixture.twoPos -> ext:instLTNat": 4,
+  "edge Fixture.twoPos -> ext:instOfNatNat": 6,
+  "edge Fixture.withK -> ext:Eq": 2,
+  "edge Fixture.withK -> ext:Inhabited": 3,
+  "edge Fixture.withK -> ext:Nat": 7,
+  "edge Fixture.withK -> ext:OfNat": 6,
+  "edge Fixture.withK -> ext:Prod": 3,
+  "edge Fixture.withK -> ext:instDecidableEqNat": 4,
+  "edge Fixture.withK -> ext:instOfNatNat": 6,
+  "edge Fixture.withK -> ext:ite": 2,
+  "edge Fixture.wrapped -> ext:HAdd": 2,
+  "edge Fixture.wrapped -> ext:Nat": 3,
+  "edge Fixture.wrapped -> ext:instAddNat": 2,
+  "edge Fixture.wrapped -> ext:instHAdd": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Applicative": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Bind": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Bool": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Bool.or": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:EStateM": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:EStateM.instMonad": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:EStateM.instMonadExceptOfOfBacktrackable": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:EStateM.nonBacktrackable": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Eq": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Macro": 1,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Macro.Context": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Macro.Exception": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Macro.State": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Macro.instMonadQuotationMacroM": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Macro.instMonadRefMacroM": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.MacroM": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.MacroScope": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.MonadQuotation": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.MonadRef.mkInfoFromRefPos": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Name": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Name.mkStr1": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Name.mkStr2": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Name.mkStr3": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Name.mkStr4": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.ParserDescr": 3,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.PrettyPrinter.UnexpandM": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.PrettyPrinter.Unexpander": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.PrettyPrinter.instMonadQuotationUnexpandM": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.SourceInfo": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax.Preresolved": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax.getArg": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax.isOfKind": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax.matchesNull": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax.node1": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax.node2": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.Syntax.node3": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.SyntaxNodeKind": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.TSyntax": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.addMacroScope": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Lean.withRef": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:List": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Monad": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:MonadExcept": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Nat": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:OfNat": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:PUnit": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Pure": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:ReaderT.instApplicativeOfMonad": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:ReaderT.instMonad": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:ReaderT.instMonadExceptOf": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:String": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:String.toRawSubstring'": 2,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Unit": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:Unit.unit": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:cond": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:instDecidableEqBool": 4,
+  "edge Fixture.«term‖_‖ₚ» -> ext:instMonadExceptOfMonadExceptOf": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:instOfNatNat": 6,
+  "edge Fixture.«term‖_‖ₚ» -> ext:ite": 6,
+  "edge FixtureModule.helper -> ext:HMul": 2,
+  "edge FixtureModule.helper -> ext:Nat": 3,
+  "edge FixtureModule.helper -> ext:OfNat": 2,
+  "edge FixtureModule.helper -> ext:instHMul": 2,
+  "edge FixtureModule.helper -> ext:instMulNat": 2,
+  "edge FixtureModule.helper -> ext:instOfNatNat": 2,
+  "edge FixtureModule.inSection -> ext:Nat": 3,
+  "edge FixtureModule.triple -> ext:HAdd": 2,
+  "edge FixtureModule.triple -> ext:Nat": 3,
+  "edge FixtureModule.triple -> ext:instAddNat": 2,
+  "edge FixtureModule.triple -> ext:instHAdd": 2,
+  "edge FixtureModule.use_viaHelper -> ext:Bool": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Decidable.byContradiction": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Decidable.decide": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Eq": 5,
+  "edge FixtureModule.use_viaHelper -> ext:Eq.mpr": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Eq.symm": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Eq.trans": 4,
+  "edge FixtureModule.use_viaHelper -> ext:False": 4,
+  "edge FixtureModule.use_viaHelper -> ext:GT.gt": 4,
+  "edge FixtureModule.use_viaHelper -> ext:HAdd": 5,
+  "edge FixtureModule.use_viaHelper -> ext:HMul": 5,
+  "edge FixtureModule.use_viaHelper -> ext:HSub": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.add_one_le_of_lt": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.instAdd": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.instDecidableEq": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.instLEInt": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.instMul": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.instNegInt": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.instSub": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.natCast_add": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.natCast_mul": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Int.sub_nonneg_of_le": 4,
+  "edge FixtureModule.use_viaHelper -> ext:LT": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Coeffs.isZero": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Coeffs.ofList": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Constraint": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Constraint.addInequality_sat": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Constraint.isImpossible": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Constraint.not_sat'_of_isImpossible": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Int.add_congr": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Int.mul_congr": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Int.ofNat_lt_of_lt": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.Int.sub_congr": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.add_eval": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.coordinate": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.coordinate_eval_0": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.eval": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.instAdd": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.instSub": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.mul": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.mul_eval": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.LinearCombo.sub_eval": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Lean.Omega.tidy_sat": 4,
+  "edge FixtureModule.use_viaHelper -> ext:List": 4,
+  "edge FixtureModule.use_viaHelper -> ext:List.decidableBAll": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Nat": 5,
+  "edge FixtureModule.use_viaHelper -> ext:Nat.cast": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Nat.lt_or_gt_of_ne": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Neg": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Not": 4,
+  "edge FixtureModule.use_viaHelper -> ext:OfNat": 5,
+  "edge FixtureModule.use_viaHelper -> ext:Option": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Or": 4,
+  "edge FixtureModule.use_viaHelper -> ext:Or.elim": 4,
+  "edge FixtureModule.use_viaHelper -> ext:congrArg": 4,
+  "edge FixtureModule.use_viaHelper -> ext:id": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instAddNat": 5,
+  "edge FixtureModule.use_viaHelper -> ext:instDecidableEqBool": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instDecidableEqNat": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instDecidableOr": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instHAdd": 5,
+  "edge FixtureModule.use_viaHelper -> ext:instHMul": 5,
+  "edge FixtureModule.use_viaHelper -> ext:instHSub": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instLTNat": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instMulNat": 5,
+  "edge FixtureModule.use_viaHelper -> ext:instNatCastInt": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instOfNat": 4,
+  "edge FixtureModule.use_viaHelper -> ext:instOfNatNat": 5,
+  "edge FixtureModule.use_viaHelper -> ext:le_of_le_of_eq": 4,
+  "edge FixtureModule.use_viaHelper -> ext:of_decide_eq_true": 4,
+  "edge FixtureModule.viaHelper -> ext:Nat": 3,
+  "edge FixtureModule.viaHelper_eq -> ext:Bool": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Decidable.byContradiction": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Decidable.decide": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Eq": 5,
+  "edge FixtureModule.viaHelper_eq -> ext:Eq.symm": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Eq.trans": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:False": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:GT.gt": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:HAdd": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:HMul": 5,
+  "edge FixtureModule.viaHelper_eq -> ext:HSub": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.add_one_le_of_lt": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.instAdd": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.instDecidableEq": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.instLEInt": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.instMul": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.instNegInt": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.instSub": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.natCast_mul": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Int.sub_nonneg_of_le": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:LT": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Coeffs.isZero": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Coeffs.ofList": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Constraint": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Constraint.addInequality_sat": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Constraint.isImpossible": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Constraint.not_sat'_of_isImpossible": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Int.add_congr": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Int.mul_congr": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Int.ofNat_lt_of_lt": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.Int.sub_congr": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.add_eval": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.coordinate": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.coordinate_eval_0": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.eval": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.instAdd": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.instSub": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.mul": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.mul_eval": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.LinearCombo.sub_eval": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Lean.Omega.tidy_sat": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:List": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:List.decidableBAll": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Nat": 5,
+  "edge FixtureModule.viaHelper_eq -> ext:Nat.cast": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Nat.lt_or_gt_of_ne": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Neg": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Not": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:OfNat": 5,
+  "edge FixtureModule.viaHelper_eq -> ext:Option": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Or": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:Or.elim": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:id": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instDecidableEqBool": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instDecidableEqNat": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instDecidableOr": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instHAdd": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instHMul": 5,
+  "edge FixtureModule.viaHelper_eq -> ext:instHSub": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instLTNat": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instMulNat": 5,
+  "edge FixtureModule.viaHelper_eq -> ext:instNatCastInt": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instOfNat": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:instOfNatNat": 5,
+  "edge FixtureModule.viaHelper_eq -> ext:le_of_le_of_eq": 4,
+  "edge FixtureModule.viaHelper_eq -> ext:of_decide_eq_true": 4,
+  "ext And": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Applicative": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Array": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Array.empty": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Array.instGetElemNatLtSize": {
+   "kind": "instance",
+   "module": "Init.GetElem",
+   "axioms": []
+  },
+  "ext Array.mkArray0": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Array.push": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Array.size": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext BEq": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Bind": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Bool": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Bool.or": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Classical.choice": {
+   "kind": "axiom",
+   "module": "Init.Prelude",
+   "axioms": [
+    "Classical.choice"
+   ]
+  },
+  "ext Decidable": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Decidable.byContradiction": {
+   "kind": "theorem",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext Decidable.decide": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext DecidableEq": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext EStateM": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext EStateM.instMonad": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext EStateM.instMonadExceptOfOfBacktrackable": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext EStateM.nonBacktrackable": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Eq": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Eq.mp": {
+   "kind": "def",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext Eq.mpr": {
+   "kind": "def",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext Eq.symm": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Eq.trans": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext False": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext False.elim": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Fin": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Functor": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext GE.ge": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext GT.gt": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext GetElem": {
+   "kind": "class",
+   "module": "Init.GetElem",
+   "axioms": []
+  },
+  "ext HAdd": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext HAppend": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext HDiv": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext HEq": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext HMod": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext HMul": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext HSub": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Hashable": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext IO": {
+   "kind": "abbrev",
+   "module": "Init.System.IO",
+   "axioms": []
+  },
+  "ext IO.RealWorld": {
+   "kind": "def",
+   "module": "Init.System.IO",
+   "axioms": []
+  },
+  "ext Inhabited": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Int": {
+   "kind": "inductive",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.add_one_le_of_lt": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.Order",
+   "axioms": []
+  },
+  "ext Int.decLt": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.instAdd": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.instDecidableEq": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.instDiv": {
+   "kind": "instance",
+   "module": "Init.Data.Int.DivMod.Basic",
+   "axioms": []
+  },
+  "ext Int.instLEInt": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.instLTInt": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.instMul": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.instNegInt": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.instSub": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext Int.lt_mul_ediv_self_add": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.DivMod.Bootstrap",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Int.mul_ediv_self_le": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.DivMod.Bootstrap",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Int.natCast_add": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.Lemmas",
+   "axioms": []
+  },
+  "ext Int.natCast_ediv": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.DivMod.Basic",
+   "axioms": []
+  },
+  "ext Int.natCast_mul": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.Lemmas",
+   "axioms": []
+  },
+  "ext Int.natCast_nonneg": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.Order",
+   "axioms": []
+  },
+  "ext Int.sub_nonneg_of_le": {
+   "kind": "theorem",
+   "module": "Init.Data.Int.Order",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext InvImage": {
+   "kind": "def",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext LE": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext LT": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Core.CoreM": {
+   "kind": "abbrev",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Core.instMonadCoreM": {
+   "kind": "instance",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Core.instMonadLiftIOCoreM": {
+   "kind": "instance",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Core.instMonadOptionsCoreM": {
+   "kind": "instance",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Core.instMonadRecDepthCoreM": {
+   "kind": "instance",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Core.instMonadResolveNameCoreM": {
+   "kind": "instance",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Core.instMonadTraceCoreM": {
+   "kind": "instance",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.MonadMacroAdapter": {
+   "kind": "class",
+   "module": "Lean.Elab.Util",
+   "axioms": []
+  },
+  "ext Lean.Elab.Term.Context": {
+   "kind": "structure",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.Term.State": {
+   "kind": "structure",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.Term.TermElab": {
+   "kind": "abbrev",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.Term.TermElabM": {
+   "kind": "abbrev",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.Term.elabTerm": {
+   "kind": "def",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.Term.instAddErrorMessageContextTermElabM": {
+   "kind": "instance",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.Term.instMonadMacroAdapterTermElabM": {
+   "kind": "instance",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.Term.instMonadTermElabM": {
+   "kind": "instance",
+   "module": "Lean.Elab.Term.TermElabM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.liftMacroM": {
+   "kind": "def",
+   "module": "Lean.Elab.Util",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Elab.throwUnsupportedSyntax": {
+   "kind": "def",
+   "module": "Lean.Elab.Exception",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Exception": {
+   "kind": "inductive",
+   "module": "Lean.Exception",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Expr": {
+   "kind": "inductive",
+   "module": "Lean.Expr",
+   "axioms": []
+  },
+  "ext Lean.Level": {
+   "kind": "inductive",
+   "module": "Lean.Level",
+   "axioms": []
+  },
+  "ext Lean.Macro": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Macro.Context": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Macro.Exception": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Macro.State": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Macro.instMonadQuotationMacroM": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Macro.instMonadRefMacroM": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.MacroM": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.MacroScope": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Meta.Context": {
+   "kind": "structure",
+   "module": "Lean.Meta.Basic",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Meta.MetaM": {
+   "kind": "abbrev",
+   "module": "Lean.Meta.Basic",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Meta.State": {
+   "kind": "structure",
+   "module": "Lean.Meta.Basic",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Meta.instAddMessageContextMetaM": {
+   "kind": "instance",
+   "module": "Lean.Meta.Basic",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Meta.instMonadEnvMetaM": {
+   "kind": "instance",
+   "module": "Lean.Meta.Basic",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Meta.instMonadMetaM": {
+   "kind": "instance",
+   "module": "Lean.Meta.Basic",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.MonadError": {
+   "kind": "class",
+   "module": "Lean.Exception",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.MonadQuotation": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.MonadRef.mkInfoFromRefPos": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name.instBEq": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name.mkNum": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name.mkStr": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name.mkStr1": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name.mkStr2": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name.mkStr3": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Name.mkStr4": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Omega.Coeffs.isZero": {
+   "kind": "abbrev",
+   "module": "Init.Omega.Coeffs",
+   "axioms": []
+  },
+  "ext Lean.Omega.Coeffs.ofList": {
+   "kind": "abbrev",
+   "module": "Init.Omega.Coeffs",
+   "axioms": []
+  },
+  "ext Lean.Omega.Constraint": {
+   "kind": "structure",
+   "module": "Init.Omega.Constraint",
+   "axioms": []
+  },
+  "ext Lean.Omega.Constraint.addInequality_sat": {
+   "kind": "theorem",
+   "module": "Init.Omega.Constraint",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.Constraint.combine_sat'": {
+   "kind": "theorem",
+   "module": "Init.Omega.Constraint",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.Constraint.isImpossible": {
+   "kind": "def",
+   "module": "Init.Omega.Constraint",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.Constraint.not_sat'_of_isImpossible": {
+   "kind": "theorem",
+   "module": "Init.Omega.Constraint",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.Int.add_congr": {
+   "kind": "theorem",
+   "module": "Init.Omega.Int",
+   "axioms": []
+  },
+  "ext Lean.Omega.Int.mul_congr": {
+   "kind": "theorem",
+   "module": "Init.Omega.Int",
+   "axioms": []
+  },
+  "ext Lean.Omega.Int.ofNat_le_of_le": {
+   "kind": "theorem",
+   "module": "Init.Omega.Int",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.Int.ofNat_lt_of_lt": {
+   "kind": "theorem",
+   "module": "Init.Omega.Int",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.Int.sub_congr": {
+   "kind": "theorem",
+   "module": "Init.Omega.Int",
+   "axioms": []
+  },
+  "ext Lean.Omega.LinearCombo": {
+   "kind": "structure",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": []
+  },
+  "ext Lean.Omega.LinearCombo.add_eval": {
+   "kind": "theorem",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.LinearCombo.coordinate": {
+   "kind": "def",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": []
+  },
+  "ext Lean.Omega.LinearCombo.coordinate_eval_0": {
+   "kind": "theorem",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.LinearCombo.coordinate_eval_1": {
+   "kind": "theorem",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.LinearCombo.coordinate_eval_2": {
+   "kind": "theorem",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.LinearCombo.eval": {
+   "kind": "def",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": []
+  },
+  "ext Lean.Omega.LinearCombo.instAdd": {
+   "kind": "instance",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": []
+  },
+  "ext Lean.Omega.LinearCombo.instSub": {
+   "kind": "instance",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": []
+  },
+  "ext Lean.Omega.LinearCombo.mul": {
+   "kind": "def",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": []
+  },
+  "ext Lean.Omega.LinearCombo.mul_eval": {
+   "kind": "theorem",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.LinearCombo.sub_eval": {
+   "kind": "theorem",
+   "module": "Init.Omega.LinearCombo",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.combo_sat'": {
+   "kind": "theorem",
+   "module": "Init.Omega.Constraint",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.Omega.tidy_sat": {
+   "kind": "theorem",
+   "module": "Init.Omega.Constraint",
+   "axioms": [
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.ParserDescr": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.PrettyPrinter.UnexpandM": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.PrettyPrinter.Unexpander": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.PrettyPrinter.instMonadQuotationUnexpandM": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.SourceInfo": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.Ident": {
+   "kind": "abbrev",
+   "module": "Init.Meta.Defs",
+   "axioms": []
+  },
+  "ext Lean.Syntax.Preresolved": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.getArg": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.isOfKind": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.matchesNull": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.node1": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.node2": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.node3": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.node4": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.node5": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.Syntax.node7": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.SyntaxNodeKind": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.TSyntax": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.TSyntax.getId": {
+   "kind": "def",
+   "module": "Init.Meta.Defs",
+   "axioms": []
+  },
+  "ext Lean.addMacroScope": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.expandMacros": {
+   "kind": "opaque",
+   "module": "Init.Meta.Defs",
+   "axioms": []
+  },
+  "ext Lean.identKind": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.instAddMessageContextOfMonadLift": {
+   "kind": "instance",
+   "module": "Lean.Message",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.instAppendName": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.instMonadEnvOfMonadLift": {
+   "kind": "instance",
+   "module": "Lean.Environment",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.instMonadExceptOfExceptionCoreM": {
+   "kind": "instance",
+   "module": "Lean.CoreM",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.instMonadOptionsOfMonadLift": {
+   "kind": "instance",
+   "module": "Lean.Data.Options",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.instMonadRecDepthReaderT": {
+   "kind": "instance",
+   "module": "Lean.Exception",
+   "axioms": []
+  },
+  "ext Lean.instMonadRecDepthStateRefT'OfMonad": {
+   "kind": "instance",
+   "module": "Lean.Exception",
+   "axioms": []
+  },
+  "ext Lean.instMonadResolveNameOfMonadLift": {
+   "kind": "instance",
+   "module": "Lean.ResolveName",
+   "axioms": []
+  },
+  "ext Lean.instMonadTraceOfMonadLift": {
+   "kind": "instance",
+   "module": "Lean.Util.Trace",
+   "axioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+   ]
+  },
+  "ext Lean.mkApp2": {
+   "kind": "def",
+   "module": "Lean.Expr",
+   "axioms": []
+  },
+  "ext Lean.mkAtom": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.mkConst": {
+   "kind": "def",
+   "module": "Lean.Expr",
+   "axioms": []
+  },
+  "ext Lean.mkIdent": {
+   "kind": "def",
+   "module": "Init.Meta.Defs",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext Lean.mkNatLit": {
+   "kind": "def",
+   "module": "Lean.Expr",
+   "axioms": []
+  },
+  "ext Lean.mkNode": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.mkNullNode": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.numLitKind": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Lean.withRef": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext List": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext List.decidableBAll": {
+   "kind": "instance",
+   "module": "Init.Data.List.Basic",
+   "axioms": []
+  },
+  "ext List.toArray": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Monad": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext MonadExcept": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.add": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.add_assoc": {
+   "kind": "theorem",
+   "module": "Init.Data.Nat.Basic",
+   "axioms": []
+  },
+  "ext Nat.add_comm": {
+   "kind": "theorem",
+   "module": "Init.Data.Nat.Basic",
+   "axioms": []
+  },
+  "ext Nat.ble": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.cast": {
+   "kind": "abbrev",
+   "module": "Init.Data.Cast",
+   "axioms": []
+  },
+  "ext Nat.decLe": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.decLt": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.instDiv": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.instMod": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.le_add_right": {
+   "kind": "theorem",
+   "module": "Init.Data.Nat.Basic",
+   "axioms": []
+  },
+  "ext Nat.le_of_not_lt": {
+   "kind": "theorem",
+   "module": "Init.Data.Nat.Basic",
+   "axioms": []
+  },
+  "ext Nat.le_succ": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.lt_add_one": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.lt_of_lt_of_le": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.lt_or_gt_of_ne": {
+   "kind": "theorem",
+   "module": "Init.Data.Nat.Basic",
+   "axioms": []
+  },
+  "ext Nat.mul": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nat.zero_lt_one": {
+   "kind": "theorem",
+   "module": "Init.Data.Nat.Basic",
+   "axioms": []
+  },
+  "ext Ne": {
+   "kind": "abbrev",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext Neg": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Nonempty": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Not": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext OfNat": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Option": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Or": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Or.elim": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext PProd": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext PSum": {
+   "kind": "inductive",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext PUnit": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Prod": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Pure": {
+   "kind": "class",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext ReaderT": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext ReaderT.instApplicativeOfMonad": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext ReaderT.instFunctorOfMonad": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext ReaderT.instMonad": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext ReaderT.instMonadExceptOf": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext ReaderT.instMonadLift": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Repr": {
+   "kind": "class",
+   "module": "Init.Data.Repr",
+   "axioms": []
+  },
+  "ext Repr.addAppParen": {
+   "kind": "def",
+   "module": "Init.Data.Repr",
+   "axioms": []
+  },
+  "ext StateRefT'": {
+   "kind": "def",
+   "module": "Init.Control.StateRef",
+   "axioms": []
+  },
+  "ext StateRefT'.instMonad": {
+   "kind": "instance",
+   "module": "Init.Control.StateRef",
+   "axioms": []
+  },
+  "ext StateRefT'.instMonadExceptOf": {
+   "kind": "instance",
+   "module": "Init.Control.StateRef",
+   "axioms": []
+  },
+  "ext StateRefT'.instMonadLift": {
+   "kind": "instance",
+   "module": "Init.Control.StateRef",
+   "axioms": []
+  },
+  "ext Std.Format": {
+   "kind": "inductive",
+   "module": "Init.Data.Format.Basic",
+   "axioms": []
+  },
+  "ext Std.Format.FlattenBehavior": {
+   "kind": "inductive",
+   "module": "Init.Data.Format.Basic",
+   "axioms": []
+  },
+  "ext String": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext String.toRawSubstring'": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Subtype": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext True": {
+   "kind": "inductive",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext UInt64": {
+   "kind": "structure",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext UInt64.instOfNat": {
+   "kind": "instance",
+   "module": "Init.Data.UInt.BasicAux",
+   "axioms": []
+  },
+  "ext Unit": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext Unit.unit": {
+   "kind": "abbrev",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext WellFounded.Nat.fix": {
+   "kind": "def",
+   "module": "Init.WF",
+   "axioms": []
+  },
+  "ext absurd": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext autoParam": {
+   "kind": "abbrev",
+   "module": "Init.Tactics",
+   "axioms": []
+  },
+  "ext bne": {
+   "kind": "def",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext cond": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext congr": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext congrArg": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext congrFun'": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext dite": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext eq_of_heq": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext eq_self": {
+   "kind": "theorem",
+   "module": "Init.SimpLemmas",
+   "axioms": [
+    "propext"
+   ]
+  },
+  "ext id": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instAddNat": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instBEqOfDecidableEq": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instDecidableAnd": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instDecidableEqBool": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instDecidableEqNat": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instDecidableNot": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instDecidableOr": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instHAdd": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instHAppendOfAppend": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instHDiv": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instHMod": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instHMul": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instHSub": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instLENat": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instLTNat": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instMonadExceptOfMonadExceptOf": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instMonadLiftT": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instMonadLiftTOfMonadLift": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instMulNat": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instNatCastInt": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext instOfNat": {
+   "kind": "instance",
+   "module": "Init.Data.Int.Basic",
+   "axioms": []
+  },
+  "ext instOfNatNat": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext instSubNat": {
+   "kind": "instance",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext ite": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext le_of_le_of_eq": {
+   "kind": "theorem",
+   "module": "Init.Core",
+   "axioms": []
+  },
+  "ext of_decide_eq_true": {
+   "kind": "theorem",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext of_eq_true": {
+   "kind": "theorem",
+   "module": "Init.SimpLemmas",
+   "axioms": []
+  },
+  "ext rfl": {
+   "kind": "def",
+   "module": "Init.Prelude",
+   "axioms": []
+  },
+  "ext sorryAx": {
+   "kind": "axiom",
+   "module": "Init.Prelude",
+   "axioms": [
+    "sorryAx"
+   ]
+  },
+  "refs Fixture.Kinds.Color": [
+   "Fixture.Kinds.Color",
+   "BEq",
+   "BEq.mk",
+   "Fixture.Kinds.Color Fixture.Kinds.instBEqColor.beq",
+   "Bool",
+   "BEq.beq",
+   "Nat",
+   "instBEqOfDecidableEq",
+   "instDecidableEqNat",
+   "Fixture.Kinds.Color ctorIdx",
+   "DecidableEq",
+   "dite",
+   "Decidable",
+   "Eq",
+   "Decidable.isTrue",
+   "Fixture.Kinds.Color Fixture.Kinds.instDecidableEqColor._proof_1",
+   "Not",
+   "Decidable.isFalse",
+   "Fixture.Kinds.Color Fixture.Kinds.instDecidableEqColor._proof_2",
+   "Hashable",
+   "Hashable.mk",
+   "Fixture.Kinds.Color Fixture.Kinds.instHashableColor.hash",
+   "UInt64",
+   "Fixture.Kinds.Color Fixture.Kinds.instReprColor.repr.match_1",
+   "Unit",
+   "OfNat.ofNat",
+   "UInt64.instOfNat",
+   "Inhabited",
+   "Inhabited.mk",
+   "Fixture.Kinds.Color Fixture.Kinds.instInhabitedColor.default",
+   "Repr",
+   "Repr.mk",
+   "Fixture.Kinds.Color Fixture.Kinds.instReprColor.repr",
+   "Std.Format",
+   "Repr.addAppParen",
+   "Std.Format.group",
+   "Std.Format.nest",
+   "ite",
+   "Int",
+   "GE.ge",
+   "instLENat",
+   "instOfNatNat",
+   "Nat.decLe",
+   "instOfNat",
+   "Std.Format.text",
+   "Std.Format.FlattenBehavior.allOrNone",
+   "Fixture.Kinds.Color casesOn",
+   "Fixture.Kinds.Color red",
+   "Fixture.Kinds.Color green",
+   "Unit.unit"
+  ],
+  "refs Fixture.Kinds.Even": [
+   "Nat",
+   "Fixture.Kinds.Even",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat"
+  ],
+  "refs Fixture.Kinds.HasBound": [
+   "Fixture.Kinds.HasSize",
+   "Nat",
+   "Fixture.Kinds.HasBound"
+  ],
+  "refs Fixture.Kinds.HasSize": [
+   "Nat",
+   "Fixture.Kinds.HasSize"
+  ],
+  "refs Fixture.Kinds.Num": [
+   "Nat"
+  ],
+  "refs Fixture.Kinds.Num.zero": [
+   "Fixture.Kinds.Num",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.Kinds.Point3": [
+   "Fixture.Point",
+   "Nat",
+   "Fixture.Kinds.Point3"
+  ],
+  "refs Fixture.Kinds.Vec": [
+   "Nat",
+   "Fixture.Kinds.Vec",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat"
+  ],
+  "refs Fixture.Kinds.Vec.length": [
+   "Nat",
+   "Fixture.Kinds.Vec",
+   "Fixture.Kinds.Vec brecOn",
+   "Fixture.Kinds.Vec.length _f",
+   "Fixture.Kinds.Vec below",
+   "Fixture.Kinds.Vec.length match_1",
+   "Unit",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Fixture.Kinds.Vec nil",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Kinds.Vec cons",
+   "PProd",
+   "Fixture.Kinds.Vec casesOn",
+   "Eq",
+   "HEq",
+   "Eq.ndrec",
+   "Unit.unit",
+   "Eq.symm",
+   "eq_of_heq",
+   "Eq.refl",
+   "HEq.refl"
+  ],
+  "refs Fixture.Kinds.chosen": [
+   "Nat",
+   "Classical.choice",
+   "Fixture.Kinds.chosen _proof_1"
+  ],
+  "refs Fixture.Kinds.collatz": [
+   "Nat",
+   "ite",
+   "LE.le",
+   "instLENat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Nat.decLe",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Kinds.collatz _unsafe_rec",
+   "Eq",
+   "HMod.hMod",
+   "instHMod",
+   "Nat.instMod",
+   "instDecidableEqNat",
+   "HDiv.hDiv",
+   "instHDiv",
+   "Nat.instDiv",
+   "HMul.hMul",
+   "instHMul",
+   "instMulNat"
+  ],
+  "refs Fixture.Kinds.evenW": [
+   "Nat",
+   "Bool",
+   "Fixture.Kinds.evenW _mutual",
+   "PSum.inl",
+   "PSum",
+   "PSum.casesOn",
+   "WellFounded.Nat.fix",
+   "InvImage",
+   "LT.lt",
+   "instLTNat",
+   "Fixture.Kinds.isEven match_1",
+   "Unit",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Bool.true",
+   "Nat.succ",
+   "PSum.inr",
+   "Fixture.Kinds.evenW _mutual._proof_1",
+   "Bool.false",
+   "Fixture.Kinds.evenW _mutual._proof_2",
+   "Nat.casesOn",
+   "Unit.unit"
+  ],
+  "refs Fixture.Kinds.hidden": [
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.Kinds.instHasSizeColor": [
+   "Fixture.Kinds.HasSize",
+   "Fixture.Kinds.Color",
+   "Fixture.Kinds.HasSize mk",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.Kinds.instHasSizeNat": [
+   "Fixture.Kinds.HasSize",
+   "Nat",
+   "Fixture.Kinds.HasSize mk",
+   "id"
+  ],
+  "refs Fixture.Kinds.isEven": [
+   "Nat",
+   "Bool",
+   "PProd",
+   "Nat.brecOn",
+   "Nat.below",
+   "PProd.mk",
+   "Fixture.Kinds.isEven _f",
+   "Fixture.Kinds.isOdd _f",
+   "Fixture.Kinds.isEven match_1",
+   "Unit",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Bool.true",
+   "Nat.succ",
+   "Nat.casesOn",
+   "Unit.unit",
+   "Bool.false"
+  ],
+  "refs Fixture.Kinds.isOdd": [
+   "Nat",
+   "Bool",
+   "PProd",
+   "Nat.brecOn",
+   "Nat.below",
+   "PProd.mk",
+   "Fixture.Kinds.isEven _f",
+   "Fixture.Kinds.isOdd _f",
+   "Fixture.Kinds.isEven match_1",
+   "Unit",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Bool.true",
+   "Nat.succ",
+   "Nat.casesOn",
+   "Unit.unit",
+   "Bool.false"
+  ],
+  "refs Fixture.Kinds.length_nil": [
+   "Eq",
+   "Nat",
+   "Fixture.Kinds.Vec.length",
+   "Fixture.Kinds.Color",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Fixture.Kinds.Vec nil",
+   "Fixture.Kinds.sumTo"
+  ],
+  "refs Fixture.Kinds.log2": [
+   "Nat",
+   "WellFounded.Nat.fix",
+   "InvImage",
+   "LT.lt",
+   "instLTNat",
+   "dite",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Nat.decLt",
+   "Not",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "HDiv.hDiv",
+   "instHDiv",
+   "Nat.instDiv",
+   "Fixture.Kinds.log2 _proof_1"
+  ],
+  "refs Fixture.Kinds.oddW": [
+   "Nat",
+   "Bool",
+   "Fixture.Kinds.evenW _mutual",
+   "PSum.inr",
+   "PSum",
+   "PSum.casesOn",
+   "WellFounded.Nat.fix",
+   "InvImage",
+   "LT.lt",
+   "instLTNat",
+   "PSum.inl",
+   "Fixture.Kinds.isEven match_1",
+   "Unit",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Bool.true",
+   "Nat.succ",
+   "Fixture.Kinds.evenW _mutual._proof_1",
+   "Bool.false",
+   "Fixture.Kinds.evenW _mutual._proof_2",
+   "Nat.casesOn",
+   "Unit.unit"
+  ],
+  "refs Fixture.Kinds.ping": [
+   "Nat",
+   "ite",
+   "Eq",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "instDecidableEqNat",
+   "Fixture.Kinds.pong _unsafe_rec",
+   "HSub.hSub",
+   "instHSub",
+   "instSubNat",
+   "Fixture.Kinds.ping _unsafe_rec"
+  ],
+  "refs Fixture.Kinds.point3_size": [
+   "Fixture.Kinds.Point3",
+   "Eq",
+   "Nat",
+   "Fixture.Point.size",
+   "Fixture.Kinds.Point3 toPoint",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point x",
+   "Fixture.Point y"
+  ],
+  "refs Fixture.Kinds.pong": [
+   "Nat",
+   "ite",
+   "Eq",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "instDecidableEqNat",
+   "Fixture.Kinds.ping _unsafe_rec",
+   "HSub.hSub",
+   "instHSub",
+   "instSubNat",
+   "Fixture.Kinds.pong _unsafe_rec"
+  ],
+  "refs Fixture.Kinds.secret": [
+   "Nat"
+  ],
+  "refs Fixture.Kinds.sumTo": [
+   "Nat",
+   "Fixture.Kinds.sumTo.go",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.Kinds.sumTo.go": [
+   "Nat",
+   "Nat.brecOn",
+   "Fixture.Kinds.sumTo.go _f",
+   "Nat.below",
+   "Fixture.Kinds.sumTo.go match_1",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Nat.succ",
+   "PProd",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Nat.casesOn"
+  ],
+  "refs Fixture.Kinds.two_lt_three": [
+   "LT.lt",
+   "Nat",
+   "instLTNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.Kinds.visible": [
+   "Nat",
+   "Fixture.Kinds.hidden"
+  ],
+  "refs Fixture.Kinds.visibleOld": [
+   "Nat",
+   "Fixture.Kinds.visible"
+  ],
+  "refs Fixture.Kinds.visible_eq": [
+   "Nat",
+   "Eq",
+   "Fixture.Kinds.visible",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.Lawful": [
+   "Eq",
+   "Fixture.Lawful"
+  ],
+  "refs Fixture.Pair": [
+   "Fixture.Pair Tag",
+   "Ne",
+   "Fixture.Pair Tag.left",
+   "Fixture.Pair Tag.right",
+   "DecidableEq",
+   "dite",
+   "Decidable",
+   "Eq",
+   "Nat",
+   "Fixture.Pair Tag.ctorIdx",
+   "instDecidableEqNat",
+   "Decidable.isTrue",
+   "Fixture.Pair instDecidableEqTag._proof_1",
+   "Not",
+   "Decidable.isFalse",
+   "Fixture.Pair instDecidableEqTag._proof_2",
+   "Fixture.Pair Tag.casesOn"
+  ],
+  "refs Fixture.Point": [
+   "Nat",
+   "Fixture.Point"
+  ],
+  "refs Fixture.Point.size": [
+   "Fixture.Point",
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point x",
+   "Fixture.Point y"
+  ],
+  "refs Fixture.Pos": [
+   "Nat",
+   "autoParam",
+   "LT.lt",
+   "instLTNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Fixture.Pos pos._autoParam",
+   "Fixture.Pos"
+  ],
+  "refs Fixture.Sized": [
+   "Fixture.Point",
+   "Eq",
+   "Nat",
+   "Subtype.val",
+   "LT.lt",
+   "instLTNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Fixture.succSize",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point.size",
+   "Fixture.Sized"
+  ],
+  "refs Fixture.bad": [
+   "False"
+  ],
+  "refs Fixture.bounded": [
+   "Fixture.Point",
+   "Subtype",
+   "Nat",
+   "LE.le",
+   "instLENat",
+   "Fixture.Point x",
+   "Subtype.mk",
+   "Fixture.Point.size",
+   "Fixture.size_le"
+  ],
+  "refs Fixture.bumped": [
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.classify": [
+   "Nat",
+   "Bool",
+   "Fixture.classify match_1",
+   "Unit",
+   "Bool.false",
+   "Bool.true",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Nat.succ",
+   "Nat.casesOn",
+   "Unit.unit"
+  ],
+  "refs Fixture.commandTagged_": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.const",
+   "Lean.Macro",
+   "Lean.Syntax",
+   "ite",
+   "Lean.MacroM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Functor.map",
+   "ReaderT.instFunctorOfMonad",
+   "Lean.Macro.Context",
+   "EStateM",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "EStateM.instMonad",
+   "Lean.TSyntax.raw",
+   "Lean.Syntax.Ident",
+   "Lean.mkIdent",
+   "HAppend.hAppend",
+   "Lean.Name",
+   "instHAppendOfAppend",
+   "Lean.instAppendName",
+   "Lean.TSyntax.getId",
+   "Fixture.commandTagged_ Fixture._aux_Fixture_Tagged___macroRules_Fixture_commandTagged__1.match_1",
+   "Prod",
+   "Prod.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "ReaderT.instMonad",
+   "Lean.SourceInfo",
+   "Lean.MonadRef.mkInfoFromRefPos",
+   "Lean.Macro.instMonadRefMacroM",
+   "Lean.MacroScope",
+   "Lean.MonadQuotation.getCurrMacroScope",
+   "Lean.Macro.instMonadQuotationMacroM",
+   "Lean.MonadQuotation.getContext",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.Syntax.node3",
+   "Lean.Syntax.node2",
+   "Lean.Name.mkStr4",
+   "Lean.Syntax.node7",
+   "Lean.Syntax.node",
+   "Array.mkArray0",
+   "Lean.Syntax.atom",
+   "Lean.mkNode",
+   "List.toArray",
+   "Lean.identKind",
+   "Lean.mkNullNode",
+   "Lean.Syntax.node1",
+   "Lean.Syntax.node5",
+   "Lean.Syntax.ident",
+   "String.toRawSubstring'",
+   "Lean.addMacroScope",
+   "Lean.Syntax.Preresolved",
+   "Lean.Syntax.Preresolved.decl",
+   "String",
+   "Lean.Syntax.node4",
+   "Lean.Name.mkStr3",
+   "MonadExcept.throw",
+   "instMonadExceptOfMonadExceptOf",
+   "ReaderT.instMonadExceptOf",
+   "EStateM.instMonadExceptOfOfBacktrackable",
+   "PUnit",
+   "EStateM.nonBacktrackable",
+   "Lean.Macro.Exception.unsupportedSyntax",
+   "Prod.casesOn"
+  ],
+  "refs Fixture.dbl_eq": [
+   "Nat",
+   "Eq",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "HMul.hMul",
+   "instHMul",
+   "instMulNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.double": [
+   "Fixture.Point",
+   "Fixture.Point mk",
+   "HMul.hMul",
+   "Nat",
+   "instHMul",
+   "instMulNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Fixture.Point x",
+   "Fixture.Point y"
+  ],
+  "refs Fixture.elabTrip": [
+   "Lean.Elab.Term.TermElab",
+   "Lean.Syntax",
+   "Option",
+   "Lean.Expr",
+   "ite",
+   "Lean.Elab.Term.TermElabM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr2",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "Lean.Name.mkStr1",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "Lean.Elab.Term.instMonadTermElabM",
+   "Lean.Elab.Term.elabTerm",
+   "Lean.TSyntax.raw",
+   "Option.some",
+   "Lean.mkConst",
+   "Lean.Level",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.Elab.Term.Context",
+   "StateRefT'",
+   "IO.RealWorld",
+   "Lean.Elab.Term.State",
+   "Lean.Meta.MetaM",
+   "StateRefT'.instMonad",
+   "Lean.Meta.instMonadMetaM",
+   "Lean.mkApp2",
+   "Lean.mkNatLit",
+   "Lean.Elab.throwUnsupportedSyntax",
+   "ReaderT.instMonadExceptOf",
+   "Lean.Exception",
+   "StateRefT'.instMonadExceptOf",
+   "Lean.Meta.Context",
+   "Lean.Meta.State",
+   "Lean.Core.CoreM",
+   "Lean.instMonadExceptOfExceptionCoreM"
+  ],
+  "refs Fixture.firstPlus": [
+   "Array",
+   "Nat",
+   "LT.lt",
+   "instLTNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Array.size",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "GetElem.getElem",
+   "Array.instGetElemNatLtSize"
+  ],
+  "refs Fixture.firstTag": [
+   "Fixture.Pair Tag",
+   "Fixture.Pair Tag.left"
+  ],
+  "refs Fixture.four_mul": [
+   "Nat",
+   "Eq",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "HMul.hMul",
+   "instHMul",
+   "instMulNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.fromFalse": [
+   "False",
+   "Nat",
+   "False.elim"
+  ],
+  "refs Fixture.halve": [
+   "Nat",
+   "WellFounded.Nat.fix",
+   "InvImage",
+   "LT.lt",
+   "instLTNat",
+   "dite",
+   "Eq",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "instDecidableEqNat",
+   "Not",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "HDiv.hDiv",
+   "instHDiv",
+   "Nat.instDiv",
+   "Fixture.halve _proof_1"
+  ],
+  "refs Fixture.helper": [
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.helper_eq": [
+   "Nat",
+   "Eq",
+   "Fixture.helper"
+  ],
+  "refs Fixture.instDecidableEqPoint": [
+   "DecidableEq",
+   "Fixture.Point",
+   "dite",
+   "Decidable",
+   "Eq",
+   "And",
+   "Nat",
+   "Fixture.Point x",
+   "Fixture.Point y",
+   "instDecidableAnd",
+   "instDecidableEqNat",
+   "Decidable.isTrue",
+   "Fixture.instDecidableEqPoint _proof_1",
+   "Not",
+   "Decidable.isFalse",
+   "Fixture.instDecidableEqPoint _proof_2"
+  ],
+  "refs Fixture.instInhabitedPoint": [
+   "Inhabited",
+   "Fixture.Point",
+   "Inhabited.mk",
+   "Fixture.Point mk",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.instLawfulNat": [
+   "Fixture.Lawful",
+   "Nat",
+   "Fixture.Lawful mk",
+   "Nat.add",
+   "Nat.add_assoc",
+   "Nat.add_comm"
+  ],
+  "refs Fixture.leaf": [
+   "Fixture.Point",
+   "Eq",
+   "Nat",
+   "Subtype.val",
+   "LE.le",
+   "instLENat",
+   "Fixture.Point x",
+   "Fixture.bounded",
+   "Fixture.Point.size"
+  ],
+  "refs Fixture.main_thm": [
+   "Fixture.Point",
+   "Eq",
+   "Nat",
+   "Fixture.Point.size",
+   "Fixture.double",
+   "HMul.hMul",
+   "instHMul",
+   "instMulNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.onePos": [
+   "Fixture.Pos",
+   "Fixture.Pos mk",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Fixture.onePos _proof_1"
+  ],
+  "refs Fixture.origin": [
+   "Fixture.Point",
+   "Inhabited.default",
+   "Fixture.instInhabitedPoint"
+  ],
+  "refs Fixture.picked": [
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.quadruple": [
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat"
+  ],
+  "refs Fixture.same": [
+   "Fixture.Point",
+   "Bool",
+   "Decidable.decide",
+   "Eq",
+   "Fixture.instDecidableEqPoint"
+  ],
+  "refs Fixture.size_comm": [
+   "Fixture.Point",
+   "Eq",
+   "Nat",
+   "Fixture.Point.size",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point y",
+   "Fixture.Point x"
+  ],
+  "refs Fixture.size_le": [
+   "Fixture.Point",
+   "LE.le",
+   "Nat",
+   "instLENat",
+   "Fixture.Point x",
+   "Fixture.Point.size"
+  ],
+  "refs Fixture.size_succ_pos": [
+   "Fixture.Point",
+   "LT.lt",
+   "Nat",
+   "instLTNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point.size"
+  ],
+  "refs Fixture.size_twice": [
+   "Fixture.Point",
+   "Eq",
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point.size",
+   "Fixture.Point y",
+   "Fixture.Point x"
+  ],
+  "refs Fixture.sized": [
+   "Fixture.Point",
+   "Nat",
+   "Fixture.Point.size"
+  ],
+  "refs Fixture.square": [
+   "Nat",
+   "Nat.mul"
+  ],
+  "refs Fixture.succSize": [
+   "Fixture.Point",
+   "Subtype",
+   "Nat",
+   "LT.lt",
+   "instLTNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Subtype.mk",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point.size",
+   "Fixture.size_succ_pos"
+  ],
+  "refs Fixture.succSize_val": [
+   "Fixture.Point",
+   "Eq",
+   "Nat",
+   "Subtype.val",
+   "LT.lt",
+   "instLTNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "Fixture.succSize",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "Fixture.Point.size"
+  ],
+  "refs Fixture.termBump_.Notation": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr",
+   "Lean.Name.mkNum",
+   "Lean.Name.anonymous",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat",
+   "Lean.Macro",
+   "Lean.Syntax",
+   "ite",
+   "Lean.MacroM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "ReaderT.instMonad",
+   "Lean.Macro.Context",
+   "EStateM",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "EStateM.instMonad",
+   "Lean.SourceInfo",
+   "Lean.MonadRef.mkInfoFromRefPos",
+   "Lean.Macro.instMonadRefMacroM",
+   "Lean.MacroScope",
+   "Lean.MonadQuotation.getCurrMacroScope",
+   "Lean.Macro.instMonadQuotationMacroM",
+   "Lean.Name",
+   "Lean.MonadQuotation.getContext",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.TSyntax.raw",
+   "Lean.Syntax.node3",
+   "Lean.Syntax.atom",
+   "Lean.Syntax.node1",
+   "MonadExcept.throw",
+   "instMonadExceptOfMonadExceptOf",
+   "ReaderT.instMonadExceptOf",
+   "EStateM.instMonadExceptOfOfBacktrackable",
+   "PUnit",
+   "EStateM.nonBacktrackable",
+   "Lean.Macro.Exception.unsupportedSyntax"
+  ],
+  "refs Fixture.termDbl!_": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat"
+  ],
+  "refs Fixture.termDbl!_.macro_rules": [
+   "Lean.Macro",
+   "Lean.Syntax",
+   "ite",
+   "Lean.MacroM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr2",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "Lean.Name.mkStr1",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "ReaderT",
+   "Lean.Macro.Context",
+   "EStateM",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "Monad.toBind",
+   "ReaderT.instMonad",
+   "EStateM.instMonad",
+   "Fixture.twiceOf",
+   "Pure.pure",
+   "Applicative.toPure",
+   "Monad.toApplicative",
+   "Lean.TSyntax.raw",
+   "MonadExcept.throw",
+   "instMonadExceptOfMonadExceptOf",
+   "ReaderT.instMonadExceptOf",
+   "EStateM.instMonadExceptOfOfBacktrackable",
+   "PUnit",
+   "EStateM.nonBacktrackable",
+   "Lean.Macro.Exception.unsupportedSyntax"
+  ],
+  "refs Fixture.termPick!_": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat"
+  ],
+  "refs Fixture.termPick!_.macro_rules": [
+   "Lean.Macro",
+   "Lean.Syntax",
+   "ite",
+   "Lean.MacroM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr2",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "Lean.Name.mkStr1",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "ReaderT.instMonad",
+   "Lean.Macro.Context",
+   "EStateM",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "EStateM.instMonad",
+   "Lean.SourceInfo",
+   "Lean.MonadRef.mkInfoFromRefPos",
+   "Lean.Macro.instMonadRefMacroM",
+   "Lean.MacroScope",
+   "Lean.MonadQuotation.getCurrMacroScope",
+   "Lean.Macro.instMonadQuotationMacroM",
+   "Lean.Name",
+   "Lean.MonadQuotation.getContext",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.TSyntax.raw",
+   "Lean.Syntax.node3",
+   "Lean.Syntax.atom",
+   "Lean.Syntax.node1",
+   "MonadExcept.throw",
+   "instMonadExceptOfMonadExceptOf",
+   "ReaderT.instMonadExceptOf",
+   "EStateM.instMonadExceptOfOfBacktrackable",
+   "PUnit",
+   "EStateM.nonBacktrackable",
+   "Lean.Macro.Exception.unsupportedSyntax"
+  ],
+  "refs Fixture.termPick!_.macro_rules_2": [
+   "Lean.Macro",
+   "Lean.Syntax",
+   "ite",
+   "Lean.MacroM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr2",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "cond",
+   "Bool.or",
+   "Bool.false",
+   "Lean.Name.mkStr1",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "ReaderT.instMonad",
+   "Lean.Macro.Context",
+   "EStateM",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "EStateM.instMonad",
+   "Lean.SourceInfo",
+   "Lean.MonadRef.mkInfoFromRefPos",
+   "Lean.Macro.instMonadRefMacroM",
+   "Lean.MacroScope",
+   "Lean.MonadQuotation.getCurrMacroScope",
+   "Lean.Macro.instMonadQuotationMacroM",
+   "Lean.Name",
+   "Lean.MonadQuotation.getContext",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.TSyntax.raw",
+   "Lean.Syntax.node3",
+   "Lean.numLitKind",
+   "Lean.Syntax.atom",
+   "Lean.Syntax.node1",
+   "MonadExcept.throw",
+   "instMonadExceptOfMonadExceptOf",
+   "ReaderT.instMonadExceptOf",
+   "EStateM.instMonadExceptOfOfBacktrackable",
+   "PUnit",
+   "EStateM.nonBacktrackable",
+   "Lean.Macro.Exception.unsupportedSyntax"
+  ],
+  "refs Fixture.termQuad!_": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat"
+  ],
+  "refs Fixture.termQuad!_.macro_rules": [
+   "Lean.Macro",
+   "Lean.Syntax",
+   "ite",
+   "Lean.MacroM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr2",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "Lean.Name.mkStr1",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "ReaderT.instMonad",
+   "Lean.Macro.Context",
+   "EStateM",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "EStateM.instMonad",
+   "Lean.SourceInfo",
+   "Lean.MonadRef.mkInfoFromRefPos",
+   "Lean.Macro.instMonadRefMacroM",
+   "Lean.MacroScope",
+   "Lean.MonadQuotation.getCurrMacroScope",
+   "Lean.Macro.instMonadQuotationMacroM",
+   "Lean.Name",
+   "Lean.MonadQuotation.getContext",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.TSyntax.raw",
+   "Lean.Syntax.node2",
+   "Lean.Syntax.atom",
+   "Lean.Syntax.node3",
+   "Lean.Name.mkStr4",
+   "Lean.Syntax.node1",
+   "Lean.Syntax.ident",
+   "String.toRawSubstring'",
+   "Lean.addMacroScope",
+   "Lean.Name.anonymous",
+   "Lean.Syntax.Preresolved",
+   "Lean.Syntax.Preresolved.namespace",
+   "MonadExcept.throw",
+   "instMonadExceptOfMonadExceptOf",
+   "ReaderT.instMonadExceptOf",
+   "EStateM.instMonadExceptOfOfBacktrackable",
+   "PUnit",
+   "EStateM.nonBacktrackable",
+   "Lean.Macro.Exception.unsupportedSyntax"
+  ],
+  "refs Fixture.termSq!_": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat"
+  ],
+  "refs Fixture.termSq!_.elab_rules": [
+   "Lean.Elab.Term.TermElab",
+   "Lean.Syntax",
+   "Option",
+   "Lean.Expr",
+   "ite",
+   "Lean.Elab.Term.TermElabM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr2",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "Lean.Name.mkStr1",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "Lean.Elab.Term.instMonadTermElabM",
+   "Lean.Elab.Term.elabTerm",
+   "Lean.TSyntax.raw",
+   "Option.some",
+   "Lean.mkConst",
+   "Lean.Level",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.Elab.Term.Context",
+   "StateRefT'",
+   "IO.RealWorld",
+   "Lean.Elab.Term.State",
+   "Lean.Meta.MetaM",
+   "StateRefT'.instMonad",
+   "Lean.Meta.instMonadMetaM",
+   "Lean.mkApp2",
+   "Lean.Elab.throwUnsupportedSyntax",
+   "ReaderT.instMonadExceptOf",
+   "Lean.Exception",
+   "StateRefT'.instMonadExceptOf",
+   "Lean.Meta.Context",
+   "Lean.Meta.State",
+   "Lean.Core.CoreM",
+   "Lean.instMonadExceptOfExceptionCoreM"
+  ],
+  "refs Fixture.termWrap!_": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat"
+  ],
+  "refs Fixture.termWrap!_.elab_rules": [
+   "Lean.Elab.Term.TermElab",
+   "Lean.Syntax",
+   "Option",
+   "Lean.Expr",
+   "ite",
+   "Lean.Elab.Term.TermElabM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr2",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "Lean.Name.mkStr1",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Bind.bind",
+   "Monad.toBind",
+   "Lean.Elab.Term.instMonadTermElabM",
+   "Lean.Elab.liftMacroM",
+   "Lean.Elab.Term.instMonadMacroAdapterTermElabM",
+   "Lean.instMonadEnvOfMonadLift",
+   "StateRefT'",
+   "IO.RealWorld",
+   "Lean.Elab.Term.State",
+   "Lean.Meta.MetaM",
+   "ReaderT.instMonadLift",
+   "Lean.Elab.Term.Context",
+   "StateRefT'.instMonadLift",
+   "Lean.Meta.instMonadEnvMetaM",
+   "Lean.instMonadRecDepthReaderT",
+   "Lean.instMonadRecDepthStateRefT'OfMonad",
+   "Lean.Meta.instMonadMetaM",
+   "Lean.Meta.State",
+   "Lean.Core.CoreM",
+   "Lean.Meta.Context",
+   "Lean.Core.instMonadCoreM",
+   "Lean.Core.instMonadRecDepthCoreM",
+   "Lean.MonadError.mk",
+   "ReaderT.instMonadExceptOf",
+   "Lean.Exception",
+   "StateRefT'.instMonadExceptOf",
+   "Lean.instMonadExceptOfExceptionCoreM",
+   "Lean.MonadQuotation.toMonadRef",
+   "Lean.Elab.MonadMacroAdapter.toMonadQuotation",
+   "Lean.Elab.Term.instAddErrorMessageContextTermElabM",
+   "Lean.instMonadResolveNameOfMonadLift",
+   "Lean.Core.instMonadResolveNameCoreM",
+   "Lean.instMonadTraceOfMonadLift",
+   "Lean.Core.instMonadTraceCoreM",
+   "Lean.instMonadOptionsOfMonadLift",
+   "Lean.Core.instMonadOptionsCoreM",
+   "Lean.instAddMessageContextOfMonadLift",
+   "Lean.Meta.instAddMessageContextMetaM",
+   "instMonadLiftTOfMonadLift",
+   "IO",
+   "Lean.Core.instMonadLiftIOCoreM",
+   "instMonadLiftT",
+   "Lean.expandMacros",
+   "Lean.TSyntax.raw",
+   "bne",
+   "Lean.Name.instBEq",
+   "Lean.Name.mkStr4",
+   "Lean.Elab.Term.elabTerm",
+   "Option.none",
+   "Lean.Elab.throwUnsupportedSyntax"
+  ],
+  "refs Fixture.three": [
+   "Fin",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Fin.mk",
+   "Fixture.three _proof_1"
+  ],
+  "refs Fixture.tripStx": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat"
+  ],
+  "refs Fixture.tripled": [
+   "Nat",
+   "Nat.mul",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs Fixture.twiceOf": [
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "Lean.Name.mkStr1",
+   "List.nil",
+   "Lean.MacroM",
+   "Bind.bind",
+   "Monad.toBind",
+   "ReaderT.instMonad",
+   "Lean.Macro.Context",
+   "EStateM",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "EStateM.instMonad",
+   "Lean.SourceInfo",
+   "Lean.MonadRef.mkInfoFromRefPos",
+   "Lean.Macro.instMonadRefMacroM",
+   "Lean.MacroScope",
+   "Lean.MonadQuotation.getCurrMacroScope",
+   "Lean.Macro.instMonadQuotationMacroM",
+   "Lean.Name",
+   "Lean.MonadQuotation.getContext",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.TSyntax.mk",
+   "Lean.Syntax.node3",
+   "Lean.TSyntax.raw",
+   "Lean.Syntax.atom"
+  ],
+  "refs Fixture.twoPos": [
+   "Fixture.Pos",
+   "Fixture.Pos mk",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Fixture.twoPos _proof_1"
+  ],
+  "refs Fixture.withK": [
+   "Inhabited",
+   "Nat",
+   "Prod",
+   "Prod.mk",
+   "ite",
+   "Eq",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "instDecidableEqNat",
+   "Inhabited.default"
+  ],
+  "refs Fixture.wrapped": [
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat"
+  ],
+  "refs Fixture.«term‖_‖ₚ»": [
+   "Lean.ParserDescr",
+   "Lean.ParserDescr.node",
+   "Lean.Name.mkStr2",
+   "OfNat.ofNat",
+   "Nat",
+   "instOfNatNat",
+   "Lean.ParserDescr.binary",
+   "Lean.Name.mkStr1",
+   "Lean.ParserDescr.symbol",
+   "Lean.ParserDescr.cat",
+   "Lean.PrettyPrinter.Unexpander",
+   "Lean.Syntax",
+   "ite",
+   "Lean.PrettyPrinter.UnexpandM",
+   "Eq",
+   "Bool",
+   "Lean.Syntax.isOfKind",
+   "Lean.Name.mkStr4",
+   "Bool.true",
+   "instDecidableEqBool",
+   "Lean.Syntax.getArg",
+   "cond",
+   "Bool.or",
+   "Bool.false",
+   "Lean.Syntax.matchesNull",
+   "Lean.TSyntax",
+   "List.cons",
+   "Lean.SyntaxNodeKind",
+   "List.nil",
+   "Lean.TSyntax.mk",
+   "Lean.withRef",
+   "ReaderT.instMonad",
+   "EStateM",
+   "Unit",
+   "EStateM.instMonad",
+   "Lean.MonadQuotation.toMonadRef",
+   "Lean.PrettyPrinter.instMonadQuotationUnexpandM",
+   "Lean.TSyntax.raw",
+   "Bind.bind",
+   "Monad.toBind",
+   "Lean.SourceInfo",
+   "Lean.MonadRef.mkInfoFromRefPos",
+   "Lean.MacroScope",
+   "Lean.MonadQuotation.getCurrMacroScope",
+   "Lean.Name",
+   "Lean.MonadQuotation.getContext",
+   "Pure.pure",
+   "Applicative.toPure",
+   "ReaderT.instApplicativeOfMonad",
+   "Lean.Syntax.node3",
+   "Lean.Syntax.atom",
+   "MonadExcept.throw",
+   "instMonadExceptOfMonadExceptOf",
+   "ReaderT.instMonadExceptOf",
+   "EStateM.instMonadExceptOfOfBacktrackable",
+   "PUnit",
+   "EStateM.nonBacktrackable",
+   "Unit.unit",
+   "Lean.Macro",
+   "Lean.MacroM",
+   "Lean.Macro.Context",
+   "Lean.Macro.Exception",
+   "Lean.Macro.State",
+   "Lean.Macro.instMonadRefMacroM",
+   "Lean.Macro.instMonadQuotationMacroM",
+   "Lean.Syntax.node2",
+   "Lean.Syntax.ident",
+   "String.toRawSubstring'",
+   "Lean.addMacroScope",
+   "Lean.Syntax.Preresolved",
+   "Lean.Syntax.Preresolved.decl",
+   "Lean.Name.mkStr3",
+   "String",
+   "Lean.Syntax.node1",
+   "Lean.Macro.Exception.unsupportedSyntax"
+  ],
+  "refs FixtureModule.helper": [
+   "Nat",
+   "HMul.hMul",
+   "instHMul",
+   "instMulNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "refs FixtureModule.inSection": [
+   "Nat",
+   "FixtureModule.triple"
+  ],
+  "refs FixtureModule.triple": [
+   "Nat",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat"
+  ],
+  "refs FixtureModule.use_viaHelper": [
+   "Nat",
+   "Eq",
+   "FixtureModule.viaHelper",
+   "HAdd.hAdd",
+   "instHAdd",
+   "instAddNat",
+   "OfNat.ofNat",
+   "instOfNatNat",
+   "HMul.hMul",
+   "instHMul",
+   "instMulNat"
+  ],
+  "refs FixtureModule.viaHelper": [
+   "Nat",
+   "FixtureModule.helper"
+  ],
+  "refs FixtureModule.viaHelper_eq": [
+   "Nat",
+   "Eq",
+   "FixtureModule.viaHelper",
+   "HMul.hMul",
+   "instHMul",
+   "instMulNat",
+   "OfNat.ofNat",
+   "instOfNatNat"
+  ],
+  "stats.folded": 230,
+  "stats.generated": 11,
+  "stats.grammar": 6,
+  "stats.meta": 2,
+  "stats.metaDropped": 0,
+  "stats.notation": 15
+ }
+}

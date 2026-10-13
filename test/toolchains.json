@@ -1,0 +1,5 @@
+{
+  "policy": "The last six or so stable Lean releases, and whatever the showcase project needs (v4.28.0, for the sphere packing formalization); the newest patch of each minor release.",
+  "floor": "v4.28.0",
+  "toolchains": ["v4.28.0", "v4.29.1", "v4.30.0", "v4.31.0", "v4.32.2", "v4.33.1", "v4.34.1", "v4.35.0"]
+}

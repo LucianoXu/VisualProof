@@ -1,0 +1,56 @@
+# Security
+
+## Reporting a vulnerability
+
+Report it privately, through GitHub's private vulnerability reporting: the repository's
+**Security** tab, **Report a vulnerability**. Please do not open a public issue for it. Fixes go
+into the latest release only.
+
+## What VisualProof trusts
+
+- **The project it serves.** Reading a project runs its Lean code, as building it does: the
+  extractor and the usage pass import its modules, which runs their `initialize` declarations, and
+  the usage pass elaborates each module again, which runs the project's macros and elaborators.
+  Serve only a project you would build yourself.
+- **The project's toolchain**, which elan installs, and Lean's own kernel and language server.
+
+## What a running server exposes
+
+- **The network.** It listens on `127.0.0.1` unless given `--host`. Beyond this machine, let in
+  only the people meant to be there: `--access-key-file` admits those given the access link
+  (`/k/<key>`) or a personal link made in Share (`/i/vpp_…`, revoked on its own), and answers
+  everything else 404; or put an authenticating proxy in front. Agents send the key, or a token
+  made in Share (`vpa_…`), which reaches the agents' API alone and lasts a few days.
+- **Plain HTTP.** The server speaks HTTP only: the key and the cookies cross the network in the
+  clear. Beyond a trusted network, put a TLS reverse proxy (or a VPN such as Tailscale) in front.
+  Its cookies are `HttpOnly` and `SameSite=Lax`.
+- **`--identity-header`** takes a person's name from a header as it comes. Use it only when the
+  proxy that sets it is the only way to reach the server.
+- **Lean, on the server.** Hovers and the agents' `describe` and `print` write `#check` and `#print`
+  of a name into a scratch file Lean's language server elaborates, in the cache directory. Only a
+  name that passes `isDeclName` (a dotted Lean name) is ever written there: no Lean source from a
+  page or an agent reaches Lean.
+- **Fetching by URL.** Whoever can write a note can make the server fetch an address for the
+  library. It fetches `http` and `https` only, never an address that is loopback, private,
+  link-local, reserved or the server's own, checked on every address the name resolves to, on the
+  connection itself (against DNS rebinding) and again at every redirect (at most 5); at most 50 MB,
+  within 60 s.
+- **Uploads.** PDFs and images of at most 50 MB each, the library at most `--library-limit` (2 GB
+  by default). The server reads PDFs with Poppler: keep it up to date. Pages draw them with pdf.js,
+  whose script engine is never served, so a PDF's JavaScript does not run.
+- **Agents.** A token has a level: `read`, `advise` or `full` (and `--agents` caps it for the whole
+  server). At `full` an agent can do whatever a person can through the page; its opinions stay
+  advice and are never counted.
+
+## Secrets at rest
+
+The site folder (`--site`) holds the agents' tokens and the personal links; the access key is
+wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
+folder up as you would any secret, and never commit it.
+
+## Deploying
+
+- Run the server as an unprivileged user, never as root.
+- Give it `--access-key-file`, or an authenticating proxy that is the only way in.
+- Put TLS in front of anything that leaves a trusted network.
+- Keep the project's toolchain, Poppler and Node up to date.

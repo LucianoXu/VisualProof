@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VisualProof</title>
+  <link rel="icon" href="data:,">
+  <script>
+    // the theme before the first paint (web/src/theme.ts keeps it after): light, dark, or the system's
+    try {
+      var t = localStorage.getItem("visualproof:theme");
+      document.documentElement.dataset.theme = t === "light" || t === "dark" ? t : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    } catch (e) {
+      document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+  </script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-mode="tcb">
+  <canvas id="canvas"></canvas>
+  <canvas id="labels"></canvas>
+  <div id="cards"></div>
+  <!-- the notes on the board, over the canvas at a fixed size (web/src/sticky.ts) -->
+  <div id="stickies"></div>
+
+  <header id="bar" class="glass">
+    <div class="brand"><span class="nav"><button id="nav-back" title="Back (Alt ←)" aria-label="Back" disabled><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><button id="nav-fwd" title="Forward (Alt →)" aria-label="Forward" disabled><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button></span><span class="logo">VisualProof</span><span id="project" class="project"></span><span id="snapshot" class="snapshot" hidden></span><button id="build" class="build-pill" hidden title="Build status (b)"><span class="b-dot"></span><span class="b-text"></span></button></div>
+    <div class="right">
+      <div class="search-wrap">
+        <input id="search" type="search" placeholder="Search  /" title="Search names, statements and docstrings (/)" autocomplete="off" spellcheck="false">
+        <div id="results" class="glass" hidden></div>
+      </div>
+      <div class="share-wrap">
+        <button id="share-btn" class="act-btn" title="Share: a link to this view, a personal link inviting someone by name, or a prompt for an AI agent with a token of its own">
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2M9 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8"/></svg>
+          <span>Share</span>
+        </button>
+        <div id="share-pop" class="glass" role="dialog" aria-label="Share this view" hidden></div>
+      </div>
+      <!-- the library of papers and images (AttachmentSpec.md, web/src/library.ts) -->
+      <div class="library-wrap">
+        <button id="library-btn" class="act-btn" aria-haspopup="dialog" aria-expanded="false" title="Library: the references — papers and images — that explain the code, linked to declarations and clusters">
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 2.8h3.2v10.4H3zM7.4 2.8h3v10.4h-3zM11 3.4l2.4-.6 1.5 10-2.4.6z"/></svg>
+          <span>Library</span>
+        </button>
+        <div id="library-pop" class="glass" role="dialog" aria-label="The library" hidden></div>
+      </div>
+      <!-- a document of targets, typeset with LaTeX (web/src/exportmodal.ts) -->
+      <button id="export-btn" class="act-btn" title="Export: this view as a document, typeset with LaTeX">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 2.5v7.5M5 7l3 3 3-3M3 11.5v1.8h10v-1.8"/></svg>
+        <span>Export</span>
+      </button>
+      <button id="activity-btn" class="act-btn act-icon" title="Activity: what happened on this server" aria-label="Activity">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 8h2.5l1.5-4 3 8 1.5-4H14"/></svg>
+        <span id="activity-badge" class="act-badge" hidden></span>
+      </button>
+      <!-- the others' initials: a person's opens their menu, to follow them or ask them to follow
+           you; under them, what your request to follow came to (web/src/peermenu.ts,
+           web/src/askfollow.ts) -->
+      <div class="peers-wrap">
+        <div id="peers" class="peers" hidden></div>
+        <div id="peer-menu" class="glass" role="menu" aria-label="Follow, or ask to follow you" hidden></div>
+        <div id="ask-line" class="ask-line glass" role="status" aria-live="polite" hidden></div>
+      </div>
+      <!-- the reader's name, and the menu under it: the name, and visibility (web/src/whomenu.ts) -->
+      <div class="who-wrap">
+        <button id="who" class="who" hidden></button>
+        <div id="who-menu" class="glass" role="menu" aria-label="Your name and visibility" hidden></div>
+      </div>
+      <button id="help-btn" class="help-btn" title="Keys and gestures, and the tour (?)" aria-label="Help">?</button>
+    </div>
+    <div id="progress"><div></div></div>
+  </header>
+  <!-- the top: your tabs (the views you have open) and your mode, how a click selects — yours alone -->
+  <div id="viewbar">
+    <div id="tabs" class="tabs" role="tablist" aria-label="Your views"></div>
+    <div class="views-wrap">
+      <button id="views-btn" class="views-btn" aria-haspopup="menu" title="Views: a new one, a copy of this one, its name; every view kept on this server">Views<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      <div id="views-menu" class="glass" role="menu" hidden></div>
+    </div>
+    <!-- the Time Machine's bar, in the tabs' place while it is open (web/src/timemachine.ts) -->
+    <div id="tmbar" class="glass" role="toolbar" aria-label="Time Machine" hidden></div>
+    <!-- the review's focus on this view (ViewSpec decision 28): the view's, or the reader's own
+         (web/src/focus.ts); it shows in the Time Machine too, where the review is refused -->
+    <div class="focus-wrap">
+      <button id="focus-btn" class="views-btn focus-btn" aria-haspopup="menu" aria-expanded="false"></button>
+      <div id="focus-menu" class="glass" role="menu" aria-label="The review's focus" hidden></div>
+    </div>
+    <span class="vb-gap"></span>
+    <span class="light-l">Mode</span>
+    <!-- what each mode does shows while the pointer is on its button (#mode-tip, web/src/main.ts);
+         Rests on's steps show beside it while it is the mode (ViewSpec decision 20) -->
+    <nav id="lightup" class="seg" aria-label="Mode: how a click selects">
+      <button data-mode="plain" aria-describedby="mode-tip">Selection</button>
+      <span id="rests" class="rests">
+        <button id="rests-btn" aria-describedby="mode-tip">Rests on</button>
+        <span id="rests-steps" class="steps" role="group" aria-label="Rests on: how much of it" hidden>
+          <button data-mode="deps" aria-describedby="mode-tip">Uses</button>
+          <button data-mode="tcb" aria-describedby="mode-tip">TCB</button>
+          <button data-mode="keys" aria-describedby="mode-tip">Keys</button>
+        </span>
+      </span>
+      <button data-mode="apps" aria-describedby="mode-tip">Used by</button>
+    </nav>
+  </div>
+  <!-- what you selected, under the modes and over the panel: one chip per click (web/src/selbar.ts) -->
+  <div id="selbar" class="glass" role="group" aria-label="Your selection" hidden></div>
+  <div id="build-pop" class="glass" hidden></div>
+  <!-- what changed since the build the Time Machine shows, as its counts open it; and the note of a
+       view kept at a past build -->
+  <div id="tm-list" class="glass" role="dialog" aria-label="What changed since" hidden></div>
+  <div id="tm-kept" class="glass" hidden></div>
+  <div id="trust-pop" class="glass" role="dialog" aria-label="Trust without review" hidden></div>
+  <div id="hint" class="hint" hidden></div>
+  <div id="mode-tip" class="mode-tip glass" role="tooltip" hidden></div>
+  <!-- the review strip, wherever the review has a focus: one line of progress -->
+  <div id="lensbar" class="glass" hidden>
+    <span id="lens-title"></span>
+    <span id="lens-meta"></span>
+  </div>
+
+  <!-- the left: the targets, and the board's cluster tree; the board's settings and what is trusted
+       open from the two buttons over the tree (web/src/popover.ts, besideSide; web/src/main.ts) -->
+  <aside id="side" class="glass" aria-label="The board">
+    <div id="targets"></div>
+    <div class="side-tools">
+      <span id="side-what" class="side-what"></span>
+      <button id="board-btn" class="sbtn side-tool" aria-haspopup="dialog" aria-expanded="false" title="This board, shared with everyone on it: what is on it, its clustering, depth and layout">⚙ Board</button>
+      <button id="trusted-btn" class="sbtn side-tool" aria-haspopup="dialog" aria-expanded="false" title="What is trusted without review: not counted, in need of no opinion"></button>
+    </div>
+    <div id="board-note" class="board-note" hidden></div>
+    <div id="outline"></div>
+  </aside>
+  <!-- the board's settings, shared with everyone on it: its scope, clustering, depth, Re-layout -->
+  <div id="board-pop" class="glass side-pop" role="dialog" aria-label="The board" hidden>
+    <div id="board"></div>
+    <div class="ctl">
+      <span class="ctl-l">Clusters</span>
+      <div class="ctl-r">
+        <nav class="seg mini" aria-label="Clusters">
+          <button data-cluster="namespace" title="Cluster this board by namespace, for everyone on it">Namespace</button>
+          <button data-cluster="module" title="Cluster this board by file, for everyone on it">File</button>
+        </nav>
+      </div>
+      <span class="ctl-l">Depth</span>
+      <div class="ctl-r">
+        <span class="stepper">
+          <button id="fold-less" title="One level less: fold the deepest level you can see, for everyone on this board ([)" aria-label="Fold one level">−</button>
+          <span id="fold-level"></span>
+          <button id="fold-more" title="One level more, for everyone on this board (])" aria-label="Open one level">+</button>
+        </span>
+      </div>
+      <span class="ctl-l">Layout</span>
+      <div class="ctl-r">
+        <button id="relayout" class="sbtn" title="Lay this board out afresh: its pins are dropped, for everyone on it">Re-layout</button>
+      </div>
+      <span class="ctl-l">Levels</span>
+      <div class="ctl-r" id="hidden-levels"></div>
+    </div>
+    <div id="hidden-list" class="hl-list" hidden></div>
+  </div>
+  <!-- what is trusted without review: the review's, the same on every board -->
+  <div id="trust-list" class="glass side-pop" role="dialog" aria-label="Trusted without review" hidden></div>
+
+  <aside id="panel" class="glass"></aside>
+  <aside id="activity" class="glass" aria-label="Activity"></aside>
+  <!-- what was said of declarations the graph no longer has, and the migrations: in Activity's place,
+       opened from the build-status popover (web/src/lostfound.ts) -->
+  <aside id="lostfound" class="glass" aria-label="Lost-and-found"></aside>
+
+  <!-- the bottom right: your eyes — zoom and fit, and behind ⋯ the lock, the edges drawn and the
+       theme; yours alone -->
+  <div id="zoom" class="glass" role="group" aria-label="Your eyes">
+    <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+    <button id="zoom-out" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 8h9"/></svg></button>
+    <button id="zoom-fit" title="Fit to screen (f)" aria-label="Fit to screen"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button>
+    <span class="zoom-sep"></span>
+    <button id="eyes-btn" title="The lock, the edges drawn, the theme" aria-label="More: lock, edges, theme" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2"/><circle cx="8" cy="8" r="1.2"/><circle cx="12.5" cy="8" r="1.2"/></svg></button>
+    <div id="eyes-pop" class="glass" role="dialog" aria-label="How you see the board" hidden>
+      <button id="lock-btn" class="eye" title="The lock, on by default: a drag pans the view, never a declaration, a circle or a note; clicks still select. Let it go and a drag moves them, for everyone on this board (l). Hold Ctrl (⌘ on a Mac) for the other way while held." aria-pressed="true"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="lk-body" d="M4 7.5h8v5.5H4z"/><path class="lk-shackle" d="M5.6 7.5V5.4a2.4 2.4 0 0 1 4.8 0v2.1"/></svg><span class="eye-l">Layout locked</span><kbd>l</kbd></button>
+      <button id="edges-btn" class="eye" title="Edges: the bundled overview of the dependencies, faint under a selection, whose own edges always show (g)" aria-pressed="true"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 12.5C7 12.5 9 3.5 12.5 3.5"/><circle cx="3.5" cy="12.5" r="1.4"/><circle cx="12.5" cy="3.5" r="1.4"/></svg><span class="eye-l">Edges</span><kbd>g</kbd></button>
+      <button id="proofs-btn" class="eye" title="Proof edges: also the dependencies that occur only inside proofs" aria-pressed="false"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 12.5C7 12.5 9 3.5 12.5 3.5" stroke-dasharray="1.6 2.2"/><rect x="10.5" y="10.5" width="3.5" height="3.5" rx="0.5"/></svg><span class="eye-l">Proof edges</span></button>
+      <div class="eye-theme"><span class="eye-l">Theme</span><div id="theme-seg" class="seg mini" role="radiogroup" aria-label="Theme"></div></div>
+    </div>
+  </div>
+  <!-- the legend: the colour scheme (Kind or Status, the reader's own) and what its colours mean on
+       this board, folded to a chip (web/src/legend.ts) -->
+  <footer id="foot">
+    <div id="legend"></div>
+  </footer>
+
+  <div id="notes"></div>
+  <!-- the canvas's menu: a right click, the ContextMenu key or Shift+F10 (web/src/ctxmenu.ts) -->
+  <div id="ctxmenu" role="menu" aria-label="Actions" tabindex="-1" hidden></div>
+  <!-- the floating windows, the one pressed or focused last in front (web/src/floatwin.ts): the
+       source windows (web/src/sourcewin.ts adds each) and the following strip -->
+  <div id="windows">
+    <!-- following someone: the strip; following an agent that can be talked to, a window with the
+         strip as its title bar, the conversation, and the pill it collapses to (web/src/people.ts,
+         web/src/talk.ts, web/src/chatwin.ts, which adds the edges that resize it) -->
+    <div id="following" class="glass" hidden>
+      <div class="fl-strip"></div><div id="talk" hidden></div>
+      <div class="fl-pill"><button class="fl-pill-open" type="button"><span class="fl-pill-text"></span><span class="fl-new" title="A new reply"></span></button><button data-unfollow type="button" title="Stop following" aria-label="Stop following">✕</button></div>
+    </div>
+  </div>
+  <!-- someone asks you to follow them (CollabSpec decision 10, web/src/askfollow.ts): at the top
+       centre, never taking the focus -->
+  <div id="ask-banner" role="status" aria-live="polite" hidden></div>
+  <div id="tour" hidden>
+    <div class="tour-shade"></div><div class="tour-shade"></div><div class="tour-shade"></div><div class="tour-shade"></div>
+    <div class="tour-spot"></div><div class="tour-card glass" role="dialog" aria-live="polite"></div>
+  </div>
+  <div id="help" hidden></div>
+  <div id="modal" hidden>
+    <form id="who-form" class="modal-box glass" autocomplete="off">
+      <div class="modal-title" id="who-title">Who is reviewing?</div>
+      <div class="modal-text" id="who-text">Your name is recorded with every opinion you give, so that others can see who said what. You can change it at any time.</div>
+      <input id="who-input" maxlength="60" placeholder="Your name" spellcheck="false">
+      <div id="who-err" class="modal-err" hidden></div>
+      <div class="modal-actions">
+        <button type="button" id="who-cancel" class="rv-btn">Cancel</button>
+        <button type="submit" id="who-ok" class="rv-btn primary">Continue</button>
+      </div>
+    </form>
+  </div>
+  <div id="export-modal" hidden></div>
+  <div id="tip" class="tip" hidden></div>
+  <div id="meter" class="meter" hidden></div>
+
+  <div id="loader">
+    <div class="loader-box">
+      <div class="logo big">VisualProof</div>
+      <div id="loader-title">Reading the project…</div>
+      <pre id="loader-log"></pre>
+    </div>
+  </div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

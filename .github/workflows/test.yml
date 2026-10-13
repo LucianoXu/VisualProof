@@ -1,0 +1,44 @@
+# Typecheck and the whole suite, with the fixture's own Lean toolchain, on Linux and macOS, on every
+# push and pull request. The suite on every supported toolchain, and the typesetting, are in
+# toolchains.yml.
+name: test
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# a newer push to the same branch makes the run before it pointless
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # poppler reads the library's PDFs; XeLaTeX is left out, and the tests that typeset skip
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - if: runner.os == 'macOS'
+        run: brew install poppler
+      # elan, with the fixture's toolchain as the default, so that `lake` answers anywhere: a test
+      # that finds no lake is skipped, and must not be
+      - run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$(cat test/fixture/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - run: lake --version
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

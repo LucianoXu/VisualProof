@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use VisualProof, please cite it as below."
+title: "VisualProof"
+abstract: >-
+  A web tool that shows a Lean codebase's declaration graph and the trusted computing base (TCB)
+  of its theorems: the definitions a statement rests on and the axioms behind its proof. People
+  and AI agents review a formalization together on it, and it keeps the record of that review.
+type: software
+authors:
+  - family-names: Xu
+    given-names: Yingte
+    orcid: "https://orcid.org/0000-0001-9071-7862"
+repository-code: "https://github.com/LucianoXu/VisualProof"
+license: Apache-2.0
+version: "0.1.0"
+keywords:
+  - Lean 4
+  - formal verification
+  - interactive theorem proving
+  - trusted computing base
+  - proof review

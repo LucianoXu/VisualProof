@@ -1,0 +1,308 @@
+% visualproof.sty — the style of the documents VisualProof exports (ExportSpec.md, decision 7).
+%
+% VisualProof writes a .tex of semantic macros and environments only (shared/doc/latex.ts): what
+% each thing is — a section, a declaration, its docstring, its code, a note, a figure — never how it
+% looks. How
+% it looks is this file's: a sober printed document, plain typography, the Lean code highlighted in
+% the page's colours. Replace it, or load your own package after it and \renewcommand what you want
+% changed: the interface below is all a document uses, and its arguments are already escaped
+% (nothing in them is LaTeX someone else wrote).
+%
+% Needs XeLaTeX (fontspec). Compile twice, for the page references, the contents and the bookmarks:
+%     xelatex doc.tex && xelatex doc.tex
+%
+% ---------------------------------------------------------------------------------------------
+% The interface (what a .tex from VisualProof calls)
+%
+%   \vpSetup{paper=a4|letter, margin=<dim>, codesize=<pt>}   page and code size
+%   \vpSetTitle{<title>}                       the title, for the running heads
+%   \vpTitle{<title>}{<author line, or empty>}
+%   \begin{vpCard} ... \end{vpCard}            the head card; inside it:
+%     \vpCardRow{<label>}{<value>}             one row
+%   \begin{vpContents} ... \end{vpContents}    the table of contents, in two columns, where the
+%                                              settings print it; inside it:
+%     \vpContentsSection{<id>}{<level 1-4>}{<number, or empty>}{<title>}
+%     \vpContentsDecl{<id>}{<level 1-5: one below its section's>}{<short name>}
+%   \vpMono{<text>}                            a name, a hash or a prefix, inline
+%   \vpName{<dotted name>}                     a full Lean name, breakable after its dots (\vpBreak);
+%                                              called by the macros here, not by a .tex: renew it to restyle
+%   \vpSym{<symbols>}                          symbols the text font lacks (⟪ ⟫ ℕ ∀ ⊗ …), in JuliaMono
+%   \vpBookmark{<id>}{<level>}{<text>}         a PDF bookmark to an anchor
+%   \vpSection{<id>}{<level: 1 section, 2 subsection, 3 subsubsection, 4 paragraph-level>}
+%        {<number, or empty>}{<title>}{<the cluster's key>}{<bookmark level>}{<bookmark text>}
+%                a cluster of the view, following on the page what comes before it
+%   \vpSectionResume{<level, 1-4>}{<title>}   a section's own declarations and notes again, after one
+%                                              of its sections: its title, "continued", unnumbered
+%   \begin{vpDecl}{<id>}{<short>}{<kind>} ... \end{vpDecl}   a declaration; inside it:
+%     \vpFullName{<name>}  \vpPlace{<module>}{<file, or empty>}{<line, or empty>}
+%     \begin{vpDocstring} ... \end{vpDocstring}
+%     \vpInlineCode{<code>}                     code in prose
+%     \begin{vpCode} ... \end{vpCode}           the code, highlighted, without line numbers
+%       token macros: \vpTkKeyword \vpTkType \vpTkComment \vpTkDoc \vpTkString \vpTkNumber
+%                     \vpTkAttr \vpTkOp \vpTkSorry \vpTkElided (a proof left out), and
+%                     \vpBS \vpLB \vpRB for \ { } in code
+%     \vpDeclNote{<text>}                       a short note under its code: of a past build, that its
+%                                              text then is not kept and its statement is printed
+%     \vpPaper{<label, or empty>}{<file's title>}{<page, or empty>}{<its number among the references>}
+%                                              a place in a paper it is linked to, under its code; with
+%                                              no label, a file a note carries
+%   \begin{vpNote}{<id>} ... \end{vpNote}      a note of the view, as prose: in a section, at the start,
+%                                              or under the declaration it is attached to; inside it,
+%                                              paragraphs and \vpInlineCode, \vpMention, \vpPaper, \vpFigure
+%     \vpMention{<id>}{<full name>}            a declaration a note names, where the document prints it
+%     \vpFigure{<file>}{<width, or empty: the image's own>}{<file's title>}{<page, or empty>}
+%        {<its number among the references>}  an image or a clip a note carries, with its caption
+%   \begin{vpSectionPapers} ... \end{vpSectionPapers}   a cluster's \vpPaper lines, under its heading
+%   \begin{vpReferences} ... \end{vpReferences}  the files the papers cite, at the end; inside it:
+%     \vpReference{<n>}{<title>}{<where it came from>}{<what it is>}{<its SHA-256, cut short>}
+%   \vpUrl{<address>}                          an address, breakable after its slashes
+%   \vpKind{<kind>}                            called by the macros here, not by a .tex: renew it to restyle
+%
+% Colours (xcolor names; the .tex defines them again from VisualProof's palette, shared/palette.ts,
+% so that the code reads as on the page): vpTkkeyword, vpTktype, vpTkcomment, vpTkstring,
+% vpTknumber, vpTkattr, vpTkop, vpTksorry. This file adds vpMuted (secondary text) and vpRule
+% (rules).
+%
+% Fonts: Libertinus Serif and Sans for the text (TeX Live's), Latin Modern where they are not
+% installed; JuliaMono (v0.63.2, SIL Open Font License, fonts/LICENSE-JuliaMono.txt) for code,
+% loaded from fonts/ next to the document, since it covers the Unicode Lean is written in.
+% ---------------------------------------------------------------------------------------------
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{visualproof}[2026/10/12 v9 VisualProof's exported documents]
+
+\RequirePackage{iftex}
+\RequireXeTeX
+\RequirePackage{etoolbox}
+\RequirePackage{pgfkeys}
+\RequirePackage{xcolor}
+\RequirePackage{fontspec}
+\RequirePackage{geometry}
+\RequirePackage{fvextra}
+\RequirePackage{multicol}
+\RequirePackage{needspace}
+\RequirePackage{enumitem}
+\RequirePackage{fancyhdr}
+\RequirePackage{lastpage}
+\RequirePackage{graphicx}
+\RequirePackage{caption}
+\RequirePackage[hidelinks]{hyperref}
+\RequirePackage{bookmark}
+
+% ------------------------------------------------------------------------------ the page
+
+\newcommand\vp@codesize{\fontsize{8.5}{10.6}\selectfont}
+\pgfkeys{/vp/.is family, /vp,
+  paper/.code={\ifstrequal{#1}{letter}{\geometry{letterpaper}}{\geometry{a4paper}}},
+  margin/.code={\geometry{margin=#1}},
+  codesize/.code={\renewcommand\vp@codesize{\fontsize{#1}{\fpeval{round(1.25*#1,1)}}\selectfont}},
+}
+\newcommand\vpSetup[1]{\pgfkeys{/vp,#1}}
+\geometry{a4paper, margin=22mm, headheight=14pt, headsep=12pt, footskip=24pt}
+
+\setlength\parindent{0pt}
+\setlength\parskip{4pt plus 1pt}
+\setlength\emergencystretch{3em}
+\raggedbottom
+
+% ------------------------------------------------------------------------------ fonts
+
+\IfFontExistsTF{LibertinusSerif-Regular.otf}{%
+  \setmainfont{LibertinusSerif}[Extension=.otf, UprightFont=*-Regular, BoldFont=*-Semibold,
+    ItalicFont=*-Italic, BoldItalicFont=*-SemiboldItalic]
+  \setsansfont{LibertinusSans}[Extension=.otf, UprightFont=*-Regular, BoldFont=*-Bold,
+    ItalicFont=*-Italic, BoldItalicFont=*-Bold]
+}{%
+  \setmainfont{Latin Modern Roman}
+  \setsansfont{Latin Modern Sans}
+}
+% the code at the size the settings say: not scaled
+\setmonofont{JuliaMono}[Path=fonts/, Extension=.ttf, UprightFont=*-Regular, BoldFont=*-SemiBold,
+  ItalicFont=*-RegularItalic, BoldItalicFont=*-SemiBold]
+% names and symbols in running text: scaled to the text's x-height, so that they sit in a line
+\newfontfamily\vp@inline{JuliaMono}[Path=fonts/, Extension=.ttf, UprightFont=*-Regular,
+  BoldFont=*-SemiBold, ItalicFont=*-RegularItalic, BoldItalicFont=*-SemiBold, Scale=MatchLowercase]
+
+% ------------------------------------------------------------------------------ colours
+
+\definecolor{vpMuted}{HTML}{6E6E73}
+\definecolor{vpRule}{HTML}{C7C7CC}
+% VisualProof's palette for code (the .tex defines these again, from the page's own values)
+\definecolor{vpTkkeyword}{HTML}{AD3DA4}\definecolor{vpTktype}{HTML}{3E7FD6}
+\definecolor{vpTkcomment}{HTML}{8A8A8E}\definecolor{vpTkstring}{HTML}{C4392B}
+\definecolor{vpTknumber}{HTML}{6C5CE7}\definecolor{vpTkattr}{HTML}{B5762C}
+\definecolor{vpTkop}{HTML}{AD3DA4}\definecolor{vpTksorry}{HTML}{FF375F}
+
+% ------------------------------------------------------------------------------ running heads
+
+\newcommand\vp@title{}
+\newcommand\vpSetTitle[1]{\renewcommand\vp@title{#1}}
+\fancypagestyle{vp}{%
+  \fancyhf{}%
+  \fancyhead[L]{\footnotesize\color{vpMuted}\vp@title}%
+  \fancyhead[R]{\footnotesize\color{vpMuted}\rightmark}%
+  \fancyfoot[C]{\footnotesize\color{vpMuted}\thepage\ / \pageref*{LastPage}}%
+  \renewcommand\headrulewidth{0pt}}
+\fancypagestyle{vpfirst}{%
+  \fancyhf{}%
+  \fancyfoot[C]{\footnotesize\color{vpMuted}\thepage\ / \pageref*{LastPage}}%
+  \renewcommand\headrulewidth{0pt}}
+\pagestyle{vp}
+\markright{}
+
+% ------------------------------------------------------------------------------ inline pieces
+
+\newcommand\vpSym[1]{{\vp@inline #1}}
+\newcommand\vpMono[1]{{\vp@inline #1}}
+\newcommand\vpBreak{\allowbreak}
+\newcommand\vpName[1]{{\vp@inline #1}}
+\newcommand\vpInlineCode[1]{{\vp@inline #1}}
+\newcommand\vpBookmark[3]{\bookmark[dest=#1,level=#2]{#3}}
+% in a bookmark, PDF title or running head turned into a PDF string, the inline macros are their text
+\pdfstringdefDisableCommands{\def\vpSym#1{#1}\def\vpMono#1{#1}\def\vpName#1{#1}\def\vpBreak{}}
+
+% a declaration's kind, in small capitals
+\newcommand\vpKind[1]{{\normalfont\small\scshape #1}}
+
+% ------------------------------------------------------------------------------ the head
+
+\newcommand\vpTitle[2]{%
+  \thispagestyle{vpfirst}%
+  {\raggedright\hyphenpenalty=10000\sffamily\bfseries\fontsize{20}{24}\selectfont #1\par}%
+  \ifstrempty{#2}{}{\vspace{4pt}{\large #2\par}}%
+  \vspace{2pt}{\small\color{vpMuted}Made by VisualProof\par}%
+  \vspace{16pt}}
+
+% the head card: a list of what the document was made from, between two rules
+\newlength\vp@cardlabel
+\setlength\vp@cardlabel{10.5em}
+\newenvironment{vpCard}{\par\noindent{\color{vpRule}\rule{\linewidth}{0.4pt}}\par\vspace{1pt}%
+  \small\setlength\parskip{2pt}}{\par\vspace{3pt}\noindent{\color{vpRule}\rule{\linewidth}{0.4pt}}\par\bigskip}
+\newcommand\vpCardRow[2]{\par\hangindent=\vp@cardlabel\hangafter=1\noindent
+  \makebox[\vp@cardlabel][l]{\color{vpMuted}#1}#2\par}
+
+% ------------------------------------------------------------------------------ the contents
+
+\newcommand\vp@leaders{\leaders\hbox to 0.7em{\hss.\hss}\hfill}
+\newcommand\vp@page[1]{\nobreak\hbox to 2.4em{\hss\pageref*{#1}}}
+% in two columns, balanced, the body following on the same page
+\newenvironment{vpContents}{\par\needspace{6\baselineskip}%
+  {\sffamily\bfseries\large Contents\par}\nopagebreak\small\setlength\parskip{0pt}%
+  \setlength\columnsep{20pt}\setlength\multicolsep{4pt plus 2pt}\begin{multicols}{2}}%
+  {\end{multicols}\par}
+% each level indented a step further; a section's number before its title, a top section in bold
+\newlength\vp@tocstep
+\setlength\vp@tocstep{1em}
+\newcommand\vpContentsSection[4]{\par\ifnum#2=1 \addvspace{5pt plus 2pt}\fi\noindent
+  \hangindent=\dimexpr#2\vp@tocstep+1.6em\relax\hspace*{\dimexpr#2\vp@tocstep-\vp@tocstep\relax}%
+  {\ifnum#2=1 \bfseries\fi\ifstrempty{#3}{}{#3\enspace}\hyperlink{#1}{#4}}\nobreak
+  \vp@leaders{\ifnum#2=1 \bfseries\fi\vp@page{#1}}\par\ifnum#2=1 \nopagebreak\fi}
+\newcommand\vpContentsDecl[3]{\par\noindent\hangindent=\dimexpr#2\vp@tocstep+1.6em\relax
+  \hspace*{\dimexpr#2\vp@tocstep-\vp@tocstep\relax}{\color{vpMuted}\hyperlink{#1}{#3}}\nobreak
+  \vp@leaders{\color{vpMuted}\vp@page{#1}}\par}
+
+% ------------------------------------------------------------------------------ a section
+
+% a section follows on the page what comes before it — the first, the head card and the contents —
+% with room above its head, the more the higher its level, and its head is kept with the start of
+% what follows: a section of one declaration takes no page of its own. Its heading: the number and
+% the title, sans-serif and bold, smaller at each level; the cluster's key beneath, small and mono.
+% A top section names the running head, as LaTeX's own classes do.
+\newcommand\vp@sectionbreak[1]{\par\addvspace{\ifcase#1\or 22pt plus 8pt minus 4pt\or 16pt plus 6pt minus 3pt\or
+  12pt plus 4pt minus 2pt\else 10pt plus 3pt minus 2pt\fi}\needspace{\ifnum#1<3 14\else 10\fi\baselineskip}}
+\newcommand\vpSection[7]{%
+  \vp@sectionbreak{#2}%
+  \phantomsection\hypertarget{#1}{}\label{#1}\bookmark[dest=#1,level=#6]{#7}%
+  {\raggedright\sffamily\bfseries\ifcase#2\or\LARGE\or\Large\or\large\else\normalsize\fi
+    \ifstrempty{#3}{}{#3\quad}#4\par}\nopagebreak
+  \vspace{1pt}{\footnotesize\color{vpMuted}\vpName{#5}\par}\nopagebreak
+  \ifnum#2=1 \markright{\ifstrempty{#3}{}{#3\enspace}#4}\fi
+  \vspace{\ifnum#2<3 4pt\else 2pt\fi}}
+% a section's own declarations and notes again after one of its sections, as the board's order may
+% have them: its title at the level of its sections, unnumbered, "continued" after it
+\newcommand\vpSectionResume[2]{%
+  \vp@sectionbreak{#1}%
+  {\raggedright\sffamily\bfseries\ifcase#1\or\LARGE\or\Large\or\large\else\normalsize\fi
+    #2\hskip 0.5em{\mdseries\small\color{vpMuted}continued}\par}\nopagebreak
+  \vspace{\ifnum#1<3 4pt\else 2pt\fi}}
+
+% ------------------------------------------------------------------------------ a declaration
+
+% {id}{short}{kind}: the short name, the kind on the right
+\newenvironment{vpDecl}[3]{%
+  \par\needspace{8\baselineskip}%
+  \vspace{10pt plus 4pt}%
+  \phantomsection\hypertarget{#1}{}\label{#1}%
+  \noindent{\sffamily\bfseries #2}%
+  \hfill\vpKind{#3}\par\nopagebreak\vspace{1pt}}{\par}
+\newcommand\vpFullName[1]{\noindent{\footnotesize\vpName{#1}}}
+% where it is written: its file and line in the project, else (outside it) its module; on the line
+% of the full name while there is room, on a line of its own beneath it otherwise
+\newcommand\vpPlace[3]{{\footnotesize\color{vpMuted}\hskip 1.2em plus 1fil\penalty 0\hskip 0pt plus -1fil
+  \ifstrempty{#2}{\vpMono{#1}}{\vpMono{#2}\ifstrempty{#3}{}{, line #3}}}\par\nopagebreak\smallskip}
+
+% what it is: its docstring, as body text
+\newenvironment{vpDocstring}{\par}{\par}
+
+% a short note under the code, small and grey (of a past build, that the declaration's text then is
+% not kept)
+\newcommand\vpDeclNote[1]{\par\nopagebreak{\footnotesize\itshape\color{vpMuted}#1\par}}
+
+% a place in a reference the declaration (or, under a section's heading, the cluster) is linked to:
+% "Reference: Theorem 3 [title, p. 12]", small, the number of the file among the references after it
+% With no label, a file a note carries: "Reference: title, p. 12"
+\newcommand\vpPaper[4]{\par\nopagebreak{\small\noindent\hangindent=1.5em\hangafter=1
+  {\color{vpMuted}Reference:}\space\ifstrempty{#1}{\textit{#2}\ifstrempty{#3}{}{, p.~#3}}{#1 [\textit{#2}\ifstrempty{#3}{}{, p.~#3}]}%
+  \nobreak\hskip 0.4em{\footnotesize\color{vpMuted}(#4)}\par}}
+\newenvironment{vpSectionPapers}{\par\nopagebreak\vspace{1pt}}{\par\vspace{4pt}}
+% an address, broken after its slashes (\vpBreak) where the line is full
+\newcommand\vpUrl[1]{\vpMono{#1}}
+% the files the references cite, at the end: a heading of its own ("References"), then each file
+% by its number
+\newenvironment{vpReferences}{\par\addvspace{22pt plus 8pt minus 4pt}\needspace{6\baselineskip}%
+  \phantomsection\hypertarget{vp-references}{}\label{vp-references}\bookmark[dest=vp-references,level=0]{References}%
+  {\raggedright\sffamily\bfseries\Large References\par}\nopagebreak\vspace{6pt}\small\setlength\parskip{4pt}}{\par}
+\newcommand\vpReference[5]{\par\noindent\hangindent=2em\hangafter=1
+  \makebox[2em][l]{(#1)}\textit{#2}. #4; #3.\hskip 0.5em{\footnotesize\color{vpMuted}SHA-256 \vpMono{#5}…}\par}
+
+% ------------------------------------------------------------------------------ notes and figures
+
+% a note of the view, as the document's prose: body text, with room around it
+\newenvironment{vpNote}[1]{\par\addvspace{6pt plus 2pt}\phantomsection\hypertarget{#1}{}}{\par\addvspace{6pt plus 2pt}}
+% a declaration a note names, linked to where the document prints it, with its page
+\newcommand\vpMention[2]{\hyperlink{#1}{\vpInlineCode{#2}}\nobreak\hskip 0.2em{\footnotesize\color{vpMuted}(p.~\pageref*{#1})}}
+% an image or a clip a note carries, where the note is (no float): an image at its own size, a clip at
+% the size the paper prints it, never wider than the text nor taller than half the page; its caption
+% the file's title, a clip's page, and the file's number among the references
+\captionsetup[figure]{font=small, labelfont={sf,bf}, labelsep=colon, skip=3pt}
+\newsavebox\vp@figbox
+\newlength\vp@figw
+\newcommand\vpFigure[5]{%
+  \par\needspace{8\baselineskip}\vspace{4pt}\noindent
+  \begin{minipage}{\linewidth}\centering
+    \ifstrempty{#2}{\sbox\vp@figbox{\includegraphics{#1}}\setlength\vp@figw{\wd\vp@figbox}}{\setlength\vp@figw{#2}}%
+    \ifdim\vp@figw>\linewidth \setlength\vp@figw{\linewidth}\fi
+    \includegraphics[width=\vp@figw, height=0.5\textheight, keepaspectratio]{#1}\par
+    \captionof{figure}{\textit{#3}\ifstrempty{#4}{}{, p.~#4}\nobreak\hskip 0.4em{\footnotesize\color{vpMuted}(#5)}}%
+  \end{minipage}\par\vspace{4pt}}
+
+% code: highlighted, broken where too long (after a dot, or at a space), without line numbers
+\newcommand\vpBS{\char"5C\relax}
+\newcommand\vpLB{\char"7B\relax}
+\newcommand\vpRB{\char"7D\relax}
+\newcommand\vpTkKeyword[1]{{\color{vpTkkeyword}\bfseries#1}}
+\newcommand\vpTkType[1]{{\color{vpTktype}#1}}
+\newcommand\vpTkComment[1]{{\color{vpTkcomment}\itshape#1}}
+\newcommand\vpTkDoc[1]{{\color{vpTkcomment}\itshape#1}}
+\newcommand\vpTkString[1]{{\color{vpTkstring}#1}}
+\newcommand\vpTkNumber[1]{{\color{vpTknumber}#1}}
+\newcommand\vpTkAttr[1]{{\color{vpTkattr}#1}}
+\newcommand\vpTkOp[1]{{\color{vpTkop}#1}}
+\newcommand\vpTkSorry[1]{{\setlength\fboxsep{0.6pt}\colorbox{vpTksorry}{\textcolor{white}{#1}}}}
+\newcommand\vpTkElided[1]{{\color{vpMuted}\itshape#1}}
+\DefineVerbatimEnvironment{vpCode}{Verbatim}{commandchars=\\\{\}, fontsize=\vp@codesize,
+  xleftmargin=1em, breaklines=true, breakafter={.}, breakaftersymbolpre={},
+  breaksymbolleft={\tiny\color{vpMuted}\vpSym{↪}}, tabsize=2,
+  listparameters={\setlength\topsep{4pt}\setlength\partopsep{0pt}}}
+
+\endinput

@@ -1,0 +1,9 @@
+name = "fixture"
+defaultTargets = ["Fixture"]
+
+[[lean_lib]]
+name = "Fixture"
+
+# the module system (`module`, `public`): built and read on its own, as Fixture.Notation is
+[[lean_lib]]
+name = "FixtureModule"

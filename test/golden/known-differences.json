@@ -1,0 +1,40 @@
+{
+  "about": "Differences from the golden (fixture-graph.json, taken with the fixture's own toolchain) that test/compat.test.ts allows, each for a range of toolchains (both ends included; no `to`, every later one) and with why. Only the lenient part can differ: what Lean's library and its generated code decide. Keys as the test writes them; * stands for any characters.",
+  "differences": [
+    {
+      "from": "v4.28.0",
+      "to": "v4.30.0",
+      "keys": ["also Fixture.Kinds.Color", "refs Fixture.Kinds.Color", "stats.folded", "stats.generated"],
+      "why": "`deriving Inhabited` wrote a `default` constant beside the instance before v4.31 (`instInhabitedColor.default`), folded into the type with the instance; the type's references and the counts of folded constants follow."
+    },
+    {
+      "from": "v4.28.0",
+      "to": "v4.29.1",
+      "keys": ["refs Fixture.Kinds.Vec.length", "refs Fixture.Kinds.isEven", "refs Fixture.Kinds.isOdd", "refs Fixture.Kinds.sumTo.go"],
+      "why": "Before v4.30 structural recursion was compiled through the function's matcher (`match_1`) where later releases go through `_f`: the references a unit's version is made of differ, its edges do not."
+    },
+    {
+      "from": "v4.34.0",
+      "keys": ["stats.folded"],
+      "why": "From v4.34 Lean generates two fewer auxiliary constants beneath the fixture's declarations; only the count of folded constants changes."
+    },
+    {
+      "from": "v4.35.0",
+      "keys": [
+        "edge * -> ext:Decidable",
+        "edge * -> ext:Decidable.decide",
+        "edge * -> ext:Decidable.isTrue",
+        "edge * -> ext:Decidable.isFalse",
+        "ext Decidable.decide",
+        "ext Decidable.isTrue",
+        "ext Decidable.isFalse"
+      ],
+      "why": "In v4.35 core's `Decidable` became a structure: `decide` is its field, so an edge to it is an edge to `Decidable`, and `isTrue` and `isFalse`, constructors before (folded into the type), are abbreviations of their own that instances and proofs reach."
+    },
+    {
+      "from": "v4.35.0",
+      "keys": ["edge Fixture.commandTagged_ -> ext:Lean.Syntax.node8", "ext Lean.Syntax.node8", "refs Fixture.commandTagged_"],
+      "why": "From v4.35 a syntax quotation builds a node of eight children with `Lean.Syntax.node8`: the macro's elaborated code refers to it."
+    }
+  ]
+}
