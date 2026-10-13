@@ -73,5 +73,6 @@ and whatever the showcase project needs (v4.28.0 at least).
 - Releasing, by the owner: update `CHANGELOG.md` (the owner's own file), the version in
   `package.json` and `CITATION.cff`, merge, then tag `main` and push the tag. Publishing to npm
   from the tag, with provenance, and the GitHub release from the changelog are to be set up in CI
-  before the first release.
+  before the first release, which also takes `"private": true` out of `package.json` (it keeps
+  the package from being published by mistake until then).
 - AI agents work on branches: they never push to `main`, tag, or publish.
