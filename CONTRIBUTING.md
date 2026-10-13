@@ -48,3 +48,23 @@ and whatever the showcase project needs (v4.28.0 at least).
   on purpose (`npm run golden:update`, on the fixture's own toolchain); a difference Lean itself
   makes on some toolchains is listed in `test/golden/known-differences.json`, with its toolchains
   and its reason.
+
+## Branches and releases
+
+- `main` is always releasable: work goes on a short-lived branch and comes in by a pull request
+  whose CI passed. Nobody pushes to `main` directly.
+- A release is a tag on `main`, `vX.Y.Z`; a release candidate is `vX.Y.Z-rc.N`, published under
+  npm's `next` tag, so that `npm install visualproof` never gets it. There is no long-lived
+  release branch: a `release/X.Y` branch is made from its tag only if an older release must be
+  patched, and fixes otherwise go into the next release only (SECURITY.md).
+- Versions follow semantic versioning, 0.x until 1.0 (a minor version may break what is public
+  until then). What is public, and so breaks only with the version saying so:
+  - the command line: its commands and options;
+  - the site folder (`--site`): the review's logs and what a site accumulates. A version that
+    changes its form reads the old one, or moves it over, so that no review is lost;
+  - the agents' API and the MCP server's tools (`docs/agent-api/`).
+- Releasing, by the owner: update `CHANGELOG.md` (the owner's own file), the version in
+  `package.json` and `CITATION.cff`, merge, then tag `main` and push the tag. Publishing to npm
+  from the tag, with provenance, and the GitHub release from the changelog are to be set up in CI
+  before the first release.
+- AI agents work on branches: they never push to `main`, tag, or publish.
