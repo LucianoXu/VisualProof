@@ -42,6 +42,24 @@ it is packed. Pack it, then install the file.
 - To try a change on a real project, point `--site` and `--cache` at scratch folders, so that
   nothing is written into a real site's review and history.
 
+## Real projects
+
+`node scripts/scale.mjs <built Lean project>...` serves each project with a site and caches of its
+own in a temporary folder, cold then warm, and measures it: the time to the graph and to the end
+of the usage pass, the most memory the server and its workers held, Lean's first answer, the
+largest TCB among its theorems (or `--target`), its review set (`--export` typesets it), a
+snapshot's graph. `--bin visualproof` measures an installed package instead of the checkout. The
+manual's figures come from it, on these projects, each built at its commit:
+
+| project | commit | Lean | what it is |
+|---|---|---|---|
+| [flt-regular](https://github.com/leanprover-community/flt-regular) | `bd81b78ba6` | v4.33.0-rc2 | the README's: 27 modules on Mathlib |
+| [PrimeNumberTheoremAnd](https://github.com/AlexKontorovich/PrimeNumberTheoremAnd) | `c39a751132` | v4.34.0 | larger, on Mathlib |
+| [cedar-spec](https://github.com/cedar-policy/cedar-spec)'s `cedar-lean` | `38d5204868` | v4.31.0 | without Mathlib; a `lakefile.lean` |
+| [Sphere-Packing-Lean](https://github.com/math-inc/Sphere-Packing-Lean) | `1e98fb4` | v4.28.0 | the showcase: 829 modules on Mathlib |
+
+A project on Mathlib is built with `lake exe cache get && lake build`.
+
 ## Lean versions
 
 The supported toolchains are those of `test/toolchains.json`: the last six or so stable releases,
