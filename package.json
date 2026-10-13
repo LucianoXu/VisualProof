@@ -14,7 +14,8 @@
   },
   "files": [
     "dist/",
-    "docs/agent-api/"
+    "docs/agent-api/",
+    "test/toolchains.json"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",

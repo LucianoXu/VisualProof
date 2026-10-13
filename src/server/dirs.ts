@@ -139,6 +139,17 @@ function alive(pid: number): boolean {
   }
 }
 
+/** The living process that holds the site, if one does: what `lockSite` would refuse, without
+ *  taking it (`visualproof doctor`). */
+export function siteHolder(dir: string): number | null {
+  try {
+    const held = Number(readFileSync(join(dir, ".lock"), "utf8").trim());
+    return Number.isInteger(held) && held > 0 && alive(held) ? held : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Takes the site for this process (`.lock`, holding its id), so that two servers never write the
  *  same site: SiteBusy while another living process holds it; the lock of one that died is taken
  *  over. The answer lets it go, as the process exits. */

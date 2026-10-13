@@ -60,6 +60,7 @@ test("the package holds the server compiled, the page bundled, and what the serv
     "dist/web/bundle/edges.js",
     "dist/web/bundle/pdfworker.js",
     "docs/agent-api/README.md",
+    "test/toolchains.json",
   ]) {
     assert.ok(existsSync(join(pkg, f)), `${f} is built`);
     assert.ok(packed(f), `${f} is packed`);
@@ -74,10 +75,16 @@ test("the package holds the server compiled, the page bundled, and what the serv
   assert.ok(!("esbuild" in (pkgJson.dependencies ?? {})));
 });
 
-test("the built command runs without TypeScript: its usage", () => {
-  const r = spawnSync(process.execPath, ["--no-experimental-strip-types", join(pkg, "dist", "server", "main.js")], { encoding: "utf8" });
+test("the built command runs without TypeScript: its usage, its version, the doctor", () => {
+  const cli = (...args: string[]) => spawnSync(process.execPath, ["--no-experimental-strip-types", join(pkg, "dist", "server", "main.js"), ...args], { encoding: "utf8", timeout: 60_000 });
+  const r = cli();
   assert.equal(r.status, 2);
   assert.match(r.stderr, /usage: visualproof serve/);
+  assert.equal(cli("--version").stdout.trim(), pkgJson.version);
+  // the doctor reads the package's own files: its engines, the toolchains supported
+  const d = cli("doctor");
+  assert.match(d.stdout, new RegExp(`^VisualProof ${pkgJson.version.replace(/\./g, "\\.")}\n  [✓✗] Node `));
+  assert.doesNotMatch(d.stderr, /Error/);
 });
 
 test("the built command exports the fixture: the Lean programs compiled from the package, the prebuilt page", { skip: !haveLake }, () => {

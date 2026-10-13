@@ -41,9 +41,10 @@ import { Library, libraryApiOf } from "./library.ts";
 import { libraryRoute, pdfjsAsset, readUpload } from "./libraryroute.ts";
 import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
+import { doctor, packageVersion, printReport } from "./doctor.ts";
 
 interface Options {
-  cmd: "serve" | "export" | "purge-file";
+  cmd: "serve" | "export" | "purge-file" | "doctor";
   path: string;
   roots: string[];
   port: number;
@@ -75,8 +76,10 @@ interface Options {
   sha: string | null;
 }
 
-function usage(): never {
-  console.error(`usage: visualproof serve  <lean-project> [--root Module]... [--port 4173] [--host 127.0.0.1]
+/** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
+ *  to stdout with status 0. */
+function usage(code = 2): never {
+  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project> [--root Module]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--jobs ${DEFAULT_JOBS}]
@@ -84,6 +87,8 @@ function usage(): never {
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Module]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
+       visualproof doctor [<lean-project>] [--root Module]... [--site dir] [--cache dir]
+       visualproof --version
 
   Reads what \`lake build\` left in <lean-project>/.lake. It never builds the project, and writes
   nothing into it.
@@ -142,13 +147,22 @@ function usage(): never {
 
   purge-file  deletes a file's bytes from the library for good (a file added by mistake), and what
            was read of it; its record and its links stay in the review, saying this server lacks it.
-           Nothing else deletes a file: removing one from the page archives it.`);
-  process.exit(2);
+           Nothing else deletes a file: removing one from the page archives it.
+
+  doctor   checks what VisualProof needs on this machine (Node, elan, Poppler, XeLaTeX) and, given
+           a project, its toolchain, its build and its site, and says what to do; it changes
+           nothing.`);
+  process.exit(code);
 }
 
 function parseArgs(argv: string[]): Options {
   const [cmd, ...rest] = argv;
-  if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file") usage();
+  if (cmd === "--help" || cmd === "-h" || cmd === "help") usage(0);
+  if (cmd === "--version" || cmd === "-v") {
+    console.log(packageVersion());
+    process.exit(0);
+  }
+  if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file" && cmd !== "doctor") usage();
   const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
@@ -192,7 +206,7 @@ function parseArgs(argv: string[]): Options {
     else if (cmd === "purge-file" && !o.sha) o.sha = a;
     else usage();
   }
-  if (!o.path || (cmd === "export" && !o.out)) usage();
+  if ((!o.path && cmd !== "doctor") || (cmd === "export" && !o.out)) usage();
   if (cmd === "purge-file" && !validSha(o.sha)) {
     console.error("visualproof purge-file: give the file's SHA-256, 64 hex digits, as the page's library shows it.");
     process.exit(2);
@@ -1026,6 +1040,11 @@ function packedGz(edgesGz: Buffer, format: 1 | 2): Buffer {
 
 async function main(): Promise<void> {
   const o = parseArgs(process.argv.slice(2));
+  if (o.cmd === "doctor") {
+    const report = doctor({ path: o.path || null, roots: o.roots, site: o.site, cache: o.cache });
+    console.log(printReport(report, o.path || null));
+    process.exit(report.checks.some((c) => c.level === "fail") ? 1 : 0);
+  }
   // a live server outlives any one failed task: log it and keep serving
   process.on("unhandledRejection", (e) => console.error("unhandled:", e instanceof Error ? e.message : e));
   let project: Project;

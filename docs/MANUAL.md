@@ -18,12 +18,14 @@ node src/server/main.ts serve <path-to-lean-project>      # then open http://127
 ```
 
 - Needs Node 22.18 or later in 22, or 24.2 or later, and the project's Lean toolchain through
-  elan.
+  elan. `visualproof doctor <path>` checks this machine and the project, and says what to do.
 - The project must have been built: VisualProof reads what `lake build` left in `.lake/` and
   never builds the project. A build in progress or a broken one is shown as such (see Live), with
   the last graph that could be read. It writes nothing into the project: what it keeps is in the
   site's folder and the cache (below).
-- Modules to read come from `defaultTargets` in `lakefile.toml`, or `--root Module` (repeatable).
+- Modules to read come from `defaultTargets` in `lakefile.toml`, or the libraries marked
+  `@[default_target]` in `lakefile.lean` (their `roots`, else their names; the lakefile is read as
+  text, never run), or `--root Module` (repeatable), which wins.
 - The first read of flt-regular (27 modules, on Mathlib) takes about 14 s, 11 of them compiling the
   extractor for its toolchain, which is done once per toolchain; a large project takes longer <!-- TODO(scale, sphere packing): re-measure -->.
   It is cached (`<cache>/extract/`) by a fingerprint of the `.olean` files, so a restart without a
