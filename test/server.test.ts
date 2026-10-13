@@ -55,16 +55,18 @@ test("a body too large is answered once it has all come, so that the client read
     const big = await fetch(`${S.base}/api/presence`, { method: "POST", headers: { "content-type": "application/json" }, body: "x".repeat(32 << 20) });
     assert.equal(big.status, 413);
     assert.match((await big.json()).error, /larger than 16 KB/);
-    // one that never stops is answered all the same, and cut off
+    // one that never stops is answered all the same after the grace, and cut off: it reads the 413,
+    // or, where the system resets a connection closed while the client still sends (macOS), only
+    // the reset
     const u = new URL(`${S.base}/api/presence`);
     const started = Date.now();
-    const status = await new Promise<number>((ok, no) => {
+    const end = await new Promise<string>((ok) => {
       const req = request({ host: u.hostname, port: u.port, path: u.pathname, method: "POST", headers: { "content-type": "application/json" } }, (res) => {
-        ok(res.statusCode ?? 0);
+        ok(String(res.statusCode));
         res.resume();
         req.destroy();
       });
-      req.on("error", (e) => (Date.now() - started > 1000 ? undefined : no(e)));
+      req.on("error", (e: NodeJS.ErrnoException) => ok(e.code ?? e.message));
       const chunk = Buffer.alloc(64 << 10, 120);
       const pump = () => {
         while (!req.destroyed && req.write(chunk));
@@ -72,7 +74,7 @@ test("a body too large is answered once it has all come, so that the client read
       req.on("drain", pump);
       pump();
     });
-    assert.equal(status, 413);
+    assert.match(end, /^(413|ECONNRESET|EPIPE)$/);
     assert.ok(Date.now() - started >= 1500, "after the grace");
     assert.equal((await S.ask("GET", "/api/status")).status, 200, "and the server goes on");
   } finally {

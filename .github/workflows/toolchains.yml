@@ -29,6 +29,7 @@ concurrency:
 
 jobs:
   list:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     outputs:
       toolchains: ${{ steps.list.outputs.toolchains }}
@@ -38,6 +39,7 @@ jobs:
         run: echo "toolchains=$(jq -c .toolchains test/toolchains.json)" >> "$GITHUB_OUTPUT"
 
   supported:
+    timeout-minutes: 45
     needs: list
     runs-on: ubuntu-latest
     strategy:
@@ -61,6 +63,7 @@ jobs:
           VP_TOOLCHAIN: ${{ matrix.toolchain }}
 
   newest:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
@@ -112,6 +115,7 @@ jobs:
   # hand, never on a push. Libertinus (texlive-fonts-extra, gigabytes) is left out, so the document
   # is set in Latin Modern, as the style file falls back to
   typeset:
+    timeout-minutes: 45
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:

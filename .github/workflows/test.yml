@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   test:
+    # the suite takes minutes; a test that hangs ends here, not after GitHub's six hours
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -51,6 +53,7 @@ jobs:
   # the package as npm installs it: packed (which builds it), installed into a prefix of its own
   # with its dependencies alone, then asked its version, the doctor on the fixture, and to serve it
   package:
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
