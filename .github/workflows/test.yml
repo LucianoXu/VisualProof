@@ -28,8 +28,8 @@ jobs:
             node: 22.18.0
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -61,8 +61,8 @@ jobs:
             node: 22.18.0
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -88,7 +88,8 @@ jobs:
       - name: serve the fixture and fetch the page
         run: |
           cd "$RUNNER_TEMP"
-          visualproof serve fixture --port 4173 --site site --cache cache > serve.log 2>&1 &
+          # absolute: a relative --site is the project's (server/dirs.ts)
+          visualproof serve fixture --port 4173 --site "$RUNNER_TEMP/site" --cache "$RUNNER_TEMP/cache" > serve.log 2>&1 &
           # ready once the Lean programs are compiled and the graph is read
           for i in $(seq 1 300); do curl -sf http://127.0.0.1:4173/api/status | grep -q '"state":"ready"' && break; sleep 1; done
           curl -sf http://127.0.0.1:4173/api/status | grep -q '"state":"ready"' || (cat serve.log; exit 1)
