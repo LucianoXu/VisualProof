@@ -157,7 +157,13 @@ test("hover asks Lean, reads the build, and writes nothing into the project", { 
     // a worker that dies (the kernel's OOM killer picks the largest process): Lean says the file's
     // progress is a fatal error and would start no other until the file changes; the file is opened
     // again and what is asked is answered, not left pending
-    const workers = () => execFileSync("ps", ["-o", "pid=,args=", "--ppid", String((hover as unknown as { proc: { pid: number } }).proc.pid)], { encoding: "utf8" }).split("\n").filter((l) => l.trim());
+    // every process with its parent, then the server's children: `--ppid` is GNU ps's alone
+    const workers = () => {
+      const parent = String((hover as unknown as { proc: { pid: number } }).proc.pid);
+      return execFileSync("ps", ["-A", "-o", "pid=,ppid=,args="], { encoding: "utf8" })
+        .split("\n")
+        .filter((l) => l.trim().split(/\s+/)[1] === parent);
+    };
     const worker = (file: string) => Number(workers().find((l) => l.includes(file))!.trim().split(/\s+/)[0]);
     const restarted = async (n: number) => {
       // a loaded machine (a CI runner, several suites at once) restarts slowly: up to a minute

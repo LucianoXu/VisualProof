@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -56,6 +56,23 @@ const reach = (from: string, sites: number) => {
 const tcb = (n: string) => reach(n, SITE_STMT | SITE_BODY);
 
 const opts = { skip: !haveLake };
+
+test("a project reached through a symbolic link is the project: its modules are told apart by their real paths", opts, () => {
+  // as a temporary folder is on macOS (/var is /private/var), or a project under a linked folder:
+  // Lean's search path and the command line spell the build directory differently
+  const links = mkdtempSync(join(tmpdir(), "vp-extract-link-"));
+  try {
+    const linked = join(links, "project");
+    symlinkSync(dir, linked, "dir");
+    const out = join(links, "graph.json");
+    execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, out, join(linked, ".lake/build/lib/lean"), "Fixture"], { cwd: linked, stdio: "ignore" });
+    const via = JSON.parse(readFileSync(out, "utf8")) as RawGraph;
+    assert.deepEqual(via.nodes.map((n) => n.name), g.nodes.map((n) => n.name));
+    assert.equal(via.edges.length, g.edges.length);
+  } finally {
+    rmSync(links, { recursive: true, force: true });
+  }
+});
 
 test("generated constants are folded, user declarations kept", opts, () => {
   const names = new Set(g.nodes.map((n) => n.name));
