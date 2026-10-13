@@ -77,7 +77,6 @@ test("the page bundles pdf.js's legacy build and never asks it for text; the ser
     assert.doesNotMatch(src(f), /getTextContent|TextLayer|streamTextContent/, `${f} asks pdf.js for no text`);
   }
   assert.match(src("web/src/paperview.ts"), /from "pdfjs-dist\/legacy\/build\/pdf\.min\.mjs"/);
-  assert.match(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).scripts["build:web"], /pdfworker=node_modules\/pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs/);
   assert.match(src("server/pipeline.ts"), /"pdfjs-dist\/legacy\/build\/pdf\.worker\.min\.mjs"/);
   const S = await site();
   try {

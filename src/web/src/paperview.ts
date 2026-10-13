@@ -29,7 +29,7 @@ import type { LinkPlace, Region, Word } from "../../shared/library.ts";
 import { Clicks, copyText, lineOf, nearestWord, notAfter, pressKind, selectedRects, TextDrag, wordSpans } from "./paperwords.ts";
 import type { WordPos } from "./paperwords.ts";
 
-// pdf.js's worker is bundled beside the page's own (package.json, build:web) and served by the server
+// pdf.js's worker is bundled beside the page's own (server/pipeline.ts, bundlePage) and served by the server
 GlobalWorkerOptions.workerSrc = "/pdfworker.js";
 
 /** A link as the paper draws it: where it is, what it is about, and whether it is the one lit. A

@@ -1,0 +1,14 @@
+{
+  // The package's JavaScript (scripts/build.mjs): Node runs TypeScript as it is from a checkout, but
+  // not from node_modules, so the installed package carries the server compiled. What the server
+  // imports of the page's code (web/src/) comes along; the page itself is bundled by esbuild.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "removeComments": false
+  },
+  "include": ["src/server/**/*.ts", "src/shared/**/*.ts"]
+}

@@ -23,6 +23,11 @@ export const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const REPO = resolve(SRC, "..");
 export const WEB = join(SRC, "web");
 
+/** The page's bundle made when the package was built (scripts/build.mjs), beside the page: an
+ *  installed package serves it as it is, and has no esbuild to make another. A checkout has none. */
+export const PREBUILT = join(WEB, "bundle");
+const prebuilt = existsSync(join(PREBUILT, "app.js"));
+
 /** The page's bundle under a cache root: one folder per checkout of the tool, so that two never
  *  write over each other's. */
 export function bundleDirIn(cacheRoot: string): string {
@@ -35,6 +40,7 @@ export function useBundleDir(dir: string): void {
   bundle = dir;
 }
 export function bundleDir(): string {
+  if (prebuilt) return PREBUILT;
   return (bundle ??= bundleDirIn(cacheHome()));
 }
 
@@ -126,40 +132,48 @@ function readdirRec(dir: string): string[] {
 }
 
 /** The page is bundled when its sources are newer than the bundle, so a checkout runs without a
- *  separate build step. What the page shares with the server (shared/) is its source too. Beside the
- *  page, the workers that lay out the Time Machine's past graphs (web/src/layoutworker.ts) and choose
- *  the overview's edges (web/src/edgeworker.ts) off the page's thread. Bundled into a folder of
- *  its own beside the bundle's, then moved into it a file at a time: a server reading the bundle
+ *  separate build step; an installed package serves the bundle it was built with (`PREBUILT`).
+ *  What the page shares with the server (shared/) is its source too. Bundled into a folder of its
+ *  own beside the bundle's, then moved into it a file at a time: a server reading the bundle
  *  meanwhile never reads a file half written. */
 export async function ensureBundle(): Promise<void> {
+  if (prebuilt) return;
   const dist = bundleDir();
   const out = join(dist, "app.js");
-  const srcDir = join(WEB, "src");
   let newest = 0;
-  for (const f of [...readdirRec(srcDir), ...readdirRec(join(SRC, "shared"))]) newest = Math.max(newest, statSync(f).mtimeMs);
+  for (const f of [...readdirRec(join(WEB, "src")), ...readdirRec(join(SRC, "shared"))]) newest = Math.max(newest, statSync(f).mtimeMs);
   const beside = ["layout.js", "edges.js", "pdfworker.js"].every((f) => existsSync(join(dist, f)));
   if (existsSync(out) && beside && statSync(out).mtimeMs >= newest) return;
-  const esbuild = await import("esbuild");
   mkdirSync(dirname(dist), { recursive: true });
   const tmp = mkdtempSync(`${dist}.tmp-`);
   try {
-    await esbuild.build({
-      // pdf.js's worker, which reads the library's PDFs for the reference window (AttachmentSpec
-      // decision 11), is bundled beside the page's own workers and served as they are: no outside
-      // service. Its legacy build, as the page's, for browsers that lack what the modern one uses
-      entryPoints: { app: join(srcDir, "main.ts"), layout: join(srcDir, "layoutworker.ts"), edges: join(srcDir, "edgeworker.ts"), pdfworker: fileURLToPath(import.meta.resolve("pdfjs-dist/legacy/build/pdf.worker.min.mjs")) },
-      bundle: true,
-      format: "esm",
-      // the owner reads in Safari: what Safari 16 lacks of the syntax (pdf.js's class static blocks; a
-      // regular expression's lookbehind, read at run time instead) is lowered, as in `build:web`
-      target: ["es2022", "safari16"],
-      sourcemap: true,
-      outdir: tmp,
-      logLevel: "warning",
-    });
+    await bundlePage(tmp);
     mkdirSync(dist, { recursive: true });
     for (const f of readdirSync(tmp)) renameSync(join(tmp, f), join(dist, f));
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+/** The page's bundle, from `web/src/` of a checkout, into `outdir`: by `ensureBundle` at start, and
+ *  by scripts/build.mjs into the package. Beside the page, the workers that lay out the Time
+ *  Machine's past graphs (web/src/layoutworker.ts) and choose the overview's edges
+ *  (web/src/edgeworker.ts) off the page's thread. */
+export async function bundlePage(outdir: string, sourcemap = true): Promise<void> {
+  const esbuild = await import("esbuild");
+  const srcDir = join(WEB, "src");
+  await esbuild.build({
+    // pdf.js's worker, which reads the library's PDFs for the reference window (AttachmentSpec
+    // decision 11), is bundled beside the page's own workers and served as they are: no outside
+    // service. Its legacy build, as the page's, for browsers that lack what the modern one uses
+    entryPoints: { app: join(srcDir, "main.ts"), layout: join(srcDir, "layoutworker.ts"), edges: join(srcDir, "edgeworker.ts"), pdfworker: fileURLToPath(import.meta.resolve("pdfjs-dist/legacy/build/pdf.worker.min.mjs")) },
+    bundle: true,
+    format: "esm",
+    // the owner reads in Safari: what Safari 16 lacks of the syntax (pdf.js's class static blocks; a
+    // regular expression's lookbehind, read at run time instead) is lowered
+    target: ["es2022", "safari16"],
+    sourcemap,
+    outdir,
+    logLevel: "warning",
+  });
 }
