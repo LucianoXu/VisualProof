@@ -1,6 +1,6 @@
 # Typecheck and the whole suite, with the fixture's own Lean toolchain, on Linux and macOS, on every
-# push and pull request. The suite on every supported toolchain, and the typesetting, are in
-# toolchains.yml.
+# push and pull request, on the oldest Node supported too; and the package as npm installs it. The
+# suite on every supported toolchain, and the typesetting, are in toolchains.yml.
 name: test
 
 on:
@@ -17,16 +17,23 @@ concurrency:
 
 jobs:
   test:
+    # the suite takes minutes; a test that hangs ends here, not after GitHub's six hours
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        node: [24]
+        # the oldest Node in engines (package.json)
+        include:
+          - os: ubuntu-latest
+            node: 22.18.0
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: npm
       # poppler reads the library's PDFs; XeLaTeX is left out, and the tests that typeset skip
       - if: runner.os == 'Linux'
@@ -42,3 +49,52 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  # the package as npm installs it: packed (which builds it), installed into a prefix of its own
+  # with its dependencies alone, then asked its version, the doctor on the fixture, and to serve it
+  package:
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [24]
+        include:
+          - os: ubuntu-latest
+            node: 22.18.0
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - if: runner.os == 'macOS'
+        run: brew install poppler
+      - run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$(cat test/fixture/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - run: npm ci
+      - run: npm pack
+      - run: |
+          npm install --global --prefix "$RUNNER_TEMP/vp" ./visualproof-*.tgz
+          echo "$RUNNER_TEMP/vp/bin" >> "$GITHUB_PATH"
+      - run: visualproof --version
+      # the fixture built where a user's project would be, away from the checkout
+      - run: |
+          cp -R test/fixture "$RUNNER_TEMP/fixture"
+          rm -rf "$RUNNER_TEMP/fixture/.lake"
+          (cd "$RUNNER_TEMP/fixture" && lake build)
+      - run: visualproof doctor "$RUNNER_TEMP/fixture" --site "$RUNNER_TEMP/site" --cache "$RUNNER_TEMP/cache"
+      - name: serve the fixture and fetch the page
+        run: |
+          cd "$RUNNER_TEMP"
+          visualproof serve fixture --port 4173 --site "$RUNNER_TEMP/site" --cache "$RUNNER_TEMP/cache" > serve.log 2>&1 &
+          # ready once the Lean programs are compiled and the graph is read
+          for i in $(seq 1 300); do curl -sf http://127.0.0.1:4173/api/status | grep -q '"state":"ready"' && break; sleep 1; done
+          curl -sf http://127.0.0.1:4173/api/status | grep -q '"state":"ready"' || (cat serve.log; exit 1)
+          curl -sf http://127.0.0.1:4173/ | grep -q '<title>VisualProof</title>'
+          curl -sf -o /dev/null http://127.0.0.1:4173/app.js
+          cat serve.log

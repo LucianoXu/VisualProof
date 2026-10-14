@@ -13,18 +13,25 @@ is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/Canv
 ## Run
 
 ```bash
-npm install
-node src/server/main.ts serve <path-to-lean-project>      # then open http://127.0.0.1:4173/
+visualproof doctor <path-to-lean-project>     # what is missing, if anything, and what to do
+visualproof serve <path-to-lean-project>      # then open http://127.0.0.1:4173/
 ```
 
-- Needs Node ≥ 23.6 (TypeScript runs directly) and the project's Lean toolchain through elan.
+The README says how to install the `visualproof` command. A checkout also runs as it is, after
+`npm install`: `node src/server/main.ts` in place of `visualproof`.
+
+- Needs Node 22.18 or later in 22, or 24.2 or later, and the project's Lean toolchain through
+  elan. `visualproof doctor <path>` checks this machine and the project, and says what to do.
 - The project must have been built: VisualProof reads what `lake build` left in `.lake/` and
   never builds the project. A build in progress or a broken one is shown as such (see Live), with
   the last graph that could be read. It writes nothing into the project: what it keeps is in the
   site's folder and the cache (below).
-- Modules to read come from `defaultTargets` in `lakefile.toml`, or `--root Module` (repeatable).
+- Modules to read come from `defaultTargets` in `lakefile.toml`, or the libraries marked
+  `@[default_target]` in `lakefile.lean` (their `roots`, else their names; the lakefile is read as
+  text, never run), or `--root Module` (repeatable), which wins.
 - The first read of flt-regular (27 modules, on Mathlib) takes about 14 s, 11 of them compiling the
-  extractor for its toolchain, which is done once per toolchain; a large project takes longer <!-- TODO(scale, sphere packing): re-measure -->.
+  extractor for its toolchain, which is done once per toolchain; the showcase, Sphere-Packing-Lean
+  (829 modules, 7,851 declarations), about 55 s, its extractor compiled included.
   It is cached (`<cache>/extract/`) by a fingerprint of the `.olean` files, so a restart without a
   rebuild is instant (under a second). The usage pass follows (`--jobs`).
 - `--port N` (default 4173).
@@ -34,8 +41,8 @@ node src/server/main.ts serve <path-to-lean-project>      # then open http://127
     VisualProof site accumulates — the history of builds, the library's files, the views and their
     layouts (with the notes they keep), the timeline, conversations with agents, agents' tokens and
     personal links. By default `~/.local/share/visualproof/sites/<project>-<hash>/` (macOS:
-    `~/Library/Application Support/visualproof/sites/…`); `--site` is relative to the project, or
-    absolute; `<site>` below. It is local: it cannot be derived again and holds secrets, so back it
+    `~/Library/Application Support/visualproof/sites/…`); `--site` is relative to the current directory,
+    as `--cache` is, or absolute; `<site>` below. It is local: it cannot be derived again and holds secrets, so back it
     up and never commit it. A folder the server makes gets a README saying so; one already there
     is left as it is. One server at a time uses a site (`<site>/.lock`): a second is refused, and
     says which process holds it.
@@ -53,11 +60,14 @@ node src/server/main.ts serve <path-to-lean-project>      # then open http://127
   meanwhile, and its findings come as the next version of the graph, so open pages update. One
   process per module (a process cannot import twice); each takes hundreds of MB of its own besides
   the `.olean` files they all map, and import is bound by memory bandwidth, so past about a quarter
-  of the cores more jobs gain little <!-- TODO(scale, sphere packing): re-measure -->. A cold pass on flt-regular (27 modules) takes about 14 s at
+  of the cores more jobs gain less and less (a cold pass on the showcase, on 32 cores: 320 s at 4
+  jobs, 195 s at 8, 148 s at 16; the workers together hold 3 GB at 4 jobs, 4 GB at 8 and 6 GB at
+  16, the `.olean` files counted once). A cold pass on flt-regular (27 modules) takes about 14 s at
   4 jobs, its worker compiled first; results are cached per module (`<cache>/usage/`), so after a
   build only the modules whose `.olean` or imports changed run again (a build of flt-regular that
-  touched 11 of them: 8 s; a large build <!-- TODO(scale, sphere packing): re-measure -->), and a restart without a build serves the merged
-  graph at once (under a second).
+  touched 11 of them: 8 s; one of the showcase that changed a module 80 others import: those 81 in
+  24 s, the merged graph served 51 s after the build), and a restart without a build serves the
+  merged graph at once (under a second).
   Progress is in `GET /api/status` (`usage`) and the log; a module that cannot be elaborated is
   reported there and keeps the text-based context and no notation edges.
 - `--graph <saved.json>` serves a saved extraction instead of reading the build.
@@ -82,7 +92,7 @@ node src/server/main.ts serve <path-to-lean-project>      # then open http://127
   their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
   address. Without it, the prompt carries the address the person's browser used.
 - `--library-limit <GB>` (default 2): the most the project's library of papers and images may take,
-  all its files together (see References). `node src/server/main.ts purge-file <path> <sha256>` deletes a
+  all its files together (see References). `visualproof purge-file <path> <sha256>` deletes a
   file's bytes from the library for good (a file added by mistake); nothing else does. Poppler
   (`pdfinfo`, `pdftotext`, `pdftoppm`) reads the PDFs on the server.
 - `GET /api/status` says how the server is: the graph, Lean (running, crashed and restarted), the
@@ -95,7 +105,7 @@ node src/server/main.ts serve <path-to-lean-project>      # then open http://127
   only over HTTPS.
 - `docs/deploy/visualproof.service.example` is an example systemd user unit that serves a project this
   way: copy it and fill in its placeholders (it says how).
-- `node src/server/main.ts export <path> -o page.html` writes one self-contained HTML file (page, data
+- `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data
   and sources, 2.5 MB for flt-regular) that opens from disk with no server. It is frozen
   (`--label` names it).
 
@@ -657,7 +667,9 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   server has them as its `export` tool, whose action `file` saves the PDF where the agent says
   ([docs/agent-api/export.md](agent-api/export.md)).
 - On flt-regular: the Key view of `Hilbert91`, 4 declarations, 2 pages typeset in 1.4 s; a view of
-  its review set, 16 declarations, 4 pages in 1.5 s. A large review set takes longer <!-- TODO(scale, sphere packing): re-measure -->.
+  its review set, 16 declarations, 4 pages in 1.5 s. On the showcase, Sphere-Packing-Lean (7,851
+  declarations), the review set of `SpherePacking.Dim24.MainTheorem`, 18 of the 226 declarations
+  its TCB holds, 5 pages in 2.1 s: a large project's review sets are small.
 
 ## Together
 
@@ -782,7 +794,8 @@ project's modules. It is compiled once per toolchain and version of its source i
 compiling fails it is interpreted instead. Per-module results are cached under a key built from
 Lake's `.olean` hash and the keys of the module's imports, so after an edit only the edited file
 and what imports it are walked again (flt-regular: 3.4 s cold for its 27 modules, most of it the walk
-for axioms through what they import; on a large project the cache is what counts <!-- TODO(scale, sphere packing): re-measure -->).
+for axioms through what they import; the showcase: 21 s for its 829, 13 of them that walk, and a
+restart from the cache serves its graph in a second).
 
 - **Edges carry the place a reference occurs**: in the statement, in a definition body, or inside
   a proof. A subterm is a proof when its type is a proposition (`Meta.isProof`); by proof
@@ -867,13 +880,16 @@ as a 1 V battery; each cluster solves the network of its children (declarations 
 a dependency counting where its two ends meet) with everything outside the cluster held at 0 V,
 and places its children by potential, the highest on top: sub-clusters at the free spot nearest
 their height, declarations packed tightly and handed their places from the top down. Nothing
-overlaps and the same graph always gives the same picture. On a large project nearly all the
-dependencies inside the project point downwards where their two ends meet <!-- TODO(scale, sphere packing): re-measure -->. Between rebuilds what survived keeps
+overlaps and the same graph always gives the same picture. On a large project about nine in ten of the
+dependencies inside the project point downwards where their two ends meet (on the showcase, 90% of
+them by namespace, 87% by module; on flt-regular, 73% and 87%). Between rebuilds what survived keeps
 its place, unless its height in its cluster moved by more than a tenth of the radius; newcomers
-are fitted in, and siblings pushed apart only where a grown cluster would overlap them. The page works
-in local coordinates from there on (`web/src/scene.ts`): folding compacts a parent's other
-children by area, keeping their directions; motion (`web/src/motion.ts`) is computed per cluster
-on its direct children, with dependency springs at the lowest common ancestor.
+are fitted in, and siblings pushed apart only where a grown cluster would overlap them. The graph
+the usage pass completes is not a rebuild: it is laid out against what the build's first graph was
+laid out against, from scratch on a first read, so that a first read and a Re-layout give the same
+picture. The page works in local coordinates from there on (`web/src/scene.ts`): folding compacts
+a parent's other children by area, keeping their directions; motion (`web/src/motion.ts`) is
+computed per cluster on its direct children, with dependency springs at the lowest common ancestor.
 
 ## Layout of the repository
 

@@ -1,5 +1,5 @@
 // The review's storage (ReviewSpec.md, decision 5; the log design decided 2026-10-08): the site's
-// `log/` (server/dirs.ts; a folder given relative to the project, or absolute). The site is local,
+// `log/` (server/dirs.ts). The site is local,
 // never committed (the owner's decision of 2026-10-13): the review is the site's, as its history is.
 //
 // One append-only log per writer, `log/<name>-<hash>.jsonl` (an agent's `….agent.jsonl`; someone

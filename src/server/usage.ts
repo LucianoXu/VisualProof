@@ -11,7 +11,8 @@
 //
 // One process per module: a process cannot import twice. `jobs` run at once; import is bound by
 // memory bandwidth, and each worker holds hundreds of MB of its own besides the `.olean` files they
-// all map (TODO(scale, sphere packing): re-measure). A module's result is cached in the project's cache directory under a key
+// all map (on the showcase about 150 MB of its own, 1.2 to 1.6 GB resident with them). A module's result is cached in the
+// project's cache directory under a key
 // made of its `.olean` hash, the text it was compiled from, the options Lake compiled it with, and
 // the keys of the project modules it imports: after a build only the modules whose key changed run
 // again. A module that cannot be elaborated is reported and keeps the text-based context and no
@@ -32,7 +33,8 @@ import type { Project } from "./project.ts";
 import { compiledTextHash, lakeTextHash } from "./status.ts";
 
 /** How many workers run at once unless `--jobs` says otherwise: past about a quarter of the cores,
- *  more workers no longer import faster (TODO(scale, sphere packing): re-measure). */
+ *  more workers gain less and less (the showcase's cold pass on 32 cores: 320 s with 4, 195 s with
+ *  8, 148 s with 16). */
 export const DEFAULT_JOBS = 8;
 /** A worker still running after this long is stopped, and its module reported as failed. */
 const WORKER_TIMEOUT_MS = 10 * 60_000;

@@ -11,7 +11,7 @@
 //          folder; and, shared by every project, the Lean programs compiled per toolchain and the
 //          page's bundle
 //
-// The site is one folder, `--site` (relative to the project, or absolute; by default
+// The site is one folder, `--site` (relative to the current directory, or absolute; by default
 // `<data home>/sites/<key>`), made with a README that says what it is; one server at a time holds
 // it (`.lock`). The caches are under one root, `--cache` (by default the cache home): the project's
 // in `projects/<key>`, the Lean programs in `lean/`, the page's bundle in `web/`. The homes follow
@@ -20,7 +20,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 /** The folders of one project. */
 export interface Dirs {
@@ -62,12 +62,13 @@ export function projectKey(root: string): string {
   return `${basename(root)}-${createHash("sha1").update(root).digest("hex").slice(0, 8)}`;
 }
 
-/** The folders of the project at `root`: its site where `site` says (relative to the project) or
+/** The folders of the project at `root`: its site where `site` says (relative to the current
+ *  directory, as `--cache` is: the owner's decision of 2026-10-14) or
  *  under the data home, its caches under `cacheRoot` or the cache home. */
 export function projectDirs(root: string, site: string | null, cacheRoot: string | null, h: HomeEnv = here()): Dirs {
   const cache = cacheRoot ? resolve(cacheRoot) : cacheHome(h);
   return {
-    site: site === null ? join(dataHome(h), "sites", projectKey(root)) : isAbsolute(site) ? site : resolve(root, site),
+    site: site === null ? join(dataHome(h), "sites", projectKey(root)) : resolve(site),
     cache: join(cache, "projects", projectKey(root)),
     lean: join(cache, "lean"),
   };
@@ -136,6 +137,17 @@ function alive(pid: number): boolean {
   } catch (e) {
     // a process of another user's is there all the same
     return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** The living process that holds the site, if one does: what `lockSite` would refuse, without
+ *  taking it (`visualproof doctor`). */
+export function siteHolder(dir: string): number | null {
+  try {
+    const held = Number(readFileSync(join(dir, ".lock"), "utf8").trim());
+    return Number.isInteger(held) && held > 0 && alive(held) ? held : null;
+  } catch {
+    return null;
   }
 }
 

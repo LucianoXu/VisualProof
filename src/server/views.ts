@@ -104,8 +104,9 @@ export interface UnreadableView {
 }
 
 /** The most a board's layout memory may be when a page hands it over: room for a board of a large
- *  project's declarations, many times over (TODO(scale, sphere packing): re-measure). */
-export const MAX_MEMORY_BYTES = 8 << 20;
+ *  project's declarations many times over (the showcase's whole board, 7,851 declarations, is
+ *  1.8 MB; 50 MB is the owner's decision of 2026-10-14). */
+export const MAX_MEMORY_BYTES = 50 << 20;
 
 const isPins = (p: unknown): p is Pins => {
   const o = p as Record<string, unknown> | null;

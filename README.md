@@ -27,7 +27,7 @@ keep a record of the review.
 
 ## Requirements
 
-- Node ≥ 23.6.
+- Node 22.18 or later in 22, or 24.2 or later.
 - [elan](https://github.com/leanprover/elan), which installs each project's Lean toolchain. Lean
   v4.28.0 to v4.35.0 are supported.
 - Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`).
@@ -38,18 +38,19 @@ and never builds it.
 
 ## Try it
 
-VisualProof is not on npm yet, so run it from a checkout. Here it is on
-[flt-regular](https://github.com/leanprover-community/flt-regular), Fermat's Last Theorem for
-regular primes, built on Mathlib:
+VisualProof is not on npm yet: install its `visualproof` command from a checkout, which packs it
+as npm would. Here it is on [flt-regular](https://github.com/leanprover-community/flt-regular),
+Fermat's Last Theorem for regular primes, built on Mathlib:
 
 ```bash
 git clone https://github.com/LucianoXu/VisualProof
-(cd VisualProof && npm install)
+(cd VisualProof && npm install && npm pack && npm install --global ./visualproof-*.tgz)
 
 git clone https://github.com/leanprover-community/flt-regular
 (cd flt-regular && git checkout bd81b78ba6 && lake exe cache get && lake build)
 
-node VisualProof/src/server/main.ts serve flt-regular
+visualproof doctor flt-regular     # what is missing, if anything, and what to do
+visualproof serve flt-regular
 ```
 
 Open http://127.0.0.1:4173/. Choose the *Rests on* tool (`2`), find `flt_regular` with the search
@@ -75,7 +76,7 @@ places:
 By default the server listens on this machine only. To let others in:
 
 ```bash
-node VisualProof/src/server/main.ts serve flt-regular --host 0.0.0.0 --access-key-file ~/visualproof.key
+visualproof serve flt-regular --host 0.0.0.0 --access-key-file ~/visualproof.key
 ```
 
 Whoever you give the link `http://<host>:4173/k/<key>` gets in; the key is what the file holds,

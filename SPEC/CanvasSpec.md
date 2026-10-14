@@ -36,6 +36,12 @@ the placement of a cluster's children changes; the clusters stay.
 - **Stability.** An item keeps its place unless its height in its cluster moved by more than a tenth
   of the cluster's radius. Across graph versions a node keeps its place only while its cluster keeps
   its key; with fewer than half the nodes surviving, the layout starts afresh.
+  - **A build's two graphs are one** (the owner's decision of 2026-10-14). The graph read first waits
+    for the usage pass, and its layout is provisional; the usage pass's graph completes the build
+    and is laid out against what the build was laid out against (nothing, on a first read), never
+    against the provisional layout, which lacked the notation's edges. So a first read gives the
+    picture a Re-layout gives, and a later build keeps the places of the build before. A site with no
+    memory lays its graph out afresh, whatever view the cache holds.
 - **Layout version** (`LAYOUT_VERSION`, shared/graph.ts): when it changes, the server drops every
   view's pins once (both clusterings) and its layout memory (`<site>/layout-memory.json`). Scoped
   boards' memory (`<site>/view-memory/`) has no version and is kept.

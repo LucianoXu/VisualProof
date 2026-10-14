@@ -8,7 +8,8 @@
 // or an agent at level full.
 //
 // The Time Machine steps from build to build, and a snapshot's graph is large (on a large project,
-// megabytes of JSON and a noticeable time to make and compress; TODO(scale, sphere packing): re-measure): the page takes it in two parts, its declarations as JSON and its
+// megabytes of JSON and a noticeable time to make and compress: the showcase's, 7,851 declarations, is 13.7 MB, made
+// in 0.6 s): the page takes it in two parts, its declarations as JSON and its
 // edges packed as the graph on show's are (shared/edgecodec.ts), each compressed once and kept for
 // the last few snapshots asked, under the renames in force, and tagged so that a page that has one
 // is answered 304.
@@ -64,7 +65,8 @@ interface Parts {
 }
 /** the parts of the last snapshots asked, per history, by snapshot, build read and renames */
 const kept = new WeakMap<History, Map<string, Parts>>();
-/** how many snapshots' parts are kept: megabytes each on a large project (TODO(scale, sphere packing): re-measure) */
+/** how many snapshots' parts are kept: about a megabyte each, compressed, on a large project (the showcase's:
+ *  0.7 MB of declarations, 0.5 MB of edges) */
 const KEEP_PARTS = 8;
 /** what changed between two snapshots, as answered last (a step on the Time Machine's timeline asks
  *  it of each build against the latest, every reader the same), by the builds as read and the renames
@@ -263,9 +265,8 @@ export function historyEndpoints(world: Partial<HistoryWorld>, refuseFull: (a: A
       run,
     },
     {
-      // TODO(scale, sphere packing): re-measure the size "about" quotes
       method: "GET", path: "/api/agent/history/graph",
-      about: "One snapshot's graph, as the page reads the graph on show without its layouts: each project declaration with its statement, doc, place, version (hash, under the renames in force) and the kernel's hash it was read with; the outside declarations it refers to; the edges as one flat list. Large: megabytes for a large project. A declaration's source text at that build: GET /api/agent/source?name=…&snapshot=<id>.",
+      about: "One snapshot's graph, as the page reads the graph on show without its layouts: each project declaration with its statement, doc, place, version (hash, under the renames in force) and the kernel's hash it was read with; the outside declarations it refers to; the edges as one flat list. Large: 0.8 MB of JSON for 300 declarations, 14 MB for 8,000. A declaration's source text at that build: GET /api/agent/source?name=…&snapshot=<id>.",
       params: { id: "a snapshot's id (default: the latest build's)", part: "nodes: the same without its edges (and edgeCount), with sources (the modules whose text is kept, each lake or places), as the page takes it; edges: the edges alone, packed as /api/edges?pack=2 packs them (shared/edgecodec.ts); leave it out for the whole graph" },
       returns: "{snapshot, modules: [{name, imports}], nodes: [{name, kind, module, ax, type, doc?, range?, also?, flags?, hash, kernel?} | {name, kind, module, ax, ext: true}], projectCount, axioms, axiomSets, edges: [src, dst, sites, …]}",
       run,

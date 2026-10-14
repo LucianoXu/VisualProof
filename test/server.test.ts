@@ -5,7 +5,7 @@
 // sent compressed.
 
 import assert from "node:assert/strict";
-import { get } from "node:http";
+import { get, request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -37,12 +37,47 @@ test("a body too large is answered 413, as JSON ({error, hint} on the agents' AP
     const page = await S.ask("POST", "/api/presence", { view: "x".repeat(1 << 20) });
     assert.equal(page.status, 413);
     assert.match(page.json?.error, /larger than 16 KB/);
-    const memory = await S.ask("POST", "/api/views/memory", { memory: "x".repeat(9 << 20) }, { "x-visualproof-name": "Alice" });
-    assert.equal(memory.status, 413, "a board's memory: a few MB at most");
+    const memory = await S.ask("POST", "/api/views/memory", { memory: "x".repeat(51 << 20) }, { "x-visualproof-name": "Alice" });
+    assert.equal(memory.status, 413, "a board's memory: 50 MB at most");
+    assert.notEqual((await S.ask("POST", "/api/views/memory", { memory: "x".repeat(9 << 20) }, { "x-visualproof-name": "Alice" })).status, 413, "9 MB is not too large");
     // the review's own route, read the same way
     assert.equal((await S.ask("POST", "/api/review", { comment: "x".repeat(9 << 20) }, { "x-visualproof-name": "Alice" })).status, 413);
     // and the server goes on
     assert.equal((await S.ask("GET", "/api/status")).status, 200);
+  } finally {
+    await S.close();
+  }
+});
+
+test("a body too large is answered once it has all come, so that the client reads the answer; one never ending, after a grace", async () => {
+  const S = await site();
+  try {
+    // a client that finishes sending reads the 413, and nothing the handler answered meanwhile
+    const big = await fetch(`${S.base}/api/presence`, { method: "POST", headers: { "content-type": "application/json" }, body: "x".repeat(32 << 20) });
+    assert.equal(big.status, 413);
+    assert.match((await big.json()).error, /larger than 16 KB/);
+    // one that never stops is answered all the same after the grace, and cut off: it reads the 413,
+    // or, where the system resets a connection closed while the client still sends (macOS), only
+    // the reset
+    const u = new URL(`${S.base}/api/presence`);
+    const started = Date.now();
+    const end = await new Promise<string>((ok) => {
+      const req = request({ host: u.hostname, port: u.port, path: u.pathname, method: "POST", headers: { "content-type": "application/json" } }, (res) => {
+        ok(String(res.statusCode));
+        res.resume();
+        req.destroy();
+      });
+      req.on("error", (e: NodeJS.ErrnoException) => ok(e.code ?? e.message));
+      const chunk = Buffer.alloc(64 << 10, 120);
+      const pump = () => {
+        while (!req.destroyed && req.write(chunk));
+      };
+      req.on("drain", pump);
+      pump();
+    });
+    assert.match(end, /^(413|ECONNRESET|EPIPE)$/);
+    assert.ok(Date.now() - started >= 1500, "after the grace");
+    assert.equal((await S.ask("GET", "/api/status")).status, 200, "and the server goes on");
   } finally {
     await S.close();
   }

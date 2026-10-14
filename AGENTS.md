@@ -48,7 +48,9 @@ The tool is in `src/`; paths of code in its comments and in `SPEC/` are relative
 ## General Guidelines
 
 - Comments and documentation in files must be in English. But the chat in sessions should use the same language as the user.
-- **NEVER** modify human-maintained files without permission.
+- **NEVER** modify human-maintained files without permission. `CHANGELOG.md` is one.
+- Work on a branch and come in by a pull request: never push to `main`, tag, or publish to npm.
+  Releases are the owner's (`CONTRIBUTING.md`, "Branches and releases").
 - `SPEC/` is the ground truth: `SPEC/SPEC.md` is the owner's specification, the other `*Spec.md`
   files the decisions, which code comments cite by name ("ViewSpec decision 29"). Do not edit
   them without being asked; propose changes.

@@ -10,6 +10,7 @@ VisualProof can export a nicely typeset PDF document for the formalization and a
 
 ## Deployment
 
+- This tool should support both Linux and macOS. 
 - This tool is provided as a npm package. It is opensource software on GitHub, with a introduction webpage.
 - This tool can serve a website that visualizes a local Lean codebase, both viewed locally or deployed on a server.
 - Websites served by this tool will check for updates periodically, and seamlessly update.
@@ -51,9 +52,9 @@ VisualProof can export a nicely typeset PDF document for the formalization and a
 
 - The website serves as a platform for realtime collaboration, like a shared whiteboard.
 - Users can share the website with a sharing link. The sharing link is guarded by an access token.
+- Users can also create a sharing link with readonly access. Guests with readonly access are not visible to others. Guests with readonly access can only create readonly sharing link. Readonly sharing link can be access-token-free.
 - Users can follow other user's camera on the website.
 - The website maintains a log of activity that is visible to all users.
-
 
 ### Attachment
 

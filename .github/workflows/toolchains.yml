@@ -29,15 +29,17 @@ concurrency:
 
 jobs:
   list:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     outputs:
       toolchains: ${{ steps.list.outputs.toolchains }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - id: list
         run: echo "toolchains=$(jq -c .toolchains test/toolchains.json)" >> "$GITHUB_OUTPUT"
 
   supported:
+    timeout-minutes: 45
     needs: list
     runs-on: ubuntu-latest
     strategy:
@@ -45,8 +47,8 @@ jobs:
       matrix:
         toolchain: ${{ fromJSON(needs.list.outputs.toolchains) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -61,6 +63,7 @@ jobs:
           VP_TOOLCHAIN: ${{ matrix.toolchain }}
 
   newest:
+    timeout-minutes: 45
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
@@ -87,9 +90,9 @@ jobs:
             fi
           fi
       - if: steps.version.outputs.toolchain
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - if: steps.version.outputs.toolchain
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -112,11 +115,12 @@ jobs:
   # hand, never on a push. Libertinus (texlive-fonts-extra, gigabytes) is left out, so the document
   # is set in Latin Modern, as the style file falls back to
   typeset:
+    timeout-minutes: 45
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm

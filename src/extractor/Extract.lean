@@ -631,13 +631,20 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
   let t0 ← IO.monoMsNow
   let modNames := env.header.moduleNames
   modify fun s => { s with modNames }
-  -- 1. project modules: those whose .olean lives in the project's own build directory
+  -- 1. project modules: those whose .olean lives in the project's own build directory. Both paths
+  -- are made real first: the search path may spell a folder one way and the command line another
+  -- (a temporary folder on macOS, /var → /private/var; a project reached through a symbolic link)
+  let real (p : System.FilePath) : IO String := do
+    try return (← IO.FS.realPath p).toString catch _ => return p.toString
+  let sep := System.FilePath.pathSeparator.toString
+  let dir ← real projectDir
+  let dir := if dir.endsWith sep then dir else dir ++ sep
   let mut projMods : Array (Name × Nat) := #[]
   for h : i in [0:modNames.size] do
     let m := modNames[i]
     let path ← try (some <$> findOLean m) catch _ => pure none
     if let some p := path then
-      if p.toString.startsWith projectDir then projMods := projMods.push (m, i)
+      if (← real p).startsWith dir then projMods := projMods.push (m, i)
   let projSet : Std.HashSet Name := projMods.foldl (·.insert ·.1) {}
   let inProject (c : Name) : Bool :=
     match env.getModuleIdxFor? c with

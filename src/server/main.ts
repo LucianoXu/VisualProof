@@ -41,14 +41,15 @@ import { Library, libraryApiOf } from "./library.ts";
 import { libraryRoute, pdfjsAsset, readUpload } from "./libraryroute.ts";
 import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
+import { doctor, packageVersion, printReport } from "./doctor.ts";
 
 interface Options {
-  cmd: "serve" | "export" | "purge-file";
+  cmd: "serve" | "export" | "purge-file" | "doctor";
   path: string;
   roots: string[];
   port: number;
   host: string;
-  /** the site's folder (server/dirs.ts), relative to the project or absolute; null: under the data home */
+  /** the site's folder (server/dirs.ts), relative to the current directory or absolute; null: under the data home */
   site: string | null;
   /** the root of the caches; null: the cache home */
   cache: string | null;
@@ -75,8 +76,10 @@ interface Options {
   sha: string | null;
 }
 
-function usage(): never {
-  console.error(`usage: visualproof serve  <lean-project> [--root Module]... [--port 4173] [--host 127.0.0.1]
+/** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
+ *  to stdout with status 0. */
+function usage(code = 2): never {
+  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project> [--root Module]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--jobs ${DEFAULT_JOBS}]
@@ -84,6 +87,8 @@ function usage(): never {
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Module]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
+       visualproof doctor [<lean-project>] [--root Module]... [--site dir] [--cache dir]
+       visualproof --version
 
   Reads what \`lake build\` left in <lean-project>/.lake. It never builds the project, and writes
   nothing into it.
@@ -92,7 +97,7 @@ function usage(): never {
            history of builds, the library's files, the views and their layouts, the timeline,
            conversations with agents, agents' tokens and personal links. It cannot be derived
            again and holds secrets: back it up, never commit it. One server at a time uses a
-           site. Relative to the project, or absolute; default:
+           site. Relative to the current directory, or absolute; default:
            ${join(dataHome(), "sites", "<project>-<hash>")}
   --cache  the root of the caches, which a rebuild makes again: the project's (extractions, the
            usage pass's results, prepared views, typeset documents, Lean's language server's
@@ -142,13 +147,22 @@ function usage(): never {
 
   purge-file  deletes a file's bytes from the library for good (a file added by mistake), and what
            was read of it; its record and its links stay in the review, saying this server lacks it.
-           Nothing else deletes a file: removing one from the page archives it.`);
-  process.exit(2);
+           Nothing else deletes a file: removing one from the page archives it.
+
+  doctor   checks what VisualProof needs on this machine (Node, elan, Poppler, XeLaTeX) and, given
+           a project, its toolchain, its build and its site, and says what to do; it changes
+           nothing.`);
+  process.exit(code);
 }
 
 function parseArgs(argv: string[]): Options {
   const [cmd, ...rest] = argv;
-  if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file") usage();
+  if (cmd === "--help" || cmd === "-h" || cmd === "help") usage(0);
+  if (cmd === "--version" || cmd === "-v") {
+    console.log(packageVersion());
+    process.exit(0);
+  }
+  if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file" && cmd !== "doctor") usage();
   const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
@@ -192,7 +206,7 @@ function parseArgs(argv: string[]): Options {
     else if (cmd === "purge-file" && !o.sha) o.sha = a;
     else usage();
   }
-  if (!o.path || (cmd === "export" && !o.out)) usage();
+  if ((!o.path && cmd !== "doctor") || (cmd === "export" && !o.out)) usage();
   if (cmd === "purge-file" && !validSha(o.sha)) {
     console.error("visualproof purge-file: give the file's SHA-256, 64 hex digits, as the page's library shows it.");
     process.exit(2);
@@ -875,6 +889,7 @@ function acceptsGzip(req: IncomingMessage | undefined): boolean {
 const files = new Map<string, { mtime: number; size: number; body: Buffer; gz: Buffer | null; etag: string }>();
 
 function sendFile(req: IncomingMessage, res: ServerResponse, file: string): void {
+  if (refused.has(res)) return;
   if (!existsSync(file)) return sendJson(res, { error: "not found" }, 404);
   const st = statSync(file);
   let f = files.get(file);
@@ -899,8 +914,9 @@ function sendFile(req: IncomingMessage, res: ServerResponse, file: string): void
 
 /** the most an agent's request body may be (docs/agent-api/requests.md: 1 MB) */
 const AGENT_BODY = 1 << 20;
-/** how long a connection whose body was refused as too large is kept to say so: long enough for
- *  the answer to be read, not for the rest of the body to be */
+/** how long the rest of a body refused as too large is read before it is answered all the same,
+ *  and the connection cut: long enough for a client to finish sending what it began, not for an
+ *  endless body */
 const TOO_LARGE_GRACE_MS = 2000;
 
 class TooLarge extends Error {}
@@ -924,21 +940,37 @@ function readBody(req: IncomingMessage, limit: number): Promise<string> {
   });
 }
 
-/** Answer 413 to a body too large and close the connection: the answer goes first, the client
- *  sending the rest meanwhile is read and thrown away (a client still sending when the connection
- *  is cut may never read the answer), and after a short grace the connection goes whatever it
- *  still sends. */
+/** Responses refused as too large and not answered yet (tooLarge): what the handler that asked for
+ *  the body answers meanwhile is not sent. */
+const refused = new WeakSet<ServerResponse>();
+
+/** Answer 413 to a body too large and close the connection. The rest of the body is read and thrown
+ *  away first, and the answer goes once it has all come: a connection closed while the client is
+ *  still sending is reset on some systems (macOS), and the client never reads the answer. A client
+ *  still sending after a short grace is answered all the same, and cut off. */
 function tooLarge(req: IncomingMessage, res: ServerResponse, body: object): void {
+  refused.add(res);
+  let done = false;
+  const answer = () => {
+    if (done) return;
+    done = true;
+    refused.delete(res);
+    sendJson(res, body, 413, { connection: "close" });
+  };
   req.on("data", () => {});
+  req.on("end", answer);
   req.resume();
-  sendJson(res, body, 413, { connection: "close" });
-  setTimeout(() => req.socket.destroy(), TOO_LARGE_GRACE_MS).unref();
+  if (req.readableEnded) answer();
+  setTimeout(() => {
+    answer();
+    setTimeout(() => req.socket.destroy(), 500).unref();
+  }, TOO_LARGE_GRACE_MS).unref();
 }
 
 /** Send a JSON answer, once: a handler that answers after something else already did (a body too
  *  large, answered as it was read) is not heard. */
 function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Record<string, string> = {}): void {
-  if (res.headersSent || res.writableEnded) return;
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
   const text = JSON.stringify(body);
   // a small answer is not worth compressing; a status with its build log, a source file, are
   if (text.length > JSON_GZIP_FROM && acceptsGzip(res.req)) {
@@ -952,7 +984,7 @@ function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Recor
 /** Send a text that is not JSON (the agents' documentation, the MCP server's file), compressed
  *  where the client takes it. */
 function sendText(req: IncomingMessage, res: ServerResponse, text: string, type: string, code = 200): void {
-  if (res.headersSent || res.writableEnded) return;
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
   const head = { "content-type": type, "cache-control": "no-store", vary: "accept-encoding" };
   if (text.length > JSON_GZIP_FROM && acceptsGzip(req)) {
     res.writeHead(code, { ...head, "content-encoding": "gzip" });
@@ -964,7 +996,7 @@ function sendText(req: IncomingMessage, res: ServerResponse, text: string, type:
 
 /** Send a file to download (a typeset document): as it is, never cached, named for the disk. */
 function sendDownload(res: ServerResponse, f: ExportFile): void {
-  if (res.headersSent || res.writableEnded) return;
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
   res.writeHead(200, { "content-type": f.type, "content-length": String(f.body.length), "content-disposition": `attachment; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, "_")}"`, "cache-control": "no-store" });
   res.end(f.body);
 }
@@ -995,6 +1027,7 @@ const gzTags = new WeakMap<Buffer, string>();
 
 /** A part of the graph, gzipped already: tagged, so that a page that has it gets 304. */
 function sendGz(req: IncomingMessage, res: ServerResponse, gz: Buffer, type: string): void {
+  if (refused.has(res)) return;
   let etag = gzTags.get(gz);
   if (!etag) gzTags.set(gz, (etag = tagOf(gz)));
   const head = { "content-type": type, "cache-control": "private, no-cache", etag };
@@ -1026,6 +1059,11 @@ function packedGz(edgesGz: Buffer, format: 1 | 2): Buffer {
 
 async function main(): Promise<void> {
   const o = parseArgs(process.argv.slice(2));
+  if (o.cmd === "doctor") {
+    const report = doctor({ path: o.path || null, roots: o.roots, site: o.site, cache: o.cache });
+    console.log(printReport(report, o.path || null));
+    process.exit(report.checks.some((c) => c.level === "fail") ? 1 : 0);
+  }
   // a live server outlives any one failed task: log it and keep serving
   process.on("unhandledRejection", (e) => console.error("unhandled:", e instanceof Error ? e.message : e));
   let project: Project;

@@ -197,7 +197,11 @@ function port(streams: AskStream[], peers: Peer[] = []) {
 const listed = (token: string, id: string, n: string | null, more: Partial<AskStream> = {}): AskStream => ({ token, id, private: false, name: n, verified: false, ...more });
 const asker = (n: string, stream: string | null, from = `id-${n}`) => ({ name: n, verified: false, agent: false, from, stream, rate: [`n:${n}`] });
 
-test("a request lasts its time: what was not answered by then was not, the pages are told it ended, and nothing of it is kept; the rate is forgotten after its time", async () => {
+test("a request lasts its time: what was not answered by then was not, the pages are told it ended, and nothing of it is kept; the rate is forgotten after its time", async (t) => {
+  // a request's timer is unref'd, as a server's should be: here nothing else keeps the event loop
+  // alive while the test waits for it (Node 22's test runner then cancels the test)
+  const alive = setInterval(() => {}, 60_000);
+  t.after(() => clearInterval(alive));
   const P = port([listed("ta", "a", "Ada"), listed("tb", "b", "Bob"), listed("tc", "c", null, { private: true })]);
   const asks = new Asks(P.port, { ms: 60, grace: 20 });
   const r = asks.ask(asker("Ada", "ta"), { everyone: true });
