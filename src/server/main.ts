@@ -11,7 +11,7 @@ import { extname, join, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { WEB, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import { SiteBusy, cacheHome, dataHome, lockSite, openSite, projectDirs } from "./dirs.ts";
-import { ProjectError, openProject } from "./project.ts";
+import { ProjectError, openProject, targetsInWords } from "./project.ts";
 import type { Project } from "./project.ts";
 import { Live } from "./live.ts";
 import { ReviewStore } from "./review.ts";
@@ -84,20 +84,22 @@ interface Options {
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
  *  to stdout with status 0. */
 function usage(code = 2): never {
-  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project> [--root Module]... [--port 4173] [--host 127.0.0.1]
+  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project> [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
                                          [--public-url https://host] [--library-limit GB]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
-       visualproof export <lean-project> -o page.html [--label text] [--root Module]... [--graph saved.json]
+       visualproof export <lean-project> -o page.html [--label text] [--root Name]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
-       visualproof doctor [<lean-project>] [--root Module]... [--site dir] [--cache dir]
+       visualproof doctor [<lean-project>] [--root Name]... [--site dir] [--cache dir]
        visualproof --version
 
   Reads what \`lake build\` left in <lean-project>/.lake. It never builds the project, and writes
   nothing into it.
 
+  --root   what to read: a library of the lakefile (the modules Lake builds of it) or a module;
+           repeatable. By default the lakefile's default targets.
   --site   the site's folder: the review's logs and what this running site accumulates — the
            history of builds, the library's files, the views and their layouts, the timeline,
            conversations with agents, agents' tokens and personal links. It cannot be derived
@@ -1275,7 +1277,7 @@ async function main(): Promise<void> {
   const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, new Exporter(dirs.cache), o.publicUrl, o.publicRead);
   const server = createServer((req, res) => app.handle(req, res));
   server.listen(o.port, o.host, () => {
-    console.log(`VisualProof — ${project.name} (${project.roots.join(", ")})`);
+    console.log(`VisualProof — ${project.name} (${targetsInWords(project)})`);
     console.log(`  http://${o.host}:${o.port}/`);
     console.log(`  site: ${dirs.site}${review.error ? ` — the review: ${review.error}` : ""}`);
     console.log(`  cache: ${dirs.cache}`);

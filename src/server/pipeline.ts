@@ -14,7 +14,7 @@ import type { Extraction } from "./extract.ts";
 import { memoryOf } from "../shared/layout.ts";
 import type { LayoutMemory } from "../shared/layout.ts";
 import type { Project } from "./project.ts";
-import { buildView } from "./view.ts";
+import { buildViewOffThread } from "./view.ts";
 import { cacheHome } from "./dirs.ts";
 import type { Dirs } from "./dirs.ts";
 
@@ -121,7 +121,7 @@ export async function prepare(
   // laid out against, so that the build's graph is laid out as if the notation had come with it
   const completing = memory !== null && opts.completes !== undefined && memory.fingerprint === opts.completes && memory.before !== undefined;
   const against = completing ? (memory.before ?? null) : (memory?.layouts ?? null);
-  const view = buildView(project, ex, log, against);
+  const view = await buildViewOffThread(project, ex, log, against);
   saveMemory(dirs.site, ex.fingerprint, view.meta, opts.provisional ? against : undefined);
   const metaGz = gzipSync(JSON.stringify(view.meta));
   const edgesGz = gzipSync(Buffer.from(view.edges.buffer, view.edges.byteOffset, view.edges.byteLength));

@@ -163,6 +163,15 @@ function runExtractor(
             "failed; VisualProof reads only what a finished build left behind. Retry when it is done.",
         ));
       }
+      // modules a project never imports together (two versions of one file, a library of reference
+      // statements beside its proofs): Lean cannot import them into one environment
+      const clash = tail.match(/import (\S+) failed, environment already contains '([^']+)' from (\S+)/);
+      if (clash) {
+        return reject(new Error(
+          `${clash[1]} and ${clash[3]} cannot be read together: both declare ${clash[2]}. Read fewer: ` +
+            "`--root` names the libraries or modules to read (repeatable).",
+        ));
+      }
       reject(new Error(`extractor exited with ${code}:\n${tail}`));
     });
   });

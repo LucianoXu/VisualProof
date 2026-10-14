@@ -6,8 +6,8 @@ import { join } from "node:path";
 import type { ClusterMode, Layout, RawGraph, ViewMeta, ViewNode } from "../shared/graph.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import type { Extraction } from "./extract.ts";
-import { computeLayout, stabilize } from "../shared/layout.ts";
 import type { LayoutMemory } from "../shared/layout.ts";
+import { layOutHere, layOutOffThread } from "./layoutthread.ts";
 import type { Project } from "./project.ts";
 import { compiledTextHash } from "./status.ts";
 import { versionBase, versions } from "./versions.ts";
@@ -18,12 +18,48 @@ export interface View {
   edges: Int32Array;
 }
 
+const MODES: ClusterMode[] = ["namespace", "module"];
+
+/** The view of an extraction, laid out here (a test, a command run once). */
 export function buildView(
   p: Project,
   ex: Extraction,
   log: (s: string) => void,
   memory: Partial<Record<ClusterMode, LayoutMemory>> | null = null,
 ): View {
+  const { nodes, edges } = viewParts(p, ex);
+  const layouts = {} as Record<ClusterMode, Layout>;
+  for (const mode of MODES) {
+    const t0 = performance.now();
+    layouts[mode] = layOutHere(mode, nodes, edges, memory?.[mode] ?? null);
+    log(`layout by ${mode}: ${layouts[mode].clusters.length} clusters, ${Math.round(performance.now() - t0)} ms`);
+  }
+  return assemble(p, ex, nodes, edges, layouts);
+}
+
+/** The same, both clusterings laid out at once off the server's thread (server/layoutthread.ts),
+ *  which meanwhile goes on answering. */
+export async function buildViewOffThread(
+  p: Project,
+  ex: Extraction,
+  log: (s: string) => void,
+  memory: Partial<Record<ClusterMode, LayoutMemory>> | null = null,
+): Promise<View> {
+  const { nodes, edges } = viewParts(p, ex);
+  const laid = await Promise.all(
+    MODES.map(async (mode) => {
+      const t0 = performance.now();
+      const layout = await layOutOffThread(mode, nodes, edges, memory?.[mode] ?? null);
+      log(`layout by ${mode}: ${layout.clusters.length} clusters, ${Math.round(performance.now() - t0)} ms, off the server's thread`);
+      return layout;
+    }),
+  );
+  return assemble(p, ex, nodes, edges, { namespace: laid[0], module: laid[1] });
+}
+
+/** The declarations as the page reads them, the outside ones after the project's, and the edges
+ *  packed. */
+function viewParts(p: Project, ex: Extraction): { nodes: ViewNode[]; edges: Int32Array } {
   const g: RawGraph = ex.graph;
   // what an opinion is bound to: the version, which a pure rename leaves as it is, made here as if
   // nothing were renamed (the server makes it again under the renames in force: server/versions.ts)
@@ -53,13 +89,11 @@ export function buildView(
     edges[3 * i + 2] = m;
   });
 
-  const layouts = {} as Record<ClusterMode, Layout>;
-  for (const mode of ["namespace", "module"] as ClusterMode[]) {
-    const t0 = performance.now();
-    layouts[mode] = stabilize(computeLayout(mode, nodes, edges), nodes, memory?.[mode] ?? null);
-    log(`layout by ${mode}: ${layouts[mode].clusters.length} clusters, ${Math.round(performance.now() - t0)} ms`);
-  }
+  return { nodes, edges };
+}
 
+function assemble(p: Project, ex: Extraction, nodes: ViewNode[], edges: Int32Array, layouts: Record<ClusterMode, Layout>): View {
+  const g: RawGraph = ex.graph;
   const meta: ViewMeta = {
     schema: 1,
     layoutVersion: LAYOUT_VERSION,
@@ -67,6 +101,7 @@ export function buildView(
       name: p.name,
       root: p.root,
       roots: p.roots,
+      ...(p.targets ? { targets: p.targets } : {}),
       toolchain: p.toolchain,
       extractedAt: ex.at,
       extractMs: g.stats.ms,

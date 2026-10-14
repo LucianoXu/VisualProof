@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { projectDirs, siteHolder } from "./dirs.ts";
-import { ProjectError, openProject } from "./project.ts";
+import { ProjectError, openProject, targetsInWords } from "./project.ts";
 
 /** ok; fail: VisualProof cannot run until it is fixed; warn: it runs, without something; info: optional */
 export type Level = "ok" | "fail" | "warn" | "info";
@@ -198,10 +198,10 @@ export function doctor(o: DoctorOptions): Report {
   const mathlib = ["lakefile.toml", "lakefile.lean", "lake-manifest.json"].some((f) => existsSync(join(root, f)) && /mathlib/i.test(readFileSync(join(root, f), "utf8")));
   checks.push(
     missing.length === 0
-      ? { level: "ok", what: `built: ${roots.join(", ")} (from ${from})` }
+      ? { level: "ok", what: `built: ${targetsInWords(project)} (from ${from})` }
       : {
           level: "fail",
-          what: `not built: ${missing.join(", ")} (${relative(root, join(libDir, ...missing[0].split("."))) + ".olean"} is missing; from ${from})`,
+          what: `not built: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ` and ${missing.length - 5} more` : ""} (${relative(root, join(libDir, ...missing[0].split("."))) + ".olean"} is missing; from ${from})`,
           fix: `in ${root}: ${mathlib ? "lake exe cache get && " : ""}lake build${o.roots.length === 0 && from === "lakefile.lean" ? ", or name the modules to read with --root" : ""}`,
         },
   );

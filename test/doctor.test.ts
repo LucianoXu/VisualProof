@@ -41,7 +41,7 @@ test("toolchains as elan names them, and where each stands against the supported
   assert.equal(toolchainSupport("leanprover/lean4-nightly:nightly-2026-10-01", r), "other");
 });
 
-test("a lakefile.lean's default libraries, read as text: their roots, or their names; comments and other targets left out", () => {
+test("a lakefile.lean's libraries, read as text: their roots and globs, which are the default ones; comments and other targets left out", () => {
   const cedar = `/- Copyright -/
 import Lake
 open Lake DSL
@@ -66,7 +66,7 @@ lean_lib DiffTest where
 lean_exe CedarUnitTests where
   root := \`UnitTest.Main
 `;
-  assert.deepEqual(readLakefileLean(cedar), { name: "Cedar", defaultTargets: ["Cedar", "SymCC"] });
+  assert.deepEqual(readLakefileLean(cedar), { name: "Cedar", defaultTargets: ["Cedar", "SymCC"], libs: [{ name: "Cedar" }, { name: "SymCC" }, { name: "DiffTest" }] });
   const roots = `package «my-proj» where
   leanOptions := #[⟨\`autoImplicit, false⟩]
 
@@ -81,8 +81,8 @@ lean_exe CedarUnitTests where
 lean_exe tool where
   root := \`Main
 `;
-  assert.deepEqual(readLakefileLean(roots), { name: "my-proj", defaultTargets: ["Lib.Main", "Lib.Extra"] });
-  assert.deepEqual(readLakefileLean("package Foo\nlean_lib Foo\n"), { name: "Foo" });
+  assert.deepEqual(readLakefileLean(roots), { name: "my-proj", defaultTargets: ["Lib"], libs: [{ name: "Lib", roots: ["Lib.Main", "Lib.Extra"], globs: ["Lib.+"] }] });
+  assert.deepEqual(readLakefileLean("package Foo\nlean_lib Foo\n"), { name: "Foo", libs: [{ name: "Foo" }] });
   // and a project with one is opened by them, where a lakefile.lean once needed --root
   const dir = join(tmp, "leanlib");
   mkdirSync(dir);
