@@ -37,8 +37,9 @@ test("a body too large is answered 413, as JSON ({error, hint} on the agents' AP
     const page = await S.ask("POST", "/api/presence", { view: "x".repeat(1 << 20) });
     assert.equal(page.status, 413);
     assert.match(page.json?.error, /larger than 16 KB/);
-    const memory = await S.ask("POST", "/api/views/memory", { memory: "x".repeat(9 << 20) }, { "x-visualproof-name": "Alice" });
-    assert.equal(memory.status, 413, "a board's memory: a few MB at most");
+    const memory = await S.ask("POST", "/api/views/memory", { memory: "x".repeat(51 << 20) }, { "x-visualproof-name": "Alice" });
+    assert.equal(memory.status, 413, "a board's memory: 50 MB at most");
+    assert.notEqual((await S.ask("POST", "/api/views/memory", { memory: "x".repeat(9 << 20) }, { "x-visualproof-name": "Alice" })).status, 413, "9 MB is not too large");
     // the review's own route, read the same way
     assert.equal((await S.ask("POST", "/api/review", { comment: "x".repeat(9 << 20) }, { "x-visualproof-name": "Alice" })).status, 413);
     // and the server goes on
