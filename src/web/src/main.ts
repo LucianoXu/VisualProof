@@ -101,6 +101,7 @@ import { ChatWindow } from "./chatwin.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
+import { isPhone, Phone } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
@@ -1179,6 +1180,11 @@ async function boot(): Promise<void> {
     insets: () => ({ left: canvas.insets.left, top: $("#viewbar").getBoundingClientRect().bottom + 8 }),
     expanded: () => talk.revealed(),
   });
+  // a phone: the bar's ⋯, the side panel's drawer, the panel's sheet (web/src/phone.ts)
+  new Phone({
+    closePanel: () => $<HTMLElement>("#panel [data-close]")?.click(),
+    resized: () => syncInsets(),
+  });
   const syncInsets = () => {
     const side = $("#side").getBoundingClientRect();
     // the panel, or the timeline's drawer in its place; the selection bar heads that column, which
@@ -1188,13 +1194,23 @@ async function boot(): Promise<void> {
     const strip = !$("#lensbar").hidden || !$("#tm-kept").hidden;
     const bar = $("#selbar");
     document.body.style.setProperty("--selbar-h", bar.hidden ? "0px" : `${bar.offsetHeight + 8}px`);
-    canvas.insets = {
-      left: side.width ? side.right + 8 : 0,
-      // offsetWidth, not the bounding box: the panel may still be sliding in
-      right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,
-      top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 : 28),
-      bottom: 48,
-    };
+    // a phone (web/src/phone.ts): the side panel is a drawer, the panel a sheet from the bottom,
+    // the selection bar across the top, the modes at the bottom
+    const sheet = $("#panel").classList.contains("open") ? $("#panel").offsetHeight : 0;
+    canvas.insets = isPhone()
+      ? {
+          left: 0,
+          right: 0,
+          top: (bar.hidden ? $("#viewbar").getBoundingClientRect().bottom : bar.getBoundingClientRect().bottom) + (strip ? 44 : 12),
+          bottom: sheet ? sheet + 8 : 64,
+        }
+      : {
+          left: side.width ? side.right + 8 : 0,
+          // offsetWidth, not the bounding box: the panel may still be sliding in
+          right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,
+          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 : 28),
+          bottom: 48,
+        };
     // the zoom buttons keep to the canvas's bottom right, the review strip to its middle; where the
     // panel leaves no canvas (a narrow window), there is nothing to zoom
     document.body.style.setProperty("--inset-right", `${canvas.insets.right}px`);

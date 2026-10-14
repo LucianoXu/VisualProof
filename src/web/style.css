@@ -2326,3 +2326,73 @@ span.tm-row { color: var(--text-2); cursor: default; }
 @media (max-width: 1350px) { .tm-growth, .tm-w { display: none; } }
 @media (max-width: 1150px) { .tm-view { display: none; } .tm-n { padding: 0 6px; } }
 @media (max-width: 900px) { .tm-btn[data-tm-save] { display: none; } }
+
+/* ---------------------------------------------------------------- a phone (SPEC.md, "Deployment")
+
+   At most 640 px wide: a page for reading and reviewing (web/src/phone.ts). The bar keeps Back, the
+   project's name, search and ⋯, which holds the rest; the side panel is a drawer from ☰; the modes
+   sit at the bottom, under the thumb; the panel is a sheet from the bottom, the board above it. */
+.more-wrap, .side-btn { display: none; }
+@media (max-width: 640px) {
+  #bar { top: 8px; left: 8px; right: 8px; height: 44px; gap: 6px; padding: 0 6px 0 4px; }
+  #bar .right { gap: 4px; }
+  #nav-fwd, .brand .logo { display: none; }
+  .brand { align-items: center; gap: 6px; }
+  .brand .project { display: inline; font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #share-btn, #library-btn, #export-btn, #activity-btn, #who, #help-btn { display: none !important; }
+  .more-wrap { display: block; position: relative; }
+  #more-btn { width: 38px; height: 34px; }
+  #more-badge { position: absolute; top: -5px; right: -5px; }
+  #more-pop { position: fixed; top: 58px; right: 8px; width: min(260px, calc(100vw - 16px)); z-index: 46; border-radius: 14px; padding: 6px; display: flex; flex-direction: column; background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg); }
+  #more-pop[hidden] { display: none; }
+  .more-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--text); font: 15px var(--font); text-align: left; }
+  .more-item:active { background: var(--code-bg); }
+  .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); }
+  .more-item .act-badge { position: static; margin-left: auto; }
+  /* search: a narrow field that takes the whole bar while it is used */
+  #search { width: 92px; height: 34px; padding: 0 10px; }
+  .search-wrap:focus-within { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 45; }
+  .search-wrap:focus-within #search { width: 100%; height: 44px; font-size: 16px; box-shadow: var(--shadow-lg); }
+  #results { position: fixed; top: 58px; left: 8px; right: 8px; width: auto; max-height: calc(100dvh - 70px); }
+  /* every popover of the bar and the view bar: a sheet under the bar, the screen's width */
+  #share-pop, #library-pop, #who-menu, #peer-menu, #views-menu, #focus-menu, #eyes-pop {
+    position: fixed !important; top: 58px !important; left: 8px !important; right: 8px !important; bottom: auto !important;
+    width: auto !important; max-width: none !important; max-height: calc(100dvh - 70px); overflow: auto;
+  }
+  #viewbar { top: 58px; left: 8px; right: 8px; gap: 6px; }
+  .side-btn { display: inline-flex; flex: none; width: 36px; justify-content: center; padding: 0; }
+  #tabs { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  .vb-gap, .light-l { display: none; }
+  .focus-btn { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* the modes, at the bottom, each an equal share of the width */
+  #lightup {
+    position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 7;
+    display: flex; justify-content: stretch; height: 40px;
+  }
+  #lightup > button, #lightup .rests { flex: 1 1 0; min-width: 0; justify-content: center; }
+  #lightup button { padding: 6px 4px; font-size: 13px; white-space: nowrap; }
+  #lightup .steps { position: absolute; left: 0; right: 0; bottom: 46px; justify-content: center; padding: 3px; border-radius: 10px; background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg); }
+  #lightup .steps button { flex: 1; padding: 6px 4px; }
+  #zoom { right: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
+  #zoom-in, #zoom-out { display: none; }
+  #foot { left: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
+  #selbar { top: 100px; left: 8px; right: 8px; width: auto; }
+  /* the panel: a sheet from the bottom, its height the reader's to drag */
+  #panel {
+    top: auto; left: 0; right: 0; bottom: 0; width: auto; height: var(--sheet-h, 55dvh); max-height: calc(100dvh - 60px);
+    border-radius: 18px 18px 0 0; padding: 26px 16px calc(24px + env(safe-area-inset-bottom)); z-index: 30;
+    background: var(--surface-solid); box-shadow: 0 -1px 0 var(--line), 0 -8px 30px rgba(0, 0, 0, 0.12);
+    transform: translateY(105%); transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1), height 0.2s;
+  }
+  #panel.open { transform: none; }
+  #panel.dragging { transition: none; }
+  #panel::before { content: ""; position: sticky; top: -18px; display: block; width: 40px; height: 5px; margin: -18px auto 13px; border-radius: 3px; background: var(--text-3); opacity: 0.6; }
+  /* the side panel: a drawer from the left, over a shade */
+  body.side-open #side { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 86vw); border-radius: 0 16px 16px 0; z-index: 47; padding-top: env(safe-area-inset-top); background: var(--surface-solid); }
+  body.side-open::after { content: ""; position: fixed; inset: 0; z-index: 46; background: rgba(0, 0, 0, 0.3); }
+  /* a field under 16 px makes iOS zoom the whole page into it */
+  #panel textarea, #panel input, #share-pop input, #share-pop select, #who-menu input, #modal input, .sh-field input, .sh-field select { font-size: 16px; }
+  /* the floating windows: the screen's width */
+  .sw-win:not(.collapsed), .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
+}

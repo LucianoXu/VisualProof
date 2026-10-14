@@ -85,6 +85,8 @@ const NODE_MIN_PX = 6;
 const DRAG_PX = 6;
 /** a second click on a cluster within this long, and as near as a drag starts, is a double-click */
 const DOUBLE_MS = 450;
+/** how long a finger held still on the board opens the menu there, ms */
+const HOLD_MS = 500;
 
 export interface CanvasEvents {
   nodeClick(i: number, shift: boolean): void;
@@ -1428,7 +1430,8 @@ export class GraphCanvas {
       const S = this.scene;
       // locked (the default), or the drag key held on an unlocked layout, or a preview: what it is on
       // stays where it is (on a preview, which would have moved it, the page says why)
-      const moves = dragMoves(this.locked, dragKeyHeld(e));
+      // a finger never moves anything: on a touch screen the board is read, and the lock never lets go
+      const moves = e.pointerType !== "touch" && dragMoves(this.locked, dragKeyHeld(e));
       const pan = !this.frozen && moves ? undefined : { cx: this.cam.x, cy: this.cam.y };
       const refused = this.frozen && moves;
       if (t.kind === "visitor") return { kind: "visitor", x: e.clientX, y: e.clientY, k: t.k, moved: false, pan: { cx: this.cam.x, cy: this.cam.y } };
@@ -1447,6 +1450,26 @@ export class GraphCanvas {
     /** The press is a Mac's Ctrl+click: let go where it was pressed, it is the menu's (contextmenu). */
     let menu = false;
 
+    // Touch (CanvasSpec, "Touch"): the fingers on the canvas, by pointer. Two make a pinch, which
+    // zooms about their middle and moves with it; what the fingers leave after a pinch is no tap. A
+    // finger held still on the board opens the menu there; a second tap on empty board, soon after
+    // the first, zooms in there.
+    const touches = new Map<number, { x: number; y: number }>();
+    let pinch: { d0: number; k0: number; wx: number; wy: number } | null = null;
+    let pinched = false;
+    let hold: ReturnType<typeof setTimeout> | null = null;
+    let lastTap: { t: number; x: number; y: number } | null = null;
+    const unhold = () => {
+      if (hold) clearTimeout(hold);
+      hold = null;
+    };
+    const startPinch = () => {
+      const [a, b] = [...touches.values()];
+      const [sx, sy] = local({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 });
+      const [wx, wy] = this.toWorld(sx, sy);
+      pinch = { d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), k0: this.cam.k, wx, wy };
+    };
+
     // the right click is the page's: its menu, on what is under the pointer (a card's, on a card)
     el.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -1464,6 +1487,20 @@ export class GraphCanvas {
     el.addEventListener("pointerdown", (e) => {
       // the right button opens the menu (contextmenu, above) and moves nothing
       if (e.button === 2) return;
+      if (e.pointerType === "touch") {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        el.setPointerCapture(e.pointerId);
+        if (touches.size >= 2) {
+          // a second finger: whatever the first began is a pinch now
+          unhold();
+          down = null;
+          this.pressing = false;
+          pinched = true;
+          if (touches.size === 2) startPinch();
+          return;
+        }
+        pinched = false;
+      }
       menu = menuClick(e);
       const [sx, sy] = local(e);
       // the middle button: the view pans whatever is under the pointer (Space is the source
@@ -1472,6 +1509,20 @@ export class GraphCanvas {
       down = t ? press(e, t) : pan(e);
       this.pressing = true;
       el.setPointerCapture(e.pointerId);
+      // a finger held still: the menu, on what it is on
+      if (e.pointerType === "touch") {
+        unhold();
+        const at = { x: e.clientX, y: e.clientY };
+        hold = setTimeout(() => {
+          hold = null;
+          if (!down || down.moved || touches.size !== 1) return;
+          down = null;
+          this.pressing = false;
+          pinched = true;
+          navigator.vibrate?.(10);
+          this.ev.menu?.(t, at.x, at.y, this.toWorld(sx, sy));
+        }, HOLD_MS);
+      }
     });
     // a card is a target of its own
     this.cardsEl.addEventListener("pointerdown", (e) => {
@@ -1491,8 +1542,22 @@ export class GraphCanvas {
     });
 
     el.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "touch" && touches.has(e.pointerId)) {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinch && touches.size >= 2) {
+          const [a, b] = [...touches.values()];
+          const k = Math.min(ZOOM_MOST, Math.max(ZOOM_LEAST, (pinch.k0 * Math.hypot(a.x - b.x, a.y - b.y)) / pinch.d0));
+          const [mx, my] = local({ clientX: (a.x + b.x) / 2, clientY: (a.y + b.y) / 2 });
+          // the point that was under the fingers' middle stays under it
+          this.cam = { x: pinch.wx - (mx - this.w / 2) / k, y: pinch.wy - (my - this.h / 2) / k, k };
+          this.request();
+          return;
+        }
+        if (hold && down && Math.hypot(e.clientX - down.x, e.clientY - down.y) >= DRAG_PX) unhold();
+      }
       const [sx, sy] = local(e);
       if (!down) {
+        if (e.pointerType === "touch") return;
         this.pointer = { sx, sy, x: e.clientX, y: e.clientY };
         this.refreshHover();
         el.style.cursor = this.hoverTarget ? "pointer" : "grab";
@@ -1540,6 +1605,33 @@ export class GraphCanvas {
     });
 
     const end = (e: PointerEvent) => {
+      if (e.pointerType === "touch") {
+        touches.delete(e.pointerId);
+        unhold();
+        if (touches.size < 2) pinch = null;
+        // what a pinch, or a menu held open, leaves is no tap
+        if (pinched) {
+          if (touches.size === 0) pinched = false;
+          down = null;
+          this.pressing = false;
+          return;
+        }
+        // a second tap on empty board soon after the first, near it: zoom in there
+        if (down?.kind === "pan" && !down.moved) {
+          const now = performance.now();
+          if (lastTap && now - lastTap.t < DOUBLE_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+            lastTap = null;
+            down = null;
+            this.pressing = false;
+            const [sx, sy] = local(e);
+            const [wx, wy] = this.toWorld(sx, sy);
+            const k = Math.min(ZOOM_MOST, this.cam.k * 2);
+            this.moveTo(wx - (sx - this.w / 2) / k + (this.insets.left - this.insets.right) / 2 / k, wy - (sy - this.h / 2) / k + (this.insets.top - this.insets.bottom) / 2 / k, k, true, 260);
+            return;
+          }
+          lastTap = { t: now, x: e.clientX, y: e.clientY };
+        }
+      }
       if (!down) return;
       const d = down;
       down = null;
@@ -1558,8 +1650,9 @@ export class GraphCanvas {
         // a click on the highlighted target selects it, or lets it go
         this.ev.nodeClick(d.i, e.shiftKey);
       } else if (d.kind === "cluster") {
-        // a second click on a cluster soon after the first, in the same place, folds or opens it
-        if (last?.c === d.c && soon(e)) {
+        // a second click on a cluster soon after the first, in the same place, folds or opens it;
+        // not a tap, which changes nothing of the board everyone shares
+        if (e.pointerType !== "touch" && last?.c === d.c && soon(e)) {
           last = null;
           this.toggleFold(d.c);
         } else {
@@ -1568,6 +1661,12 @@ export class GraphCanvas {
         }
       } else if (e.button === 0) {
         this.ev.backgroundClick();
+      }
+      // a finger leaves nothing highlighted: there is no pointer over the board once it is lifted
+      if (e.pointerType === "touch") {
+        this.pointer = null;
+        this.setHover(null, 0, 0);
+        return;
       }
       // highlight what is under the pointer now: the gesture may have changed it, and while the
       // pointer was captured no enter or leave reached the canvas
@@ -1581,6 +1680,16 @@ export class GraphCanvas {
     };
     // pointerup reaches the canvas through capture, also when the gesture began on a card
     window.addEventListener("pointerup", end);
+    // the browser took the touch (a system gesture): nothing of it is a tap
+    window.addEventListener("pointercancel", (e) => {
+      if (e.pointerType !== "touch") return;
+      touches.delete(e.pointerId);
+      unhold();
+      if (touches.size < 2) pinch = null;
+      down = null;
+      this.pressing = false;
+      pinched = touches.size > 0;
+    });
 
     el.addEventListener(
       "wheel",
