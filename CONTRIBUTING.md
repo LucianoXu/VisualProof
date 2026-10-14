@@ -95,8 +95,8 @@ and whatever the showcase project needs (v4.28.0 at least).
   tag. `.github/workflows/release.yml` takes it from there: it checks that the tag, both files and
   the changelog agree and that the tag is on `main`, runs the suite, publishes to npm with
   provenance (a release candidate under `next`), and makes the GitHub release from the changelog's
-  section. It publishes in the `npm` environment of the repository (where the owner may require an
-  approval), with the `NPM_TOKEN` secret until npm's trusted publishing is set up for the package.
-  The first release also takes `"private": true` out of `package.json`, which until then makes
-  `npm publish` refuse.
+  section. It publishes in the `npm` environment of the repository, which only `v*` tags may use and
+  whose runs the owner approves, by npm's trusted publishing: npm takes no token for `visualproof`.
+  The trusted publisher (workflow `release.yml`, environment `npm`) is set up on npmjs.com, and
+  expires unless a release publishes through it within 48 hours, so it is set up just before one.
 - AI agents work on branches: they never push to `main`, tag, or publish.
