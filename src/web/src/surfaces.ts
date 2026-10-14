@@ -205,6 +205,7 @@ export const YOURS = [
   { id: "whatChanged", what: "\"What changed\" opened: the Time Machine's counts and the lists they open", where: "#tmbar .tm-sum, [data-tm-list], #tm-list" },
   { id: "legend", what: "the legend folded or open", where: "#legend" },
   { id: "eyes", what: "the eyes' ⋯ popover, opened", where: "#eyes-btn, #eyes-pop" },
+  { id: "artwork", what: "framing an artwork (ExportSpec decision 19): its frame, its size and look, saving it", where: "#art, #art-panel", whole: true },
   { id: "theme", what: "the theme", where: "#theme-seg" },
   { id: "lock", what: "the layout lock", where: "#lock-btn", keys: ["l"] },
   // the box tool (AttachmentSpec decision 5, the owner's decision of 2026-10-12): armed for the

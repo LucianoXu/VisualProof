@@ -339,3 +339,27 @@ Numbers missing below are withdrawn decisions.
 - **Followed** as `linear` (CollabSpec, "Surfaces"): presence says whether the form is shown; a
   follower's page shows it or puts it away as the other's does, and keeps it so once following ends,
   as any part (CollabSpec decision 4).
+
+### Artwork
+
+- **Framing** (web/src/artframe.ts): `#art`, the frame, with a shadow of the screen's size round it
+  for the shade, and the picture over it (an `<img>` of the SVG) once the camera has not moved for
+  160 ms; `#art-panel` beside it, 300 pixels wide. The frame is the size's shape, as large as the
+  room the panel leaves allows; the board is fitted in it (canvas `fitRect`) and the camera goes back
+  on leaving. `body.framing` puts the panels away. A snapshot's Export button frames at once.
+- **The picture** (web/src/artwork.ts) is drawn in the frame's pixels and scaled to the size: its
+  `viewBox` is the frame, its `width` and `height` the size. From the scene as drawn now: open
+  circles, folded ones shaded with their name under them, the points (the dot's size at this zoom),
+  the outside world as rings; the edges between the units the overview would draw at this zoom
+  (bundles.ts `units` at 45 pixels, `aggregate`), heaviest first, at most 8,000 with an end in the
+  frame, each the shader's clamped cubic B-spline (`bundlePoints`) straightened by the overview's
+  beta, its width and opacity by its weight as the overview's; the names as the board writes them
+  (a cluster's inside the top of its circle, sized by its radius, a folded one's under it, a
+  declaration's beside its point, a target's first, none over another); the notes' icons and first
+  words; the targets' stars. The theme's colours are read from the style with `data-theme` set for
+  the moment of reading and resolved to `rgba()` (gl.ts `rgba`).
+- **The files**: SVG as drawn; PNG drawn by the browser from that SVG a band of rows at a time (at
+  most 4096² pixels a band, what every browser's canvas allows), each band's pixels compressed as
+  they come (`encodePng`: the browser's own deflate, `CompressionStream`), so no canvas of the full
+  size is ever made; refused with a message where the browser cannot. Named after the view's title,
+  stripped of what Windows refuses (`artName`).

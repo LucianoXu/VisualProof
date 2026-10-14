@@ -72,6 +72,7 @@ import { shortName } from "../../shared/viewgraph.ts";
 import type { FitBox, Ring, RingItem } from "../../shared/ring.ts";
 import { AUTO_COLLAPSE_PX, noteExcerpt, noteLook, noteMarkers, placeAt, placeIn as viewPlaceIn } from "../../shared/sticky.ts";
 import type { NoteCard, NoteCarry, NoteDecl, NotePlace, PlaceCluster, StickyNote } from "../../shared/sticky.ts";
+import { firstWords } from "../../shared/doc/outline.ts";
 import { BOT } from "./agentmark.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { dragKeyHeld, MAC, menuClick } from "./drag.ts";
@@ -1334,6 +1335,14 @@ export class Stickies {
     if (!to) return false;
     this.hooks.moved(id, { decl: d.note.decl ?? null, to });
     return true;
+  }
+
+  /** The notes the board shows now, each where its icon is in the board's world, with its first
+   *  words: what an artwork draws (web/src/artwork.ts). */
+  shownNotes(): { world: [number, number]; words: string }[] {
+    const out: { world: [number, number]; words: string }[] = [];
+    for (const d of this.drawn.values()) if (d.world && d.look !== "hidden") out.push({ world: d.world, words: firstWords(d.note.text) });
+    return out;
   }
 
   /** Where note `id`'s icon is drawn now, in the board's world: its place; null where it does not

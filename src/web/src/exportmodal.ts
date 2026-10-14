@@ -77,6 +77,10 @@ export interface ExportHooks {
   /** the window opened or closed: the board is drawn in the linear form while it is open
    *  (ExportSpec decision 18) */
   shown?(open: boolean): void;
+  /** the Artwork tab: the window closes into framing (ExportSpec decision 19) */
+  artwork?(): void;
+  /** no document can be made here (a snapshot of the page): Export goes straight to framing */
+  artworkOnly?(): boolean;
 }
 
 /** The settings the modal sets; the others keep their defaults. */
@@ -116,10 +120,19 @@ export class ExportModal {
     this.btn = btn;
     this.el = el;
     this.hooks = hooks;
-    btn.addEventListener("click", () => (el.hidden ? this.open() : this.close()));
+    btn.addEventListener("click", () => {
+      // a page with no document to make (a snapshot: its documents are the server's) makes pictures
+      if (hooks.artworkOnly?.()) return hooks.artwork?.();
+      if (el.hidden) this.open();
+      else this.close();
+    });
     el.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
       if (t === el || t.closest("[data-ex-close]")) return this.close();
+      if (t.closest("[data-ex-art]")) {
+        this.close();
+        return this.hooks.artwork?.();
+      }
       if (t.closest("[data-ex-go]")) return void this.generate();
     });
     el.addEventListener("change", (e) => this.changed(e.target as HTMLInputElement));
@@ -241,6 +254,8 @@ export class ExportModal {
     this.el.innerHTML =
       `<div class="modal-box glass ex-box" role="dialog" aria-label="Export a document" tabindex="-1">` +
       `<div class="ex-head"><div class="modal-title">Export a document</div><button class="icon" data-ex-close title="Close (Esc)">✕</button></div>` +
+      // the document, or the board as a picture (ExportSpec decision 19), which the page frames
+      (this.hooks.artwork ? `<div class="sh-tabs ex-tabs" role="tablist"><button role="tab" aria-selected="true">Document</button><button role="tab" aria-selected="false" data-ex-art title="The board as a picture, PNG or SVG, at the size you choose: frame it, then save it">Artwork</button></div>` : "") +
       `<div class="ex-sec">${this.summary()}</div>` +
       `<div class="modal-text">What the view holds is what the document prints, and its board is the document's outline: every declaration of the project on it, whatever is folded, in sections from its clusters as the board shows them (hide a level to flatten it), in the order of their height on the board, the lowest first — drawn beside this window as the outline, the first at the top: drag things along it, or on the board, to reorder the document; each with its docstring and its code, definitions whole, proofs never, and the places in its references it is linked to; a cluster's under its section, the references listed at the end. The notes the view shows are its prose, each where the board has it — under its declaration, in its cluster's section, or before the first section — their images and clips as figures. Nothing of the review is printed. To print something else, change the view, or export another.</div>` +
       this.buildText() +
