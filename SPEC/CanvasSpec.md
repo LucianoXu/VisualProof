@@ -321,9 +321,9 @@ Implementation notes:
 ## Zoom, theme and the ⋯ menu
 
 - Zoom buttons (+, −, fit; keys `+`, `-`, `f`) at the bottom right. ⋯ (ViewSpec decision 17) holds
-  the lock, edges, the linear form (ExportSpec decision 18, `o`), proof edges and theme (light, dark,
-  system by default); the theme is the browser's,
-  for all projects, applied from the first paint.
+  the lock, edges, the linear form (ExportSpec decision 18, `o`), proof edges and theme (light, dark
+  or the system's; light by default on every platform, the owner's decision of 2026-10-14); the theme
+  is the browser's, for all projects, applied from the first paint.
 
 ## Colour schemes and the legend
 

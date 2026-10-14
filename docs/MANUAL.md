@@ -322,7 +322,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   selection, `?` every key and gesture.
 - **The first visit** starts a short tour of the page on the project itself; the `?` sheet's
   **Take the tour again** replays it.
-- **Light or dark**: behind ⋯ under the zoom buttons — light, dark, or as the system is.
+- **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
 ## Views

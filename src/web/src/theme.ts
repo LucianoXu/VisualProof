@@ -1,6 +1,7 @@
-// Light, dark, or as the system is: the reader's choice, kept for every project in this browser.
-// The page's colours follow `data-theme` on <html> (style.css); a script in index.html's <head>
-// sets it before the first paint, from the same stored choice, so a dark page never flashes light.
+// Light, dark, or as the system is: the reader's choice, kept for every project in this browser;
+// light unless they chose otherwise, on every platform (the owner's decision of 2026-10-14). The
+// page's colours follow `data-theme` on <html> (style.css); a script in index.html's <head> sets it
+// before the first paint, from the same stored choice, so a dark page never flashes light.
 
 export type ThemeChoice = "light" | "dark" | "system";
 
@@ -10,11 +11,11 @@ const dark = matchMedia("(prefers-color-scheme: dark)");
 export function themeChoice(): ThemeChoice {
   try {
     const v = localStorage.getItem(KEY);
-    if (v === "light" || v === "dark") return v;
+    if (v === "dark" || v === "system") return v;
   } catch {
-    // storage blocked: as the system is
+    // storage blocked: the default
   }
-  return "system";
+  return "light";
 }
 
 /** Put the choice in force: what <html> says, now and (for "system") whenever the system changes. */
@@ -25,7 +26,8 @@ export function applyTheme(choice: ThemeChoice = themeChoice()): void {
 
 export function setTheme(choice: ThemeChoice): void {
   try {
-    if (choice === "system") localStorage.removeItem(KEY);
+    // the default is kept as nothing, so that a later change of the default reaches whoever never chose
+    if (choice === "light") localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, choice);
   } catch {
     // not kept: in force for this page only

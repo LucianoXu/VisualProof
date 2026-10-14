@@ -6,12 +6,13 @@
   <title>VisualProof</title>
   <link rel="icon" href="data:,">
   <script>
-    // the theme before the first paint (web/src/theme.ts keeps it after): light, dark, or the system's
+    // the theme before the first paint (web/src/theme.ts keeps it after): light unless the reader
+    // chose dark, or the system's
     try {
       var t = localStorage.getItem("visualproof:theme");
-      document.documentElement.dataset.theme = t === "light" || t === "dark" ? t : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.dataset.theme = t === "dark" ? "dark" : t === "system" && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     } catch (e) {
-      document.documentElement.dataset.theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.dataset.theme = "light";
     }
   </script>
   <link rel="stylesheet" href="/style.css">
