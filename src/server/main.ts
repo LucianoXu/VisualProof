@@ -42,6 +42,8 @@ import { libraryRoute, pdfjsAsset, readUpload } from "./libraryroute.ts";
 import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
+import { READONLY_PATH } from "./readonly.ts";
+import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 
 interface Options {
   cmd: "serve" | "export" | "purge-file" | "doctor";
@@ -72,6 +74,9 @@ interface Options {
   publicUrl: string | null;
   /** the most the library's files may take, in bytes (AttachmentSpec, "Implementation notes") */
   libraryLimit: number;
+  /** --public: whoever comes without the key or a link of their own is a read-only reader
+   *  (CollabSpec decision 11), where they would be answered 404 */
+  publicRead: boolean;
   /** purge-file: the file whose bytes go */
   sha: string | null;
 }
@@ -82,7 +87,7 @@ function usage(code = 2): never {
   (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project> [--root Module]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
-                                         [--agents read|advise|full] [--access-key-file file] [--jobs ${DEFAULT_JOBS}]
+                                         [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
                                          [--public-url https://host] [--library-limit GB]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Module]... [--graph saved.json]
@@ -137,7 +142,13 @@ function usage(code = 2): never {
            Anything else is answered 404. Over plain HTTP the key crosses the network in the
            clear: it keeps out who was not given the link, not who can watch the traffic.
            Share also gives an AI agent a token of its own (vpa_…), which reaches /api/agent only,
-           and a person a link of their own (/i/vpp_…), which lets them in and says who they are.
+           and a person a link of their own (/i/vpp_…), which lets them in and says who they are,
+           and anyone a read-only link (/r/vpr_…), which lets them see and change nothing shared.
+
+  --public  with --access-key-file: whoever comes without the key or a link of their own is let
+           in read-only, rather than answered 404: they see the project, its review and its
+           history, change nothing that is shared, and are seen by nobody. For a project anyone
+           may read (a showcase); never for a private one.
 
   --public-url  the address people reach this server at, when it is not the one their browser
            sends (a proxy in front): the prompt Share makes for an agent tells it this address.
@@ -163,7 +174,7 @@ function parseArgs(argv: string[]): Options {
     process.exit(0);
   }
   if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file" && cmd !== "doctor") usage();
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -178,6 +189,7 @@ function parseArgs(argv: string[]): Options {
     else if (a === "--identity-header") o.identityHeader = val();
     else if (a === "--editor") o.editor = val();
     else if (a === "--access-key-file") o.accessKeyFile = resolve(val());
+    else if (a === "--public") o.publicRead = true;
     else if (a === "--public-url") {
       const u = val();
       if (!/^https?:\/\/[^\s/?#]+\/?$/.test(u)) {
@@ -207,6 +219,12 @@ function parseArgs(argv: string[]): Options {
     else usage();
   }
   if ((!o.path && cmd !== "doctor") || (cmd === "export" && !o.out)) usage();
+  // read-only for whoever comes, beside those the key or a link lets in: without a key, everyone is in
+  // already; behind a sign-in, there is nobody else
+  if (o.publicRead && (!o.accessKeyFile || o.identityHeader)) {
+    console.error("visualproof: --public lets in read-only whoever has no key: it needs --access-key-file, and does not go with --identity-header");
+    process.exit(2);
+  }
   if (cmd === "purge-file" && !validSha(o.sha)) {
     console.error("visualproof purge-file: give the file's SHA-256, 64 hex digits, as the page's library shows it.");
     process.exit(2);
@@ -235,7 +253,15 @@ export class App {
    *  one the person's browser used */
   publicUrl: string | null;
 
-  constructor(live: Live, hover: LeanHover, ids: Identities, agents: AgentApi, access: Access | null, exporter: Exporter | null = null, publicUrl: string | null = null) {
+  /** --public: whoever comes without the key or a link of their own reads only (CollabSpec
+   *  decision 11) */
+  publicRead: boolean;
+  /** the read-only readers' requests, by the read-only link they came by, or "public" */
+  private readOnlyOf = new WeakMap<IncomingMessage, string>();
+  /** what read-only readers may cost the server: Lean's answers, their documents */
+  readonly bounds: ReadOnlyBounds;
+
+  constructor(live: Live, hover: LeanHover, ids: Identities, agents: AgentApi, access: Access | null, exporter: Exporter | null = null, publicUrl: string | null = null, publicRead = false) {
     this.live = live;
     this.hover = hover;
     this.ids = ids;
@@ -248,6 +274,8 @@ export class App {
     // agents typeset as people do (ExportSpec decision 11), through their API
     agents.exporter = exporter;
     this.publicUrl = publicUrl;
+    this.publicRead = publicRead && access !== null;
+    this.bounds = new ReadOnlyBounds((id) => this.exporter?.job(id)?.state === "running");
   }
 
   /** The exported document (ExportSpec decisions 5–16): POST /api/export starts typesetting the
@@ -259,7 +287,7 @@ export class App {
    *  The window shows the title and the author line the document will have (GET /api/export/head
    *  ?view=&version=: ExportSpec decisions 14 and 15), which only the server can tell: who dropped
    *  each pin is never sent to pages. */
-  private async export(req: IncomingMessage, res: ServerResponse, url: URL, agent: boolean): Promise<void> {
+  private async export(req: IncomingMessage, res: ServerResponse, url: URL, agent: boolean, readOnly = false): Promise<void> {
     const path = url.pathname;
     const api = this.agents;
     if (!this.exporter) return sendJson(res, { error: "This server does not export documents." }, 404);
@@ -269,7 +297,20 @@ export class App {
       if (caller && !caller.name) return sendJson(res, { error: "Say who you are first.", who: true }, 401);
       const r = await this.json(req, 1 << 20);
       if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-      a = await api.exportStart(r.body, caller);
+      // read-only readers typeset one document at a time among them (CollabSpec decision 11): while
+      // one is being typeset, the others wait, even one the export's cache holds. The place is
+      // taken before the job starts, so that two requests at once cannot both start one.
+      if (readOnly) {
+        if (!this.bounds.mayExport()) return sendJson(res, { error: "Another document is being typeset for readers of this page: try again in a little while." }, 429, { "retry-after": "5" });
+        this.bounds.reserveExport();
+      }
+      let started: Answer | undefined;
+      try {
+        started = await api.exportStart(r.body, caller);
+      } finally {
+        if (readOnly) this.bounds.exportStarted(started?.body);
+      }
+      a = started;
     } else if (path === "/api/export/head") a = api.exportHead(url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
     else if (path === "/api/export/job") a = api.exportJob(url.searchParams.get("id") ?? "", false);
     else if (path === "/api/export/file") a = api.exportFile(url.searchParams.get("id") ?? "", url.searchParams.get("what"));
@@ -487,6 +528,32 @@ export class App {
     return sendJson(res, { invite: Invites.info(made.record), link, invites: list() });
   }
 
+  /** Read-only links (CollabSpec decision 11), for people: every link (GET), a new one (POST), and
+   *  revoking one (POST …/revoke). Anyone let in may make one; revoking needs a name, which Share
+   *  says beside the link. A server open to all, or behind a sign-in, has none. */
+  private async shareReadOnly(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
+    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Read-only links are for people: an agent cannot make, list or revoke them." }, 403);
+    if (!this.access || this.ids.header) return sendJson(res, { error: this.ids.header ? "Who comes in is the sign-in's, in front of this server: it has no read-only links." : "This server lets in whoever reaches it: a read-only link would let in no one more." }, 404);
+    const links = this.live.readOnly;
+    const path = url.pathname.replace(/\/+$/, "");
+    const address = this.publicUrl ?? reachedAt(req);
+    const list = () => links.list().map((l) => ({ ...l, link: `${address}${l.path}` }));
+    if (path === "/api/share/readonly" && req.method === "GET") return sendJson(res, { links: list() });
+    if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);
+    const me = this.ids.who(req);
+    if (path === "/api/share/readonly/revoke") {
+      if (!me) return sendJson(res, this.nameless(req, "a read-only link is revoked under your name"), 401);
+      const r = await this.json(req, 4096);
+      if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
+      const id = (r.body as { id?: unknown } | null)?.id;
+      if (typeof id !== "string" || !links.revoke(id, me)) return sendJson(res, { error: "There is no such read-only link in force." }, 404);
+      return sendJson(res, { ok: true, links: list() });
+    }
+    if (path !== "/api/share/readonly") return sendJson(res, { error: "not found" }, 404);
+    const made = links.create(me);
+    return sendJson(res, { made: { ...made, link: `${address}${made.path}` }, links: list() });
+  }
+
   /** A personal link opened (CollabSpec decision 9): the browser is given the cookie that lets its
    *  holder in, as who the link says, and goes on to the page — the token leaves the address, and a
    *  place after it (a fragment) comes along. A revoked link says so; anything else is answered as
@@ -500,6 +567,23 @@ export class App {
     if (c) {
       const r = c.record;
       return sendText(req, res, `This personal link was revoked by ${r.revokedBy} on ${r.revoked!.slice(0, 10)}. Ask whoever invited you for a new one.\n`, "text/plain; charset=utf-8", 410);
+    }
+    sendJson(res, { error: "not found" }, 404);
+  }
+
+  /** A read-only link opened (CollabSpec decision 11): the browser is given the cookie that lets
+   *  its holder read, and goes on to the page — the token leaves the address, and a place after it
+   *  (a fragment) comes along. A revoked link says so; anything else, and any link on a server
+   *  open to all or behind a sign-in, which have none, is answered as an address nobody was given. */
+  private enterReadOnly(req: IncomingMessage, res: ServerResponse, token: string): void {
+    const c = this.access && !this.ids.header ? this.live.readOnly.check(token) : null;
+    if (c && "ok" in c) {
+      res.writeHead(303, { location: "/", "set-cookie": this.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
+      return void res.end();
+    }
+    if (c) {
+      const l = c.link;
+      return sendText(req, res, `This read-only link was revoked by ${l.revokedBy} on ${l.revoked!.slice(0, 10)}. Ask whoever gave it to you for a new one.\n`, "text/plain; charset=utf-8", 410);
     }
     sendJson(res, { error: "not found" }, 404);
   }
@@ -634,23 +718,40 @@ export class App {
       // it says, and its cookie does from then on; a revoked one's cookie is forgotten, and lets
       // nobody in
       if (path.startsWith(INVITE_PATH)) return this.enter(req, res, path.slice(INVITE_PATH.length));
+      // a read-only link (CollabSpec decision 11, server/readonly.ts): its cookie lets its holder
+      // read, where nothing else lets them in
+      if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length));
       const link = this.ids.link(req);
       const cookies: string[] = link && "ended" in link ? [live.invites.forget()] : [];
+      const ro = this.access && !this.ids.header ? live.readOnly.ofCookie(req.headers.cookie) : null;
+      if (ro && "ended" in ro) cookies.push(live.readOnly.forget());
       if (this.access) {
         const a = link && "ok" in link && !path.startsWith(KEY_PATH) ? "in" : this.access.admit(req, path);
         if (a === "out") {
-          if (cookies.length) res.setHeader("set-cookie", cookies);
-          return sendJson(res, { error: "not found" }, 404);
-        }
-        if (a !== "in") {
+          // nothing lets them in to write: their read-only link does, or --public, to read
+          const reader = ro && "ok" in ro ? ro.ok.id : this.publicRead && !this.ids.header ? "public" : null;
+          if (reader === null || this.ids.kind(req) === "agent") {
+            if (cookies.length) res.setHeader("set-cookie", cookies);
+            return sendJson(res, { error: "not found" }, 404);
+          }
+          this.readOnlyOf.set(req, reader);
+          // the page renews a read-only link's cookie, as a personal link's
+          if (reader !== "public" && (path === "/" || path === "/index.html")) cookies.push(live.readOnly.cookie(reader));
+          // what a read-only reader may ask; the rest is refused, whatever the page sends
+          if (!readOnlyAllows(req.method ?? "GET", path)) {
+            if (cookies.length) res.setHeader("set-cookie", cookies);
+            return sendJson(res, { error: "This page is read-only: it changes nothing that is shared.", readOnly: true }, 403);
+          }
+        } else if (a !== "in") {
           // the link: the browser keeps the cookie, and the key leaves the address (a fragment
           // after the key, a place in the page, comes along to "/")
           res.writeHead(303, { location: "/", "set-cookie": [a.enter, ...cookies], "cache-control": "no-store", "referrer-policy": "no-referrer" });
           return void res.end();
+        } else {
+          // let in by the cookie every server used to share: the browser is given this one's own
+          const renew = this.access.renewal(req);
+          if (renew) cookies.push(renew);
         }
-        // let in by the cookie every server used to share: the browser is given this one's own
-        const renew = this.access.renewal(req);
-        if (renew) cookies.push(renew);
       }
       // the page renews a personal link's cookie: its holder stays in as long as they come back
       if (link && "ok" in link && (path === "/" || path === "/index.html")) cookies.push(live.invites.cookie(link.ok));
@@ -666,7 +767,13 @@ export class App {
       if (path === "/api/status") return sendJson(res, { ...live.status(), lean: this.hover.state() });
       // the link that lets someone in, for a page that shares where it is (web/src/share.ts); a
       // request gets here only once it is in
-      if (path === "/api/share") return sendJson(res, { path: this.access?.link ?? null });
+      // a read-only reader shares the link they came by, or the address alone (--public)
+      const reader = this.readOnlyOf.get(req);
+      if (path === "/api/share") {
+        if (reader !== undefined) return sendJson(res, { path: reader === "public" ? "/" : (live.readOnly.get(reader)?.path ?? null), readOnly: true });
+        return sendJson(res, { path: this.access?.link ?? null, readOnlyLinks: !!this.access && !this.ids.header, public: this.publicRead });
+      }
+      if (path === "/api/share/readonly" || path.startsWith("/api/share/readonly/")) return this.shareReadOnly(req, res, url);
       if (path.startsWith("/api/share/agents")) return this.shareAgents(req, res, url);
       if (path === "/api/share/people" || path.startsWith("/api/share/people/")) return this.sharePeople(req, res, url);
       if (path === "/api/chat") return this.chat(req, res, url);
@@ -722,7 +829,7 @@ export class App {
           sendJson(res, a.body, a.status);
         });
       }
-      if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent);
+      if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent, reader !== undefined);
       // who the reader is (CollabSpec decisions 3 and 9): the name their page gives, the proxy's, or
       // their personal link's — with the link, and whether the page's own name is a link holder's
       // and not theirs; a link revoked says by whom
@@ -730,6 +837,7 @@ export class App {
         const person = this.ids.person(req);
         const holder = this.ids.taken(req);
         const ended = link && "ended" in link ? link.record : null;
+        if (reader !== undefined) return sendJson(res, { mode: this.ids.mode, name: null, readOnly: { by: reader === "public" ? "public" : "link" } });
         return sendJson(res, {
           mode: this.ids.mode,
           name: this.ids.who(req),
@@ -756,7 +864,7 @@ export class App {
       }
       if (path === "/api/events") {
         const session = url.searchParams.get("session");
-        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null);
+        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null);
       }
       // what happened (CollabSpec decision 5): what the server stored; the review's own history the
       // page reads from the review
@@ -797,19 +905,32 @@ export class App {
         const mod = url.searchParams.get("module") ?? "";
         const rel = live.moduleFile(mod);
         if (rel === undefined) return sendJson(res, { error: `${mod.slice(0, 300)} is not a module of the graph` }, 404);
+        // a read-only reader (CollabSpec decision 11) is answered what Lean already said of this
+        // build, else asks it within bounds, per address and in all
+        const keyOf = reader !== undefined && req.method === "GET" ? `${live.graph.fingerprint}\0${path}\0${url.search}` : null;
+        const kept = keyOf ? this.bounds.answer(keyOf) : undefined;
+        if (kept !== undefined) return sendJson(res, kept);
+        if (reader !== undefined) {
+          const wait = this.bounds.leanWait(req.socket.remoteAddress ?? "");
+          if (wait) return sendJson(res, { error: "Lean is asked too often from here: try again in a moment.", retryAfter: wait }, 429, { "retry-after": String(wait) });
+        }
+        const reply = (body: unknown) => {
+          if (keyOf && finalAnswer(body)) this.bounds.keep(keyOf, body);
+          return sendJson(res, body);
+        };
         if (path === "/api/hover/describe") {
           // a declaration by name, where the module on show is imported: what a name in a hover card
           // shows. The name is checked to be a name before it is written into Lean source.
           const name = url.searchParams.get("name") ?? "";
           if (!isDeclName(name)) return sendJson(res, { error: "not a name" }, 400);
-          return sendJson(res, await this.hover.describe(mod, name, 6000));
+          return reply(await this.hover.describe(mod, name, 6000));
         }
         if (path === "/api/hover/print") {
           // what Lean's #print says of a declaration it generated from a command, which has no text
           // of its own (the source window, under the command that made it, when asked)
           const name = url.searchParams.get("name") ?? "";
           if (!isDeclName(name)) return sendJson(res, { error: "not a name" }, 400);
-          return sendJson(res, await this.hover.print(mod, name, false, 6000));
+          return reply(await this.hover.print(mod, name, false, 6000));
         }
         if (rel === null) return sendJson(res, { error: `no source for ${mod}` }, 404);
         const text = readFileSync(join(live.project.root, rel), "utf8");
@@ -836,7 +957,7 @@ export class App {
         }
         const line = Number(url.searchParams.get("line")), character = Number(url.searchParams.get("character"));
         if (!Number.isInteger(line) || !Number.isInteger(character) || line < 0 || character < 0) return sendJson(res, { error: "position" }, 400);
-        return sendJson(res, await this.hover.hover(rel, text, hash, line, character, 6000));
+        return reply(await this.hover.hover(rel, text, hash, line, character, 6000));
       }
       if (path === "/api/source") {
         // only the graph's modules, from the file the graph was read from: no path from the client
@@ -1148,9 +1269,10 @@ async function main(): Promise<void> {
     // when tokens and personal links were last used is written now, not at the next minute
     live.tokens.close();
     live.invites.close();
+    live.readOnly.close();
   });
   for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(0));
-  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, new Exporter(dirs.cache), o.publicUrl);
+  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, new Exporter(dirs.cache), o.publicUrl, o.publicRead);
   const server = createServer((req, res) => app.handle(req, res));
   server.listen(o.port, o.host, () => {
     console.log(`VisualProof — ${project.name} (${project.roots.join(", ")})`);
@@ -1162,7 +1284,7 @@ async function main(): Promise<void> {
     console.log(`  agents: ${o.agents} — their API is http://${o.host}:${o.port}/api/agent`);
     console.log(`  usage pass: ${o.graph ? "none for a saved graph" : o.jobs > 0 ? `${o.jobs} module(s) at a time` : "off (--jobs 0)"}`);
     console.log(
-      `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}` : "anyone who reaches the port"}`,
+      `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : "anyone who reaches the port"}`,
     );
   });
   live.start();

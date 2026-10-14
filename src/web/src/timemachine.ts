@@ -76,6 +76,9 @@ export interface TimeMachineHooks {
    *  at a build, and show it. Each resolves to why it was refused, or null. */
   keep(snapshot: number | null): Promise<string | null>;
   saveAs(snapshot: number): Promise<string | null>;
+  /** why this page keeps no build and saves no view (a read-only page, CollabSpec decision 11): the
+   *  bar's actions are then not offered; null where they are */
+  frozen?(): string | null;
 }
 
 /** An answer that is not what was asked for (a server that cannot say it) is refused here, so that
@@ -802,8 +805,10 @@ export class TimeMachine {
     this.busy(loading);
     part(".tm-sum").innerHTML = this.summaryHtml(id);
     part(".tm-growth").innerHTML = this.growthSvg(id);
-    part(".tm-acts").innerHTML =
-      (keptHere
+    const frozen = this.hooks.frozen?.() ?? null;
+    part(".tm-acts").innerHTML = frozen
+      ? `<button class="tm-btn" disabled title="${escapeHtml(frozen)}">Keep this version</button><button class="tm-btn" disabled title="${escapeHtml(frozen)}">Save as new view</button>`
+      : (keptHere
         ? `<button class="tm-btn" data-tm-latest title="This view shows this build for everyone on it: show the latest again, for everyone">Latest again</button>`
         : `<button class="tm-btn" data-tm-keep${refused ? ` disabled title="${escapeHtml(refused)}"` : ` title="Show this build on this view, for everyone on it, with a clock on its tab: arranged as any view, not reviewed"`}>Keep this version</button>`) +
       `<button class="tm-btn" data-tm-save title="A new view, kept at this build: this one's scope and arrangement, yours to arrange">Save as new view</button>`;

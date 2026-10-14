@@ -94,11 +94,13 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
     - Agents ask too, at advise and full (AgentSpec decision 8); agents cannot be asked.
     - The server relays requests and answers through its live events and keeps nothing beyond a
       request's life.
-11. **Read-only access.** *Not implemented yet.* A read-only reader sees what a guest sees, changes
+11. **Read-only access.** A read-only reader sees what a guest sees, changes
     nothing that is shared, and is seen by nobody: a way to show a project, a showcase above all.
     - **By a link of its own**, Share's *Read-only link*, which anyone let in may make. It lasts until
-      revoked; the server keeps only its digest; people with a name list and revoke these links as
-      they do personal links (decision 9), and revoking cuts their pages off at once. A read-only
+      revoked; the server keeps the link itself (proposed 2026-10-14: a digest alone could not give
+      a read-only reader back the link they came by, nor show a link again; the link gives no more
+      than a guest has); people with a name revoke these links as they do personal links
+      (decision 9), and revoking cuts their pages off at once. A read-only
       reader's Share holds this tab alone and gives the link they came by, so revoking one link cuts
       off everyone it reached. Behind `--identity-header` there are none.
     - **Without a token only by the owner's choice.** `--public` (with `--access-key-file`) makes
@@ -250,6 +252,22 @@ and gesture and replays the tour.
   and is cleared. A guest's request giving a holder's name counts as nameless. Making, listing and
   revoking links: 403 to agents, 404 behind `--identity-header`; making and revoking need a name.
   The holder's id travels with what they record (`person`), never with a private reader's layout.
+- **Read-only links** (server/readonly.ts): `/r/vpr_<10 hex id>_<32 random bytes, base64url>`. The
+  site's `readonly-links.json` (mode 600) keeps per link the id, the token, its maker (or null),
+  revoked (by whom), lastUsed (written at most once a minute); revoked links stay. Opening a link
+  answers 303 to `/` with the cookie `visualproof_readonly_<12 hex of this server's own>`, valued
+  the id and a digest of the token (HttpOnly, SameSite=Lax, 400 days, renewed at each load),
+  compared in constant time; it admits its holder read-only where nothing else lets them in (the
+  key or a personal link let in fully). A revoked link answers 410 (who, when); its cookie is
+  cleared and lets nobody in, and its pages' event streams end. `GET /api/share` tells a read-only
+  page `{path, readOnly: true}` (its link, or `/` under `--public`), any other
+  `{path, readOnlyLinks, public}`; `/api/share/readonly` lists (GET), makes (POST) and revokes
+  (POST …/revoke, with a name): 403 to agents, 404 without `--access-key-file` or behind
+  `--identity-header`. A read-only reader's requests are allowed by method and path
+  (server/readonlygate.ts): reads, the posts that only read (`/api/hover/open`, `/api/hover/names`)
+  and `POST /api/export`; anything else is 403 `{readOnly: true}`. `/api/identity` tells the page
+  `{readOnly: {by: "link" | "public"}}`, and the page offers nothing that writes, sends no
+  heartbeat, gives no name and talks to no agent.
 - **Requests to follow** (`POST /api/ask`, server/askfollow.ts): 401 without a name, 409 from a
   private page or for an agent, 404 for someone gone, 429 with `retryAfter` within 30 s, counted per
   person (link, else name) and per page. Nobody to ask makes no request and does not count. Answers:
@@ -257,8 +275,11 @@ and gesture and replays the tour.
   following the asker; the server does not know who follows whom). A replaced request, or one on a
   page that closes, is answered `timeout`. A request ends when all answered or after 33 s (30 + 3 of
   grace); the asker closing or going private withdraws it. Held in memory only.
-- **Bounds**: at most 200 event streams (then 503), 4 per page (the oldest goes); a stream with more
-  than 4 MB unread is closed. Request bodies are bounded (413); a failing handler answers 500 with a
+- **Bounds**: at most 200 event streams (then 503), and 400 more for read-only readers, counted
+  apart; 4 per page (the oldest goes); a stream with more than 4 MB unread is closed. Read-only
+  readers' hovers: 60 a minute per address and 300 in all (429 with `Retry-After`), answers kept per
+  build and question (2,000); their printed documents, one typesetting at a time for all of them
+  (429), the export's cache answering the rest. Request bodies are bounded (413); a failing handler answers 500 with a
   JSON reason, never hangs. Only the graph's modules are served or hovered.
 - **Far pages**: pages are often far away, over lossy links. The page's files and the graph carry a
   content tag (304 when the browser has them); edges travel packed; JSON over 2 KB is gzipped; the

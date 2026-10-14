@@ -31,6 +31,7 @@ import { Timeline } from "./events.ts";
 import { agentKey, Presence } from "./presence.ts";
 import { AgentTokens } from "./tokens.ts";
 import { Invites } from "./invites.ts";
+import { ReadOnlyLinks } from "./readonly.ts";
 import { Talk } from "./talk.ts";
 import { Asks } from "./askfollow.ts";
 import type { ReviewChange, ReviewStore } from "./review.ts";
@@ -65,6 +66,9 @@ const PING = 15000;
 /** Event streams, which every change goes to: at most this many open at once, and this many per
  *  page (`session`: a reload, a lost connection coming back), its oldest closed for a new one. */
 export const MAX_STREAMS = 200;
+/** Read-only readers' streams (CollabSpec decision 11): a bound of their own, so that they never
+ *  take the places of the people working. */
+export const MAX_READONLY_STREAMS = 400;
 export const MAX_STREAMS_PER_SESSION = 4;
 /** what a stream may have waiting to be sent before it is closed: a page that does not read is
  *  not kept up with by holding everything for it — it comes back (EventSource reconnects) and is
@@ -88,6 +92,9 @@ interface Stream {
   private: boolean;
   /** the personal link its page came by (CollabSpec decision 9), whose revoking ends the stream */
   person: string | null;
+  /** a read-only reader's (CollabSpec decision 11): the read-only link it came by, whose revoking
+   *  ends the stream, or "public" (--public); null for anyone else */
+  readOnly: string | null;
 }
 
 /** What a stream's page alone is told of it (`hello`). */
@@ -147,6 +154,8 @@ export class Live {
   readonly tokens: AgentTokens;
   /** the personal links people were invited by from Share (CollabSpec decision 9, server/invites.ts) */
   readonly invites: Invites;
+  /** read-only links (CollabSpec decision 11, server/readonly.ts) */
+  readonly readOnly: ReadOnlyLinks;
   /** the conversations with agents, their waits and their states (AgentSpec decision 8, server/talk.ts) */
   readonly talk: Talk;
   /** the requests to follow going on (CollabSpec decision 10, server/askfollow.ts): relayed to the
@@ -195,6 +204,10 @@ export class Live {
     this.invites.onChanged = () => this.send("people", this.invites.people());
     this.invites.onEnded = (r) => {
       for (const st of [...this.streams.values()]) if (st.person === r.id) this.close(st);
+    };
+    this.readOnly = new ReadOnlyLinks(dirs.site);
+    this.readOnly.onEnded = (l) => {
+      for (const st of [...this.streams.values()]) if (st.readOnly === l.id) this.close(st);
     };
     this.talk = new Talk(dirs.site);
     // what changes a view may change the lost-and-found: a pin of a name that is gone, a note
@@ -268,7 +281,8 @@ export class Live {
     this.asks = new Asks({
       streams: () => {
         const listed = new Map(this.presence.list().map((p) => [p.id, p]));
-        return [...this.streams.values()].map((st) => {
+        // a read-only reader is seen by nobody, and asked by nobody (CollabSpec decision 11)
+        return [...this.streams.values()].filter((st) => st.readOnly === null).map((st) => {
           const p = st.private ? undefined : listed.get(st.id);
           return { token: st.token, id: st.id, private: st.private, name: p && !p.agent ? p.name : null, verified: !!p?.verified };
         });
@@ -956,7 +970,7 @@ export class Live {
       build: this.build,
       live: !this.saved,
       editor: this.editor,
-      streams: { open: this.streams.size, max: MAX_STREAMS, closedForNotReading: this.dropped, agentsListening: this.talk.count },
+      streams: { open: this.streams.size, max: MAX_STREAMS, readOnly: this.readOnlyStreams(), maxReadOnly: MAX_READONLY_STREAMS, closedForNotReading: this.dropped, agentsListening: this.talk.count },
       // the review's folder, and the lines of its logs that cannot be read (server/review.ts)
       review: { folder: this.review.dir, problems: this.review.problems, error: this.review.error },
     };
@@ -966,16 +980,17 @@ export class Live {
    *  it), `person` the personal link it came by. The stream is named by the server: the page is
    *  told its id, which everyone sees, and a secret for its heartbeats (`hello`); it is gone from
    *  presence when its stream closes. */
-  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null): void {
+  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null): void {
     if (session) {
       // a page that opens one more than a page needs (a reload whose old stream lingers) loses
       // its oldest
       const mine = [...this.streams.values()].filter((st) => st.session === session);
       for (const st of mine.slice(0, Math.max(0, mine.length - MAX_STREAMS_PER_SESSION + 1))) this.close(st);
     }
-    if (this.streams.size >= MAX_STREAMS) {
+    const [n, max] = readOnly === null ? [this.streams.size - this.readOnlyStreams(), MAX_STREAMS] : [this.readOnlyStreams(), MAX_READONLY_STREAMS];
+    if (n >= max) {
       res.writeHead(503, { "content-type": "application/json", "cache-control": "no-store", "retry-after": "10" });
-      res.end(JSON.stringify({ error: `This server has ${MAX_STREAMS} pages open, as many as it serves: try again in a while.` }));
+      res.end(JSON.stringify({ error: `This server has ${max} pages open${readOnly === null ? "" : " to read only"}, as many as it serves: try again in a while.` }));
       return;
     }
     res.writeHead(200, {
@@ -984,7 +999,7 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
@@ -1033,6 +1048,13 @@ export class Live {
   }
 
   /** A stream is over: its page leaves the list, its secret means nothing any more. */
+  /** How many read-only readers' streams are open. */
+  readOnlyStreams(): number {
+    let n = 0;
+    for (const st of this.streams.values()) if (st.readOnly !== null) n++;
+    return n;
+  }
+
   private close(st: Stream): void {
     if (this.streams.get(st.res) !== st) return;
     this.streams.delete(st.res);

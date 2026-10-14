@@ -64,6 +64,20 @@ export interface PersonInvite {
   lastUsed: string | null;
 }
 
+/** A read-only link (CollabSpec decision 11, server/readonly.ts), as Share lists it: unlike a
+ *  personal link's, the link itself is kept, to be shown again. */
+export interface ReadOnlyLink {
+  id: string;
+  /** the link's address on the server, `/r/<token>` */
+  path: string;
+  /** who made it: a name, or null for someone who gave none */
+  by: string | null;
+  created: string;
+  revoked: string | null;
+  revokedBy: string | null;
+  lastUsed: string | null;
+}
+
 /** What every page is told of the people invited by a personal link (`people`), so that what one
  *  of them did shows under the name they go by now, with its mark: their id, that name, the ones
  *  they had before, and whether their link was revoked. */

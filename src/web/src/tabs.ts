@@ -35,6 +35,9 @@ export interface TabsHooks {
   remove(): Promise<string | null>;
   /** a snapshot: views are the page's own, nothing is asked of a server */
   readOnly(): boolean;
+  /** why this page makes, renames and deletes no view (a read-only page, CollabSpec decision 11):
+   *  the menu offers none of it; null where it does */
+  frozen?(): string | null;
   /** a build of the history in words ("Oct 8, 14:15 · f9a0ca2"), for a view kept at it */
   build?(snapshot: number): string | null;
   /** a target as the page names it: its name's last part, with as many parents as tell it apart */
@@ -188,6 +191,9 @@ export class Tabs {
         `<input id="vm-name" class="vm-input" maxlength="80" value="${escapeHtml(cur?.name ?? "")}" spellcheck="false" autocomplete="off">` +
         (a.error ? `<div class="modal-err">${escapeHtml(a.error)}</div>` : "") +
         `<div class="vm-actions"><button type="button" class="rv-btn" data-cancel>Cancel</button><button type="submit" class="rv-btn primary">Rename</button></div></form>`;
+    } else if (this.hooks.frozen?.()) {
+      const why = escapeHtml(this.hooks.frozen!()!);
+      html += `<div class="vm-acts">${["New view", "Duplicate", "Rename…", "Delete…"].map((a) => `<button class="vm-act" disabled title="${why}">${a}</button>`).join("")}</div>`;
     } else {
       html +=
         `<div class="vm-acts">` +
@@ -224,7 +230,7 @@ export class Tabs {
       `<div class="vm-h">Views</div>` +
       kept.map(row).join("") +
       (loose.length ? `<div class="vm-sep"></div>` + loose.map(row).join("") : "") +
-      (ro ? `<div class="vm-note muted">A snapshot: views made here stay in this page.</div>` : "");
+      (this.hooks.frozen?.() ? `<div class="vm-note muted">This page is read-only: it makes no views.</div>` : ro ? `<div class="vm-note muted">A snapshot: views made here stay in this page.</div>` : "");
     this.menu.innerHTML = html;
     if (this.asking) {
       const f = this.menu.querySelector<HTMLInputElement>("#vm-name")!;

@@ -62,7 +62,7 @@ import type { Dropped, NoteKind } from "./sticky.ts";
 import { notesOfFiles, ProjectNotes } from "./projectnotes.ts";
 import { Outline } from "./outline.ts";
 import { Panel } from "./panel.ts";
-import { People, personKey } from "./people.ts";
+import { People, READ_ONLY, personKey } from "./people.ts";
 import { Asking, askMark } from "./askfollow.ts";
 import type { AskAnswered, AskFollow } from "../../shared/askfollow.ts";
 import { PeerMenu } from "./peermenu.ts";
@@ -191,6 +191,9 @@ async function boot(): Promise<void> {
   let g = present;
   const store = new Store(meta.project.root);
   const S = store.data;
+  /** a read-only reader's page (CollabSpec decision 11): how it was let in, known before anything is
+   *  set up; null for any other page. It changes nothing that is shared and offers nothing that would. */
+  const reader: "link" | "public" | null = data.snapshot ? null : ((await data.identity()).readOnly?.by ?? null);
   const editor = new Editor(store, ready.editor);
   document.title = `${meta.project.name} — VisualProof`;
   $("#project").textContent = meta.project.name;
@@ -198,6 +201,11 @@ async function boot(): Promise<void> {
     const tag = $("#snapshot");
     tag.textContent = `${data.snapshot.label} · snapshot ${new Date(data.snapshot.createdAt).toLocaleDateString()}`;
     tag.title = `A frozen copy, taken ${new Date(data.snapshot.createdAt).toLocaleString()}. It does not update.`;
+    tag.hidden = false;
+  } else if (reader) {
+    const tag = $("#snapshot");
+    tag.textContent = "read-only";
+    tag.title = "You see this project, its review and its history as they are, live, and change nothing that is shared. Nobody sees you here.";
     tag.hidden = false;
   }
   /** The project as read, for the About part of the help sheet: how much the graph holds, when it
@@ -302,12 +310,14 @@ async function boot(): Promise<void> {
     go: (name) => goName(name),
     say: (text) => say(text),
     keep: async (snapshot) => {
+      if (reader) return READ_ONLY;
       if (!(await people.ensureLayout())) return "Keeping a build in a view is recorded under your name: give one first.";
       const why = await sync.keepVersion(snapshot);
       renderTabs();
       return why;
     },
     saveAs: (snapshot) => saveVersion(snapshot),
+    frozen: () => (reader ? READ_ONLY : null),
   });
   /** The board on show is of a past graph: a view kept at a past build, or the Time Machine's. It is
    *  a board as any other (the owner's decision of 2026-10-10), but for the review: a past build is
@@ -315,13 +325,16 @@ async function boot(): Promise<void> {
   const pastShown = (): boolean => !!nav.board?.past;
   /** Why the review is refused on a past board, where it would be given. */
   const PAST_REVIEW = "This board shows a past build: opinions, key marks, targets and trust are given on the latest build.";
+  const READ_ONLY_REVIEW = "Read-only: the review as it stands, live.";
   /** The board on show is a preview of its view at another build than its own (web/src/views.ts,
    *  `preview`): the Time Machine browsing it, or its build while that cannot be read. Nothing
    *  arranges it there: the view's own board is another. */
-  const frozen = (): boolean => !data.snapshot && !!nav.board?.preview;
+  const frozen = (): boolean => !!reader || (!data.snapshot && !!nav.board?.preview);
   /** Why arranging was refused there, in words. */
   const frozenWhy = (): string =>
-    tm.active
+    reader
+      ? READ_ONLY
+      : tm.active
       ? "The Time Machine shows this view at another build than its own: Keep this version, or Save as new view, to arrange it."
       : "This view's build could not be read: it is shown at the latest build, and is arranged once its own build shows.";
   /** The build the board on show is of: the one the Time Machine shows on it, else the one its view is
@@ -336,6 +349,8 @@ async function boot(): Promise<void> {
    *  derived view is read-only at that build, as a view kept there is. From the Time Machine, the
    *  view is shown first and the Time Machine left after, so that no board of now comes between. */
   const openDerived = async (scope: string, to: Place | null, clustering?: ClusterMode, focus: string | null = viewFocusName()): Promise<boolean | string> => {
+    // a read-only reader opens the views there are, and makes none (CollabSpec decision 11)
+    if (reader) return READ_ONLY;
     const version = boardBuild();
     const leaving = tm.active;
     // a new view's focus (ViewSpec decision 28): the target it is made from, else the focus of the
@@ -473,8 +488,8 @@ async function boot(): Promise<void> {
       data: boardReview(),
       error: review.error,
       blocked: blocked(),
-      readOnly: !!data.snapshot || pastShown(),
-      ...(pastShown() ? { note: `Today's review, against this build. ${PAST_REVIEW}` } : {}),
+      readOnly: !!data.snapshot || pastShown() || !!reader,
+      ...(pastShown() ? { note: `Today's review, against this build. ${PAST_REVIEW}` } : reader ? { note: READ_ONLY_REVIEW } : {}),
       reviewer: people.name,
     }),
     ensureReviewer: () => people.ensure(),
@@ -528,7 +543,7 @@ async function boot(): Promise<void> {
   const keyMarking = () => {
     const r = reviewRoot();
     // a past build is not reviewed: the review box says so
-    if (r === null || data.snapshot || pastShown()) return null;
+    if (r === null || data.snapshot || pastShown() || reader) return null;
     const xs = clickedDecls().filter((j) => j !== r && flow.inReview(r, j));
     const already = xs.filter((j) => flow.isKey(r, j)).length;
     return { target: g.short(r), fresh: xs.length - already, already, names: xs.filter((j) => !flow.isKey(r, j)).map((j) => g.nodes[j].name) };
@@ -538,6 +553,7 @@ async function boot(): Promise<void> {
   const toggleKey = (i = selected()) => {
     const r = reviewRoot();
     if (r === null || i === null || i === r || data.snapshot) return;
+    if (reader) return say(READ_ONLY);
     if (pastShown()) return say(PAST_REVIEW);
     if (!flow.inReview(r, i)) return say(`${g.short(i)} is not in ${g.short(r)}'s review: only what it holds can be key for it.`);
     const target = g.nodes[r].name;
@@ -577,7 +593,7 @@ async function boot(): Promise<void> {
     clustering: () => cm(),
     boardSubject: () => (shown && "decl" in shown ? `decl(${shown.decl})` : shown && "cluster" in shown ? clusterSubject(shown.cluster, cm()) : null),
     // a past build is not reviewed, and links are part of the review (ViewSpec decision 26)
-    cannotLink: () => (data.snapshot ? "A snapshot of the page shows the links as they were: they are made on the server." : pastShown() ? PAST_LINK : null),
+    cannotLink: () => (data.snapshot ? "A snapshot of the page shows the links as they were: they are made on the server." : reader ? READ_ONLY : pastShown() ? PAST_LINK : null),
     goDecl: (name) => {
       const i = g.byName.get(name) ?? g.foldedInto.get(name);
       if (i === undefined) say(`${name} is not in the graph on show.`);
@@ -596,7 +612,7 @@ async function boot(): Promise<void> {
     say: (text) => say(text),
     relayoutSource: () => sources.following?.relayout(),
     repaint: () => showSelected(),
-    readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : null),
+    readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : reader ? READ_ONLY : null),
     // what notes carry (AttachmentSpec decision 12): a clip made into a note, a file attached to one
     cannotNote: () => noteRefused(),
     clip: (c, text) => clipToNote(c, text),
@@ -970,7 +986,7 @@ async function boot(): Promise<void> {
 
   // what is trusted without review, in a popover from the side panel (web/src/trust.ts)
   const trust = new Trust($("#trust-list"), $("#trust-pop"), {
-    review: () => ({ data: review.data, blocked: blocked(), readOnly: !!data.snapshot || pastShown(), ...(pastShown() ? { note: PAST_REVIEW } : {}) }),
+    review: () => ({ data: review.data, blocked: blocked(), readOnly: !!data.snapshot || pastShown() || !!reader, ...(pastShown() ? { note: PAST_REVIEW } : reader ? { note: READ_ONLY_REVIEW } : {}) }),
     graph: () => g,
     // each target counts what its review holds under the trust asked about (shared/reviewqueue.ts)
     targets: () =>
@@ -1294,7 +1310,10 @@ async function boot(): Promise<void> {
   };
   const people: People = new People(data, store, {
     view: whereIAm,
+    say: (text) => say(text),
     talkTo: (agent) => {
+      // a read-only reader talks to no agent (CollabSpec decision 11)
+      if (reader) return;
       chatWin.show(agent?.id ?? null);
       void talk.show(agent);
     },
@@ -1332,8 +1351,10 @@ async function boot(): Promise<void> {
     },
     asked: (p) => askMark(asking.tally.stateOf(p.sessions.map((x) => x.id)), p.name ?? "This reader"),
     askAll: () => void asking.ask(null),
-    askWhy: () => asking.why(true),
+    askWhy: () => (reader ? READ_ONLY : asking.why(true)),
   });
+  // known before its stream says hello, so that a read-only page never sends a heartbeat
+  if (reader) people.readOnly = reader;
   /** Asking others to follow, and being asked (CollabSpec decision 10, web/src/askfollow.ts): the
    *  banner of a request shown, the outcome of this reader's own on the initials and in a line. */
   const asking = new Asking($("#ask-banner"), $("#ask-line"), {
@@ -1365,7 +1386,7 @@ async function boot(): Promise<void> {
       const p = people.people().find((x) => x.key === key);
       if (p) void asking.ask({ id: p.sessions[0].id, name: p.name ?? "This reader" });
     },
-    cannotAsk: () => asking.why(false),
+    cannotAsk: () => (reader ? READ_ONLY : asking.why(false)),
   });
   /** Go where a reader's followed state says (CollabSpec decision 4): their view (a tab opened for it
    *  if need be), their tool, their selection (from before selections were queries, or from an agent
@@ -1454,7 +1475,7 @@ async function boot(): Promise<void> {
     if (line) say(line);
   };
   // a layout's memory is handed over under a name, or by a private reader, as the server takes it
-  handsOver = () => !!data.snapshot || !!people.name || !!data.privateSession;
+  handsOver = () => !reader && (!!data.snapshot || !!people.name || !!data.privateSession);
   /** The others' selections on the canvas, and who else is on the declaration in the panel. */
   const syncPeers = () => {
     const marks: { i: number; color: string; label: string }[] = [];
@@ -1487,7 +1508,7 @@ async function boot(): Promise<void> {
     return null;
   };
   // a private reader's view is made without their name, and needs none (CollabSpec decision 8)
-  const named = async (): Promise<string | null> => (data.snapshot || (await people.ensureLayout()) ? null : "A view is made under your name: give one first.");
+  const named = async (): Promise<string | null> => (reader ? READ_ONLY : data.snapshot || (await people.ensureLayout()) ? null : "A view is made under your name: give one first.");
   const tabs = new Tabs($("#tabs"), $("#views-btn"), $("#views-menu"), {
     tabs: () => nav.tabs,
     active: () => nav.board?.id ?? null,
@@ -1524,7 +1545,8 @@ async function boot(): Promise<void> {
       writeAddress(false);
       return null;
     },
-    readOnly: () => !!data.snapshot,
+    readOnly: () => !!data.snapshot || !!reader,
+    frozen: () => (reader ? READ_ONLY : null),
     build: (id) => {
       const s = tm.snaps.find((x) => x.id === id);
       return s ? `${buildWhen(s.at)}${s.commit ? ` · ${s.commit.hash.slice(0, 7)}` : ""}` : null;
@@ -1567,6 +1589,7 @@ async function boot(): Promise<void> {
 
   // the targets at the top of the side panel, each opening its view (web/src/targetlist.ts)
   const targetList = new TargetList($("#targets"), {
+    readOnly: () => !!data.snapshot || !!reader,
     list: () => views.summaries,
     targets: () => Object.keys(review.data.targets),
     active: () => nav.board?.id ?? null,
@@ -1633,7 +1656,7 @@ async function boot(): Promise<void> {
   // a link to this view that lets whoever has it in, or a prompt for an AI agent with a token of its
   // own (web/src/share.ts); a snapshot is shared as a file
   new Share($("#share-btn"), $("#share-pop"), {
-    path: () => data.sharePath(),
+    info: () => data.shareInfo(),
     data,
     me: () => people.name,
     ensureName: () => people.ensure(),
@@ -1770,6 +1793,7 @@ async function boot(): Promise<void> {
     // an agent's layout, put back: under the reader's name, as the timeline records it (a private
     // reader's, without one)
     undo: async (id) => {
+      if (reader) return READ_ONLY;
       if (!(await people.ensureLayout())) return "An undo is recorded under your name: give one first.";
       const r = await data.undoLayout(id);
       if (r.who) people.lost();
@@ -2895,7 +2919,7 @@ async function boot(): Promise<void> {
     if (ctxMenu.open) e.preventDefault();
   });
   /** A name can be had for what is recorded under one: given here, or by the proxy. */
-  const canName = () => !data.snapshot && (!!people.name || people.mode === "declared");
+  const canName = () => !data.snapshot && !reader && (!!people.name || people.mode === "declared");
   /** Whether two scopes hold the same set, on the whole graph and the review as they are. */
   const sameSet = (a: Query, b: Query): boolean => {
     const x = evaluate(a, { g, review: boardReview() }), y = evaluate(b, { g, review: boardReview() });
@@ -3264,7 +3288,7 @@ async function boot(): Promise<void> {
       open: n.note.open,
       view: n.kind === "view",
       carries: (n.note.carries ?? []).map(carryLabel),
-      attach: !data.snapshot,
+      attach: !data.snapshot && !reader,
       ...(n.kind === "project" ? { items: noteViews(n.note as ProjectNote) } : {}),
     };
     const items = menuItems(t, menuContext(null));

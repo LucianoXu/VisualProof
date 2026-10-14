@@ -1,18 +1,26 @@
 // Sharing (2026-10-07; with agents since 2026-10-08, AgentSpec decision 7; inviting a person since
-// 2026-10-09, CollabSpec decision 9): a small window with three tabs.
+// 2026-10-09, CollabSpec decision 9; read-only links since 2026-10-14, decision 11): a small window
+// with four tabs.
 //
-// *Public link*: a link to this page as it is now — the view, what is lit and selected, as the address
-// holds them — that lets whoever receives it in. On a server that lets in only those given its link
-// (server/access.ts), the server hands a page it let in that link's path, `/k/<key>`, and the page's
-// place goes after it as a fragment, which the browser keeps across the link's redirect. The link
-// is copied at once; where the browser will not (over plain HTTP the clipboard API is not offered,
-// and the old way may be refused too) it is shown selected, to be copied by hand.
+// *Guest link* (decision 7's *Public link*, renamed: it makes guests): a link to this page as it is
+// now — the view, what is lit and selected, as the address holds them — that lets whoever receives
+// it in. On a server that lets in only those given its link (server/access.ts), the server hands a
+// page it let in that link's path, `/k/<key>`, and the page's place goes after it as a fragment,
+// which the browser keeps across the link's redirect. The link is copied at once; where the browser
+// will not (over plain HTTP the clipboard API is not offered, and the old way may be refused too) it
+// is shown selected, to be copied by hand.
+//
+// *Read-only link* (server/readonly.ts): a link that shows the project and lets its holder change
+// nothing that is shared, nor be seen. Anyone let in makes one; it lasts until revoked, and is
+// listed below to be shown again or revoked. With `--public` the address alone is read-only, and is
+// the link. A read-only reader's Share holds this tab alone and gives the link they came by. A server
+// open to all, or behind a sign-in, has no such tab.
 //
 // *Exactly what I see* (the owner's decision of 2026-10-12), a switch on by default and kept in the
-// browser: the links Share makes — the public link, a personal link — carry after the address a
-// snapshot of everything followed (shared/sharesnap.ts), the camera as the region of the board it
-// shows, which the page that opens the link applies once. Off, they carry the address alone: only
-// the view.
+// browser: the links Share makes — the guest link, a read-only link, a personal link — carry after
+// the address a snapshot of everything followed (shared/sharesnap.ts), the camera as the region of
+// the board it shows, which the page that opens the link applies once. Off, they carry the address
+// alone: only the view.
 //
 // *AI agent*: a prompt any agent able to make HTTP requests can act on alone, carrying a token of the
 // agent's own (server/tokens.ts) — never the key. The person names the agent ("<their name>'s AI"
@@ -25,24 +33,26 @@
 // can take it, and they can change it without what they did leaving them. The link is shown once,
 // here, to be sent to that person; the server keeps only a digest of it.
 //
-// Below the tabs, the personal links in force, each with who made it, when and when it was last
-// used, and a Revoke; then the agents' tokens in force, each with when it was last used, its prompt
-// to be shown again (the token is in it), and a Revoke.
+// Below the tabs, the read-only links in force, each with who made it, when and when it was last
+// used, the link to be shown again, and a Revoke; the personal links in force, the same but for the
+// link; then the agents' tokens in force, each with when it was last used, its prompt to be shown
+// again (the token is in it), and a Revoke.
 
 import { defaultAgentName, uniqueName } from "../../shared/collab.ts";
 import type { AgentTokenInfo, PersonInvite } from "../../shared/collab.ts";
 import { withSnapshot } from "../../shared/sharesnap.ts";
 import { BOT } from "./agentmark.ts";
-import type { AgentShares, DataSource } from "./data.ts";
+import type { AgentShares, DataSource, ReadOnlyLinkShown, ShareInfo } from "./data.ts";
 import { escapeHtml } from "./highlight.ts";
 import { ago } from "./reviewbox.ts";
 import { VERIFIED } from "./verified.ts";
 import { composing } from "./ime.ts";
 
 export interface ShareHooks {
-  /** the link's path on this server: `/k/<key>`, or null where anyone who reaches it is let in */
-  path(): Promise<string | null>;
-  data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite">;
+  /** what this page may share: the link's path on this server (`/k/<key>`, or null where anyone who
+   *  reaches it is let in; a read-only reader's own), and whether there are read-only links */
+  info(): Promise<ShareInfo>;
+  data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly">;
   /** the reader's name as the page knows it, for the agent's default name; null when there is none */
   me(): string | null;
   /** the reader's name, asked for when there is none; null when they decline */
@@ -72,16 +82,26 @@ type AgentState = { kind: "form"; error: string | null } | { kind: "prompt"; id:
  *  made it (`base`), and with the address after it (`link`), which the switch decides. */
 type InviteState = { kind: "form"; error: string | null } | { kind: "link"; id: string; name: string; base: string; link: string; copied: boolean };
 
-type Tab = "person" | "invite" | "agent";
+/** What the read-only tab shows: the form, or a link — just made (`made`), or shown again from the
+ *  list — as the server made it (`base`) and with the address after it (`link`). */
+type ReadOnlyState = { kind: "form"; error: string | null } | { kind: "link"; id: string; base: string; link: string; made: boolean; copied: boolean };
+
+type Tab = "person" | "readonly" | "invite" | "agent";
 
 export class Share {
   private btn: HTMLElement;
   private pop: HTMLElement;
   private hooks: ShareHooks;
-  private known: Promise<string | null> | null = null;
+  private known: Promise<ShareInfo> | null = null;
+  /** what the server said this page may share, once the window has opened */
+  private info: ShareInfo = { path: null };
   private tab: Tab = "person";
   /** the person's link as last shown, and whether it was copied */
   private person = { url: "", copied: false };
+  /** the read-only tab; for a read-only reader, their own link */
+  private readOnly: ReadOnlyState = { kind: "form", error: null };
+  /** the read-only links in force, when the window last opened; null where there are none to have */
+  private readOnlyLinks: ReadOnlyLinkShown[] | null = null;
   private agent: AgentState = { kind: "form", error: null };
   /** the invite tab, and the name typed there, kept while the page is open: a link just made stays
    *  on show until the reader asks for another, so that closing the window does not lose it */
@@ -110,6 +130,13 @@ export class Share {
       if (t.closest("[data-exact]")) void this.setExact(!this.hooks.exact.get());
       else if (t.closest("[data-copy]")) void this.copyAgain(".sh-url", "[data-copy]");
       else if (t.closest("[data-copy-invite]")) void this.copyAgain(".sh-invite-url", "[data-copy-invite]");
+      else if (t.closest("[data-copy-ro]")) void this.copyAgain(".sh-ro-url", "[data-copy-ro]");
+      else if (t.closest("[data-ro-create]")) void this.makeReadOnly();
+      else if (t.closest("[data-ro-again]")) {
+        this.readOnly = { kind: "form", error: null };
+        void this.show("readonly");
+      } else if (t.closest("[data-ro-show]")) void this.showReadOnly(t.closest<HTMLElement>("[data-ro-show]")!.dataset.roShow!);
+      else if (t.closest("[data-revoke-ro]")) void this.revokeReadOnly(t.closest<HTMLElement>("[data-revoke-ro]")!.dataset.revokeRo!);
       else if (t.closest("[data-invite-create]")) void this.makeInvite();
       else if (t.closest("[data-invite-again]")) {
         this.invite = { kind: "form", error: null };
@@ -153,9 +180,14 @@ export class Share {
     });
   }
 
-  /** The link to this page as it is now. */
+  /** What the server says this page may share, asked once. */
+  private shareInfo(): Promise<ShareInfo> {
+    return (this.known ??= this.hooks.info().catch(() => ({ path: null })));
+  }
+
+  /** The link to this page as it is now: for a read-only reader, the link they came by. */
   async link(): Promise<string> {
-    const path = await (this.known ??= this.hooks.path().catch(() => null));
+    const { path } = await this.shareInfo();
     return `${location.origin}${path ?? "/"}${await this.fragment()}`;
   }
 
@@ -172,9 +204,13 @@ export class Share {
   private async setExact(on: boolean): Promise<void> {
     this.hooks.exact.set(on);
     const i = this.invite;
+    const ro = this.readOnly;
     if (this.tab === "person") {
       const url = await this.link();
       this.person = { url, copied: await copy(url) };
+    } else if (this.tab === "readonly" && ro.kind === "link") {
+      const link = ro.base + (await this.fragment());
+      this.readOnly = { ...ro, link, copied: await copy(link) };
     } else if (this.tab === "invite" && i.kind === "link") {
       const link = i.base + (await this.fragment());
       this.invite = { ...i, link, copied: await copy(link) };
@@ -197,8 +233,19 @@ export class Share {
     this.btn.classList.add("on");
     this.arming = null;
     if (this.agent.kind === "prompt") this.agent = { kind: "form", error: null };
+    this.info = await this.shareInfo();
+    // a read-only reader shares the link they came by, and nothing else (CollabSpec decision 11)
+    if (this.info.readOnly) return this.show("readonly");
+    if (this.tab === "readonly" && !this.readOnlyTab()) this.tab = "person";
+    // a read-only link shown again is not left on show, as a prompt is not
+    if (this.readOnly.kind === "link" && !this.readOnly.made) this.readOnly = { kind: "form", error: null };
     await this.show(this.tab);
     void this.refresh();
+  }
+
+  /** Whether this server has a read-only tab: it makes read-only links, or anyone may read it. */
+  private readOnlyTab(): boolean {
+    return !!(this.info.readOnly || this.info.readOnlyLinks || this.info.public);
   }
 
   /** Show a tab. The person's link is copied as the tab shows, as Share always did. */
@@ -209,6 +256,19 @@ export class Share {
       this.person = { url, copied: await copy(url) };
       this.render();
       const input = this.pop.querySelector<HTMLInputElement>(".sh-url");
+      input?.focus();
+      input?.select();
+    } else if (tab === "readonly") {
+      // the reader's own link, or the address where anyone may read (unless a link of the list is
+      // shown again): shown and copied as the guest link is
+      const listed = this.readOnly.kind === "link" && this.readOnly.id !== "";
+      if (this.info.readOnly || (this.info.public && !listed)) {
+        const base = `${location.origin}${this.info.readOnly ? (this.info.path ?? "/") : "/"}`;
+        const link = base + (await this.fragment());
+        this.readOnly = { kind: "link", id: "", base, link, made: false, copied: await copy(link) };
+      }
+      this.render();
+      const input = this.pop.querySelector<HTMLInputElement>(".sh-ro-url");
       input?.focus();
       input?.select();
     } else if (tab === "invite") {
@@ -224,7 +284,13 @@ export class Share {
 
   /** The tokens and the personal links in force, and what a new token may be, from the server. */
   private async refresh(): Promise<void> {
-    [this.shares, this.people] = await Promise.all([this.hooks.data.agentShares(), this.hooks.data.invites()]);
+    if (this.info.readOnly) return;
+    let links: ReadOnlyLinkShown[] | null;
+    [this.shares, this.people, links] = await Promise.all([this.hooks.data.agentShares(), this.hooks.data.invites(), this.info.readOnlyLinks ? this.hooks.data.readOnlyLinks() : null]);
+    this.readOnlyLinks = links && links.filter((l) => !l.revoked);
+    // a read-only link on show that was revoked meanwhile goes with it
+    const ro = this.readOnly;
+    if (ro.kind === "link" && ro.id && this.readOnlyLinks && !this.readOnlyLinks.some((l) => l.id === ro.id)) this.readOnly = { kind: "form", error: null };
     // a personal link on show that was revoked meanwhile goes with it
     const i = this.invite;
     if (i.kind === "link" && this.people && !this.people.some((p) => p.id === i.id)) this.invite = { kind: "form", error: null };
@@ -241,12 +307,16 @@ export class Share {
   /** Draw the window: the tabs, the tab shown, the tokens in force. */
   private render(): void {
     const focus = document.activeElement instanceof HTMLElement && this.pop.contains(document.activeElement) ? document.activeElement.dataset.f : undefined;
-    const tabs =
-      `<div class="sh-tabs" role="tablist">` +
-      `<button role="tab" data-tab="person" aria-selected="${this.tab === "person"}" title="One link for everyone: whoever has it comes in as a guest">Public link</button>` +
-      `<button role="tab" data-tab="invite" aria-selected="${this.tab === "invite"}" title="A link for one person, with a verified name">Invite a person</button>` +
-      `<button role="tab" data-tab="agent" aria-selected="${this.tab === "agent"}">${BOT}AI agent</button>` +
-      `</div>`;
+    const tab = (t: Tab, title: string, label: string) => `<button role="tab" data-tab="${t}" aria-selected="${this.tab === t}" title="${title}">${label}</button>`;
+    const roTab = tab("readonly", "A link that shows the project: whoever has it changes nothing and is not seen", "Read-only link");
+    const tabs = this.info.readOnly
+      ? `<div class="sh-tabs" role="tablist">${roTab}</div>`
+      : `<div class="sh-tabs" role="tablist">` +
+        tab("person", "One link for everyone: whoever has it comes in as a guest", "Guest link") +
+        (this.readOnlyTab() ? roTab : "") +
+        tab("invite", "A link for one person, with a verified name", "Invite a person") +
+        tab("agent", "A token of its own for an AI agent", `${BOT}AI agent`) +
+        `</div>`;
     let body: string;
     if (this.tab === "person") {
       const { url, copied } = this.person;
@@ -258,9 +328,103 @@ export class Share {
         (keyed ? "Public and reusable: whoever has it comes in as a guest, under any name." : "This server lets in anyone who can reach it.") +
         `</div>` +
         `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-copy>${copied ? "Copy again" : "Copy"}</button></div>`;
-    } else body = this.tab === "invite" ? this.inviteBody() : this.agentBody();
-    this.pop.innerHTML = tabs + `<div class="sh-body">${body}</div>` + this.peopleList() + this.tokenList();
+    } else body = this.tab === "readonly" ? this.readOnlyBody() : this.tab === "invite" ? this.inviteBody() : this.agentBody();
+    this.pop.innerHTML = tabs + `<div class="sh-body">${body}</div>` + this.readOnlyList() + this.peopleList() + this.tokenList();
     if (focus) this.pop.querySelector<HTMLElement>(`[data-f=${focus}]`)?.focus();
+  }
+
+  /** The read-only tab: for a read-only reader the link they came by; where anyone may read, the
+   *  address; else a link made, or shown again, or the button that makes one. */
+  private readOnlyBody(): string {
+    const r = this.readOnly;
+    if (r.kind === "link") {
+      // a read-only reader let in by --public came by the address alone
+      const byAddress = this.info.readOnly && this.info.path === "/";
+      const note = byAddress
+        ? "Anyone who reaches this server may read the project: the address is the read-only link."
+        : this.info.readOnly
+          ? "The link you came by: it shows the project to whoever has it, read-only. Whoever made it can revoke it, which ends every page it opened."
+          : this.info.public
+          ? "This server lets anyone who reaches it read the project (it runs with --public): the address is the read-only link."
+          : `Whoever has it sees what a guest sees, changes nothing and is not seen. It lasts until revoked below.${r.made ? "" : " Shown again."}`;
+      return (
+        `<input class="sh-url sh-ro-url" readonly value="${escapeHtml(r.link)}" aria-label="The read-only link" spellcheck="false">` +
+        this.exactRow() +
+        `<div class="sh-note muted">${r.copied ? "Copied. " : ""}${note}</div>` +
+        `<div class="modal-actions">${r.id ? `<button class="rv-btn" data-ro-again>${this.info.public ? "The address" : "Another link"}</button>` : `<button class="rv-btn" data-close>Close</button>`}<button class="rv-btn primary" data-copy-ro>${r.copied ? "Copy again" : "Copy"}</button></div>`
+      );
+    }
+    return (
+      `<div class="sh-note muted">A link to show the project: whoever has it sees what a guest sees, changes nothing and is not seen, until it is revoked. Anyone they pass it to comes in the same way.</div>` +
+      this.exactRow() +
+      (r.error ? `<div class="modal-err">${escapeHtml(r.error)}</div>` : "") +
+      `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-ro-create${this.busy ? " disabled" : ""}>Create link</button></div>`
+    );
+  }
+
+  /** The read-only links in force: who made each and when, when it was last used, the link shown
+   *  again on a click on it, and Revoke. */
+  private readOnlyList(): string {
+    const ls = this.readOnlyLinks ?? [];
+    if (!ls.length || this.info.readOnly) return "";
+    return `<div class="sh-tokens"><div class="sh-sub">Read-only links</div>${ls.map((l) => this.readOnlyRow(l)).join("")}</div>`;
+  }
+
+  private readOnlyRow(l: ReadOnlyLinkShown): string {
+    const armed = this.arming === `r:${l.id}`;
+    const shown = this.tab === "readonly" && this.readOnly.kind === "link" && this.readOnly.id === l.id;
+    const id = escapeHtml(l.id);
+    return (
+      `<div class="sh-tok${shown ? " on" : ""}">` +
+      `<div class="sh-tok-text" data-ro-show="${id}" title="Show the link again"><div><b>Read-only link</b> <span class="sh-lvl">${id}</span></div>` +
+      `<div class="muted">${l.by ? `by ${escapeHtml(l.by)}, ` : ""}${escapeHtml(ago(l.created))} · ${l.lastUsed ? `last used ${escapeHtml(ago(l.lastUsed))}` : "not used yet"}</div></div>` +
+      `<button class="rv-btn sh-act" data-ro-show="${id}" aria-pressed="${shown}" title="The link, to give again">Show link</button>` +
+      `<button class="rv-btn sh-act${armed ? " bad" : ""}" data-revoke-ro="${id}" title="It lets nobody in any more, and the pages it opened close, at once">${armed ? "Revoke it" : "Revoke"}</button>` +
+      `</div>`
+    );
+  }
+
+  /** Make a read-only link: under the reader's name if they have one (none is asked for). */
+  private async makeReadOnly(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    this.render();
+    const r = await this.hooks.data.makeReadOnly();
+    this.busy = false;
+    if ("error" in r) {
+      this.readOnly = { kind: "form", error: r.error };
+      return this.render();
+    }
+    this.readOnlyLinks = r.links.filter((l) => !l.revoked);
+    const link = r.made.link + (await this.fragment());
+    this.readOnly = { kind: "link", id: r.made.id, base: r.made.link, link, made: true, copied: await copy(link) };
+    await this.show("readonly");
+  }
+
+  /** Show a read-only link again, in its tab, copied as showing a link copies it. */
+  private async showReadOnly(id: string): Promise<void> {
+    this.arming = null;
+    const l = this.readOnlyLinks?.find((x) => x.id === id);
+    if (!l) return;
+    const link = l.link + (await this.fragment());
+    this.readOnly = { kind: "link", id, base: l.link, link, made: false, copied: await copy(link) };
+    await this.show("readonly");
+  }
+
+  /** Revoke a read-only link, under the reader's name: the first press arms the button, the
+   *  second revokes. */
+  private async revokeReadOnly(id: string): Promise<void> {
+    if (this.arming !== `r:${id}`) {
+      this.arming = `r:${id}`;
+      return this.render();
+    }
+    this.arming = null;
+    if (!(await this.hooks.ensureName())) return;
+    const r = await this.hooks.data.revokeReadOnly(id);
+    if (this.readOnly.kind === "link" && this.readOnly.id === id) this.readOnly = { kind: "form", error: null };
+    if (r.links) this.readOnlyLinks = r.links.filter((l) => !l.revoked);
+    else await this.refresh();
+    this.render();
   }
 
   /** The invite tab: a name, and the personal link made for it, shown this once. */
@@ -315,7 +479,7 @@ export class Share {
       return this.show("invite");
     }
     this.people = r.invites;
-    // the link takes the inviter's place after it, as the public link does: what they see, or the view
+    // the link takes the inviter's place after it, as the guest link does: what they see, or the view
     const link = r.link + (await this.fragment());
     this.invite = { kind: "link", id: r.invite.id, name: r.invite.name, base: r.link, link, copied: await copy(link) };
     this.inviteName = "";

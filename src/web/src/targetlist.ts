@@ -26,6 +26,9 @@ export interface TargetListHooks {
   open(id: string | null, target: string): void;
   /** a view's title */
   title?(id: string): string;
+  /** whether targets cannot be marked from this page (a snapshot, a read-only page): the empty list
+   *  then says no more than that it is empty */
+  readOnly?(): boolean;
   /** whether a section of the side panel is folded, and folding or opening it */
   shut(section: string): boolean;
   toggle(section: string): void;
@@ -102,7 +105,7 @@ export class TargetList {
             })
             .join("") +
           `</div>`
-        : `<div class="tg-none muted">No targets yet: ☆ Mark as target in a theorem's panel.</div>`;
+        : `<div class="tg-none muted">${this.hooks.readOnly?.() ? "No targets yet." : "No targets yet: ☆ Mark as target in a theorem's panel."}</div>`;
     }
     this.el.innerHTML = html;
   }

@@ -21,6 +21,15 @@ into the latest release only.
   (`/k/<key>`) or a personal link made in Share (`/i/vpp_…`, revoked on its own), and answers
   everything else 404; or put an authenticating proxy in front. Agents send the key, or a token
   made in Share (`vpa_…`), which reaches the agents' API alone and lasts a few days.
+- **Read-only readers.** Anyone let in can make a read-only link in Share (`/r/vpr_…`): it lets
+  whoever holds it read what a guest reads — the graph, the sources, the review, the history, the
+  library's files — and nothing else. The server refuses every other request from them (403)
+  whatever the page sends, never lets them reach the agents' API, and bounds what they cost:
+  Lean's answers at 60 a minute per address and 300 in all (429 beyond), kept per build; one
+  printed document typeset at a time for all of them; 400 event streams of their own. A link lasts
+  until revoked, which ends its pages at once. With `--public` the address alone makes a read-only
+  reader of whoever comes without the key or a link: it puts the whole project, its review and its
+  library online, so give it only to a project meant to be public.
 - **Plain HTTP.** The server speaks HTTP only: the key and the cookies cross the network in the
   clear. Beyond a trusted network, put a TLS reverse proxy (or a VPN such as Tailscale) in front.
   Its cookies are `HttpOnly` and `SameSite=Lax`.
@@ -44,13 +53,15 @@ into the latest release only.
 
 ## Secrets at rest
 
-The site folder (`--site`) holds the agents' tokens and the personal links; the access key is
+The site folder (`--site`) holds the agents' tokens and the read-only links in full (Share shows
+them again), and the personal links' digests; the access key is
 wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
 folder up as you would any secret, and never commit it.
 
 ## Deploying
 
 - Run the server as an unprivileged user, never as root.
-- Give it `--access-key-file`, or an authenticating proxy that is the only way in.
+- Give it `--access-key-file`, or an authenticating proxy that is the only way in; `--public` only
+  for a project meant to be public.
 - Put TLS in front of anything that leaves a trusted network.
 - Keep the project's toolchain, Poppler and Node up to date.
