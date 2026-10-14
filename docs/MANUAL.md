@@ -816,8 +816,11 @@ project's modules. It is compiled once per toolchain and version of its source i
 compiling fails it is interpreted instead. Per-module results are cached under a key built from
 Lake's `.olean` hash and the keys of the module's imports, so after an edit only the edited file
 and what imports it are walked again (flt-regular: 3.4 s cold for its 27 modules, most of it the walk
-for axioms through what they import; the showcase: 21 s for its 829, 13 of them that walk, and a
-restart from the cache serves its graph in a second).
+for axioms through what they import; the showcase: 14 s for its 829, 7 of them that walk, and a
+restart from the cache serves its graph in a second; NavierStokesAndEuler, 2,520 modules and 49,977
+declarations with 4.7 million edges: about 2 min, 10 GB resident, 7.5 GB of it the `.olean` files
+mapped from disk). A term is walked once per distinct subterm, however often it repeats, and what
+Lean infers on the way is dropped after each constant.
 
 - **Edges carry the place a reference occurs**: in the statement, in a definition body, or inside
   a proof. A subterm is a proof when its type is a proposition (`Meta.isProof`); by proof

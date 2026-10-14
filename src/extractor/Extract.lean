@@ -192,13 +192,19 @@ def instArgs (cache : WalkCache) (f : Expr) : MetaM (Array Bool) := do
   cache.instArgs.modify (·.insert c out)
   return out
 
-/-- References of one expression, each tagged with its site. -/
-partial def walk (cache : WalkCache) (e : Expr) (site : Site) (acc : IO.Ref (Array (Name × Site))) : MetaM Unit := do
+/-- References of one expression, each tagged with its site. A subterm met again at the same site
+    adds nothing, and is not walked again (`seen`): Lean's terms share their subterms, and a term
+    can hold one many times over, so that walking it as a tree takes time, and asks Lean the type
+    of subterms, in proportion to its size written out, which can be exponential in its size in
+    memory. -/
+partial def walk (cache : WalkCache) (seen : IO.Ref (Std.HashSet (Expr × Site))) (e : Expr) (site : Site) (acc : IO.Ref (Array (Name × Site))) : MetaM Unit := do
   let note (c : Name) (s : Site) : MetaM Unit := acc.modify (·.push (c, s))
   match e with
   | .bvar .. | .fvar .. | .mvar .. | .sort .. | .lit .. => pure ()
-  | .mdata _ b => walk cache b site acc
+  | .mdata _ b => walk cache seen b site acc
   | _ =>
+    if (← seen.get).contains (e, site) then return
+    seen.modify (·.insert (e, site))
     if site != proof && (← isProofSafe e) then
       for c in e.getUsedConstants do note c proof
       return
@@ -207,31 +213,31 @@ partial def walk (cache : WalkCache) (e : Expr) (site : Site) (acc : IO.Ref (Arr
     | .app .. =>
       let f := e.getAppFn
       let args := e.getAppArgs
-      walk cache f site acc
+      walk cache seen f site acc
       let inst ← instArgs cache f
       for h : k in [0:args.size] do
         let a := args[k]
         -- an instance of a class whose instances are all equal counts as a proof does
         if site != proof && inst[k]?.getD false then
           for c in a.getUsedConstants do note c proof
-        else walk cache a site acc
+        else walk cache seen a site acc
     | .lam n t b bi | .forallE n t b bi =>
-      walk cache t site acc
-      withLocalDecl n bi t fun x => walk cache (b.instantiate1 x) site acc
+      walk cache seen t site acc
+      withLocalDecl n bi t fun x => walk cache seen (b.instantiate1 x) site acc
     | .letE n t v b _ =>
-      walk cache t site acc
-      walk cache v site acc
-      withLetDecl n t v fun x => walk cache (b.instantiate1 x) site acc
+      walk cache seen t site acc
+      walk cache seen v site acc
+      withLetDecl n t v fun x => walk cache seen (b.instantiate1 x) site acc
     | .proj s _ b =>
       note s site
-      walk cache b site acc
+      walk cache seen b site acc
     | _ => pure ()
 
 def walkTop (cache : WalkCache) (e : Expr) (site : Site) : MetaM (Array (Name × Site)) := do
   let acc ← IO.mkRef #[]
   if site == proof then
     return e.getUsedConstants.map (·, proof)
-  walk cache e site acc
+  walk cache (← IO.mkRef {}) e site acc
   acc.get
 
 /-- The references a constant makes on its own, before any folding. -/
@@ -270,6 +276,10 @@ def refsOf (cache : WalkCache) (c : Name) : M (Array (Name × Site)) := do
   let env ← getEnv
   let some ci := env.find? c | return #[]
   let r ← ownRefs cache ci
+  -- what Lean inferred on the way (the types of subterms, under binders opened for this constant
+  -- alone) serves no other constant: kept, it grows with every constant walked, to tens of GB on
+  -- a large project
+  modifyThe Meta.State fun s => { s with cache := {} }
   modify fun s => { s with refs := s.refs.insert c r, dirty := s.dirty.insert (moduleOf s.modNames env c) }
   return r
 
@@ -1043,6 +1053,8 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
       | none =>
         let t ← try (toString <$> withOptions (·.set `format.width (100 : Nat)) (ppExpr ci.type))
           catch _ => pure "<failed to print>"
+        -- what printing it inferred serves no other statement (as in `refsOf`)
+        modifyThe Meta.State fun s => { s with cache := {} }
         modify fun s => { s with pp := s.pp.insert c t, dirty := s.dirty.insert (moduleOf s.modNames env c) }
         pure t
     let doc ← findDocString? env c
