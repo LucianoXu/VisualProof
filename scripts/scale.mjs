@@ -7,6 +7,7 @@
 //   node scripts/scale.mjs <built Lean project>...      the checkout's server
 //     --bin <command>     another `visualproof` (an installed package)
 //     --jobs N            the usage pass's workers (default: the server's)
+//     --root Name         what to read, a library or a module (repeatable; default: the lakefile's)
 //     --target <name>     the theorem to probe (default: the largest TCB among a few theorems)
 //     --export            typeset the target's review set too (needs XeLaTeX)
 //     --out <dir>         where the sites, caches, logs and results.json go (default: a new
@@ -31,6 +32,7 @@ let jobs = null;
 let target = null;
 let typeset = false;
 let out = null;
+const roots = [];
 const projects = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--bin") bin = args[++i];
@@ -38,10 +40,11 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === "--target") target = args[++i];
   else if (args[i] === "--export") typeset = true;
   else if (args[i] === "--out") out = resolve(args[++i]);
+  else if (args[i] === "--root") roots.push(args[++i]);
   else projects.push(resolve(args[i]));
 }
 if (!projects.length) {
-  console.error("usage: node scripts/scale.mjs <built Lean project>... [--bin command] [--jobs N] [--target name] [--export] [--out dir]");
+  console.error("usage: node scripts/scale.mjs <built Lean project>... [--bin command] [--jobs N] [--root name]... [--target name] [--export] [--out dir]");
   process.exit(2);
 }
 out ??= mkdtempSync(join(tmpdir(), "visualproof-scale-"));
@@ -109,7 +112,7 @@ async function serve(project, dir, phase, probe) {
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   const t0 = Date.now();
-  const child = spawn(command[0], [...command.slice(1), "serve", project, "--port", String(port), "--site", join(dir, "site"), "--cache", join(dir, "cache"), ...(jobs ? ["--jobs", jobs] : [])], { stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(command[0], [...command.slice(1), "serve", project, "--port", String(port), "--site", join(dir, "site"), "--cache", join(dir, "cache"), ...(jobs ? ["--jobs", jobs] : []), ...roots.flatMap((r) => ["--root", r])], { stdio: ["ignore", "pipe", "pipe"] });
   let log = "";
   child.stdout.on("data", (b) => (log += b));
   child.stderr.on("data", (b) => (log += b));
