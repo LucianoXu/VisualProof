@@ -251,13 +251,13 @@ test("Share's switch, Exactly what I see: on by default, the links carry the sna
   assert.equal(snapshotIn(new URL(on).hash), snap, "the snapshot is in the fragment, which no server is sent");
   assert.ok(asked > 0);
   assert.match(page.pop.innerHTML, /role="switch" aria-checked="true" data-exact/);
-  assert.match(page.pop.innerHTML, /It opens on what you see now, once/);
+  assert.match(page.pop.innerHTML, /Opens once on exactly what you see now/);
   // off: the link as it was before the switch, and the choice kept
   await page.press("[data-exact]");
   assert.deepEqual(kept, { shareExact: false });
   assert.equal(page.shown(), `http://example.org:4173/k/KEY${hash}`);
   assert.match(page.pop.innerHTML, /aria-checked="false"/);
-  assert.match(page.pop.innerHTML, /Only the view/);
+  assert.match(page.pop.innerHTML, /Opens on the view and its selection/);
   // a personal link takes the address after it, and the snapshot as the switch says
   await page.press("[data-tab]");
   await page.press("[data-exact]");

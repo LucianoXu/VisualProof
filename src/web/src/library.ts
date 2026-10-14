@@ -70,7 +70,7 @@ export function libraryDate(at: string): string {
 export function libraryHead(c: Choosing | null): string {
   const e = escapeHtml;
   const title = !c
-    ? `<b>Library</b> <span class="muted">references — papers and images — linked to declarations and clusters</span>`
+    ? `<b>Library</b>`
     : "link" in c
       ? `<b>Link ${e(subjectWords(c.link))} to a reference</b>`
       : `<b>Attach to the note “${e(c.label)}”</b>`;
@@ -299,10 +299,10 @@ export class Library {
           `<form class="lb-url" data-lb-url><input type="url" placeholder="Add by URL: a PDF, an image, or an arXiv abstract" spellcheck="false" autocomplete="off" aria-label="The file's address"><button class="rv-btn">Add</button></form>`) +
       (this.busy ? `<div class="lb-busy">${e(this.busy)}</div>` : "") +
       (this.error ? `<div class="act-warn">${e(this.error)}</div>` : "") +
-      `<div class="lb-list">${files.length ? files.map((f) => this.row(f, false)).join("") : `<div class="muted lb-none">${no ? "The library is empty." : "The library is empty: upload a paper, or add one by its URL."}</div>`}</div>` +
+      `<div class="lb-list">${files.length ? files.map((f) => this.row(f, false)).join("") : `<div class="muted lb-none">Empty.</div>`}</div>` +
       (archived.length
         ? `<button class="link lb-arch-t" data-lb-archived>${this.showArchived ? "▾" : "▸"} Archived (${archived.length})</button>` + (this.showArchived ? `<div class="lb-list">${archived.map((f) => this.row(f, true)).join("")}</div>` : "")
         : "") +
-      (l ? `<div class="muted lb-used">${sizeWords(l.used)} of ${sizeWords(l.limit)} used · at most ${sizeWords(MAX_FILE)} a file · the same file is kept once</div>` : "");
+      (l ? `<div class="muted lb-used">${sizeWords(l.used)} of ${sizeWords(l.limit)} · ${sizeWords(MAX_FILE)} a file at most</div>` : "");
   }
 }

@@ -360,7 +360,7 @@ test("the Export window of a past board says its build, and offers Generate", as
   const html = el.innerHTML;
   assert.match(html, /Export the view <b[^>]*>“ns P @ Oct 9 22:27”<\/b> at the build of <b>Oct 9 22:27<\/b>/);
   assert.ok(!/new since/.test(html), "nothing new since is on a past board, nor said");
-  assert.match(html, /The Time Machine shows this view at the build of <b>Oct 9 22:27<\/b>, another than its own, and the document is of the build on show/);
+  assert.match(html, /As of the build of <b>Oct 9 22:27<\/b>\./);
   assert.match(html, /<button class="rv-btn primary" data-ex-go>Generate<\/button>/, "Generate is offered");
   assert.ok(!/past build, which is not exported/.test(html));
   assert.deepEqual(asked, [["v-past", 1]], "the head is asked at the build on show");

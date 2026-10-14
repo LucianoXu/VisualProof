@@ -99,7 +99,7 @@ test("the library's popover choosing a file to link: its title alone, which wrap
   assert.match(attach, /<\/div><div class="muted lb-hint">An image is attached whole, a paper whole or by a clip of it\.<\/div>$/);
   // the Library itself: what it holds beside its name, in the same wrapping block, and ✕ alone
   const lib = libraryHead(null);
-  assert.match(lib, /<div class="lb-head-t"><b>Library<\/b> <span class="muted">references — papers and images — /);
+  assert.match(lib, /<div class="lb-head-t"><b>Library<\/b><\/div>/);
   assert.doesNotMatch(lib, /Cancel/);
   // laid out so: the title takes the room and wraps, the buttons never shrink or wrap
   const css = readFileSync(new URL("../src/web/style.css", import.meta.url), "utf8");

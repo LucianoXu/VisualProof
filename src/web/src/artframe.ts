@@ -204,12 +204,12 @@ export class ArtFrame {
     const mp = ((s.w * s.h) / 1e6).toFixed(1);
     this.panel.innerHTML =
       `<div class="ex-head"><div class="modal-title">Artwork</div><button class="icon" data-art-done title="Done (Esc)">✕</button></div>` +
-      `<div class="modal-text">Pan and zoom the board under the frame: what is in it is drawn, at the size chosen. The frame shows the picture once the board is still.</div>` +
+      `<div class="modal-text">Pan and zoom to frame the picture.</div>` +
       `<div class="art-grid">` +
       `<label class="ex-field ex-wide"><span>Size</span><select data-art="preset"><option value="-1"${preset < 0 ? " selected" : ""}>Custom</option>${PRESETS.map((p, i) => `<option value="${i}"${i === preset ? " selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}</select></label>` +
       `<label class="ex-field"><span>Width</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="w" value="${s.w}"></label>` +
       `<label class="ex-field"><span>Height</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="h" value="${s.h}"></label>` +
-      `<div class="art-note muted">${s.w} × ${s.h} px, ${mp} megapixels; a name is ${Math.round((11 * s.w) / Math.max(this.rect.w, 1))} px high in it.</div>` +
+      `<div class="art-note muted">${mp} megapixels · names ${Math.round((11 * s.w) / Math.max(this.rect.w, 1))} px high</div>` +
       sel("scheme", "Colouring", [["kind", "Kind"], ["status", "Status"]]) +
       sel("theme", "Theme", [["light", "Light"], ["dark", "Dark"]]) +
       sel("background", "Background", [["theme", "The theme's"], ["white", "White"], ["transparent", "Transparent"]]) +

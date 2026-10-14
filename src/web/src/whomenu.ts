@@ -62,7 +62,7 @@ export interface WhoMenuHooks {
 }
 
 /** What asking everyone does, in a line. */
-const ASK_ALL = "Everyone here is shown a request for 30 s, private readers too; those following you already are not asked.";
+const ASK_ALL = "Everyone here gets a request for 30 s.";
 
 export class WhoMenu {
   private btn: HTMLElement;

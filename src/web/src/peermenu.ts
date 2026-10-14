@@ -117,7 +117,7 @@ export class PeerMenu {
         ? `<button type="button" role="menuitem" class="wm-item" data-act="follow"><span class="wm-t">Stop following ${name}</span><span class="wm-d">What you see stays, as your own.</span></button>`
         : `<button type="button" role="menuitem" class="wm-item" data-act="follow"><span class="wm-t">Follow ${name}</span><span class="wm-d">See what ${name} sees, as it changes; Esc stops.</span></button>`) +
       `<button type="button" role="menuitem" class="wm-item" data-act="ask"${why ? ' aria-disabled="true"' : ""}><span class="wm-t">Ask ${name} to follow me</span>` +
-      `<span class="wm-d">${escapeHtml(why ?? `${p.name} is shown a request for 30 s: Follow or Not now.`)}</span></button>`;
+      `<span class="wm-d">${escapeHtml(why ?? `${p.name} gets a request for 30 s.`)}</span></button>`;
     if (was >= 0) this.items()[was]?.focus();
   }
 

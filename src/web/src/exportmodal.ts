@@ -190,8 +190,8 @@ export class ExportModal {
     const v = this.view;
     if (!v) return "There is no view to export.";
     const n = v.plan.count;
-    if (!n) return "This view holds no declaration of the project: there is nothing to print. Export a view that holds some.";
-    if (n > MAX_DOC_DECLS) return `This view holds ${n.toLocaleString()} declarations of the project; a document prints at most ${MAX_DOC_DECLS.toLocaleString()}. Narrow the view (⚙ Board, or Zoom in), or export a target's Key view or the TCB of a target.`;
+    if (!n) return "Nothing of the project on this view to print.";
+    if (n > MAX_DOC_DECLS) return `A document prints at most ${MAX_DOC_DECLS.toLocaleString()} declarations; this view has ${n.toLocaleString()}. Narrow it, or export a target's Key view.`;
     return null;
   }
 
@@ -201,12 +201,8 @@ export class ExportModal {
     if (!v) return "";
     const esc = escapeHtml;
     const p = v.plan;
-    const out = p.outside.count
-      ? `<div class="ex-sum muted">Also on this view: ${count(p.outside.count, "declaration")} from outside the project (${p.outside.by
-          .slice(0, 4)
-          .map((b) => `${esc(b.name)} ${b.count.toLocaleString()}`)
-          .join(", ")}${p.outside.by.length > 4 ? ", …" : ""}), not printed.</div>`
-      : "";
+    const by = p.outside.by.map((b) => `${b.name} ${b.count.toLocaleString()}`).join(", ");
+    const out = p.outside.count ? `<div class="ex-sum muted" title="${esc(by)}">${count(p.outside.count, "declaration")} from outside the project, not printed.</div>` : "";
     // a preview's build, which its title does not say (a view's own past build, its title does)
     const at = v.version === undefined ? "" : v.when ? ` at the build of <b>${esc(v.when)}</b>` : " at the latest build";
     return (
@@ -222,10 +218,7 @@ export class ExportModal {
     if (!v || (v.version === undefined && !v.when)) return "";
     const esc = escapeHtml;
     const build = v.when ? `the build of <b>${esc(v.when)}</b>` : "the latest build";
-    const which = v.version !== undefined ? `The Time Machine shows this view at ${build}, another than its own, and the document is of the build on show` : `This view shows ${build}, and the document is that build's`;
-    return v.when
-      ? `<div class="modal-text">${which}: each declaration's text as that build compiled it, or its statement where that text is not kept.</div>`
-      : `<div class="modal-text">${which}.</div>`;
+    return `<div class="modal-text">As of ${build}.</div>`;
   }
 
   private render(): void {
@@ -257,7 +250,7 @@ export class ExportModal {
       // the document, or the board as a picture (ExportSpec decision 19), which the page frames
       (this.hooks.artwork ? `<div class="sh-tabs ex-tabs" role="tablist"><button role="tab" aria-selected="true">Document</button><button role="tab" aria-selected="false" data-ex-art title="The board as a picture, PNG or SVG, at the size you choose: frame it, then save it">Artwork</button></div>` : "") +
       `<div class="ex-sec">${this.summary()}</div>` +
-      `<div class="modal-text">What the view holds is what the document prints, and its board is the document's outline: every declaration of the project on it, whatever is folded, in sections from its clusters as the board shows them (hide a level to flatten it), in the order of their height on the board, the lowest first — drawn beside this window as the outline, the first at the top: drag things along it, or on the board, to reorder the document; each with its docstring and its code, definitions whole, proofs never, and the places in its references it is linked to; a cluster's under its section, the references listed at the end. The notes the view shows are its prose, each where the board has it — under its declaration, in its cluster's section, or before the first section — their images and clips as figures. Nothing of the review is printed. To print something else, change the view, or export another.</div>` +
+      `<div class="modal-text">Sections and order follow the board: drag to reorder. Proofs and the review are not printed.</div>` +
       this.buildText() +
       (refused ? `<div class="banner warn ex-warn">${esc(refused)}</div>` : "") +
       this.headRows() +
@@ -282,23 +275,18 @@ export class ExportModal {
     const esc = escapeHtml;
     const h = this.head;
     const title = typeof h === "string" ? v.heading : h.title;
-    const titleHint = v.fixed
-      ? "The view's title. The Project keeps its name: Duplicate it and name the copy to print another title."
-      : "The view's title: renaming the view changes it.";
+    const titleHint = v.fixed ? "Duplicate the view to print another title." : "";
     const author =
       typeof h === "string"
         ? `<span class="muted">${h ? `Not known: ${esc(h)}` : "…"}</span>`
         : h.author
           ? esc(h.author)
           : `<span class="muted">None</span>`;
-    const authorHint =
-      typeof h !== "string" && !h.author
-        ? "Nobody has left a named trace on this view yet, so the document has no author line. "
-        : "";
+
     return (
       `<div class="ex-sec ex-meta">` +
-      `<div class="ex-row"><span class="ex-label">Title</span><div><div class="ex-value ex-title">${esc(title)}</div><div class="ex-hint">${esc(titleHint)}</div></div></div>` +
-      `<div class="ex-row"><span class="ex-label">Author</span><div><div class="ex-value">${author}</div><div class="ex-hint">${esc(authorHint)}The people who left a trace on this view, in the order of their first: who made it, renamed, rescoped or laid it out afresh, dropped a pin still on it, wrote or edited a note on it, or reviewed what it prints (an opinion, a key or target mark). Agents are not named, nor a private reader for what they arranged.</div></div></div>` +
+      `<div class="ex-row"><span class="ex-label">Title</span><div><div class="ex-value ex-title">${esc(title)}</div>${titleHint ? `<div class="ex-hint">${esc(titleHint)}</div>` : ""}</div></div>` +
+      `<div class="ex-row"><span class="ex-label" title="Who made, arranged, annotated or reviewed this view, first first; agents are not named">Author</span><div><div class="ex-value">${author}</div></div></div>` +
       `</div>`
     );
   }
