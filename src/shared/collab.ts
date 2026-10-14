@@ -172,6 +172,8 @@ export interface PresenceView {
   /** the edges drawn, and the proof edges (CanvasSpec, "Edges") */
   edges?: boolean;
   proofEdges?: boolean;
+  /** the board drawn as its document's outline (ExportSpec decision 18, web/src/linear.ts) */
+  linear?: boolean;
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */
@@ -368,5 +370,6 @@ export function cleanView(v: unknown): PresenceView | null {
     ...(scheme ? { scheme } : {}),
     ...(typeof o.edges === "boolean" ? { edges: o.edges } : {}),
     ...(typeof o.proofEdges === "boolean" ? { proofEdges: o.proofEdges } : {}),
+    ...(typeof o.linear === "boolean" ? { linear: o.linear } : {}),
   };
 }

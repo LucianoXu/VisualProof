@@ -17,7 +17,7 @@ import { buildDoc, printedNotes } from "../src/shared/doc/build.ts";
 import type { DocFiles, DocInput } from "../src/shared/doc/build.ts";
 import { figureAssets, renderLatex } from "../src/shared/doc/latex.ts";
 import type { DeclEntry, DocModel, Item, NoteEntry, Section } from "../src/shared/doc/model.ts";
-import { freshSpots, orderDoc } from "../src/shared/doc/order.ts";
+import { boardOrder, freshSpots, orderDoc, spotBetween } from "../src/shared/doc/order.ts";
 import { firstWords, outlineOf } from "../src/shared/doc/outline.ts";
 import type { Outline, OutlineDecl, OutlineItem, OutlineSection } from "../src/shared/doc/outline.ts";
 import type { BoardNote, BoardSpots } from "../src/shared/doc/order.ts";
@@ -627,4 +627,29 @@ test("the server gives the outline of a view as the page's linear form asks for 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the linear form's drop: the spot it puts a thing at on the board reads between its new neighbours, across, level, first and last", () => {
+  type D = { name: string; x: number; y: number; r: number };
+  const order = (ds: D[]) => boardOrder(ds, (d) => [d.x, d.y]).map((d) => d.name);
+  const cases: { ds: D[]; a: string; prev: string | null; next: string | null }[] = [
+    // across: c, the highest, between a and b
+    { ds: [{ name: "a", x: 0, y: 90, r: 5 }, { name: "b", x: 4, y: 40, r: 5 }, { name: "c", x: -3, y: 10, r: 5 }], a: "c", prev: "a", next: "b" },
+    // level: a and b on one row, c between them
+    { ds: [{ name: "a", x: -20, y: 50, r: 5 }, { name: "b", x: 20, y: 50, r: 5 }, { name: "c", x: 0, y: 10, r: 5 }], a: "c", prev: "a", next: "b" },
+    // first: below what comes next, a circle clear of it
+    { ds: [{ name: "a", x: 0, y: 90, r: 30 }, { name: "b", x: 0, y: 10, r: 12 }], a: "b", prev: null, next: "a" },
+    // last: above what comes before
+    { ds: [{ name: "a", x: 0, y: 90, r: 5 }, { name: "b", x: 0, y: 10, r: 5 }], a: "a", prev: "b", next: null },
+  ];
+  for (const { ds, a, prev, next } of cases) {
+    const by = new Map(ds.map((d) => [d.name, d]));
+    const spot = spotBetween(by.get(a)!, prev ? by.get(prev)! : null, next ? by.get(next)! : null)!;
+    const moved = ds.map((d) => (d.name === a ? { ...d, x: spot[0], y: spot[1] } : d));
+    const seq = order(moved);
+    const want = [prev, a, next].filter((x): x is string => x !== null);
+    const at = want.map((x) => seq.indexOf(x));
+    assert.ok(at.every((v, k) => k === 0 || v === at[k - 1] + 1), `${a} between ${prev} and ${next}: ${seq.join(" ")}`);
+  }
+  assert.equal(spotBetween({ x: 0, y: 0, r: 5 }, null, null), null);
 });

@@ -331,6 +331,8 @@ export class Stickies {
   private canvas: GraphCanvas;
   private hooks: StickyHooks;
   private drawn = new Map<string, Drawn>();
+  /** the notes were placed again (one written, moved, taken out, another board): told after */
+  onRender: (() => void) | null = null;
   private markers = new Map<number, HTMLElement>();
   /** the layout the notes were placed on: another one places them again */
   private layoutSeen: unknown = null;
@@ -539,6 +541,7 @@ export class Stickies {
       }
     this.rendered = true;
     this.frame();
+    this.onRender?.();
   }
 
   /** A note's icon: what it carries — nothing, images, a paper — drawn in a round mark, whose ring is
@@ -1308,6 +1311,29 @@ export class Stickies {
     const C = clusters[c];
     const place = C ? spotIn(C.key, [C.x + C.r * 0.3, C.y - C.r * 0.3], clusters, nb) : null;
     return place ? { kind: "project", mode: b.mode, place } : null;
+  }
+
+  /** Put note `id` at a spot of the board inside cluster `key` (null: in none), as letting it go
+   *  there would: the linear form's drop (web/src/linear.ts, ExportSpec decision 18). It keeps
+   *  whatever it is attached to. False where the board is not drawn or the note not on it. */
+  moveInto(id: string, key: string | null, world: [number, number]): boolean {
+    const d = this.drawn.get(id);
+    const b = this.hooks.board();
+    const nb = this.board();
+    if (!d || !b || !nb) return false;
+    const clusters = this.clusters();
+    let to: PlaceFor | null = null;
+    if (key === null) to = this.placeFor(d.kind, world);
+    else if (d.kind === "project") {
+      const place = spotIn(key, world, clusters, nb);
+      if (place) to = { kind: "project", mode: b.mode, place };
+    } else {
+      const c = clusters.findIndex((x) => x.key === key);
+      if (c >= 0) to = { kind: "view", place: viewPlaceIn(b.mode, world, clusters, c) };
+    }
+    if (!to) return false;
+    this.hooks.moved(id, { decl: d.note.decl ?? null, to });
+    return true;
   }
 
   /** Where note `id`'s icon is drawn now, in the board's world: its place; null where it does not

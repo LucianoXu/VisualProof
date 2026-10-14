@@ -1,6 +1,7 @@
 // Where the page gets its data: the live server, or a snapshot carried inside the page itself
 // (`visualproof export`), which opens from disk with no server at all.
 
+import type { Outline } from "../../shared/doc/outline.ts";
 import type { BoardMemory } from "../../shared/board.ts";
 import type { AgentTalk, AgentTokenInfo, ChatMessage, PersonInvite, PresenceView, ReadOnlyLink } from "../../shared/collab.ts";
 import type { ClusterMode, ViewMeta } from "../../shared/graph.ts";
@@ -202,6 +203,9 @@ export interface DataSource {
   /** the title and the author line the document of a view will have (ExportSpec decisions 14, 15),
    *  at the build `version` names (a preview's; left out, the view's own: decision 16) */
   exportHead(view: string, version?: number | null): Promise<ExportHead | string>;
+  /** the outline of the document of a view (ExportSpec decision 18, the linear form), at the build
+   *  `version` names; or why there is none */
+  exportOutline(view: string, version?: number | null): Promise<Outline | string>;
   exportDoc(body: { view: string; settings: object; version?: number | null }): Promise<ExportJobState | string>;
   exportJob(id: string): Promise<ExportJobState | string>;
   /** undo an agent's layout batch (AgentSpec decision 4); why not, when refused */
@@ -409,6 +413,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     presence: () => {},
     undoLayout: async () => ({ error: "a snapshot shows the layout as it was" }),
     exportHead: async () => "a snapshot cannot typeset documents: export from the server",
+    exportOutline: async () => "a snapshot of the page has no linear form: its document is the server's",
     exportDoc: async () => "a snapshot cannot typeset documents: export from the server",
     exportJob: async () => "a snapshot cannot typeset documents: export from the server",
     shareInfo: async () => ({ path: null }),
@@ -610,6 +615,15 @@ function serverSource(): DataSource {
         const res = await fetch(`/api/export/head?view=${encodeURIComponent(view)}${version !== undefined ? `&version=${version ?? 0}` : ""}`);
         const b = (await res.json().catch(() => ({}))) as { title?: unknown; author?: unknown; error?: string };
         return typeof b.title === "string" && typeof b.author === "string" ? { title: b.title, author: b.author } : (b.error ?? `the server answered ${res.status}`);
+      } catch {
+        return "the server could not be reached";
+      }
+    },
+    exportOutline: async (view, version) => {
+      try {
+        const res = await fetch(`/api/export/outline?view=${encodeURIComponent(view)}${version !== undefined ? `&version=${version ?? 0}` : ""}`);
+        const b = (await res.json().catch(() => ({}))) as { outline?: Outline; error?: string };
+        return b.outline && Array.isArray(b.outline.items) ? b.outline : (b.error ?? `the server answered ${res.status}`);
       } catch {
         return "the server could not be reached";
       }

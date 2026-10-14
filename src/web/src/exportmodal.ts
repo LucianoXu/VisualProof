@@ -1,4 +1,4 @@
-// Export (ExportSpec decisions 5–17, and the owner's of 2026-10-12): beside Share, a modal window that
+// Export (ExportSpec decisions 5–18, and the owner's of 2026-10-12): beside Share, a window at the right that
 // makes the document of the view on show, typeset with LaTeX on the server. The view is the
 // specification, and its board the document's outline: the window says which view it exports, that
 // the document follows the board's order and prints the notes it shows, and what it holds — its declarations of the project, in the sections its
@@ -74,6 +74,9 @@ export interface ExportHooks {
   start(body: { view: string; settings: Partial<DocSettings>; version?: number | null }): Promise<ExportJobState | string>;
   /** how a job is doing */
   poll(id: string): Promise<ExportJobState | string>;
+  /** the window opened or closed: the board is drawn in the linear form while it is open
+   *  (ExportSpec decision 18) */
+  shown?(open: boolean): void;
 }
 
 /** The settings the modal sets; the others keep their defaults. */
@@ -139,6 +142,7 @@ export class ExportModal {
     this.el.hidden = false;
     this.btn.classList.add("on");
     this.render();
+    this.hooks.shown?.(true);
     this.el.querySelector<HTMLElement>(".ex-box")?.focus();
     const v = this.view;
     if (v)
@@ -151,9 +155,11 @@ export class ExportModal {
   }
 
   close(): void {
+    if (this.el.hidden) return;
     this.el.hidden = true;
     this.btn.classList.remove("on");
     this.stopTimer();
+    this.hooks.shown?.(false);
   }
 
   private changed(t: HTMLInputElement): void {
@@ -236,7 +242,7 @@ export class ExportModal {
       `<div class="modal-box glass ex-box" role="dialog" aria-label="Export a document" tabindex="-1">` +
       `<div class="ex-head"><div class="modal-title">Export a document</div><button class="icon" data-ex-close title="Close (Esc)">✕</button></div>` +
       `<div class="ex-sec">${this.summary()}</div>` +
-      `<div class="modal-text">What the view holds is what the document prints, and its board is the document's outline: every declaration of the project on it, whatever is folded, in sections from its clusters as the board shows them (hide a level to flatten it), in the order of their height on the board, the lowest first — drag things on the board to reorder the document; each with its docstring and its code, definitions whole, proofs never, and the places in its references it is linked to; a cluster's under its section, the references listed at the end. The notes the view shows are its prose, each where the board has it — under its declaration, in its cluster's section, or before the first section — their images and clips as figures. Nothing of the review is printed. To print something else, change the view, or export another.</div>` +
+      `<div class="modal-text">What the view holds is what the document prints, and its board is the document's outline: every declaration of the project on it, whatever is folded, in sections from its clusters as the board shows them (hide a level to flatten it), in the order of their height on the board, the lowest first — drawn beside this window as the outline, the first at the top: drag things along it, or on the board, to reorder the document; each with its docstring and its code, definitions whole, proofs never, and the places in its references it is linked to; a cluster's under its section, the references listed at the end. The notes the view shows are its prose, each where the board has it — under its declaration, in its cluster's section, or before the first section — their images and clips as figures. Nothing of the review is printed. To print something else, change the view, or export another.</div>` +
       this.buildText() +
       (refused ? `<div class="banner warn ex-warn">${esc(refused)}</div>` : "") +
       this.headRows() +

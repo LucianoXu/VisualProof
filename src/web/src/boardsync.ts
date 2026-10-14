@@ -49,6 +49,9 @@ export interface BoardSyncHooks {
   tabsChanged(): void;
   /** the notes of the board on show changed (web/src/sticky.ts) */
   notesChanged(): void;
+  /** the board on show was changed by someone else (its pins, folds, notes): what is drawn from it
+   *  follows (the linear form, web/src/linear.ts) */
+  boardChanged?(): void;
   levelChanged(): void;
   activityChanged(): void;
   /** say why something was refused, where the hint is */
@@ -316,6 +319,7 @@ export class BoardSync {
       return;
     }
     canvas.applyPins(rec.pins[m]);
+    this.h.boardChanged?.();
     if (canvas.setFoldedKeys(rec.folds[m])) {
       this.h.outline.render();
       this.h.levelChanged();

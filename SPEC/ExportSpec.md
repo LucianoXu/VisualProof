@@ -314,3 +314,28 @@ Numbers missing below are withdrawn decisions.
   one job. The MCP tool `export_file` saves to the new file `saveTo` names (absolute, never over an
   existing file) rather than handing the model a PDF; a request relaying `saveTo` for a PDF or zip
   (an MCP server before 0.3.0) is told to update.
+
+### The linear form
+
+- **The outline** (`GET /api/export/outline?view=&version=`, shared/doc/outline.ts) is the document's
+  plan in its board order without the text: sections `{key, keys, title, number, level, items}`
+  (`number` as the PDF numbers it, null at the paragraph level), declarations `{name, notes?}` (the
+  attached notes after it), notes `{id, kind, words}` (the first line, Markdown marks out, at most 60
+  characters). Served whether or not the server typesets, to read-only readers too; a view too
+  large to print has one.
+- **The page** (web/src/linear.ts) draws it on its own layer over the board (`#linear`): a row of 22
+  pixels (at its zoom 1) per declaration and note, a section's span its heading's row, its rows and 8
+  more; its circle the span's diameter, centred on the line; the line at 40% of the room the panels
+  and the Export window leave. Labels are drawn from a row of 11 pixels; the arcs, where there are
+  more than 6,000, only those of what is lit. The board fades as the line comes (480 ms), each thing
+  eased from where the board draws it; the board's camera, folds and visitors are untouched.
+- **A drop** (canvas `orderSpot` → shared/doc/order.ts `spotBetween`, from the board at rest as the
+  server reads it): between two neighbours across, at the middle of their heights, its own `x`; level
+  (within a unit), between them on their row; first, below the one after it, clear of it; last,
+  above. A declaration or a section is pinned there (scene `pinAt`; a section that stands for a chain
+  of circles is read by its innermost and moved by its outermost), a note moved there in its cluster
+  (sticky `moveInto`, keeping what it is attached to). The outline is drawn so at once and asked
+  for again 350 ms after the board last changed (a pin, a note, a remote change, another layout).
+- **Followed** as `linear` (CollabSpec, "Surfaces"): presence says whether the form is shown; a
+  follower's page shows it or puts it away as the other's does, and keeps it so once following ends,
+  as any part (CollabSpec decision 4).
