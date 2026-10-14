@@ -635,13 +635,21 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   vertical line, in the document's order, the first at the top; a section's circle holds what it
   holds, each level of nesting one more circle, the labels on the right indented by depth, numbered
   as the PDF numbers its sections, the notes it prints in italics, and the edges (where ⋯ draws them)
-  as arcs on the left. Things ease from where the board has them to the line, and back when the
-  window closes. ⋯ → **Linear form**, or `o`, shows it at any time; those following you see it too.
-  The wheel scrolls it, Ctrl (⌘) with the wheel zooms, a drag on empty space pans, a click selects.
-  **Drag a declaration, a note or a section along the line** (as on the board: with the lock let go,
-  or the drag key held) to move it among its siblings — never out of its section: on release it is
-  put on the board between its new neighbours, as a drop there would (a pin, for everyone on the
-  view; a note moved in its cluster), and the document's order follows. A note attached to a
+  as arcs on the left, orange at the end that uses and blue at the end used, as on the board. Things
+  ease from where the board has them to the line, and back when the window closes. ⋯ → **Linear
+  form**, or `o`, shows it at any time; those following you see it too. A section's ▸ (or a double
+  click on its heading) folds it into one row with its count, the edges of what it holds ending
+  there; a section of more than ten items starts folded, and the one the selection is in opens.
+  What the document starts with, under no heading, has a heading of its own here, **In no
+  section**, which folds the same. What you fold is yours alone. The wheel zooms about the pointer,
+  as far out as the board does; a drag on empty space pans, a click selects.
+  **Drag a declaration, a note or a section along the line** by its point or its label (the lock
+  does not apply here) to move it among its siblings — never out of its section. It follows the
+  pointer and the others make room; on release the board is changed as little as gives exactly the
+  order dropped — the rows it passed each taking the place of the one before them, else it alone
+  between its new neighbours, else the rows passed stacked anew (pins, for everyone on the view;
+  notes moved in their cluster) — checked as the board will draw it, so the rest stay put; where
+  the board has no room for that order, nothing moves and you are told. A note attached to a
   declaration moves with it. Not on a snapshot, a read-only page or a past build's preview.
 - **Artwork** (decision 19): the Export window's second tab makes a picture of the board, PNG or
   SVG. The window closes into framing: a frame in the middle of the screen, of the shape of the size

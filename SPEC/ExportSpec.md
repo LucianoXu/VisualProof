@@ -127,26 +127,49 @@ Numbers missing below are withdrawn decisions.
 18. **The linear form** (SPEC.md, "Export"; the owner's words of 2026-10-13: the cluster hierarchy
     indented, strictly on one vertical line; dragging in it changes the document's order, and the
     ordinary board shows the change; the owner's decisions of 2026-10-14: first at the top, the rest
-    as drafted).
+    as drafted; and that evening: many items on one line mean little, so sections fold, those of
+    more than ten items folded at first; the zoom goes as far out as the board's; sections are
+    dragged to order them; edges in the board's two colours).
     - **What it is**: the board drawn as the document's outline (decision 13). Every circle's centre
       and every point lies on one vertical line, in document order, **first at the top**, as a
       document reads. Circles still mean containment (CanvasSpec decision 3): a section's circle
       holds its members, stacked along the line, and each level of nesting is one more circle
       around them — the indentation. Only what the document prints is drawn: the sections (hidden
       levels taken out, a single-child chain merged, `A.B`), the project declarations and the notes;
-      outside declarations are left out, as the document only counts them. Nothing is folded in it.
+      outside declarations are left out, as the document only counts them.
+    - **Folding**: a section folds (its ▸, or a double click on its heading) into one row, its
+      title and how many declarations it holds; the edges of what it holds end at that row, once per
+      pair of rows. A section of more than ten items starts folded; the sections the selection is in
+      open when the form does. What the document starts with, under no heading, has a heading of its
+      own in the form, *In no section*, which folds the same (it is no section of the document, and
+      is neither moved nor selected). What is folded is the reader's own, kept for the session, and
+      changes nothing of the board or the document.
     - **Labels** at the right of the line: a section's number and title ("2.1 CaseI") beside its
       circle, a declaration's name beside its point; the colours are the scheme's (Kind or Status).
-      Edges, where shown (⋯), are arcs on the left of the line, unbundled: an arc diagram.
+      Edges, where shown (⋯), are arcs on the left of the line, unbundled: an arc diagram, each
+      orange at the end that uses and blue at the end used, as the board's (CanvasSpec, "Edges").
+    - **Zoom**: the wheel zooms about the pointer, as far either way as the board's; zoomed out,
+      the sections' titles stay where there is room for them. A drag on empty room pans.
     - **When**: while the Export window is open the board on show is drawn so, easing from its
       arrangement and back when the window closes; and at will, from ⋯ (*Linear form*, key `o`). It
       is the reader's own way of drawing the board, followed as the tool is (CollabSpec decision 4);
       the board itself is unchanged by it.
-    - **Dragging** a declaration, a note or a section along the line moves it among its siblings,
-      never out of its section (the clustering decides membership). Let go, it moves the document:
-      on the board it is pinned in its cluster at a height between its new neighbours', as a drag
-      there would pin it, for everyone on the view, and the document's order (bottom first on the
-      board) follows. Undone as a pin is. The rest of the section keeps its places.
+    - **Dragging** a declaration, a note or a section along the line, by its point or its label,
+      moves it among its siblings, never out of its section (the clustering decides membership).
+      The board's lock does not apply: grabbing a row is the intent, and empty room pans. As on
+      the board, what is dragged follows the pointer, off the line too, and its siblings ease aside
+      to make room where it would go; near the top or the bottom the line scrolls. Let go, it
+      settles on the line and moves the document (the owner's decision of 2026-10-14), by the
+      least change to the board that gives exactly the order dropped (bottom first on the board),
+      tried in turn and checked as the board will draw it — a drop is brought inside its parent
+      and the rest make way, which can undo an order:
+      1. each row between where it was and where it went takes the place on the board the row at
+         its index had: nothing else moves, and rows of a size never land on one another;
+      2. the dragged row alone between its new neighbours, as a drag there would pin it;
+      3. the rows between stacked in their new order down the height they took, each where it is
+         across: what a large circle needs among small ones.
+      Pins for everyone on the view; notes moved in their cluster. Where none gives the order (no
+      room on the board), nothing moves and the reader is told so. Undone as pins are.
     - **Who may**: whoever may arrange the board (not a snapshot, a read-only reader, a past
       build's preview); the others see the form and cannot drag.
 19. **Artwork** (SPEC.md, "Export"; the owner's words of 2026-10-13: PNG and SVG, the canvas's size

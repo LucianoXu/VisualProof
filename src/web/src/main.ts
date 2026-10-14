@@ -55,7 +55,7 @@ import type { ModuleContexts } from "../../shared/context.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
 import { Graph } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
-import { dragKeyHeld, dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
+import { dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
 import { Notes } from "./notes.ts";
 import { Stickies } from "./sticky.ts";
 import type { Dropped, NoteKind } from "./sticky.ts";
@@ -998,7 +998,6 @@ async function boot(): Promise<void> {
     selectDecl: (i, shift) => void clickOn(pickDecl(vg().nodes[i].name), shift),
     selectSection: (c, shift) => void clickOn(pickCluster(c), shift),
     frozen: () => (frozen() ? frozenWhy() : null),
-    moves: (e) => dragMoves(locked, dragKeyHeld(e)),
     edges: () => ({ show: S.showEdges, proofs: S.proofEdges }),
     moveNote: (id, key, world) => stickies.moveInto(id, key, world),
     // the Export window, at the right, beside which the line is drawn

@@ -1,21 +1,37 @@
 // The linear form (ExportSpec decision 18, web/src/linear.ts): the outline on one line, the first at
 // the top, a section's rows inside its span; a drag moves a row among its siblings only, and a drop
 // asks the board to put it between its new neighbours — a declaration or a section pinned, a note
-// moved — and reads the outline again.
+// moved — and reads the outline again. A section of many items starts folded, one row standing for
+// what it holds; the wheel zooms as far as the board's.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Outline } from "../src/shared/doc/outline.ts";
+import { SITE_STMT } from "../src/shared/graph.ts";
+import { spotBetween } from "../src/shared/doc/order.ts";
+import { ZOOM_LEAST } from "../src/shared/sticky.ts";
 
 /** A page just enough for the form: an element, a 2D context that draws nothing, and the canvas's
  *  numbering: declarations by name, clusters by key. */
-function setup(outline: Outline, frozen: string | null = null) {
+type At = { nx: number[]; ny: number[]; cx: number[]; cy: number[]; r: number[] };
+function setup(
+  outline: Outline,
+  frozen: string | null = null,
+  opts: { names?: string[]; lit?: (i: number) => boolean; edges?: [number, number][]; at?: At; noteAt?: [number, number]; clamp?: (S: At) => void } = {},
+) {
   const g = globalThis as Record<string, unknown>;
   g.window ??= { addEventListener() {}, devicePixelRatio: 1 };
   g.requestAnimationFrame ??= () => 1;
   g.getComputedStyle ??= () => ({ getPropertyValue: () => "" });
   g.document ??= { body: {}, getElementById: () => null };
   const el = { hidden: true, width: 0, height: 0, style: {} as Record<string, string>, addEventListener() {}, setPointerCapture() {}, getContext: () => new Proxy({}, { get: () => () => {} }) };
-  const names = ["A.a1", "A.a2", "A.B.b1", "top"];
+  const names = opts.names ?? ["A.a1", "A.a2", "A.B.b1", "top"];
+  // the edges, from the one that uses, as the graph packs them
+  const outStart = new Int32Array(names.length + 1);
+  const sorted = [...(opts.edges ?? [])].sort((a, b) => a[0] - b[0]);
+  for (const [u] of sorted) outStart[u + 1]++;
+  for (let i = 0; i < names.length; i++) outStart[i + 1] += outStart[i];
+  const outDst = Int32Array.from(sorted.map(([, t]) => t));
+  const outSite = Uint8Array.from(sorted.map(() => SITE_STMT));
   const byName = new Map(names.map((n, i) => [n, i]));
   const calls: unknown[] = [];
   const canvas = {
@@ -25,23 +41,39 @@ function setup(outline: Outline, frozen: string | null = null) {
     posOf: () => [0, 0],
     clusterDisc: () => [0, 0, 10],
     colourOf: () => "red",
-    atRest: () => ({}),
-    orderSpot: () => [1, 2],
+    // the board at rest, the first of the document the lowest (largest y): by default declaration
+    // i at (10 i, 100 - 10 i)
+    atRest: (): At => structuredClone(opts.at ?? { nx: names.map((_, i) => 10 * i), ny: names.map((_, i) => 100 - 10 * i), cx: [0, 50], cy: [0, 50], r: [40, 20] }),
+    // the board with these pinned too: each where it is put, then `clamp` (the board bringing a
+    // drop inside its parent)
+    atRestWith(moves: { a: { kind: string; k: number }; spot: [number, number] }[], R: At): At {
+      const S = structuredClone(R);
+      for (const { a, spot } of moves) {
+        if (a.kind === "node") [S.nx[a.k], S.ny[a.k]] = spot;
+        else [S.cx[a.k], S.cy[a.k]] = spot;
+      }
+      opts.clamp?.(S);
+      return S;
+    },
+    orderSpot(a: { kind: string; k: number; x: number; y: number }, p: typeof a | null, n: typeof a | null, R: At) {
+      const disc = (b: typeof a) => (b.kind === "spot" ? { x: b.x, y: b.y, r: 5 } : b.kind === "node" ? { x: R.nx[b.k], y: R.ny[b.k], r: 5 } : { x: R.cx[b.k], y: R.cy[b.k], r: R.r[b.k] });
+      return spotBetween(disc(a), p && disc(p), n && disc(n));
+    },
     restToNow: (_k: string | null, s: [number, number]) => s,
     pinInOrder: (a: unknown, p: unknown, n: unknown) => (calls.push(["pin", a, p, n]), true),
+    pinAtSpots: (moves: unknown) => (calls.push(["spots", moves]), true),
   };
   const said: string[] = [];
   let asked = 0;
   return import("../src/web/src/linear.ts").then(({ LinearForm }) => {
     const f = new LinearForm(el as never, canvas as never, {
       outline: async () => (asked++, structuredClone(outline)),
-      graph: () => ({ byName, outStart: new Int32Array(names.length + 1), outDst: new Int32Array(0), outSite: new Uint8Array(0) }) as never,
-      noteSpot: () => [5, 5],
-      lit: () => false,
+      graph: () => ({ byName, outStart, outDst, outSite }) as never,
+      noteSpot: () => opts.noteAt ?? [5, 5],
+      lit: opts.lit ?? (() => false),
       selectDecl: (i) => calls.push(["select", i]),
       selectSection: (c) => calls.push(["section", c]),
       frozen: () => frozen,
-      moves: () => true,
       edges: () => ({ show: false, proofs: false }),
       moveNote: (id, key, w) => (calls.push(["note", id, key, w]), true),
       say: (t) => said.push(t),
@@ -50,6 +82,12 @@ function setup(outline: Outline, frozen: string | null = null) {
     return { f: f as unknown as Record<string, any>, calls, said, asked: () => asked };
   });
 }
+
+/** OUTLINE's board at rest, as its document reads it: in A, a1 lowest, then B, the note n, a2. */
+const BOARD: { at: At; noteAt: [number, number] } = {
+  at: { nx: [0, 0, 50, 200], ny: [100, 40, 80, 0], cx: [0, 50], cy: [70, 80], r: [60, 10] },
+  noteAt: [5, 60],
+};
 
 const OUTLINE: Outline = {
   items: [
@@ -68,15 +106,17 @@ test("the outline on one line: the first at the top, a section's rows inside its
   const { f } = await setup(OUTLINE);
   await f.show("reader");
   const rows = f.rows as { kind: string; name: string; label: string; depth: number; y0: number; y1: number; cy: number; attached?: true }[];
-  assert.deepEqual(rows.map((r) => r.name), ["top", "A", "A.a1", "on1", "A.B", "A.B.b1", "n", "A.a2"]);
+  // the start of the document, under its heading here, then the sections
+  assert.deepEqual(rows.map((r) => r.name), ["\u0000start", "top", "A", "A.a1", "on1", "A.B", "A.B.b1", "n", "A.a2"]);
+  assert.equal(rows[0].label, "In no section");
   for (let k = 1; k < rows.length; k++) assert.ok(rows[k].y0 >= rows[k - 1].y0, "down the line in order");
-  const A = rows[1], B = rows[4];
+  const A = rows[2], B = rows[5];
   assert.equal(A.label, "1  A");
   assert.equal(B.label, "1.1  B");
-  for (const r of rows.slice(2)) assert.ok(r.y0 >= A.y0 && r.y1 <= A.y1, `${r.name} inside A`);
-  assert.ok(rows[5].y0 >= B.y0 && rows[5].y1 <= B.y1, "b1 inside B");
+  for (const r of rows.slice(3)) assert.ok(r.y0 >= A.y0 && r.y1 <= A.y1, `${r.name} inside A`);
+  assert.ok(rows[6].y0 >= B.y0 && rows[6].y1 <= B.y1, "b1 inside B");
   assert.ok(B.y0 > A.y0 && B.y1 < A.y1, "B's circle inside A's");
-  assert.deepEqual([rows[3].attached, rows[3].depth, rows[2].depth], [true, 2, 1]);
+  assert.deepEqual([rows[4].attached, rows[4].depth, rows[3].depth], [true, 2, 1]);
 });
 
 test("a row moves among its siblings only: a section's own rows, its sections and notes among them; at the top, the start and the sections apart", async () => {
@@ -91,27 +131,44 @@ test("a row moves among its siblings only: a section's own rows, its sections an
   assert.deepEqual(sibs("A.B.b1"), ["A.B.b1"]);
 });
 
-test("a drop puts it on the board between its new neighbours: a declaration pinned, a note moved in its cluster; the outline follows at once and is read again", async () => {
-  const { f, calls, asked } = await setup(OUTLINE);
+test("let go, the section's order is made so on the board: each row it passed takes the place the row at its index had, declarations and circles pinned in one change, a note moved; drawn there at once; the outline read again", async () => {
+  const fresh = () => setup(OUTLINE, null, BOARD);
+  {
+    // a2 to the top of A: a2 to a1's place, a1 to B's, B to the note's, the note to a2's
+    const { f, calls, asked } = await fresh();
+    await f.show("reader");
+    const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+    assert.equal(f.place({ row: row("A.a2"), at: 0 }), true);
+    assert.deepEqual(calls.slice(-2), [
+      ["spots", [{ a: { kind: "node", k: 1 }, spot: [0, 100] }, { a: { kind: "node", k: 0 }, spot: [50, 80] }, { a: { kind: "cluster", k: 1, move: 1 }, spot: [5, 60] }]],
+      ["note", "n", "A", [0, 40]],
+    ]);
+    assert.deepEqual(f.rows.map((r: { name: string }) => r.name).slice(3, 5), ["A.a2", "A.a1"], "drawn there at once");
+    await new Promise((ok) => setTimeout(ok, 400));
+    assert.ok(asked() >= 2, "the outline is read again");
+  }
+  {
+    // the section B first: to a1's place, a1 to B's
+    const { f, calls } = await fresh();
+    await f.show("reader");
+    const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+    f.place({ row: row("A.B"), at: 0 });
+    assert.deepEqual(calls.at(-1), ["spots", [{ a: { kind: "cluster", k: 1, move: 1 }, spot: [0, 100] }, { a: { kind: "node", k: 0 }, spot: [50, 80] }]]);
+    // where it already is: nothing
+    const n = calls.length;
+    assert.equal(f.place({ row: row("A.B"), at: 0 }), false);
+    assert.equal(calls.length, n);
+  }
+});
+
+test("where the board would not give the order dropped (a circle brought back inside its parent) in any way, nothing moves and the reader is told", async () => {
+  // nothing in A can go lower than 75: B to the front cannot be made
+  const { f, calls, said } = await setup(OUTLINE, null, { ...BOARD, clamp: (S) => (S.cy[1] = Math.min(S.cy[1], 75)) });
   await f.show("reader");
   const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
-  // a2 to the top of A: before a1, nothing before it
-  f.place({ row: row("A.a2"), at: 0 });
-  assert.deepEqual(calls.at(-1), ["pin", { kind: "node", k: 1 }, null, { kind: "node", k: 0 }]);
-  assert.deepEqual(f.rows.map((r: { name: string }) => r.name).slice(2, 4), ["A.a2", "A.a1"], "drawn there at once");
-  // the note between a2 and a1
-  f.place({ row: row("n"), at: 1 });
-  assert.deepEqual(calls.at(-1), ["note", "n", "A", [1, 2]]);
-  // the section B first: pinned by its circle, a2 after it
-  f.place({ row: row("A.B"), at: 0 });
-  const last = calls.at(-1) as unknown[];
-  assert.deepEqual(last.slice(0, 2), ["pin", { kind: "cluster", k: 1, move: 1 }]);
-  // where it already is: nothing
-  const n = calls.length;
-  f.place({ row: row("A.B"), at: 0 });
-  assert.equal(calls.length, n);
-  await new Promise((ok) => setTimeout(ok, 400));
-  assert.ok(asked() >= 2, "the outline is read again");
+  assert.equal(f.place({ row: row("A.B"), at: 0 }), false);
+  assert.deepEqual(calls.filter((c) => (c as unknown[])[0] === "spots"), []);
+  assert.deepEqual(said, ["There is no room for it there on the board: move it on the board."]);
 });
 
 test("on a board nothing arranges (a snapshot, a read-only page, a past build's preview) a drag moves nothing, and says why", async () => {
@@ -119,9 +176,146 @@ test("on a board nothing arranges (a snapshot, a read-only page, a past build's 
   await f.show("reader");
   f.t = 1;
   const row = f.rows.find((r: { name: string }) => r.name === "A.a2");
+  f.lift(row, 0, 0);
+  f.drag.at = 0;
   f.press = { x: 0, y: 0, row, moved: true, moves: true, camY: 0 };
-  f.drop = { row, at: 0, y: 0 };
   f.up({ shiftKey: false });
   assert.deepEqual(calls.filter((c) => (c as unknown[])[0] === "pin"), []);
   assert.deepEqual(said, ["This page is read-only: it changes nothing that is shared."]);
+});
+
+/** A declaration at the start of the document, then a section of `n` declarations, `A.a0` …. */
+function many(n: number): { outline: Outline; names: string[] } {
+  const names = [...Array.from({ length: n }, (_, i) => `A.a${i}`), "top"];
+  return {
+    names,
+    outline: {
+      items: [
+        { t: "decl", name: "top" },
+        { t: "section", key: "A", keys: ["A"], title: "A", number: "1", level: 1, items: names.slice(0, n).map((name) => ({ t: "decl" as const, name })) },
+      ],
+      count: { declarations: n + 1, sections: 1 },
+    },
+  };
+}
+
+test("a section of more than ten items starts folded, one row standing for what it holds; its ▸ opens it, its heading kept where it was, and what the reader folds or opens stays so", async () => {
+  const { outline, names } = many(11);
+  const { f } = await setup(outline, null, { names });
+  await f.show("reader");
+  assert.deepEqual(f.rows.map((r: { name: string }) => r.name), ["\u0000start", "top", "A"]);
+  const A = f.rows[2];
+  assert.equal(A.members.length, 11);
+  assert.equal(A.y1 - A.y0, 22, "one row");
+  f.fold(A);
+  assert.equal(f.rows.length, 14, "opened: its heading and its eleven, after the start's two");
+  assert.equal(f.folds.get("A"), false);
+  f.setOutline(structuredClone(outline));
+  assert.equal(f.rows.length, 14, "kept open when the outline comes again");
+  f.fold(f.rows[2]);
+  assert.deepEqual(f.rows.map((r: { name: string }) => r.name), ["\u0000start", "top", "A"]);
+  // ten items or fewer: open
+  const ten = many(10);
+  const g = await setup(ten.outline, null, { names: ten.names });
+  await g.f.show("reader");
+  assert.equal(g.f.rows.length, 13);
+});
+
+test("the form opens on the selection: a folded section it is in opens", async () => {
+  const { outline, names } = many(12);
+  const { f } = await setup(outline, null, { names, lit: (i) => i === 5 });
+  await f.show("reader");
+  assert.ok(f.rows.some((r: { name: string }) => r.name === "A.a5"), "A opened on a5");
+  assert.equal(f.folds.get("A"), false);
+});
+
+test("the edges of a folded section's members end at its row, once per pair of rows, none inside it; each from the one that uses, orange, to the one used, blue", async () => {
+  const { outline, names } = many(12);
+  const top = names.length - 1;
+  // top uses a0 and a1; a0 uses a1 (inside A)
+  const { f } = await setup(outline, null, { names, edges: [[top, 0], [top, 1], [0, 1]] });
+  await f.show("reader");
+  const drawn: { grad: number[]; stops: string[] }[] = [];
+  const c = new Proxy({} as Record<string, unknown>, {
+    get: (_t, key) =>
+      key === "createLinearGradient"
+        ? (...grad: number[]) => {
+            const stops: string[] = [];
+            drawn.push({ grad, stops });
+            return { addColorStop: (_at: number, colour: string) => stops.push(colour) };
+          }
+        : () => {},
+    set: () => true,
+  });
+  f.arcs(c, (r: { cy: number }) => [0, r.cy], false, 1, (v: string) => v);
+  assert.equal(drawn.length, 1, "top to A, once");
+  const [T, A] = [f.rows[1], f.rows[2]];
+  assert.deepEqual(drawn[0].grad, [0, T.cy, 0, A.cy], "from top, which uses, to A");
+  assert.deepEqual(drawn[0].stops, ["--edge-from", "--edge-to"]);
+});
+
+test("the wheel zooms about the pointer as far out as the board's", async () => {
+  const { f } = await setup(OUTLINE);
+  await f.show("reader");
+  f.t = 1;
+  for (let k = 0; k < 40; k++) f.wheel({ deltaY: 400, offsetY: 300, ctrlKey: false, preventDefault() {} });
+  assert.equal(f.cam.k, ZOOM_LEAST);
+});
+
+test("the start of the document has a heading of its own here, which folds as a section does, past ten items; it is neither moved nor selected, and its rows move among themselves", async () => {
+  const names = [...Array.from({ length: 11 }, (_, i) => `s${i}`)];
+  const outline: Outline = { items: names.map((name) => ({ t: "decl" as const, name })), count: { declarations: 11, sections: 0 } };
+  const { f } = await setup(outline, null, { names });
+  await f.show("reader");
+  assert.deepEqual(f.rows.map((r: { name: string }) => r.name), ["\u0000start"]);
+  const start = f.rows[0];
+  assert.deepEqual([start.start, start.members.length, start.k], [true, 11, -1]);
+  f.fold(start);
+  assert.equal(f.rows.length, 12);
+  assert.deepEqual(f.siblings(f.rows[1]).map((r: { name: string }) => r.name), names, "the start's rows among themselves, the heading not one of them");
+  f.t = 1;
+  f.down({ button: 0, offsetX: 1000, offsetY: 24 + 11, pointerId: 1 });
+  assert.equal(f.press.moves, false, "the heading is not taken along");
+});
+
+test("a row taken up follows the pointer, off the line too; its siblings make room where it would go; let go, it is put there and everything settles on the line", async () => {
+  const { f, calls } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  f.t = 1;
+  const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+  const a2 = row("A.a2"), a1 = row("A.a1");
+  // A's rows: a1 (with its note), B (with b1), n, a2; a2 taken by its point, up above a1
+  const top = 24; // the line's top on the screen: insets.top + 24
+  const sy = (y: number) => top + (y - f.cam.y);
+  f.lift(a2, 300, sy(a2.cy));
+  f.follow(340, sy(a1.y0) - 2);
+  assert.equal(f.drag.at, 0, "before a1");
+  const off = (name: string) => f.off.get(`${row(name).kind}:${name}`);
+  assert.equal(off("A.a2").dx, 40, "off the line, with the pointer");
+  for (const name of ["A.a1", "on1", "A.B", "A.B.b1", "n"]) assert.equal(off(name).ty, 22, `${name} makes room`);
+  f.press = { x: 300, y: sy(a2.cy), row: a2, moved: true, moves: true, camY: f.cam.y };
+  f.up({ shiftKey: false });
+  assert.deepEqual((calls.at(-2) as unknown[])[0], "spots");
+  assert.deepEqual(calls.at(-1), ["note", "n", "A", [0, 40]]);
+  assert.equal(f.drag, null);
+  for (const o of f.off.values()) assert.deepEqual([o.ty, o.tx], [0, 0], "settling on the line");
+  assert.equal(off("A.a2").dx, 40, "from where it was let go");
+});
+
+test("let go among declarations alone, each row between where it was and where it went takes the place the one at its index had: the order exactly so, no row on another, the rest unmoved, in one change", async () => {
+  const { outline, names } = many(5);
+  const { f, calls } = await setup(outline, null, { names });
+  await f.show("reader");
+  const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+  // a3 up between a0 and a1: a0, a3, a1, a2, a4
+  assert.equal(f.place({ row: row("A.a3"), at: 1 }), true);
+  assert.deepEqual(calls.at(-1), [
+    "spots",
+    [
+      { a: { kind: "node", k: 3 }, spot: [10, 90] },
+      { a: { kind: "node", k: 1 }, spot: [20, 80] },
+      { a: { kind: "node", k: 2 }, spot: [30, 70] },
+    ],
+  ]);
+  assert.deepEqual(f.siblings(row("A.a0")).map((r: { name: string }) => r.name), ["A.a0", "A.a3", "A.a1", "A.a2", "A.a4"]);
 });

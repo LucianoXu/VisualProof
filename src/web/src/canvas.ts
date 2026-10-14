@@ -46,6 +46,12 @@ export const KINDS = [
 
 /** Something the board orders (shared/doc/order.ts): a declaration or a cluster, by its index; or a
  *  note's icon, where the board draws it at rest. */
+/** A declaration or a circle to pin at a spot of the board at rest (canvas.pinAtSpots). */
+export interface PinMove {
+  a: { kind: "node" | "cluster"; k: number; move?: number };
+  spot: [number, number];
+}
+
 export type OrderBody = { kind: "node" | "cluster"; k: number } | { kind: "spot"; x: number; y: number };
 
 /** What the pointer is on: one declaration, one cluster (open or folded), or a visitor (by its index
@@ -816,17 +822,52 @@ export class GraphCanvas {
     const R = this.atRest();
     const spot = this.orderSpot(a, prev, next, R);
     if (!spot) return false;
-    const m = a.kind === "cluster" ? (a.move ?? a.k) : a.k;
-    const [ax, ay] = a.kind === "node" ? [R.nx[a.k], R.ny[a.k]] : [R.cx[a.k], R.cy[a.k]];
-    const [mx, my] = a.kind === "node" ? [ax, ay] : [R.cx[m], R.cy[m]];
-    // in its parent's coordinates, which nothing folded scales at rest
-    const p = a.kind === "node" ? this.scene.nodeCluster[m] : this.scene.parent[m];
-    const [ox, oy] = p >= 0 ? [R.cx[p], R.cy[p]] : [0, 0];
-    this.scene.pinAt(a.kind, m, mx + spot[0] - ax - ox, my + spot[1] - ay - oy);
+    return this.pinAtSpots([{ a, spot }], R);
+  }
+
+  /** Pin each declaration or circle at a spot of the board at rest (`R`, read before any of them
+   *  moved), as a drop there would, for everyone on the board, in one change: the linear form
+   *  reorders a run of siblings so (ExportSpec decision 18). A circle is read where `k` is and
+   *  moved by `move`, as in pinInOrder. */
+  pinAtSpots(moves: PinMove[], R = this.atRest()): boolean {
+    for (const p of this.localPins(moves, R)) this.scene.pinAt(p.kind, p.m, p.lx, p.ly);
+    if (!moves.length) return false;
     this.posDirty = true;
     this.ev.pinsChanged();
     this.request();
     return true;
+  }
+
+  /** Each move as a pin: what is moved, and where, in its parent's coordinates (which nothing folded
+   *  scales at rest). */
+  private localPins(moves: PinMove[], R: ReturnType<GraphCanvas["atRest"]>): { kind: "node" | "cluster"; m: number; lx: number; ly: number }[] {
+    return moves.map(({ a, spot }) => {
+      const m = a.kind === "cluster" ? (a.move ?? a.k) : a.k;
+      const [ax, ay] = a.kind === "node" ? [R.nx[a.k], R.ny[a.k]] : [R.cx[a.k], R.cy[a.k]];
+      const [mx, my] = a.kind === "node" ? [ax, ay] : [R.cx[m], R.cy[m]];
+      const p = a.kind === "node" ? this.scene.nodeCluster[m] : this.scene.parent[m];
+      const [ox, oy] = p >= 0 ? [R.cx[p], R.cy[p]] : [0, 0];
+      return { kind: a.kind, m, lx: mx + spot[0] - ax - ox, ly: my + spot[1] - ay - oy };
+    });
+  }
+
+  /** Where the board would draw everything at rest were `moves` pinned too, the latest drops, as
+   *  the server would read it (atRest): what the linear form checks a reorder by before making
+   *  it — a drop is brought inside its parent and the rest make way, which can undo an order.
+   *  Nothing is pinned. */
+  atRestWith(moves: PinMove[], R = this.atRest()): ReturnType<GraphCanvas["atRest"]> {
+    const was = this.pinsRecord();
+    const pins: PinState = { nodes: { ...was.nodes }, clusters: { ...was.clusters } };
+    for (const p of this.localPins(moves, R)) {
+      const bag = p.kind === "cluster" ? pins.clusters : pins.nodes;
+      const key = p.kind === "cluster" ? this.layout.clusters[p.m].key : this.pinName(p.m);
+      // the latest drop: last in the record
+      delete bag[key];
+      bag[key] = [p.lx, p.ly];
+    }
+    const S = new Scene(this.layout);
+    S.restore(pins, [], (i) => this.pinName(i));
+    return { nx: S.nwx, ny: S.nwy, cx: S.cwx, cy: S.cwy, r: S.drawnR };
   }
 
   /** A spot of the board at rest (atRest) where the board draws it now: moved with its cluster
