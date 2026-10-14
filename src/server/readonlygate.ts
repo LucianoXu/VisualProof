@@ -12,7 +12,9 @@ export function readOnlyAllows(method: string, path: string): boolean {
     // the graph, its sources and Lean's answers, the review, what happened, the views, the history,
     // the library, the printed document's state and files, who the reader is and the link they
     // came by, and the event stream every change comes by
-    if (["/api/status", "/api/meta", "/api/edges", "/api/source", "/api/review", "/api/activity", "/api/identity", "/api/share", "/api/events"].includes(path)) return true;
+    if (["/api/status", "/api/meta", "/api/edges", "/api/source", "/api/review", "/api/activity", "/api/identity", "/api/share"].includes(path)) return true;
+    // a stream is opened by GET alone: a HEAD would take one of their places for nothing
+    if (path === "/api/events") return method === "GET";
     if (path === "/api/hover" || path === "/api/hover/describe" || path === "/api/hover/print") return true;
     for (const p of ["/api/views", "/api/history", "/api/library", "/api/export"]) if (path === p || path.startsWith(`${p}/`)) return true;
     return false;
@@ -22,6 +24,13 @@ export function readOnlyAllows(method: string, path: string): boolean {
   // the printed document of a view as it is shared (bounded below)
   if (method === "POST" && path === "/api/export") return true;
   return false;
+}
+
+/** Whether Lean's answer is what it says in the end, to be kept for the build: not a failure, nor
+ *  "still elaborating" (server/hover.ts), which a later request must ask again. */
+export function finalAnswer(body: unknown): boolean {
+  const b = body as { error?: unknown; pending?: unknown } | null;
+  return !!b && typeof b === "object" && !b.error && !b.pending;
 }
 
 /** At most `per` in `ms` for each key, and `all` in all: a sliding count per key. */
@@ -62,8 +71,9 @@ export class ReadOnlyBounds {
   /** Lean's answers to the same question about the same build, as read-only readers asked them */
   private answers = new Map<string, unknown>();
   private static readonly ANSWERS = 2000;
-  /** the read-only readers' document being typeset, by its job's id */
+  /** the read-only readers' document being typeset, by its job's id; `RESERVED` while it starts */
   exporting: string | null = null;
+  private static readonly RESERVED = "\0starting";
 
   /** whether a job is still running (server/export.ts) */
   private running: (id: string) => boolean;
@@ -89,9 +99,21 @@ export class ReadOnlyBounds {
   }
 
   /** Whether a read-only reader may start a document now: no other read-only document is being
-   *  typeset. */
+   *  typeset, nor starting. */
   mayExport(): boolean {
-    if (this.exporting && !this.running(this.exporting)) this.exporting = null;
+    if (this.exporting && this.exporting !== ReadOnlyBounds.RESERVED && !this.running(this.exporting)) this.exporting = null;
     return this.exporting === null;
+  }
+
+  /** Take the place before a document starts (`mayExport` said yes). */
+  reserveExport(): void {
+    this.exporting = ReadOnlyBounds.RESERVED;
+  }
+
+  /** The document started (the export's answer), or failed to: the place is its job's while it
+   *  runs, and free otherwise. */
+  exportStarted(answer: unknown): void {
+    const job = (answer as { job?: { id?: unknown; state?: unknown } } | null)?.job;
+    this.exporting = job?.state === "running" && typeof job.id === "string" ? job.id : null;
   }
 }

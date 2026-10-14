@@ -43,7 +43,7 @@ import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
-import { ReadOnlyBounds, readOnlyAllows } from "./readonlygate.ts";
+import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 
 interface Options {
   cmd: "serve" | "export" | "purge-file" | "doctor";
@@ -297,12 +297,20 @@ export class App {
       if (caller && !caller.name) return sendJson(res, { error: "Say who you are first.", who: true }, 401);
       const r = await this.json(req, 1 << 20);
       if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-      // read-only readers typeset one document at a time among them (CollabSpec decision 11): one
-      // kept in the export's cache costs nothing; another waits for the one being typeset
-      if (readOnly && !this.bounds.mayExport()) return sendJson(res, { error: "Another document is being typeset for readers of this page: try again in a little while." }, 429, { "retry-after": "5" });
-      a = await api.exportStart(r.body, caller);
-      const job = (a.body as { job?: { id?: string; state?: string } } | null)?.job;
-      if (readOnly && job?.state === "running" && job.id) this.bounds.exporting = job.id;
+      // read-only readers typeset one document at a time among them (CollabSpec decision 11): while
+      // one is being typeset, the others wait, even one the export's cache holds. The place is
+      // taken before the job starts, so that two requests at once cannot both start one.
+      if (readOnly) {
+        if (!this.bounds.mayExport()) return sendJson(res, { error: "Another document is being typeset for readers of this page: try again in a little while." }, 429, { "retry-after": "5" });
+        this.bounds.reserveExport();
+      }
+      let started: Answer | undefined;
+      try {
+        started = await api.exportStart(r.body, caller);
+      } finally {
+        if (readOnly) this.bounds.exportStarted(started?.body);
+      }
+      a = started;
     } else if (path === "/api/export/head") a = api.exportHead(url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
     else if (path === "/api/export/job") a = api.exportJob(url.searchParams.get("id") ?? "", false);
     else if (path === "/api/export/file") a = api.exportFile(url.searchParams.get("id") ?? "", url.searchParams.get("what"));
@@ -907,7 +915,7 @@ export class App {
           if (wait) return sendJson(res, { error: "Lean is asked too often from here: try again in a moment.", retryAfter: wait }, 429, { "retry-after": String(wait) });
         }
         const reply = (body: unknown) => {
-          if (keyOf && !(body as { error?: unknown } | null)?.error) this.bounds.keep(keyOf, body);
+          if (keyOf && finalAnswer(body)) this.bounds.keep(keyOf, body);
           return sendJson(res, body);
         };
         if (path === "/api/hover/describe") {

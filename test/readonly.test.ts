@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { ReadOnlyLinks } from "../src/server/readonly.ts";
-import { ReadOnlyBounds, readOnlyAllows } from "../src/server/readonlygate.ts";
+import { finalAnswer, ReadOnlyBounds, readOnlyAllows } from "../src/server/readonlygate.ts";
 import { site, stream } from "./site.ts";
 
 const KEY = "k".repeat(40);
@@ -184,6 +184,7 @@ test("no read-only links where everyone is in already, or behind a sign-in", asy
 test("what a read-only reader may ask, by method and path", () => {
   for (const p of ["/", "/style.css", "/app.js", "/pdfjs/x", "/api/meta", "/api/views/view", "/api/history/graph", "/api/library/text", "/api/export/job", "/api/hover/describe", "/api/share", "/api/events"]) assert.ok(readOnlyAllows("GET", p), p);
   for (const p of ["/api/hover/open", "/api/hover/names", "/api/export"]) assert.ok(readOnlyAllows("POST", p), p);
+  assert.ok(!readOnlyAllows("HEAD", "/api/events"));
   for (const p of ["/api/review", "/api/views/open", "/api/presence", "/api/identity", "/api/library/upload", "/api/share/readonly", "/api/agent/opinion"]) assert.ok(!readOnlyAllows("POST", p), p);
   for (const p of ["/api/agent", "/api/chat", "/api/share/agents", "/api/share/people", "/api/share/readonly", "/k/x"]) assert.ok(!readOnlyAllows("GET", p), p);
 });
@@ -199,18 +200,32 @@ test("Lean's answers to read-only readers: within bounds per address and in all,
   for (let i = 0; i < 239; i++) assert.equal(b.leanWait(`x${i}`, t + 200), 0);
   assert.ok(b.leanWait("y", t + 300) > 0);
   assert.equal(b.leanWait("y", t + 61_000), 0, "a minute later");
+  // only final answers are kept: Lean still elaborating, or failing, is asked again
+  assert.ok(finalAnswer({ contents: "x : Nat" }));
+  assert.ok(finalAnswer({ contents: null }));
+  assert.ok(!finalAnswer({ pending: { line: 3, of: 10 } }));
+  assert.ok(!finalAnswer({ error: "Lean stopped" }));
   // answers kept, the oldest going first
   b.keep("k1", { a: 1 });
   assert.deepEqual(b.answer("k1"), { a: 1 });
   for (let i = 0; i < 2000; i++) b.keep(`n${i}`, i);
   assert.equal(b.answer("k1"), undefined);
-  // documents
+  // documents: the place is taken before a job starts, so that two at once cannot both start one
   let running = true;
   const d = new ReadOnlyBounds(() => running);
   assert.ok(d.mayExport());
-  d.exporting = "job1";
-  assert.ok(!d.mayExport());
+  d.reserveExport();
+  assert.ok(!d.mayExport(), "starting");
+  d.exportStarted({ job: { id: "job1", state: "running" } });
+  assert.ok(!d.mayExport(), "running");
   running = false;
+  assert.ok(d.mayExport());
+  // one that did not start (refused, or answered from the export's cache) leaves the place free
+  d.reserveExport();
+  d.exportStarted({ error: "no such view" });
+  assert.ok(d.mayExport());
+  d.reserveExport();
+  d.exportStarted({ job: { id: "job2", state: "done" } });
   assert.ok(d.mayExport());
 });
 
