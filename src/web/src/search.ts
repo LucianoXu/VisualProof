@@ -47,8 +47,8 @@ export class SearchBox {
   private input: HTMLInputElement;
   private results: HTMLElement;
   private hooks: SearchHooks;
-  /** built when the field is first focused on a graph (a moment on a large one: 16 ms on the
-   *  showcase's), so that the first keystroke does not wait for it */
+  /** built when the field is first focused on a graph (a moment on a large one: 16 ms on
+   *  Sphere-Packing-Lean's), so that the first keystroke does not wait for it */
   private index: SearchIndex | null = null;
   private found: Found | null = null;
   /** the declarations the list shows, in its order */

@@ -8,7 +8,7 @@
 // or an agent at level full.
 //
 // The Time Machine steps from build to build, and a snapshot's graph is large (on a large project,
-// megabytes of JSON and a noticeable time to make and compress: the showcase's, 7,851 declarations, is 13.7 MB, made
+// megabytes of JSON and a noticeable time to make and compress: Sphere-Packing-Lean's, 7,851 declarations, is 13.7 MB, made
 // in 0.6 s): the page takes it in two parts, its declarations as JSON and its
 // edges packed as the graph on show's are (shared/edgecodec.ts), each compressed once and kept for
 // the last few snapshots asked, under the renames in force, and tagged so that a page that has one
@@ -65,7 +65,7 @@ interface Parts {
 }
 /** the parts of the last snapshots asked, per history, by snapshot, build read and renames */
 const kept = new WeakMap<History, Map<string, Parts>>();
-/** how many snapshots' parts are kept: about a megabyte each, compressed, on a large project (the showcase's:
+/** how many snapshots' parts are kept: about a megabyte each, compressed, on a large project (Sphere-Packing-Lean's:
  *  0.7 MB of declarations, 0.5 MB of edges) */
 const KEEP_PARTS = 8;
 /** what changed between two snapshots, as answered last (a step on the Time Machine's timeline asks

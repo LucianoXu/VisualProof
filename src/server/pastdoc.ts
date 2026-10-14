@@ -33,7 +33,7 @@ export interface PastBuild {
 }
 
 /** how many past builds are kept: a past graph and the texts read for a large view are large on a
- *  large project (the showcase's past graph: 13.7 MB of JSON) */
+ *  large project (Sphere-Packing-Lean's past graph: 13.7 MB of JSON) */
 const KEEP = 2;
 
 export class PastBuilds {

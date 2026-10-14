@@ -104,7 +104,7 @@ export interface UnreadableView {
 }
 
 /** The most a board's layout memory may be when a page hands it over: room for a board of a large
- *  project's declarations many times over (the showcase's whole board, 7,851 declarations, is
+ *  project's declarations many times over (Sphere-Packing-Lean's whole board, 7,851 declarations, is
  *  1.8 MB; 50 MB is the owner's decision of 2026-10-14). */
 export const MAX_MEMORY_BYTES = 50 << 20;
 

@@ -56,14 +56,15 @@ manual's figures come from it, on these projects, each built at its commit:
 | [flt-regular](https://github.com/leanprover-community/flt-regular) | `bd81b78ba6` | v4.33.0-rc2 | the README's: 27 modules on Mathlib |
 | [PrimeNumberTheoremAnd](https://github.com/AlexKontorovich/PrimeNumberTheoremAnd) | `c39a751132` | v4.34.0 | larger, on Mathlib |
 | [cedar-spec](https://github.com/cedar-policy/cedar-spec)'s `cedar-lean` | `38d5204868` | v4.31.0 | without Mathlib; a `lakefile.lean` |
-| [Sphere-Packing-Lean](https://github.com/math-inc/Sphere-Packing-Lean) | `1e98fb4` | v4.28.0 | the showcase: 829 modules on Mathlib |
+| [Sphere-Packing-Lean](https://github.com/math-inc/Sphere-Packing-Lean) | `1e98fb4` | v4.28.0 | 829 modules on Mathlib; the showcase until 2026-10-14 |
+| [NavierStokesAndEuler](https://github.com/openai/NavierStokesAndEuler) | `f9e8bc5` | v4.34.0-rc2 | the showcase: 2,657 modules on Mathlib, read with `--root NavierStokes --root Euler` |
 
 A project on Mathlib is built with `lake exe cache get && lake build`.
 
 ## Lean versions
 
 The supported toolchains are those of `test/toolchains.json`: the last six or so stable releases,
-and whatever the showcase project needs (v4.28.0 at least).
+and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor.
 
 - A change to the extractor (`src/extractor/`), or to how the server runs Lean
   (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`), passes
