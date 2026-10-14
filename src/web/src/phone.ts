@@ -1,6 +1,6 @@
-// A phone (SPEC.md, "Deployment": small touch devices, a page focused on reading and reviewing). At
-// most 640 px wide (style.css draws it), the page keeps what reading and reviewing need in reach of
-// a thumb, and the rest one tap away:
+// A phone (PhoneSpec): a page for reading, reviewing and following (decision 1). At most 640 px
+// wide (style.css draws it), the page keeps what reading and reviewing need in reach of a thumb,
+// and the rest one tap away:
 //
 // - the bar's buttons — Share, the library, Export, Activity, the reader's name, help — are in one
 //   menu, ⋯, each item pressing the button it stands for, so that everything they do is as ever;
@@ -184,7 +184,7 @@ export class Phone {
   }
 
   /** The panel's sheet: a tap on its handle, at its top, makes it the whole screen or half of it
-   *  (the owner's choice of 2026-10-14: a tap, not a drag); ✕ closes it. */
+   *  (PhoneSpec decision 10: a tap, not a drag); ✕ closes it. */
   private bindSheet(panel: HTMLElement): void {
     let press: { id: number; y: number } | null = null;
     panel.addEventListener("pointerdown", (e) => {
