@@ -4,3 +4,7 @@
 
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
+
+## 0.1.0
+
+This first version of VisualProof release.

@@ -1,7 +1,6 @@
 {
   "name": "visualproof",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
   "description": "See a Lean codebase's declaration graph and the TCB of its theorems.",
   "license": "Apache-2.0",
