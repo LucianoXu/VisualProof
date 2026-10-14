@@ -77,7 +77,9 @@ and whatever the showcase project needs (v4.28.0 at least).
 ## Branches and releases
 
 - `main` is always releasable: work goes on a short-lived branch and comes in by a pull request
-  whose CI passed. Nobody pushes to `main` directly.
+  whose CI passed. Nobody pushes to `main` directly, and GitHub holds to it: `main` takes pull
+  requests alone, once the test workflow's checks pass, administrators included, and is never
+  force-pushed or deleted.
 - A release is a tag on `main`, `vX.Y.Z`; a release candidate is `vX.Y.Z-rc.N`, published under
   npm's `next` tag, so that `npm install visualproof` never gets it. There is no long-lived
   release branch: a `release/X.Y` branch is made from its tag only if an older release must be
