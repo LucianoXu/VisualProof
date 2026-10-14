@@ -2355,7 +2355,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .search-wrap:focus-within #search { width: 100%; height: 44px; font-size: 16px; box-shadow: var(--shadow-lg); }
   #results { position: fixed; top: 58px; left: 8px; right: 8px; width: auto; max-height: calc(100dvh - 70px); }
   /* every popover of the bar and the view bar: a sheet under the bar, the screen's width */
-  #share-pop, #library-pop, #who-menu, #peer-menu, #views-menu, #focus-menu, #eyes-pop {
+  #share-pop, #library-pop, #who-menu, #peer-menu, #views-menu, #focus-menu {
     position: fixed !important; top: 58px !important; left: 8px !important; right: 8px !important; bottom: auto !important;
     width: auto !important; max-width: none !important; max-height: calc(100dvh - 70px); overflow: auto;
   }
@@ -2374,9 +2374,20 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #lightup > button { flex: 1 1 0; min-width: 0; }
   #lightup .rests { flex: 3 1 0; min-width: 0; display: flex; background: none !important; }
   #rests-btn { display: none; }
-  #lightup .steps, #lightup .steps[hidden] { display: flex; flex: 1; margin: 0; padding: 0; gap: 0; background: none; }
+  #lightup .steps { display: flex; flex: 1; margin: 0; padding: 0; gap: 0; background: none; }
   #lightup button, #lightup .steps button { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 13px; white-space: nowrap; justify-content: center; }
   #zoom { right: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
+  /* ⋯ opens upwards from its box, at the right (the box's blur makes it the popover's frame) */
+  #eyes-pop { right: 0; bottom: calc(100% + 8px); width: min(280px, calc(100vw - 16px)); min-width: 0; background: var(--surface-solid); }
+  #zoom #eyes-pop button.eye { min-height: 40px; }
+  /* no finger moves anything: the lock means nothing here */
+  #lock-btn { display: none !important; }
+  /* the help: gestures, as large as the screen allows */
+  .help-box { width: calc(100vw - 16px); max-height: calc(100dvh - 32px); background: var(--surface-solid); }
+  /* no keyboard: no keys beside the menus' items */
+  #eyes-pop kbd { display: none; }
+  .help-touch .help-row { grid-template-columns: 116px minmax(0, 1fr); font-size: 14px; padding: 5px 0; }
+  .help-touch .help-g { color: var(--text); font-weight: 600; }
   #zoom #zoom-in, #zoom #zoom-out { display: none; }
   #foot { left: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
   #selbar { top: 100px; left: 8px; right: 8px; width: auto; }

@@ -31,7 +31,7 @@ const ITEMS: readonly { id: string; label: string }[] = [
   { id: "export-btn", label: "Export" },
   { id: "activity-btn", label: "Activity" },
   { id: "who", label: "" },
-  { id: "help-btn", label: "Help and keys" },
+  { id: "help-btn", label: "Help" },
 ];
 
 /** The sheet's heights, as shares of the screen's: the middle it opens at, and the top. */

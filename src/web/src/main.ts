@@ -101,7 +101,7 @@ import { ChatWindow } from "./chatwin.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
-import { isPhone, Phone } from "./phone.ts";
+import { isPhone, Phone, PHONE } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
@@ -2045,13 +2045,16 @@ async function boot(): Promise<void> {
     const rests = restsOn(S.mode);
     $("#rests").classList.toggle("on", rests);
     $("#rests-btn").setAttribute("aria-pressed", String(rests));
-    $("#rests-steps").hidden = !rests;
+    // on a phone Rests on is its steps, always in the modes' row (web/src/phone.ts)
+    $("#rests-steps").hidden = !rests && !isPhone();
     document.body.dataset.mode = S.mode;
     if (keyLegend !== (S.mode === "keys")) {
       keyLegend = S.mode === "keys";
       legend.render();
     }
   };
+  // a window narrowed to a phone's width, or widened from it, shows the modes as it then does
+  matchMedia(PHONE).addEventListener("change", () => syncTool());
 
   /** What a mode does, under its button while the pointer is on it (or it has the focus); null
    *  puts it away. It is said nowhere else: the reader who knows the modes is not told again. Rests

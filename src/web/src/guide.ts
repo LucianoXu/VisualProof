@@ -10,6 +10,7 @@
 import { dragKeyName, MAC } from "./drag.ts";
 import { escapeHtml } from "./highlight.ts";
 import type { Store } from "./store.ts";
+import { isPhone } from "./phone.ts";
 import { typing } from "./typing.ts";
 
 export interface GuideHooks {
@@ -70,6 +71,52 @@ interface Row {
   g?: string;
   what: string;
 }
+
+/** The sheet on a phone (SPEC.md, "Deployment"; web/src/phone.ts): what the fingers do, and where
+ *  the page keeps what reading and reviewing need. Nothing on the board is moved by a finger. */
+const TOUCH: [string, Row[]][] = [
+  [
+    "The board",
+    [
+      { g: "drag", what: "move around" },
+      { g: "pinch", what: "zoom; two fingers also move the board" },
+      { g: "double-tap empty board", what: "zoom in there" },
+      { g: "tap", what: "select a declaration, or a circle for all it holds; tap empty board to select nothing" },
+      { g: "touch and hold", what: "what can be done with what is under your finger: its TCB, what it uses, what uses it, its source" },
+      { g: "the frame button", what: "the whole board on the screen" },
+    ],
+  ],
+  [
+    "How a tap selects",
+    [
+      { g: "Selection", what: "just what you tap" },
+      { g: "Uses", what: "and what it uses directly" },
+      { g: "TCB", what: "and everything it rests on: its trusted computing base" },
+      { g: "Keys", what: "and the key declarations in its TCB" },
+      { g: "Used by", what: "and what uses it" },
+    ],
+  ],
+  [
+    "Reading and reviewing",
+    [
+      { g: "the sheet", what: "what you tapped; drag its handle up to read more, down to close it" },
+      { g: "Source", what: "its code, on the whole screen; ✕ closes it" },
+      { g: "Approve, Comment", what: "your opinion, under your name (⋯ at the top: your name)" },
+      { g: "☰", what: "the targets under review, and the board's namespaces or folders" },
+      { g: "Search", what: "names, statements and docstrings" },
+      { g: "‹", what: "back" },
+    ],
+  ],
+  [
+    "Together, and the rest",
+    [
+      { g: "someone's initials", what: "follow them: you see what they see" },
+      { g: "⋯ at the top", what: "share, the library, export, activity, your name, this sheet" },
+      { g: "⋯ at the bottom", what: "edges, the linear form, the theme" },
+      { g: "Kind ▾", what: "colour by kind or by review status" },
+    ],
+  ],
+];
 
 const KEYS: [string, Row[]][] = [
   [
@@ -373,10 +420,13 @@ export class Guide {
 
   openHelp(): void {
     const { server, mine } = this.hooks.editor();
+    // a phone: the fingers, not the keys; no editor on it to open a declaration in
+    const phone = isPhone();
+    const title = phone ? "Gestures" : "Keys and gestures";
     this.help.innerHTML =
-      `<div class="modal-box glass help-box" role="dialog" aria-label="Keys and gestures" tabindex="-1">` +
-      `<div class="help-head"><div class="modal-title">Keys and gestures</div><button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
-      `<div class="help-grid">${KEYS.map(
+      `<div class="modal-box glass help-box${phone ? " help-touch" : ""}" role="dialog" aria-label="${title}" tabindex="-1">` +
+      `<div class="help-head"><div class="modal-title">${title}</div><button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
+      `<div class="help-grid">${(phone ? TOUCH : KEYS).map(
         ([group, rows]) =>
           `<div class="help-group"><div class="help-h">${group}</div>${rows
             .map(
@@ -385,12 +435,12 @@ export class Guide {
             )
             .join("")}</div>`,
       ).join("")}</div>` +
-      `<div class="help-editor"><div class="help-h">Open in editor</div>` +
+      (phone ? "" : `<div class="help-editor"><div class="help-h">Open in editor</div>` +
       `<div class="help-note">A link from the panel and the source window to the declaration in your editor. ` +
       `<code>{path}</code> is the file on the server, <code>{rel}</code> the file in the project, <code>{line}</code> and <code>{col}</code> where it starts.</div>` +
       `<input class="help-input" data-help-editor value="${escapeHtml(mine ?? "")}" placeholder="${escapeHtml(server ?? "vscode://file/{path}:{line}:{col}")}" spellcheck="false" autocomplete="off" aria-label="Open in editor: URL template">` +
       `<div class="modal-err" data-help-editor-err hidden></div>` +
-      `<div class="help-note" data-help-editor-now>${this.editorNow()}</div></div>` +
+      `<div class="help-note" data-help-editor-now>${this.editorNow()}</div></div>`) +
       `<div class="help-about"><div class="help-h">About ${escapeHtml(this.hooks.project())}</div>` +
       `<div class="help-note">${escapeHtml(this.hooks.about())}</div></div>` +
       `<div class="modal-actions"><button class="rv-btn" data-help-tour>Take the tour again</button><button class="rv-btn primary" data-help-close>Close</button></div></div>`;
