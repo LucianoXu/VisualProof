@@ -8,7 +8,9 @@
 // - the side panel (the targets, the board's clusters) is a drawer from ☰, which closes when the
 //   reader goes somewhere from it;
 // - the panel is a sheet from the bottom, the board above it, with a handle at its top:
-//   a tap on it makes it the whole screen or half of it; the board is framed in the room above it.
+//   a tap on it makes it the whole screen or half of it; the board is framed in the room above it;
+// - Activity and the lost-and-found take the whole screen, and close when the reader goes somewhere
+//   from them.
 //
 // On a touch screen nothing on the board is moved by a finger (web/src/canvas.ts): it is read.
 
@@ -108,6 +110,15 @@ export class Phone {
     });
 
     this.bindSheet(document.getElementById("panel")!);
+
+    // Activity and the lost-and-found cover the board: what is gone to from them (a declaration, a
+    // view, a note, a reference) shows with them closed
+    for (const [id, close] of [["activity", "[data-act-close]"], ["lostfound", "[data-lf-close]"]]) {
+      const el = document.getElementById(id);
+      el?.addEventListener("click", (e) => {
+        if (isPhone() && (e.target as HTMLElement).closest(".act-ref, .act-note-go")) setTimeout(() => el.querySelector<HTMLElement>(close)?.click(), 0);
+      });
+    }
 
     // ⚙ Board and Trusted take the drawer's place, with a way back to it: a row at their top,
     // put back whenever what they show is drawn again

@@ -2338,7 +2338,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
    ☰; the panel is a sheet from the bottom, the board above it. */
 .more-wrap, .side-btn, .side-back { display: none; }
 @media (max-width: 640px) {
-  #bar { top: 8px; left: 8px; right: 8px; height: 44px; gap: 6px; padding: 0 6px 0 4px; }
+  /* over the sheet, which stops under it at its tallest, so that what opens from the bar (⋯, the
+     search's results, Share) opens over the sheet too */
+  #bar { top: 8px; left: 8px; right: 8px; height: 44px; gap: 6px; padding: 0 6px 0 4px; z-index: 31; }
   #bar .right { gap: 4px; }
   #nav-fwd, .brand .logo { display: none; }
   .brand { align-items: center; gap: 6px; }
@@ -2453,4 +2455,11 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .sw-head { align-items: center; }
   .sw-name { flex: 1 1 auto; white-space: normal; overflow-wrap: anywhere; }
   .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
+  /* Activity and the lost-and-found: the whole screen, from the right */
+  #activity, #lostfound {
+    top: 0; left: 0; right: 0; bottom: 0; width: auto; border-radius: 0; z-index: 48;
+    padding: calc(10px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+    background: var(--surface-solid); transform: translateX(100%);
+  }
+  .act-head .icon { width: 40px; height: 40px; font-size: 20px; }
 }
