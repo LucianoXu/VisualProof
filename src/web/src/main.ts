@@ -3053,6 +3053,8 @@ async function boot(): Promise<void> {
       write: canName() && !blocked() && !pastShown(),
       past: pastShown(),
       preview: frozen(),
+      // a phone: a source takes the whole screen, nothing is pinned beside it (web/src/phone.ts)
+      noPin: isPhone(),
     };
   };
   /** Open the menu on what is at a point of the window: a declaration or a cluster of the board,

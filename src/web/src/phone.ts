@@ -6,8 +6,8 @@
 //   menu, ⋯, each item pressing the button it stands for, so that everything they do is as ever;
 // - the side panel (the targets, the board's clusters) is a drawer from ☰, which closes when the
 //   reader goes somewhere from it;
-// - the panel is a sheet from the bottom, the board above it: its handle drags it higher or lower,
-//   and down far enough closes it; the board is framed in the room above it.
+// - the panel is a sheet from the bottom, the board above it, with a handle at its top:
+//   a tap on it makes it the whole screen or half of it; the board is framed in the room above it.
 //
 // On a touch screen nothing on the board is moved by a finger (web/src/canvas.ts): it is read.
 
@@ -49,9 +49,7 @@ const SIDE_POPS: readonly { pop: string; opener: string; title: string }[] = [
 /** The sheet's heights, as shares of the screen's: the middle it opens at, and the top. */
 const SHEET_MID = 0.55;
 const SHEET_TOP = 0.92;
-/** dragged lower than this share of the screen, the sheet closes */
-const SHEET_CLOSE = 0.2;
-/** the handle: the top of the sheet a drag starts on */
+/** the handle: the top of the sheet a tap switches it on */
 const GRIP_PX = 34;
 
 export class Phone {
@@ -96,11 +94,13 @@ export class Phone {
 
     // the drawer
     document.getElementById("side-btn")!.addEventListener("click", () => this.drawer(!document.body.classList.contains("side-open")));
-    // going somewhere from it closes it: a target, a cluster, a row of the outline
+    // going somewhere from it closes it: a target, a cluster's name; an arrow opens or folds a level
+    // of the tree and the drawer stays, as it does for what is pressed on a row's buttons
     document.getElementById("side")!.addEventListener("click", (e) => {
       if (!isPhone()) return;
       const t = e.target as HTMLElement;
-      if (t.closest(".tg-row, [data-c], [data-go], [data-open], .tw-row")) setTimeout(() => this.drawer(false), 120);
+      if (t.closest(".tw, button, [data-sec]")) return;
+      if (t.closest(".tg-row, .o-row, [data-go], [data-open]")) setTimeout(() => this.drawer(false), 120);
     });
 
     this.bindSheet(document.getElementById("panel")!);
@@ -152,41 +152,24 @@ export class Phone {
     document.getElementById("side-btn")!.setAttribute("aria-expanded", String(on));
   }
 
-  /** The panel's sheet: a drag on its handle sets its height; let go, it settles at the middle or
-   *  the top, or closes. */
+  /** The panel's sheet: a tap on its handle, at its top, makes it the whole screen or half of it
+   *  (the owner's choice of 2026-10-14: a tap, not a drag); ✕ closes it. */
   private bindSheet(panel: HTMLElement): void {
-    let drag: { id: number; y: number; h: number } | null = null;
-    const set = (px: number | null) => {
-      if (px === null) panel.style.removeProperty("--sheet-h");
-      else panel.style.setProperty("--sheet-h", `${Math.round(px)}px`);
-    };
+    let press: { id: number; y: number } | null = null;
     panel.addEventListener("pointerdown", (e) => {
       if (!isPhone() || e.button !== 0) return;
       const r = panel.getBoundingClientRect();
-      if (e.clientY - r.top > GRIP_PX) return;
-      drag = { id: e.pointerId, y: e.clientY, h: r.height };
-      panel.classList.add("dragging");
-      panel.setPointerCapture(e.pointerId);
-      e.preventDefault();
+      press = e.clientY - r.top <= GRIP_PX ? { id: e.pointerId, y: e.clientY } : null;
     });
-    panel.addEventListener("pointermove", (e) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      set(Math.max(40, Math.min(innerHeight - 60, drag.h + drag.y - e.clientY)));
-    });
-    const end = (e: PointerEvent) => {
-      if (!drag || e.pointerId !== drag.id) return;
-      const h = drag.h + drag.y - e.clientY;
-      drag = null;
-      panel.classList.remove("dragging");
-      const share = h / innerHeight;
-      if (share < SHEET_CLOSE) {
-        set(null);
-        this.hooks.closePanel();
-      } else set(innerHeight * (share < (SHEET_MID + SHEET_TOP) / 2 ? SHEET_MID : SHEET_TOP));
+    panel.addEventListener("pointerup", (e) => {
+      const p = press;
+      press = null;
+      if (!p || p.id !== e.pointerId || Math.abs(e.clientY - p.y) > 10) return;
+      const full = panel.getBoundingClientRect().height > innerHeight * ((SHEET_MID + SHEET_TOP) / 2);
+      panel.style.setProperty("--sheet-h", `${Math.round(innerHeight * (full ? SHEET_MID : SHEET_TOP))}px`);
       // the board's room follows once the sheet has settled
-      setTimeout(() => this.hooks.resized(), 220);
-    };
-    panel.addEventListener("pointerup", end);
-    panel.addEventListener("pointercancel", end);
+      setTimeout(() => this.hooks.resized(), 240);
+    });
+    panel.addEventListener("pointercancel", () => (press = null));
   }
 }

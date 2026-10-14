@@ -72,6 +72,8 @@ export interface MenuContext {
   arrange: boolean;
   /** the review can be changed from here: a name can be had, not a snapshot, the log not blocked */
   write: boolean;
+  /** pinned source windows are not offered (a phone: a source takes the whole screen) */
+  noPin?: boolean;
   /** the board is of a past graph (HistorySpec decision 17): the review is given on the latest
    *  build, which the menu says where its items would be (the owner's decision of 2026-10-10); its
    *  source is that build's (decision 23) */
@@ -158,7 +160,7 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
   }
   const trustItem = (to: TrustTo | null, label: string): MenuItem[] => (ctx.write && to ? [{ act: "trust", label: to.on ? `Stop trusting ${label}` : `Trust ${label}` }] : []);
   if (t.kind === "decl") {
-    out.push({ act: "source", label: "Open source" }, { act: "pin", label: "Open in a pinned window" });
+    out.push({ act: "source", label: "Open source" }, ...(ctx.noPin ? [] : [{ act: "pin", label: "Open in a pinned window" }]));
     out.push({ act: "tcb", label: "Select its TCB", sep: true }, { act: "deps", label: "Select what it uses" }, { act: "apps", label: "Select what uses it" }, { act: "copy", label: "Copy full name" });
     // a visitor is no member: it is added to this view, or another, and not removed (decision 27)
     if (ctx.arrange && t.visitor) out.push(...(ctx.here ? [{ act: `add:${ctx.here}`, label: "Add to this view", sep: true }] : []), addTo(ctx, short(t.name)));

@@ -2399,7 +2399,6 @@ span.tm-row { color: var(--text-2); cursor: default; }
     transform: translateY(105%); transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1), height 0.2s;
   }
   #panel.open { transform: none; }
-  #panel.dragging { transition: none; }
   #panel::before { content: ""; position: sticky; top: -18px; display: block; width: 40px; height: 5px; margin: -18px auto 13px; border-radius: 3px; background: var(--text-3); opacity: 0.6; }
   /* the side panel: a drawer from the left, over a shade */
   body.side-open #side { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 86vw); border-radius: 0 16px 16px 0; z-index: 47; padding-top: env(safe-area-inset-top); background: var(--surface-solid); }
@@ -2426,7 +2425,20 @@ span.tm-row { color: var(--text-2); cursor: default; }
     max-width: none !important; max-height: none !important; min-width: 0 !important; min-height: 0 !important;
     border-radius: 0 !important; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); z-index: 48;
   }
-  .sw-win .fl-rz, .sw-ns, .sw-loc, .sw-acts [data-sw-collapse] { display: none !important; }
+  .sw-win .fl-rz, .sw-ns, .sw-loc, .sw-acts [data-sw-collapse], .sw-pin { display: none !important; }
+  /* the menu: no keys beside its items */
+  #ctxmenu .cm-key { display: none; }
+  /* the tree in the drawer: a row a finger can hit, an arrow wide enough to open or fold a level;
+     hiding a level arranges the board, which a phone does not */
+  #outline .o-row { height: 40px; }
+  #outline .o-row .tw { width: 32px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; margin-left: -8px; }
+  #outline .o-hide { display: none; }
+  /* the Time Machine: its line, the build and a way out; keeping a build or saving it as a view
+     arranges the board, which a phone does not */
+  body.tm .focus-wrap { display: none; }
+  #tmbar { flex: 1 1 auto; gap: 6px; padding: 0 2px 0 8px; }
+  #tmbar .tm-acts, #tmbar .tm-sum, #tmbar .tm-growth, #tmbar .tm-latest { display: none !important; }
+  #tmbar .tm-x { flex: none; width: 36px; height: 34px; font-size: 16px; }
   .sw-head .sw-close { width: 40px; height: 40px; font-size: 20px; }
   .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
 }
