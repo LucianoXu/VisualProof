@@ -126,7 +126,8 @@ Numbers missing below are withdrawn decisions.
     the links of what its board holds, a declaration renamed since under its name then.
 18. **The linear form** (SPEC.md, "Export"; the owner's words of 2026-10-13: the cluster hierarchy
     indented, strictly on one vertical line; dragging in it changes the document's order, and the
-    ordinary board shows the change). *Draft, for the owner's review (2026-10-14).*
+    ordinary board shows the change; the owner's decisions of 2026-10-14: first at the top, the rest
+    as drafted).
     - **What it is**: the board drawn as the document's outline (decision 13). Every circle's centre
       and every point lies on one vertical line, in document order, **first at the top**, as a
       document reads. Circles still mean containment (CanvasSpec decision 3): a section's circle
@@ -138,7 +139,7 @@ Numbers missing below are withdrawn decisions.
       circle, a declaration's name beside its point; the colours are the scheme's (Kind or Status).
       Edges, where shown (⋯), are arcs on the left of the line, unbundled: an arc diagram.
     - **When**: while the Export window is open the board on show is drawn so, easing from its
-      arrangement and back when the window closes; and at will, from ⋯ (*Linear form*, key `L`). It
+      arrangement and back when the window closes; and at will, from ⋯ (*Linear form*, key `o`). It
       is the reader's own way of drawing the board, followed as the tool is (CollabSpec decision 4);
       the board itself is unchanged by it.
     - **Dragging** a declaration, a note or a section along the line moves it among its siblings,
@@ -148,13 +149,10 @@ Numbers missing below are withdrawn decisions.
       board) follows. Undone as a pin is. The rest of the section keeps its places.
     - **Who may**: whoever may arrange the board (not a snapshot, a read-only reader, a past
       build's preview); the others see the form and cannot drag.
-    - *Open questions*: first at the top (reading order) or at the bottom (the board's order, no flip
-      when the form eases in)? Edges as arcs, or none? Should a drop also reorder siblings that are
-      not dragged, to keep heights evenly spaced on the board?
 19. **Artwork** (SPEC.md, "Export"; the owner's words of 2026-10-13: PNG and SVG, the canvas's size
     chosen and rendered at high resolution; a highlighted frame in the middle with shade around it,
     the canvas dragged under it to choose what is drawn; the colours, the items and the targets
-    adjustable). *Draft, for the owner's review (2026-10-14).*
+    adjustable; the owner's decision of 2026-10-14: as drafted).
     - **Where**: the Export window's second tab, *Artwork*, beside *Document*. Choosing it closes the
       window into the framing mode; Esc or Done leaves it, the board as it was.
     - **The frame**: fixed in the middle of the screen, its aspect the size chosen; outside it the
@@ -176,8 +174,6 @@ Numbers missing below are withdrawn decisions.
       view and the build ("TCB of Hilbert91 @ Oct 14 12:38.png").
     - **What is kept**: the reader's own choices, in their browser; nothing is shared or recorded.
       Agents have no artwork (the page draws it).
-    - *Open questions*: should the frame, the size and the appearance be kept per view (an artwork
-      made again from the same view looking the same), and shared?
 
 ## Implementation notes
 

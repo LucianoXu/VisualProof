@@ -18,6 +18,8 @@ import type { DocFiles, DocInput } from "../src/shared/doc/build.ts";
 import { figureAssets, renderLatex } from "../src/shared/doc/latex.ts";
 import type { DeclEntry, DocModel, Item, NoteEntry, Section } from "../src/shared/doc/model.ts";
 import { freshSpots, orderDoc } from "../src/shared/doc/order.ts";
+import { firstWords, outlineOf } from "../src/shared/doc/outline.ts";
+import type { Outline, OutlineDecl, OutlineItem, OutlineSection } from "../src/shared/doc/outline.ts";
 import type { BoardNote, BoardSpots } from "../src/shared/doc/order.ts";
 import { planDoc } from "../src/shared/doc/sections.ts";
 import { DEFAULT_SETTINGS } from "../src/shared/doc/settings.ts";
@@ -541,4 +543,88 @@ test("a past build's board: its memory of that build recalled exactly, else laid
   assert.equal(renamed.fresh, true);
   const was = orig.nodes["A.a2"];
   assert.ok(Math.hypot(renamed.decls.get("A.old")![0] - was[0], renamed.decls.get("A.old")![1] - was[1]) < 0.5, "A.old where A.a2 is now");
+});
+
+// ------------------------------------------------------------------- the outline (decision 18)
+
+/** The outline as `seqOf` writes a document: each list, sections by key, recursively. */
+function outlineSeq(xs: readonly OutlineItem[]): unknown[] {
+  return xs.map((x) => (x.t === "decl" ? x.name : x.t === "note" ? x.id : [`§${x.key}`, outlineSeq(x.items)]));
+}
+function docSeq(xs: readonly Item[]): unknown[] {
+  return xs.map((x) => (x.t === "decl" ? x.decl.name : x.t === "note" ? x.note.id.replace(/^note:/, "") : [`§${x.section.key}`, docSeq(x.section.items)]));
+}
+
+test("the outline the linear form draws is the document's: the same sections, numbered as the PDF numbers them, the same declarations and notes in the same order", () => {
+  const onA1 = pnote("onA1", "**Why** a1 is defined so.\nMore.", { decl: { name: "A.a1", at: [12, -12] } });
+  const inB = pnote("inB", "The B part.");
+  const inC = vnote("inC", "C, briefly.");
+  const board = spots(BASE.decls, BASE.clusters, [
+    { note: onA1, kind: "project", at: [12, 78], in: ["A"], on: "A.a1" },
+    { note: inB, kind: "project", at: [0, 75], in: ["A.B", "A"] },
+    { note: inC, kind: "view", at: [3, -90], in: ["C"] },
+  ]);
+  const inp = input(board);
+  const doc = buildDoc(inp);
+  const set = new Uint8Array(inp.g.n).fill(1);
+  const o = outlineOf(planDoc(inp.g, set, "namespace", []), inp.g, board);
+  assert.deepEqual(outlineSeq(o.items), docSeq(doc.items));
+  assert.deepEqual(o.count, { declarations: doc.count.declarations, sections: doc.count.sections });
+  // numbered as the PDF: A is 1, A.B 1.1, C 2 (A lower on the board, so first)
+  const secs = o.items.filter((x) => x.t === "section") as OutlineSection[];
+  assert.deepEqual(secs.map((s) => [s.key, s.number]), [["A", "1"], ["C", "2"]]);
+  const b = secs[0].items.find((x) => x.t === "section") as OutlineSection;
+  assert.equal(b.number, "1.1");
+  // a note attached to a declaration comes with it, by its first words
+  const a1 = secs[0].items.find((x) => x.t === "decl" && x.name === "A.a1") as OutlineDecl;
+  assert.deepEqual(a1.notes, [{ t: "note", id: "onA1", kind: "project", words: "Why a1 is defined so." }]);
+  assert.equal(firstWords("\n\n  `x` and *y*  \nz"), "x and y");
+  assert.equal(firstWords("a".repeat(80)).length, 60);
+});
+
+test("a heading below the third level has no number, as in the PDF", () => {
+  const names = ["P.Q.R.S.t", "P.Q.R.S.u", "P.Q.R.v", "P.Q.x", "P.w"];
+  const nodes: ViewNode[] = names.map((name) => ({ name, kind: "def", module: "M", ax: 0, type: "Nat" }));
+  const meta = { schema: 1, layoutVersion: LAYOUT_VERSION, project: { name: "f", root: "/", roots: ["P"], toolchain: "tc", extractedAt: "", extractMs: 1 }, modules: [], nodes, projectCount: names.length, axioms: [], axiomSets: [[]], layouts: {}, edgeCount: 0 } as unknown as ViewMeta;
+  const g = new Graph(meta, new Int32Array(0));
+  const set = new Uint8Array(g.n).fill(1);
+  const o = outlineOf(planDoc(g, set, "namespace", []), g, freshSpots(g, set, "namespace", []));
+  const nums: [string, string | null, number][] = [];
+  const walk = (xs: readonly OutlineItem[]) => xs.forEach((x) => x.t === "section" && (nums.push([x.key, x.number, x.level]), walk(x.items)));
+  walk(o.items);
+  assert.deepEqual(nums, [["P", "1", 1], ["P.Q", "1.1", 2], ["P.Q.R", "1.1.1", 3], ["P.Q.R.S", null, 4]]);
+});
+
+test("the server gives the outline of a view as the page's linear form asks for it: the same as the document's", async () => {
+  const g = graph();
+  const dir = mkdtempSync(join(tmpdir(), "vp-outline-"));
+  try {
+    const review = new ReviewStore(dir, join(dir, "review"));
+    const edges: number[] = [];
+    for (let i = 0; i < g.n; i++) for (let e = g.outStart[i]; e < g.outStart[i + 1]; e++) edges.push(i, g.outDst[e], g.outSite[e]);
+    mkdirSync(join(dir, "state"));
+    const views = new Views(join(dir, "state"), LAYOUT_VERSION, () => {});
+    const v = views.book.create("Outline", "Alice", { scope: parseQuery("all except external"), clustering: "namespace" }) as ViewData;
+    views.arrangeNotes([{ op: "pnote", note: pnote("np", "A note of the project in C.", { places: { namespace: { in: [["C", 0.3, 0.3]] } } }) }], null, "Alice", false, null);
+    const w = {
+      project: { root: dir, files: new Map(), toolchain: "tc" },
+      graph: { version: 1, fingerprint: "f00d", prep: { metaGz: gzipSync(JSON.stringify(g.meta)), edgesGz: gzipSync(Buffer.from(Int32Array.from(edges).buffer)) } },
+      review,
+      views,
+      timeline: { events: [], add: (e: object) => ({ ...e, id: 1, at: "" }) },
+      presence: { agentBeat: () => {}, agentView: () => null, drop: () => {} },
+    } as unknown as World;
+    const api = new AgentApi(w, null, "read");
+    const a = await api.handle({ method: "GET", path: "/api/agent/export", query: new URLSearchParams({ view: v.id }), body: null, caller: { name: "Claude", kind: "agent" } });
+    const o = api.exportOutline(v.id);
+    assert.equal(o.status, 200, JSON.stringify(o.body));
+    const body = o.body as { view: string; outline: Outline };
+    assert.equal(body.view, v.id);
+    assert.deepEqual(outlineSeq(body.outline.items), docSeq((a.body as DocModel).items));
+    assert.ok(JSON.stringify(body.outline).includes('"np"'), "the note in C is in it");
+    assert.equal(api.exportOutline("nope").status, 404);
+    assert.equal(api.exportOutline(v.id, "abc").status, 400);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

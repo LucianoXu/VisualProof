@@ -56,6 +56,8 @@ import { authorLine, authorsOf, reviewTraces, viewTraces } from "../shared/doc/a
 import { itemsShownOn } from "../shared/noteplace.ts";
 import { buildDoc, DocInputError, docNotes } from "../shared/doc/build.ts";
 import { boardSpots } from "./boardspots.ts";
+import { outlineOf } from "../shared/doc/outline.ts";
+import { planDoc } from "../shared/doc/sections.ts";
 import { docFiles, figureFiles, figureNotes } from "./figures.ts";
 import type { DocInput, DocSource, DocView } from "../shared/doc/build.ts";
 import { renderLatex } from "../shared/doc/latex.ts";
@@ -864,6 +866,36 @@ export class AgentApi {
     const { version: _kept, ...base } = rec;
     const tv = this.titleVersion(rec, at, version);
     return ok({ view: rec.id, title: docTitle({ ...base, ...(tv !== undefined ? { version: tv } : {}) }, titleContext(this.world)), author: authorLine(authors), authors });
+  }
+
+  /** The outline of the document of view `view` at the build `version` names (ExportSpec decision
+   *  18; left out, the view's own): its sections, declarations and notes in the document's order,
+   *  without their text, from the board as its page draws it (as `document` reads it). What the
+   *  page's linear form draws (GET /api/export/outline); a view too large to print has one too. */
+  exportOutline(view: string, version?: unknown): Answer {
+    const rec = view ? this.world.views?.book.get(view) : undefined;
+    if (!rec) return fail(404, `There is no view ${view.slice(0, 200)}.`, "GET /api/agent/views lists them.");
+    const at = this.exportAt(rec, version);
+    if (at !== null && typeof at === "object") return at;
+    const v = this.graph();
+    if (!(v instanceof View)) return v;
+    const notes = this.world.views?.book.notes ?? [];
+    const memory = this.world.views?.book.memoryOf(rec.id, rec.clustering) ?? null;
+    const whole = v.meta.layouts?.[rec.clustering];
+    let g = v.g;
+    let review = this.world.review.data;
+    let past: Parameters<typeof boardSpots>[0]["past"];
+    if (at !== null) {
+      const b = this.pasts.get(at, v.g, v.version, (m) => v.modules.get(m)?.file ?? null);
+      if (!b) return fail(404, `There is no snapshot ${at}.`, "GET /api/agent/history lists them.");
+      past = { snapshot: at, nowName: b.past.nowName, now: v.g, nowReview: review };
+      g = b.past.graph;
+      review = reviewThen(review, b.past.nowName);
+    }
+    const set = evaluate(rec.scope, { g, review });
+    const plan = planDoc(g, set, rec.clustering, rec.hidden[rec.clustering] ?? []);
+    const board = boardSpots({ g, review, rec, memory, whole, notes, ...(past ? { past } : {}) });
+    return ok({ view: rec.id, ...(at !== null ? { version: at } : {}), outline: outlineOf(plan, g, board) });
   }
 
   /** The exported document's model (ExportSpec decision 6) of view `view` with `settings` at the
