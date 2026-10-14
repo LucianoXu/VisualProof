@@ -14,6 +14,7 @@ VisualProof can export a nicely typeset PDF document for the formalization and a
 - This tool is provided as a npm package. It is opensource software on GitHub, with a introduction webpage.
 - This tool can serve a website that visualizes a local Lean codebase, both viewed locally or deployed on a server.
 - Websites served by this tool will check for updates periodically, and seamlessly update.
+- The website also supports small touch devices. On small screens it can have a UI focused on reading and reviewing. (Tablets such as the iPad are to be discussed.)
 
 
 ## Features

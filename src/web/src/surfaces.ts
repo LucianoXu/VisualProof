@@ -206,6 +206,7 @@ export const YOURS = [
   { id: "legend", what: "the legend folded or open", where: "#legend" },
   { id: "eyes", what: "the eyes' ⋯ popover, opened", where: "#eyes-btn, #eyes-pop" },
   { id: "artwork", what: "framing an artwork (ExportSpec decision 19): its frame, its size and look, saving it", where: "#art, #art-panel", whole: true },
+  { id: "phone", what: "a phone's ⋯ menu of the bar's buttons, and the button of the side panel's drawer (web/src/phone.ts)", where: "#more-btn, #more-pop, #side-btn" },
   { id: "theme", what: "the theme", where: "#theme-seg" },
   { id: "lock", what: "the layout lock", where: "#lock-btn", keys: ["l"] },
   // the box tool (AttachmentSpec decision 5, the owner's decision of 2026-10-12): armed for the

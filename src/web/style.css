@@ -189,6 +189,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #labels { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 #cards { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+/* a finger held on the board opens its menu there, under the finger (web/src/canvas.ts): iOS would
+   select the text it then finds under it, or offer the canvas as an image */
+#canvas, #cards, #ctxmenu { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#ctxmenu input, #ctxmenu textarea { -webkit-user-select: text; user-select: text; }
 /* the linear form, over the board and its notes, under the panels (web/src/linear.ts) */
 #linear { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; z-index: 5; }
 #linear[hidden] { display: none; }
@@ -544,11 +548,11 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .sw-win.moving .sw-head { cursor: grabbing; }
 .sw-head .nav { margin-right: 2px; }
 /* under the title bar, why the pairing opened no reference beside it (AttachmentSpec decision 8) */
-.sw-pair { padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
-/* a narrow window shortens the namespace and the place, never its buttons */
-.sw-name { font: 600 15px var(--font); flex: none; }
-.sw-ns { color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; min-width: 0; }
-.sw-loc { color: var(--text-3); font: 11.5px var(--mono); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sw-pair { padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+/* a narrow window shortens the namespace and the place, then the name, never its buttons */
+.sw-name { font: 600 15px var(--font); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-ns { color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; min-width: 0; flex-shrink: 1000; }
+.sw-loc { color: var(--text-3); font: 11.5px var(--mono); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1000; }
 .sw-acts { display: inline-flex; align-items: center; gap: 2px; align-self: center; flex: none; }
 .sw-acts .icon, .sw-pill .icon {
   display: inline-grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--text-2);
@@ -1703,7 +1707,7 @@ details.lf-archived > summary { cursor: pointer; }
   word-break: break-word;
 }
 .p-ns { color: var(--text-2); font-size: 12.5px; word-break: break-all; }
-.p-mod { color: var(--text-3); font-size: 12px; margin: 6px 0 12px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.p-mod { color: var(--text-3); font-size: 12px; margin: 6px 0 12px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; overflow-wrap: anywhere; }
 .p-gen { color: var(--text-2); font-size: 12px; margin: -6px 0 12px; line-height: 1.45; }
 .sw-print { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
 .sw-print-h { color: var(--text-3); font-size: 12px; margin-bottom: 6px; font-family: var(--mono, ui-monospace, monospace); }
@@ -2326,3 +2330,136 @@ span.tm-row { color: var(--text-2); cursor: default; }
 @media (max-width: 1350px) { .tm-growth, .tm-w { display: none; } }
 @media (max-width: 1150px) { .tm-view { display: none; } .tm-n { padding: 0 6px; } }
 @media (max-width: 900px) { .tm-btn[data-tm-save] { display: none; } }
+
+/* ---------------------------------------------------------------- a phone (SPEC.md, "Deployment")
+
+   At most 640 px wide: a page for reading and reviewing (web/src/phone.ts). The bar keeps Back, the
+   project's name, search and ⋯, which holds the modes and the rest; the side panel is a drawer from
+   ☰; the panel is a sheet from the bottom, the board above it. */
+.more-wrap, .side-btn, .side-back { display: none; }
+@media (max-width: 640px) {
+  /* over the sheet, which stops under it at its tallest, so that what opens from the bar (⋯, the
+     search's results, Share) opens over the sheet too */
+  #bar { top: 8px; left: 8px; right: 8px; height: 44px; gap: 6px; padding: 0 6px 0 4px; z-index: 31; }
+  #bar .right { gap: 4px; }
+  #nav-fwd, .brand .logo { display: none; }
+  .brand { align-items: center; gap: 6px; }
+  .brand .project { display: inline; font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #share-btn, #library-btn, #export-btn, #activity-btn, #who, #help-btn { display: none !important; }
+  .more-wrap { display: block; position: relative; }
+  #more-btn { width: 38px; height: 34px; }
+  #more-badge { position: absolute; top: -5px; right: -5px; }
+  #more-pop { position: fixed; top: 58px; right: 8px; width: min(260px, calc(100vw - 16px)); z-index: 46; border-radius: 14px; padding: 6px; display: flex; flex-direction: column; background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg); }
+  #more-pop[hidden] { display: none; }
+  .more-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--text); font: 15px var(--font); text-align: left; }
+  .more-item:active { background: var(--code-bg); }
+  .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .more-item .act-badge { position: static; margin-left: auto; }
+  /* the modes, at the top of ⋯: each with what a tap selects under its name, the one in use ticked */
+  #more-pop { max-height: calc(100dvh - 70px); overflow-y: auto; }
+  .more-h { padding: 6px 12px 2px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .more-sub { padding: 6px 12px 0 36px; font-size: 12px; color: var(--text-2); }
+  .more-mode { gap: 6px; padding: 4px 12px; }
+  .more-mode.step { padding-left: 28px; }
+  .more-mode.on { color: var(--accent); }
+  .more-tick { flex: none; width: 16px; text-align: center; font-weight: 700; }
+  .more-l { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .more-l small { font-size: 12px; color: var(--text-2); }
+  .more-sep { height: 1px; margin: 6px 4px; background: var(--line); }
+  /* search: a narrow field that takes the whole bar while it is used */
+  #search { width: 92px; height: 34px; padding: 0 10px; }
+  .search-wrap:focus-within { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 45; }
+  .search-wrap:focus-within #search { width: 100%; height: 44px; font-size: 16px; box-shadow: var(--shadow-lg); }
+  #results { position: fixed; top: 58px; left: 8px; right: 8px; width: auto; max-height: calc(100dvh - 70px); }
+  /* every popover of the bar and the view bar: a sheet under the bar, the screen's width */
+  #share-pop, #library-pop, #who-menu, #peer-menu, #views-menu, #focus-menu {
+    position: fixed !important; top: 58px !important; left: 8px !important; right: 8px !important; bottom: auto !important;
+    width: auto !important; max-width: none !important; max-height: calc(100dvh - 70px); overflow: auto;
+  }
+  #viewbar { top: 58px; left: 8px; right: 8px; gap: 6px; }
+  .side-btn { display: inline-flex; flex: none; width: 36px; justify-content: center; padding: 0; }
+  #tabs { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar { display: none; }
+  .vb-gap, .light-l { display: none; }
+  .focus-btn { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* the modes are in ⋯ */
+  #lightup { display: none; }
+  #zoom { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
+  /* ⋯ opens upwards from its box, at the right (the box's blur makes it the popover's frame) */
+  #eyes-pop { right: 0; bottom: calc(100% + 8px); width: min(280px, calc(100vw - 16px)); min-width: 0; background: var(--surface-solid); }
+  #zoom #eyes-pop button.eye { min-height: 40px; }
+  /* no finger moves anything: the lock means nothing here */
+  #lock-btn { display: none !important; }
+  /* the help: gestures, as large as the screen allows */
+  .help-box { width: calc(100vw - 16px); max-height: calc(100dvh - 32px); background: var(--surface-solid); }
+  /* no keyboard: no keys beside the menus' items */
+  #eyes-pop kbd { display: none; }
+  .help-touch .help-row { grid-template-columns: 116px minmax(0, 1fr); font-size: 14px; padding: 5px 0; }
+  .help-touch .help-g { color: var(--text); font-weight: 600; }
+  #zoom #zoom-in, #zoom #zoom-out { display: none; }
+  #foot { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
+  /* under the view bar, the review strip, then the selection bar (--strip-h: main.ts) */
+  #lensbar, #tm-kept { top: 100px; left: 8px; right: 8px; transform: none; max-width: none; }
+  #selbar { top: calc(100px + var(--strip-h, 0px)); left: 8px; right: 8px; width: auto; }
+  /* the panel: a sheet from the bottom, its height the reader's to drag */
+  #panel {
+    top: auto; left: 0; right: 0; bottom: 0; width: auto; height: var(--sheet-h, 55dvh); max-height: calc(100dvh - 60px);
+    border-radius: 18px 18px 0 0; padding: 26px 16px calc(24px + env(safe-area-inset-bottom)); z-index: 30;
+    background: var(--surface-solid); box-shadow: 0 -1px 0 var(--line), 0 -8px 30px rgba(0, 0, 0, 0.12);
+    transform: translateY(105%); transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1), height 0.2s;
+  }
+  #panel.open { transform: none; }
+  #panel::before { content: ""; position: sticky; top: -18px; display: block; width: 40px; height: 5px; margin: -18px auto 13px; border-radius: 3px; background: var(--text-3); opacity: 0.6; }
+  /* the side panel: a drawer from the left, over a shade */
+  body.side-open #side { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 86vw); border-radius: 0 16px 16px 0; z-index: 47; padding-top: env(safe-area-inset-top); background: var(--surface-solid); }
+  body.side-open::after { content: ""; position: fixed; inset: 0; z-index: 46; background: rgba(0, 0, 0, 0.3); }
+  /* ⚙ Board and Trusted: in the drawer's place, over it, with a way back */
+  body.side-open .side-pop {
+    left: 0 !important; top: 0 !important; bottom: 0 !important; right: auto !important; width: min(320px, 86vw) !important;
+    height: auto !important; max-height: none !important; border-radius: 0 16px 16px 0; z-index: 48;
+    background: var(--surface-solid); padding-top: calc(8px + env(safe-area-inset-top));
+  }
+  body.side-open .side-back {
+    display: flex; align-items: center; gap: 4px; min-height: 40px; margin: 0 0 6px -6px; padding: 0 6px; border: 0;
+    background: none; color: var(--accent); font: 600 15px var(--font);
+  }
+  .side-back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  /* a field under 16 px makes iOS zoom the whole page into it */
+  #panel textarea, #panel input, #share-pop input, #share-pop select, #who-menu input, #modal input, .sh-field input, .sh-field select { font-size: 16px; }
+  /* nothing slides sideways: the page is the screen */
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  #panel { overflow-x: hidden; overscroll-behavior: contain; }
+  /* a source window: the whole screen, its title bar its name and a close */
+  .sw-win:not(.collapsed) {
+    left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important; width: auto !important; height: auto !important;
+    max-width: none !important; max-height: none !important; min-width: 0 !important; min-height: 0 !important;
+    border-radius: 0 !important; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); z-index: 48;
+  }
+  .sw-win .fl-rz, .sw-ns, .sw-loc, .sw-acts [data-sw-collapse], .sw-pin { display: none !important; }
+  /* the menu: no keys beside its items */
+  #ctxmenu .cm-key { display: none; }
+  /* the tree in the drawer: a row a finger can hit, an arrow wide enough to open or fold a level;
+     hiding a level arranges the board, which a phone does not */
+  #outline .o-row { height: 40px; }
+  #outline .o-row .tw { width: 32px; height: 40px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; margin-left: -8px; }
+  #outline .o-hide { display: none; }
+  /* the Time Machine: its line, the build and a way out; keeping a build or saving it as a view
+     arranges the board, which a phone does not */
+  body.tm .focus-wrap { display: none; }
+  #tmbar { flex: 1 1 auto; gap: 6px; padding: 0 2px 0 8px; }
+  #tmbar .tm-acts, #tmbar .tm-sum, #tmbar .tm-growth, #tmbar .tm-latest { display: none !important; }
+  #tmbar .tm-x { flex: none; width: 36px; height: 34px; font-size: 16px; }
+  .sw-head .sw-close { width: 40px; height: 40px; font-size: 20px; }
+  /* a long name goes on over a second line, its end (what tells it from its neighbours) in sight;
+     the buttons keep their place at the right */
+  .sw-head { align-items: center; }
+  .sw-name { flex: 1 1 auto; white-space: normal; overflow-wrap: anywhere; }
+  .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
+  /* Activity and the lost-and-found: the whole screen, from the right */
+  #activity, #lostfound {
+    top: 0; left: 0; right: 0; bottom: 0; width: auto; border-radius: 0; z-index: 48;
+    padding: calc(10px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+    background: var(--surface-solid); transform: translateX(100%);
+  }
+  .act-head .icon { width: 40px; height: 40px; font-size: 20px; }
+}

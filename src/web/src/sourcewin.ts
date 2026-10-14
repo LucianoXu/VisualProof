@@ -823,7 +823,7 @@ export class SourceWindow implements SourcePane {
     // the editor opens the file as it is now: at the compiled place, unless the window found the
     // declaration somewhere else in a file that changed since
     const head = (where: string, editor: string | null) =>
-      `<div class="sw-head">${pinned ? "" : nav()}<span class="dot k-${kind}"></span><span class="sw-name">${short}</span>` +
+      `<div class="sw-head">${pinned ? "" : nav()}<span class="dot k-${kind}"></span><span class="sw-name" title="${escapeHtml(v.name)}">${short}</span>` +
       `<span class="sw-ns">${escapeHtml(parts.slice(0, -1).join("."))}</span><span class="sw-loc">${where}</span>` +
       (editor ? editorAnchor(editor) : "") +
       `<span class="sw-acts">${pin}<button class="icon" data-sw-collapse aria-label="Collapse" title="Collapse to one line (or double-click the title bar)">${COLLAPSE}</button>` +
