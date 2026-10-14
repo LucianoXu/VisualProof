@@ -2584,7 +2584,7 @@ export class AgentApi {
       exact,
       carries: exact ? { ...carried, ...(region ? { region } : {}) } : { view: view.view, scope: view.scope, mode: view.mode, selection: view.selection ?? null, sel: view.sel },
       length: link.length,
-      note: "It holds no key: it opens for whoever is let in already — the people on this page. Opened, the page shows what it carries once, the region given framed on the opener's screen, and the reader is free after; what is no longer there is said in a line. To let someone new in, a person sends the public link from Share.",
+      note: "It holds no key: it opens for whoever is let in already — the people on this page. Opened, the page shows what it carries once, the region given framed on the opener's screen, and the reader is free after; what is no longer there is said in a line. To let someone new in, a person sends the guest link from Share.",
       ...(p.temporary ? { temporary: true } : {}),
     });
   }

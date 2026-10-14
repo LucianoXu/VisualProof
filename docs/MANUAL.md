@@ -84,10 +84,17 @@ The README says how to install the `visualproof` command. A checkout also runs a
   on to the page; agents send `Authorization: Bearer <key>`, or a token of their own that Share made
   (`vpa_…`, which reaches `/api/agent` only); everything else is answered 404. One key for everyone:
   taking someone out means a new key — or invite people one by one with a personal link from Share
-  (`/i/vpp_…`, see Together), which lets in only its holder and is revoked on its own. Over plain
+  (`/i/vpp_…`, see Together), which lets in only its holder and is revoked on its own; to show the
+  project without letting anyone change it, a read-only link (`/r/vpr_…`, see Together). Over plain
   HTTP the key crosses the network in the clear. The cookies' names are the server's own
-  (`visualproof_access_<12 hex>`, `visualproof_person_<12 hex>`), so two servers on one host keep
-  theirs apart.
+  (`visualproof_access_<12 hex>`, `visualproof_person_<12 hex>`, `visualproof_readonly_<12 hex>`),
+  so two servers on one host keep theirs apart.
+- `--public`, with `--access-key-file`: whoever comes without the key or a link of their own is let
+  in read-only (CollabSpec decision 11) instead of answered 404 — the way to put a showcase online.
+  They see what a guest sees, change nothing that is shared, and are seen by nobody; agents are
+  still let in only by the key or a token of their own. Without it, no address shows the project
+  to someone not given a link, so no reader can make a private project public. Not with
+  `--identity-header`, where the sign-in decides who comes in.
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
   address. Without it, the prompt carries the address the person's browser used.
@@ -96,7 +103,7 @@ The README says how to install the `visualproof` command. A checkout also runs a
   file's bytes from the library for good (a file added by mistake); nothing else does. Poppler
   (`pdfinfo`, `pdftotext`, `pdftoppm`) reads the PDFs on the server.
 - `GET /api/status` says how the server is: the graph, Lean (running, crashed and restarted), the
-  pages' event streams (at most 200 open), and the review — its folder and any log line that
+  pages' event streams (at most 200 open, and read-only readers' 400 more, counted apart), and the review — its folder and any log line that
   cannot be read. Only the graph's own modules are ever served as source or opened in Lean.
 - Pages far from the server wait on bytes, so the page's files and the graph are sent gzipped with
   a tag of their content: a browser that has them is answered 304 and loads in a second (14 KB
@@ -676,10 +683,19 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
 Everyone on a view shares its board ([CollabSpec.md](../SPEC/CollabSpec.md), [ViewSpec.md](../SPEC/ViewSpec.md));
 what each one looks at stays their own.
 
-- **Share** (top right) opens a small window with three tabs. **Public link**: a link to this view,
+- **Share** (top right) opens a small window with four tabs. **Guest link**: a link to this view,
   on what is selected and lit, public and reusable, copied at once (or shown to copy by hand, as plain HTTP may not allow
   copying). On a server started with `--access-key-file` the link carries the key: it lets whoever
-  has it in, as a guest who gives a name. **Invite a person** (CollabSpec decision 9): type their
+  has it in, as a guest who gives a name. **Read-only link** (CollabSpec decision 11), on a server
+  started with `--access-key-file`: **Create link** makes a link that shows the project and lets
+  whoever has it change nothing that is shared — the review, pins, notes, views, the library — nor
+  be seen: they are not listed, not counted, and cannot be followed or asked to follow, though they
+  may follow you. What they do stays in their page: the selection, the camera, folds, the windows,
+  the build browsed in the Time Machine, sources and Lean's hovers, Export. The link lasts until
+  revoked, and anyone it is passed on to comes in the same way; anyone let in may make one, and
+  show it again from the list. A read-only reader's Share has this tab alone, with the link they
+  came by. Started with `--public` too, the address alone is read-only: whoever comes without the
+  key or a link of their own reads, and this tab gives the address. **Invite a person** (CollabSpec decision 9): type their
   name, **Create link**, and send them the personal link, copied at once and shown only then. It
   lets them in and says who they are: their name carries a ✓ wherever it shows, nobody else can
   take it, and when they change it from the menu under it, what they did stays theirs and shows
@@ -688,9 +704,11 @@ what each one looks at stays their own.
   and for how long (1, 7 or 30 days); **Create** makes a token of its own, under your name, and a
   prompt that carries it, copied at once: paste it into any agent that can make HTTP requests, and
   tell it what you want done. The agent acts under the name given (`Alice's AI 2` while another
-  agent in force has it) and reaches the agents' API only. Below the tabs, the personal links in
-  force — for whom, who made each and when, when it was last used, **Revoke** (pressed twice), which
-  cuts it off at once — then the agents' tokens in force: who made each and when, when it expires,
+  agent in force has it) and reaches the agents' API only. Below the tabs, the read-only links in
+  force — who made each and when, when it was last used, **Show link** (or a click on it), and
+  **Revoke** (pressed twice, under your name), which closes every page it opened at once — then the
+  personal links in force — for whom, who made each and when, when it was last used, **Revoke**
+  (pressed twice), which cuts it off at once — then the agents' tokens in force: who made each and when, when it expires,
   when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy,
   and **Revoke** (pressed twice).
 - **Your name**, at the top right: opinions, pins and re-layouts are recorded under it. A click

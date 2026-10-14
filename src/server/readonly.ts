@@ -16,6 +16,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { ReadOnlyLink } from "../shared/collab.ts";
 import { cookieOf } from "./invites.ts";
 
 export const READONLY_PREFIX = "vpr_";
@@ -27,19 +28,6 @@ const MAX_AGE = 400 * 24 * 3600;
 const FLUSH_MS = 60_000;
 const ID = /^[0-9a-f]{10}$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
-
-/** A read-only link as Share lists it. */
-export interface ReadOnlyLink {
-  id: string;
-  /** the link's address, `/r/<token>` */
-  path: string;
-  /** who made it: a name, or null for someone who gave none */
-  by: string | null;
-  created: string;
-  revoked: string | null;
-  revokedBy: string | null;
-  lastUsed: string | null;
-}
 
 interface Record_ extends Omit<ReadOnlyLink, "path"> {
   token: string;

@@ -88,7 +88,7 @@ Fields go over your own place (none: your place): every `POST view` field but `l
   "link": "http://127.0.0.1:4199/#q=tcb%28flt_regular%29&mode=tcb&snap=zTcw…" }
 ```
 
-It holds no key: it opens only for people already let in (Share's public link lets someone new
+It holds no key: it opens only for people already let in (Share's guest link lets someone new
 in). Nothing after `#` reaches a server: `snap=` is all of it compressed (a few hundred
 characters); the address before it gives view, tool and selection for a browser that cannot read
 the snapshot. 404: a name that is no declaration (`didYouMean`), or a bad snapshot;

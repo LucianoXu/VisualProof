@@ -2,7 +2,7 @@
 // (`visualproof export`), which opens from disk with no server at all.
 
 import type { BoardMemory } from "../../shared/board.ts";
-import type { AgentTalk, AgentTokenInfo, ChatMessage, PersonInvite, PresenceView } from "../../shared/collab.ts";
+import type { AgentTalk, AgentTokenInfo, ChatMessage, PersonInvite, PresenceView, ReadOnlyLink } from "../../shared/collab.ts";
 import type { ClusterMode, ViewMeta } from "../../shared/graph.ts";
 import { CLUSTER_MODES } from "../../shared/places.ts";
 import { cleanQuery, printQuery } from "../../shared/query.ts";
@@ -153,8 +153,9 @@ export interface DataSource {
   presence(token: string, beat: Heartbeat): void;
   /** what the server's timeline holds (CollabSpec decision 5); a snapshot has none */
   activity(): Promise<StoredEvent[]>;
-  /** the path of the link that lets someone in (`/k/<key>`), or null where anyone is let in */
-  sharePath(): Promise<string | null>;
+  /** what this page may share (web/src/share.ts): the link that lets someone in, and whether
+   *  read-only links can be made here */
+  shareInfo(): Promise<ShareInfo>;
   /** sharing with AI agents (AgentSpec decision 7): the tokens in force and what a new one may be;
    *  null where there is no server (a snapshot) or it cannot be reached */
   agentShares(): Promise<AgentShares | null>;
@@ -173,6 +174,14 @@ export interface DataSource {
   invite(name: string): Promise<{ invite: PersonInvite; link: string; invites: PersonInvite[] } | { error: string; who?: boolean; taken?: boolean }>;
   /** revoke a personal link: the links in force after, or why not */
   revokeInvite(id: string): Promise<{ invites?: PersonInvite[]; error?: string; who?: boolean }>;
+  /** the read-only links (CollabSpec decision 11), in force first, each with its address; null
+   *  where there are none to have (a snapshot, a server that lets in anyone or is behind a
+   *  sign-in, a read-only reader) or the server cannot be reached */
+  readOnlyLinks(): Promise<ReadOnlyLinkShown[] | null>;
+  /** a read-only link, made under this reader's name if they have one, or why not */
+  makeReadOnly(): Promise<{ made: ReadOnlyLinkShown; links: ReadOnlyLinkShown[] } | { error: string }>;
+  /** revoke a read-only link: the links after, or why not (`who`: a name is needed) */
+  revokeReadOnly(id: string): Promise<{ links?: ReadOnlyLinkShown[]; error?: string; who?: boolean }>;
   /** an agent's conversation (AgentSpec decision 8), by the agent's id in presence; null where it
    *  cannot be read */
   chat(agent: string): Promise<{ agent: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
@@ -234,7 +243,26 @@ export interface Identity {
   taken?: string;
   /** the personal link this page came by, revoked: by whom, and when */
   revoked?: { by: string | null; at: string | null; name: string };
+  /** a read-only reader (CollabSpec decision 11): let in by a read-only link, or by --public */
+  readOnly?: { by: "link" | "public" };
 }
+
+/** What a page may share (`GET /api/share`, web/src/share.ts). */
+export interface ShareInfo {
+  /** the path of the link that lets someone in: `/k/<key>`; for a read-only reader the read-only
+   *  link they came by, or `/` where anyone may read (--public); null where anyone is let in */
+  path: string | null;
+  /** the reader is read-only (CollabSpec decision 11) */
+  readOnly?: boolean;
+  /** read-only links can be made here: the server lets in only those given a link, and no sign-in
+   *  stands in front of it */
+  readOnlyLinks?: boolean;
+  /** anyone who reaches the server may read it (--public) */
+  public?: boolean;
+}
+
+/** A read-only link as Share shows it: with its full address. */
+export type ReadOnlyLinkShown = ReadOnlyLink & { link: string };
 
 /** What a page's heartbeat says (CollabSpec decision 4): where it is; or, from a private page
  *  (decision 8), only that it is here. */
@@ -383,7 +411,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     exportHead: async () => "a snapshot cannot typeset documents: export from the server",
     exportDoc: async () => "a snapshot cannot typeset documents: export from the server",
     exportJob: async () => "a snapshot cannot typeset documents: export from the server",
-    sharePath: async () => null,
+    shareInfo: async () => ({ path: null }),
     agentShares: async () => null,
     shareAgent: async () => ({ error: "a snapshot has no server to share with an agent" }),
     agentPrompt: async () => ({ error: "a snapshot has no server" }),
@@ -392,6 +420,9 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     invites: async () => null,
     invite: async () => ({ error: "a snapshot has no server to invite anyone to" }),
     revokeInvite: async () => ({ error: "a snapshot has no server" }),
+    readOnlyLinks: async () => null,
+    makeReadOnly: async () => ({ error: "a snapshot has no server to share" }),
+    revokeReadOnly: async () => ({ error: "a snapshot has no server" }),
     chat: async () => null,
     sendChat: async () => ({ error: "a snapshot has no server" }),
     newChat: async () => ({ error: "a snapshot has no server" }),
@@ -515,15 +546,28 @@ function serverSource(): DataSource {
       fetch("/api/share/people/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
+    readOnlyLinks: () =>
+      fetch("/api/share/readonly")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b: { links?: ReadOnlyLinkShown[] } | null) => b?.links ?? null)
+        .catch(() => null),
+    makeReadOnly: () =>
+      fetch("/api/share/readonly", { method: "POST", headers: headers(), body: "{}" })
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
+    revokeReadOnly: (id) =>
+      fetch("/api/share/readonly/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
     activity: () =>
       fetch("/api/activity")
         .then((r) => (r.ok ? r.json() : { events: [] }))
         .then((b: { events: StoredEvent[] }) => b.events)
         .catch(() => []),
-    sharePath: () =>
+    shareInfo: () =>
       fetch("/api/share")
         .then((r) => r.json())
-        .then((b: { path?: unknown }) => (typeof b.path === "string" ? b.path : null)),
+        .then((b: ShareInfo) => ({ ...b, path: typeof b.path === "string" ? b.path : null })),
     agentShares: () =>
       fetch("/api/share/agents")
         .then((r) => (r.ok ? r.json() : null))

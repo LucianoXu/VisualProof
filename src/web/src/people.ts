@@ -97,7 +97,12 @@ export interface PeopleHooks {
   /** ask everyone to follow this reader, and why they cannot now (the name's menu) */
   askAll?(): void;
   askWhy?(): string | null;
+  /** say something in passing (the page's line) */
+  say?(text: string): void;
 }
+
+/** What a read-only reader is told of whatever would change what is shared (CollabSpec decision 11). */
+export const READ_ONLY = "This page is read-only: it changes nothing that is shared.";
 
 /** One person on the page: their sessions folded into one, the liveliest first; or an agent. */
 interface Person {
@@ -142,6 +147,10 @@ export class People {
   /** how this reader's name is given: their page's own, the proxy's, their personal link's (whose
    *  name they change through the server), or none at all (a snapshot) */
   mode: NameMode = "declared";
+  /** a read-only reader's page (CollabSpec decision 11): it gives no name, sends no heartbeat (so
+   *  that nobody sees it), and writes nothing; it sees the others and may follow them. How it was
+   *  let in: by a read-only link, or by --public; null for any other page. */
+  readOnly: "link" | "public" | null = null;
   name: string | null = null;
   /** the personal link this reader came by (CollabSpec decision 9), or null */
   person: PersonInvite | null = null;
@@ -197,6 +206,11 @@ export class People {
       const S = this.store.data;
       this.data.name = S.reviewer ?? null;
       const id = await this.data.identity();
+      if (id.readOnly) {
+        this.readOnly = id.readOnly.by;
+        this.mode = "none";
+        return this.setName(null);
+      }
       this.person = id.person ?? null;
       if (this.person) {
         // the link says who this is: the page sends no name, its cookie says it
@@ -236,6 +250,10 @@ export class People {
   /** The reader's name, asking for one (a modal window) when there is none; null if declined. */
   async ensure(): Promise<string | null> {
     await this.ready;
+    if (this.readOnly) {
+      this.hooks.say?.(READ_ONLY);
+      return null;
+    }
     if (this.name || this.mode !== "declared") return this.name;
     return this.ask("");
   }
@@ -245,6 +263,7 @@ export class People {
    *  decision 8). False when the reader declined to give one. */
   async ensureLayout(): Promise<boolean> {
     await this.ready;
+    if (this.readOnly) return (await this.ensure()) !== null;
     return this.hidden || (await this.ensure()) !== null;
   }
 
@@ -445,13 +464,13 @@ export class People {
 
   /** Where this page is changed: the others are told, a moment later; nothing, while private. */
   report(): void {
-    if (this.mode === "none" || this.hidden) return;
+    if (this.mode === "none" || this.readOnly || this.hidden) return;
     if (this.wait) clearTimeout(this.wait);
     this.wait = setTimeout(() => this.beat(), 300);
   }
 
   private beat(): void {
-    if (this.mode === "none") return;
+    if (this.mode === "none" || this.readOnly) return;
     if (this.wait) clearTimeout(this.wait);
     this.wait = null;
     // a heartbeat speaks for this page's stream, by its secret: none before the stream said hello;

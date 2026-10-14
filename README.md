@@ -80,9 +80,10 @@ visualproof serve flt-regular --host 0.0.0.0 --access-key-file ~/visualproof.key
 ```
 
 Whoever you give the link `http://<host>:4173/k/<key>` gets in; the key is what the file holds,
-and one is made if there is none. **Share** invites a person with a link of their own, or an AI
-agent with a token and a prompt. The server speaks plain HTTP: beyond a trusted network, put a TLS
-proxy in front. [SECURITY.md](SECURITY.md) says what the server trusts and what it exposes.
+and one is made if there is none. **Share** invites a person with a link of their own, shows the
+project with a read-only link (nothing changes, nobody sees the reader), or gives an AI agent a
+token and a prompt. To put a project online for anyone, read-only, add `--public`. The server
+speaks plain HTTP: beyond a trusted network, put a TLS proxy in front. [SECURITY.md](SECURITY.md) says what the server trusts and what it exposes.
 
 ## Documentation
 
