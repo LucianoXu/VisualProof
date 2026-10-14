@@ -69,6 +69,7 @@ test("a query's text reads back as the same query, and the text printed is canon
     "tcb(N.t) except trusted except external",
     "uses(A.b, C.d) and kind(theorem, def)",
     "usedBy(selection)",
+    "refs(N.t) or refs(file(M.A))",
     "ns(Fermat42) or file(Mathlib.NumberTheory)",
     "all and status(unreviewed, stale) except advice(comment)",
     "decl(A, B) or (tcb(C) except sorry)",
@@ -192,6 +193,7 @@ test("a query holds what it says, on the graph and the review", () => {
   assert.equal(ev("all").length, 7);
   assert.deepEqual(ev("tcb(N.t)"), ["N.t", "N.d", "N.e", "Ext.E"], "statement and bodies, proofs skipped");
   assert.deepEqual(ev("uses(N.t)"), ["N.t", "N.d", "N.e", "N.p", "Ext.E"]);
+  assert.deepEqual(ev("refs(N.t)"), ["N.t", "N.d", "N.p"], "what it uses directly, its proof's too: one step (Direct)");
   assert.deepEqual(ev("usedBy(N.d)"), ["N.t", "N.d", "N.x"]);
   assert.deepEqual(ev("tcb(N.t) except external"), ["N.t", "N.d", "N.e"]);
   // trusted: the outside world by its module (Mathlib), the project's own by a prefix (M.B)

@@ -1316,8 +1316,9 @@ export class Stickies {
 
   /** Put note `id` at a spot of the board inside cluster `key` (null: in none), as letting it go
    *  there would: the linear form's drop (web/src/linear.ts, ExportSpec decision 18). It keeps
-   *  whatever it is attached to. False where the board is not drawn or the note not on it. */
-  moveInto(id: string, key: string | null, world: [number, number]): boolean {
+   *  whatever it is attached to, unless `detach`. False where the board is not drawn or the note
+   *  not on it. */
+  moveInto(id: string, key: string | null, world: [number, number], detach = false): boolean {
     const d = this.drawn.get(id);
     const b = this.hooks.board();
     const nb = this.board();
@@ -1333,7 +1334,7 @@ export class Stickies {
       if (c >= 0) to = { kind: "view", place: viewPlaceIn(b.mode, world, clusters, c) };
     }
     if (!to) return false;
-    this.hooks.moved(id, { decl: d.note.decl ?? null, to });
+    this.hooks.moved(id, { decl: detach ? null : (d.note.decl ?? null), to });
     return true;
   }
 

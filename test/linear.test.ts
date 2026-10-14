@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Outline } from "../src/shared/doc/outline.ts";
-import { SITE_STMT } from "../src/shared/graph.ts";
+import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../src/shared/graph.ts";
 import { spotBetween } from "../src/shared/doc/order.ts";
 import { ZOOM_LEAST } from "../src/shared/sticky.ts";
 
@@ -16,14 +16,16 @@ type At = { nx: number[]; ny: number[]; cx: number[]; cy: number[]; r: number[] 
 function setup(
   outline: Outline,
   frozen: string | null = null,
-  opts: { names?: string[]; lit?: (i: number) => boolean; edges?: [number, number][]; at?: At; noteAt?: [number, number]; clamp?: (S: At) => void } = {},
+  opts: { names?: string[]; sites?: number; keyLinks?: number[]; lit?: (i: number) => boolean; edges?: [number, number, number?][]; at?: At; noteAt?: (id: string) => [number, number]; clamp?: (S: At) => void; texts?: Record<string, string>; open?: string[] } = {},
 ) {
   const g = globalThis as Record<string, unknown>;
   g.window ??= { addEventListener() {}, devicePixelRatio: 1 };
   g.requestAnimationFrame ??= () => 1;
   g.getComputedStyle ??= () => ({ getPropertyValue: () => "" });
   g.document ??= { body: {}, getElementById: () => null };
-  const el = { hidden: true, width: 0, height: 0, style: {} as Record<string, string>, addEventListener() {}, setPointerCapture() {}, getContext: () => new Proxy({}, { get: () => () => {} }) };
+  // a 2D context that draws nothing, its letters 6 px wide
+  const ctx = new Proxy({}, { get: (_t, key) => (key === "measureText" ? (t: string) => ({ width: 6 * t.length }) : () => {}) });
+  const el = { hidden: true, width: 0, height: 0, style: {} as Record<string, string>, addEventListener() {}, setPointerCapture() {}, getContext: () => ctx };
   const names = opts.names ?? ["A.a1", "A.a2", "A.B.b1", "top"];
   // the edges, from the one that uses, as the graph packs them
   const outStart = new Int32Array(names.length + 1);
@@ -31,7 +33,7 @@ function setup(
   for (const [u] of sorted) outStart[u + 1]++;
   for (let i = 0; i < names.length; i++) outStart[i + 1] += outStart[i];
   const outDst = Int32Array.from(sorted.map(([, t]) => t));
-  const outSite = Uint8Array.from(sorted.map(() => SITE_STMT));
+  const outSite = Uint8Array.from(sorted.map((e) => e[2] ?? SITE_STMT));
   const byName = new Map(names.map((n, i) => [n, i]));
   const calls: unknown[] = [];
   const canvas = {
@@ -69,13 +71,20 @@ function setup(
     const f = new LinearForm(el as never, canvas as never, {
       outline: async () => (asked++, structuredClone(outline)),
       graph: () => ({ byName, outStart, outDst, outSite }) as never,
-      noteSpot: () => opts.noteAt ?? [5, 5],
+      noteSpot: (id: string) => opts.noteAt?.(id) ?? [5, 5],
       lit: opts.lit ?? (() => false),
+      // as the board lights an edge: between two lit, of the sites `opts.sites` (all by default)
+      edgeLit: (u: number, v: number, site: number) => !!opts.lit?.(u) && !!opts.lit?.(v) && (site & (opts.sites ?? 0xff)) !== 0,
+      keyLinks: () => opts.keyLinks ?? null,
       selectDecl: (i) => calls.push(["select", i]),
       selectSection: (c) => calls.push(["section", c]),
       frozen: () => frozen,
       edges: () => ({ show: false, proofs: false }),
-      moveNote: (id, key, w) => (calls.push(["note", id, key, w]), true),
+      moveNote: (id, key, w, detach) => (calls.push(detach ? ["note", id, key, w, "detach"] : ["note", id, key, w]), true),
+      noteText: (id) => opts.texts?.[id] ?? null,
+      noteOpen: (id) => !!opts.open?.includes(id),
+      toggleNote: (id) => calls.push(["toggle", id]),
+      menu: (on, x, y, spot) => calls.push(["menu", on, spot]),
       say: (t) => said.push(t),
       changed: () => {},
     });
@@ -83,10 +92,11 @@ function setup(
   });
 }
 
-/** OUTLINE's board at rest, as its document reads it: in A, a1 lowest, then B, the note n, a2. */
-const BOARD: { at: At; noteAt: [number, number] } = {
+/** OUTLINE's board at rest, as its document reads it: in A, a1 lowest, then B, the note n, a2; the
+ *  note on1, attached to a1, beside it. */
+const BOARD: { at: At; noteAt: (id: string) => [number, number] } = {
   at: { nx: [0, 0, 50, 200], ny: [100, 40, 80, 0], cx: [0, 50], cy: [70, 80], r: [60, 10] },
-  noteAt: [5, 60],
+  noteAt: (id) => (id === "on1" ? [2, 99] : [5, 60]),
 };
 
 const OUTLINE: Outline = {
@@ -318,4 +328,88 @@ test("let go among declarations alone, each row between where it was and where i
     ],
   ]);
   assert.deepEqual(f.siblings(row("A.a0")).map((r: { name: string }) => r.name), ["A.a0", "A.a3", "A.a1", "A.a2", "A.a4"]);
+});
+
+test("the right click opens the board's menu on the row the pointer is on; a note written from it goes right after the row, a section's first in it, clear of its neighbours", async () => {
+  const { f, calls } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  f.t = 1;
+  const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+  // the line at x 400 (insets.left + 40% of 1000), a label at 416 + 14 a level, letters 6 px wide
+  const click = (name: string, x = 440) => {
+    // the line's top at 24 on the screen: insets.top + 24, the camera at the top, zoom 1
+    f.context({ preventDefault() {}, offsetX: x, offsetY: 24 + row(name).y0 + 2, clientX: x, clientY: 0 });
+    return calls.at(-1);
+  };
+  assert.deepEqual(click("A.a1"), ["menu", { kind: "decl", i: 0 }, [0, 90]], "after a1: halfway to B, the next");
+  assert.deepEqual(click("A.a1", 395), ["menu", { kind: "decl", i: 0 }, [0, 90]], "on its point");
+  assert.deepEqual(click("A.a1", 20), ["menu", null, null], "on the arcs' side: the board's");
+  assert.deepEqual(click("A.a1", 600), ["menu", null, null], "past its name: the board's");
+  assert.deepEqual(click("A.B"), ["menu", { kind: "cluster", c: 1, key: "A.B", folded: false }, [50, 85]], "B's first: halfway from b1 to B's bottom");
+  assert.deepEqual(click("n"), ["menu", { kind: "note", id: "n" }, [5, 50]], "after n: halfway to a2");
+  assert.deepEqual(click("A"), ["menu", { kind: "cluster", c: 0, key: "A", folded: false }, [0, 115]], "A's first: halfway from a1 to A's bottom");
+  assert.deepEqual(click("A.a2"), ["menu", { kind: "decl", i: 1 }, [0, 25]], "after the last: halfway to A's top");
+});
+
+test("a note attached to a declaration is dragged on its own, among its section's rows where it is read; let go elsewhere, it is attached no more, put between its new neighbours", async () => {
+  const { f, calls } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+  assert.deepEqual(f.siblings(row("on1")).map((r: { name: string }) => r.name), ["A.a1", "on1", "A.B", "n", "A.a2"]);
+  // right back after a1: nothing
+  assert.equal(f.place({ row: row("on1"), at: 1 }), false);
+  // between n and a2
+  assert.equal(f.place({ row: row("on1"), at: 4 }), true);
+  assert.deepEqual(calls.at(-1), ["note", "on1", "A", [2, 50], "detach"]);
+  assert.deepEqual(f.siblings(row("A.a1")).map((r: { name: string }) => r.name), ["A.a1", "A.B", "n", "on1", "A.a2"], "a note of the section now");
+  assert.equal(row("on1").attached, undefined);
+});
+
+test("a note opens and closes by a click, for everyone, as on the board; open, its text is set in lines under its row, the longest cut", async () => {
+  const { f, calls } = await setup(OUTLINE, null, { ...BOARD, open: ["n"], texts: { n: "word ".repeat(400) } });
+  await f.show("reader");
+  f.t = 1;
+  const n = f.rows.find((r: { name: string }) => r.name === "n");
+  assert.equal(n.lines.length, 14);
+  assert.ok(n.lines.at(-1).endsWith("…"));
+  assert.equal(n.y1 - n.y0, 14 * 16 + 8, "its lines are its row");
+  f.press = { x: 300, y: 0, row: n, moved: false, moves: false, camY: 0 };
+  f.up({ shiftKey: false });
+  assert.deepEqual(calls.at(-1), ["toggle", "n"]);
+});
+
+test("what the pointer is on is the row whose point and name it is over, lit: what a click selects and a drag takes; past the name, nothing", async () => {
+  const { f } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  f.t = 1;
+  const a1 = f.rows.find((r: { name: string }) => r.name === "A.a1");
+  const y = 24 + a1.y0 + 2;
+  // a1's label at 430, "a1" 12 px wide: its name ends at 442
+  assert.equal(f.rowAt(440, y), a1);
+  assert.equal(f.rowAt(449, y), a1, "a little past it");
+  assert.equal(f.rowAt(460, y), null);
+  assert.equal(f.rowAt(380, y), null, "left of the line");
+  f.move({ offsetX: 440, offsetY: y });
+  assert.equal(f.hover, "decl:A.a1");
+  f.move({ offsetX: 700, offsetY: y });
+  assert.equal(f.hover, null);
+  f.down({ button: 0, offsetX: 440, offsetY: y, pointerId: 1 });
+  assert.deepEqual([f.press.row, f.press.moves], [a1, true], "taken along by a drag");
+});
+
+test("an arc is lit as the board lights its edge: between two lit declarations, of what the mode follows — not one that only ends at the lit, nor a proof's under TCB; under Keys, the key graph's links, dashed", async () => {
+  const { outline, names } = many(3);
+  const top = names.length - 1;
+  // top uses a0 in its statement and a1 in its proof; a0 uses a1; a2 uses a0
+  const edges: [number, number, number][] = [[top, 0, SITE_STMT], [top, 1, SITE_PROOF], [0, 1, SITE_BODY], [2, 0, SITE_STMT]];
+  // TCB of top lit: top, a0, a1
+  const lit = (i: number) => i === top || i === 0 || i === 1;
+  const { f } = await setup(outline, null, { names, edges, lit, sites: SITE_STMT | SITE_BODY });
+  await f.show("reader");
+  const pairs = (keys?: number[]) => {
+    f.hooks.keyLinks = () => keys ?? null;
+    return f.arcPairs(true).map((p: { a: { name: string }; b: { name: string }; lit: boolean; key?: true }) => `${p.a.name}→${p.b.name}${p.lit ? " lit" : ""}${p.key ? " key" : ""}`).sort();
+  };
+  assert.deepEqual(pairs(), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1"]);
+  assert.deepEqual(pairs([top, 1]), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1", "top→A.a1 lit key"]);
 });

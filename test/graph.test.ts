@@ -32,6 +32,11 @@ test("Dependency follows everything", () => {
   assert.deepEqual(set(g.closure("deps", [0])), names);
 });
 
+test("Direct is one step, through statements, bodies and proofs alike", () => {
+  assert.deepEqual(set(g.closure("refs", [0])), ["thm", "P", "helper"]);
+  assert.deepEqual(set(g.closure("refs", [2])), ["D", "L", "X"]);
+});
+
 test("Application walks the edges backwards", () => {
   assert.deepEqual(set(g.closure("apps", [3])), ["thm", "P", "D", "L"]);
 });

@@ -92,9 +92,12 @@ of invisible clusters" is the view's hidden levels (decision 24).
 
 ## Rests on
 
-20. **Rests on is one mode in three steps**: Uses (everything used, proofs included) ⊇ TCB ⊇ Keys.
-    - The bar: *Selection | Rests on | Used by* (keys `1`–`3`), with a Uses / TCB / Keys switch while
-      Rests on is on. `2` again steps TCB → Keys → Uses. Entering Rests on resumes the last step (a
+20. **Rests on is one mode in four steps**: Uses (everything used, proofs included) ⊇ TCB ⊇ Keys;
+    and Direct (what it uses directly: the declarations its statement, body and proof refer to, one
+    step; `refs(X)`), added by the owner's decision of 2026-10-14: everything used selects all a
+    term depends on, to Zoom in on, and what it uses directly is what its code is read with.
+    - The bar: *Selection | Rests on | Used by* (keys `1`–`3`), with a Uses / TCB / Keys / Direct switch while
+      Rests on is on. `2` again steps TCB → Keys → Uses → Direct. Entering Rests on resumes the last step (a
       reading preference; TCB by default).
     - **Keys** selects X and the key declarations in its TCB: of the focus target (decision 28); with
       no focus, of every target, but a target clicked takes its own. The pick is `tcb(X) and (key(T…)
@@ -245,7 +248,7 @@ printed text is canonical: queries are the same when their texts are.
 query   := term { ("and" | "or" | "except") term }        left to right
 term    := "(" query ")"
          | "all" | "selection" | "trusted" | "external" | "sorry" | "nonstandard"
-         | ("tcb" | "uses" | "usedBy") "(" roots ")"
+         | ("tcb" | "uses" | "usedBy" | "refs") "(" roots ")"
          | "decl" "(" name { "," name } ")"
          | "key" "(" ( "targets" | name { "," name } ) ")"
          | ("ns" | "file") "(" name ")"
@@ -266,7 +269,8 @@ name    := a word without whitespace, "(", ")", "," or '"'  |  a JSON string
 - A name with whitespace, parentheses, a comma or a quote, or equal to `selection` (in `key`,
   `targets`), is a JSON string; quoted names are only arguments. Keywords ignore case; `namespace`,
   `module`, `decls` alias `ns`, `file`, `decl`.
-- Meaning: closures are TCB, everything used (proofs included), everything using; `ns(P)` names under
+- Meaning: closures are TCB, everything used (proofs included), everything using; `refs` is the
+  roots and what they refer to directly (statement, body, proof: one step); `ns(P)` names under
   P; `file(P)` modules under P; `external` outside the project; `sorry` rests on `sorryAx`;
   `nonstandard` rests on a non-standard axiom; `status`, `advice` (AgentSpec decision 2) of the
   present version; `key(T, …)` each target and its key marks still in its review set; `key(targets)`

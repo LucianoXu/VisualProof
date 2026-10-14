@@ -213,7 +213,7 @@ shows while the pointer is on its button, and nowhere else. With something selec
 another tool selects the pick last clicked again under it, alone: from Selection only the last
 pick stays; back to Selection, only the one thing clicked. **Rests on** is one mode at three
 granularities (ViewSpec decision 20), its steps beside it while it is the mode: `2` enters it at
-the step last used (TCB at first) and, pressed again, steps TCB → Keys → Uses.
+the step last used (TCB at first) and, pressed again, steps TCB → Keys → Uses → Direct.
 
 | Tool | A click on a declaration (or a cluster: all its declarations) selects | Key |
 |---|---|---|
@@ -221,6 +221,7 @@ the step last used (TCB at first) and, pressed again, steps TCB → Keys → Use
 | Rests on · Uses | it and everything it uses, proofs included | 2 |
 | Rests on · TCB | it and the definitions its statement rests on, proofs skipped | 2 |
 | Rests on · Keys | it and the key declarations in its TCB: where the review has a focus that target's, elsewhere every target's (a target clicked: its own); the key graph's edges join them, dashed | 2 |
+| Rests on · Direct | it and what it uses directly, in its statement, its body or its proof | 2 |
 | Used by | it and everything that uses it | 3 |
 
 A cluster picked covers the picks inside it. With any tool but Selection, a click makes the
@@ -635,14 +636,20 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   vertical line, in the document's order, the first at the top; a section's circle holds what it
   holds, each level of nesting one more circle, the labels on the right indented by depth, numbered
   as the PDF numbers its sections, the notes it prints in italics, and the edges (where ⋯ draws them)
-  as arcs on the left, orange at the end that uses and blue at the end used, as on the board. Things
+  as arcs on the left, orange at the end that uses and blue at the end used, bold where the board
+  draws its edge lit (both ends lit, of what the mode follows; under Keys, the key links, dashed). Things
   ease from where the board has them to the line, and back when the window closes. ⋯ → **Linear
   form**, or `o`, shows it at any time; those following you see it too. A section's ▸ (or a double
   click on its heading) folds it into one row with its count, the edges of what it holds ending
   there; a section of more than ten items starts folded, and the one the selection is in opens.
   What the document starts with, under no heading, has a heading of its own here, **In no
   section**, which folds the same. What you fold is yours alone. The wheel zooms about the pointer,
-  as far out as the board does; a drag on empty space pans, a click selects.
+  as far out as the board does. The row the pointer is over, from its point to the end of its name,
+  is lit: it is what a click selects, a drag moves and the right click is on; elsewhere a drag pans.
+  The **right click**
+  opens the board's menu on the row (Fold folds it here; Hide this level, notes, trust, views as on
+  the board); **Add a note here** puts the note right after the row (a section's: first in it). A
+  click on a note opens it, its text in place, or closes it.
   **Drag a declaration, a note or a section along the line** by its point or its label (the lock
   does not apply here) to move it among its siblings — never out of its section. It follows the
   pointer and the others make room; on release the board is changed as little as gives exactly the
@@ -650,7 +657,8 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   between its new neighbours, else the rows passed stacked anew (pins, for everyone on the view;
   notes moved in their cluster) — checked as the board will draw it, so the rest stay put; where
   the board has no room for that order, nothing moves and you are told. A note attached to a
-  declaration moves with it. Not on a snapshot, a read-only page or a past build's preview.
+  declaration moves with it; dragged on its own elsewhere, it is attached no more. Not on a
+  snapshot, a read-only page or a past build's preview.
 - **Artwork** (decision 19): the Export window's second tab makes a picture of the board, PNG or
   SVG. The window closes into framing: a frame in the middle of the screen, of the shape of the size
   chosen, the rest shaded and the panels put away, the whole board fitted in it to start with. Pan

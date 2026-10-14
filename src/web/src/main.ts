@@ -127,7 +127,7 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 
 /** The tools by name: the modes Selection and Used by, and the three steps of the mode Rests on
  *  (decided 2026-10-08, ViewSpec decision 20). */
-const MODE_NAME: Record<Tool, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", apps: "Used by" };
+const MODE_NAME: Record<Tool, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", refs: "Direct", apps: "Used by" };
 /** A tool as the others' list and the notes say it: a step with its mode. */
 const toolName = (t: Tool): string => (restsOn(t) ? `Rests on · ${MODE_NAME[t]}` : MODE_NAME[t]);
 
@@ -136,16 +136,18 @@ const toolName = (t: Tool): string => (restsOn(t) ? `Rests on · ${MODE_NAME[t]}
 const MODE_HINT: Record<Tool, string> = {
   plain: "A click selects just what you click; shift-click adds it or takes it out.",
   deps: "A click selects what you click and everything it uses, proofs included: the most it rests on.",
+  refs: "A click selects what you click and what it uses directly: in its statement, its body or its proof.",
   tcb: "A click selects the TCB of what you click: the definitions its statement rests on, proofs skipped.",
   keys:
     "A click selects what you click and the key declarations in its TCB: where the review has a focus, that target's; elsewhere every target's, or a target's own when you click a target. " +
     "Dashed edges are the key graph: from A to B when A rests on B through declarations that are not key.",
   apps: "A click selects what you click and everything that uses it.",
 };
-/** What Rests on is, while the pointer is on its button: the question its steps answer, at three
- *  granularities, everything used ⊇ the TCB ⊇ the key declarations in it. */
+/** What Rests on is, while the pointer is on its button: the question its steps answer, at the
+ *  granularities everything used ⊇ the TCB ⊇ the key declarations in it, and one step: what it uses
+ *  directly (ViewSpec decision 20). */
 const RESTS_HINT = "A click selects what you click rests on, as much of it as the step says:";
-const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything it uses, proofs included", tcb: "what its statement rests on, proofs skipped", keys: "the key declarations in its TCB" };
+const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything it uses, proofs included", refs: "what it uses directly, proofs included", tcb: "what its statement rests on, proofs skipped", keys: "the key declarations in its TCB" };
 /** What a tap selects with each tool, in a few words: under the tool's name in a phone's ⋯, where
  *  nothing is said while a pointer rests on a button (web/src/phone.ts). */
 const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap", apps: "everything that uses it" };
@@ -995,11 +997,27 @@ async function boot(): Promise<void> {
     graph: () => vg(),
     noteSpot: (id) => stickies.spotOf(id),
     lit: (i) => !!canvas.active?.[i],
+    edgeLit: (u, v, site) => canvas.edgeLit(u, v, site),
+    keyLinks: () => canvas.keyLinks,
     selectDecl: (i, shift) => void clickOn(pickDecl(vg().nodes[i].name), shift),
     selectSection: (c, shift) => void clickOn(pickCluster(c), shift),
     frozen: () => (frozen() ? frozenWhy() : null),
     edges: () => ({ show: S.showEdges, proofs: S.proofEdges }),
-    moveNote: (id, key, world) => stickies.moveInto(id, key, world),
+    moveNote: (id, key, world, detach) => stickies.moveInto(id, key, world, detach),
+    noteText: (id) => noteOf(id)?.note.text ?? null,
+    noteOpen: (id) => !!noteOf(id)?.note.open,
+    toggleNote: (id) => {
+      const n = noteOf(id);
+      if (frozen()) return say(frozenWhy());
+      if (n?.kind === "project") void projectOps([{ op: "pnote-open", id: n.note.id, open: !n.note.open }]);
+      else if (n) noteOps([{ op: "note-open", id: n.note.id, open: !n.note.open }]);
+    },
+    // the board's menu on what a row is; Fold and Fit are the form's (menuAct)
+    menu: (on, x, y, spot) => {
+      if (on?.kind === "note") openNoteMenu(on.id, x, y);
+      else openMenu(on?.kind === "decl" ? { kind: "node", i: on.i } : on ? { kind: "cluster", c: on.c } : null, x, y, spot ?? canvas.toWorld(x, y), false, on?.kind === "cluster" ? on.folded : undefined);
+      if (menuOn) menuOn.linear = true;
+    },
     // the Export window, at the right, beside which the line is drawn
     beside: () => (exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
     say: (text) => say(text),
@@ -2998,7 +3016,7 @@ async function boot(): Promise<void> {
 
   /** What the menu is open on: the target, its declaration in the whole graph's numbering or its
    *  cluster on the board, the part of a scope it is (decl(X), or the cluster's set), and where. */
-  let menuOn: { t: MenuTarget; i?: number; c?: number; note?: string; part: Query | null; world: [number, number]; at: { x: number; y: number } } | null = null;
+  let menuOn: { t: MenuTarget; i?: number; c?: number; note?: string; part: Query | null; world: [number, number]; at: { x: number; y: number }; linear?: boolean } | null = null;
   const ctxMenu = new ContextMenu($("#ctxmenu"), {
     chose: (act, name) => void menuAct(act, name),
     // what it was open on was lit for it: no longer
@@ -3060,8 +3078,9 @@ async function boot(): Promise<void> {
     };
   };
   /** Open the menu on what is at a point of the window: a declaration or a cluster of the board,
-   *  or the empty canvas; `keys`: from the keyboard. What it is open on is lit while it is. */
-  const openMenu = (t: Target | null, x: number, y: number, world: [number, number], keys = false) => {
+   *  or the empty canvas; `keys`: from the keyboard; `folded`: a cluster folded where the menu is
+   *  open (the linear form's own folds). What it is open on is lit while it is. */
+  const openMenu = (t: Target | null, x: number, y: number, world: [number, number], keys = false, folded?: boolean) => {
     const title = views.title(nav.board.id);
     // the menu says what it is on: the pointer's tooltip goes
     $("#tip").hidden = true;
@@ -3088,7 +3107,7 @@ async function boot(): Promise<void> {
     } else if (t?.kind === "cluster") {
       const cl = canvas.layout.clusters[t.c];
       const st = trust.state(cl, cm());
-      const mt: MenuTarget = { kind: "cluster", key: cl.key, folded: canvas.folded.has(t.c), folder: cm() === "module", trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null };
+      const mt: MenuTarget = { kind: "cluster", key: cl.key, folded: folded ?? canvas.folded.has(t.c), folder: cm() === "module", trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null };
       menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y } };
       canvas.previewCluster(t.c);
       ctxMenu.show(menuItems(mt, menuContext(menuOn.part), title), x, y, cl.key.replace("⟨external⟩", "External"), keys);
@@ -3630,13 +3649,15 @@ async function boot(): Promise<void> {
         return;
       }
       case "fold":
-        if (on.c !== undefined) canvas.toggleFold(on.c);
+        if (on.linear && t.kind === "cluster") linear.toggleFold(t.key);
+        else if (on.c !== undefined) canvas.toggleFold(on.c);
         return;
       case "hide":
         if (t.kind === "cluster") hideLevel(t.key);
         return;
       case "fit":
-        canvas.fit();
+        if (on.linear) linear.fit();
+        else canvas.fit();
         return;
       case "relayout":
         await relayout();

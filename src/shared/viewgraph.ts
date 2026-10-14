@@ -4,7 +4,7 @@
 import type { ViewMeta, ViewNode } from "./graph.ts";
 import { SITE_BODY, SITE_GRAMMAR, SITE_PROOF, SITE_STMT } from "./graph.ts";
 
-export type Mode = "plain" | "tcb" | "deps" | "apps";
+export type Mode = "plain" | "tcb" | "deps" | "refs" | "apps";
 
 export const ALL_SITES = SITE_STMT | SITE_BODY | SITE_PROOF | SITE_GRAMMAR;
 
@@ -15,6 +15,7 @@ export const MODE_SITES: Record<Mode, number> = {
   plain: ALL_SITES,
   tcb: SITE_STMT | SITE_BODY,
   deps: ALL_SITES,
+  refs: ALL_SITES,
   apps: ALL_SITES,
 };
 
@@ -77,6 +78,19 @@ export class Graph {
     return i >= this.projectCount;
   }
 
+  /** `from` and what is one edge from it, along edges whose sites meet `sites`. */
+  step(from: Iterable<number>, sites: number, dir: "out" | "in"): Uint8Array {
+    const seen = new Uint8Array(this.n);
+    const start = dir === "out" ? this.outStart : this.inStart;
+    const adj = dir === "out" ? this.outDst : this.inSrc;
+    const site = dir === "out" ? this.outSite : this.inSite;
+    for (const u of from) {
+      seen[u] = 1;
+      for (let e = start[u]; e < start[u + 1]; e++) if (site[e] & sites) seen[adj[e]] = 1;
+    }
+    return seen;
+  }
+
   /** Everything reachable from `from` (included) along edges whose sites meet `sites`. */
   reach(from: Iterable<number>, sites: number, dir: "out" | "in"): Uint8Array {
     const seen = new Uint8Array(this.n);
@@ -115,6 +129,9 @@ export class Graph {
         return this.reach(focus, MODE_SITES.tcb, "out");
       case "deps":
         return this.reach(focus, ALL_SITES, "out");
+      // Direct: what it uses directly, one step (ViewSpec decision 20, the owner's decision of 2026-10-14)
+      case "refs":
+        return this.step(focus, ALL_SITES, "out");
       case "apps":
         return this.reach(focus, ALL_SITES, "in");
     }

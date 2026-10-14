@@ -1,15 +1,17 @@
 // What the reader selects (decided 2026-10-07): a list of picks. A pick is one thing clicked under
-// one tool — a declaration x under Selection, Uses, TCB or Used by is decl(x), uses(x), tcb(x) or
-// usedBy(x), and under Keys x with the key declarations in its TCB (shared/query.ts, keysQuery); a
+// one tool — a declaration x under Selection, Uses, TCB, Direct or Used by is decl(x), uses(x),
+// tcb(x), refs(x) or usedBy(x), and under Keys x with the key declarations in its TCB
+// (shared/query.ts, keysQuery); a
 // cluster is the same tools over all of its declarations — and the selection is the union of its
 // picks, itself a query of shared/query.ts: `pick or pick or …`. What is lit is that set, evaluated
 // on the whole graph and cut to what the board holds (shared/board.ts, lightUp), so a pick means the
 // same declarations on every board and a view of it holds what was lit. The mode is the tool: how
 // the next click selects.
 //
-// Uses, TCB and Keys are one mode, Rests on, at three granularities of what a declaration rests on
-// (decided 2026-10-08, ViewSpec decision 20): everything it uses, proofs included, ⊇ its TCB ⊇ the
-// key declarations in its TCB. Each is a tool of its own, a step of that mode.
+// Uses, TCB, Keys and Direct are one mode, Rests on, at the granularities of what a declaration
+// rests on (decided 2026-10-08, ViewSpec decision 20): everything it uses, proofs included, ⊇ its
+// TCB ⊇ the key declarations in its TCB; and what it uses directly (one step, the owner's decision
+// of 2026-10-14). Each is a tool of its own, a step of that mode.
 //
 // Everything here is without the page, so that it can be tested: what a pick's query is and what
 // it says in words, reading picks back from a query (an address, a reader followed, an agent), what
@@ -26,7 +28,7 @@ import type { Mode } from "../../shared/viewgraph.ts";
 export type Tool = Mode | "keys";
 
 /** Every tool, as the address and presence name them (web/src/state.ts). */
-export const TOOLS: Tool[] = ["plain", "deps", "tcb", "keys", "apps"];
+export const TOOLS: Tool[] = ["plain", "deps", "tcb", "keys", "refs", "apps"];
 
 /** Whose key declarations a Keys pick holds (ViewSpec decision 20): a target's, by name — the
  *  focus of the board it is made on, or the target clicked — or null for every target's. */
@@ -47,8 +49,8 @@ export interface Pick {
 /** What the panel tells of: a declaration by name, or a cluster by key. */
 export type Shown = { decl: string } | { cluster: string };
 
-const CLOSURE = { tcb: "tcb", deps: "uses", apps: "usedBy" } as const;
-const TOOL_OF: Record<string, Tool> = { tcb: "tcb", uses: "deps", usedBy: "apps" };
+const CLOSURE = { tcb: "tcb", deps: "uses", refs: "refs", apps: "usedBy" } as const;
+const TOOL_OF: Record<string, Tool> = { tcb: "tcb", uses: "deps", refs: "refs", usedBy: "apps" };
 const EXT = "⟨external⟩";
 
 const keysOf = (k: KeysOf): string[] | "targets" => (k === null ? "targets" : [k]);
@@ -100,7 +102,7 @@ export function pickOf(q: Query): Pick {
   if (q.op === "decl" && q.names.length === 1) return { tool: "plain", root: { decl: q.names[0] }, q };
   const k = readKeys(q);
   if (k) return { tool: "keys", root: typeof k.from === "string" ? { decl: k.from } : clusterOf(k.from), q };
-  if (q.op === "tcb" || q.op === "uses" || q.op === "usedBy") {
+  if (q.op === "tcb" || q.op === "refs" || q.op === "usedBy" || q.op === "uses") {
     const root = Array.isArray(q.of) ? (q.of.length === 1 ? { decl: q.of[0] } : null) : q.of === "selection" ? null : clusterOf(q.of);
     return { tool: TOOL_OF[q.op], root, q };
   }
@@ -159,7 +161,7 @@ export function pickWords(p: Pick): string {
     what = `${r.by === "module" ? "file" : "ns"} ${short(ext ? r.cluster.slice(EXT.length + 1) : r.cluster)}${ext ? " (outside)" : ""}`;
   }
   if (p.tool === "keys") return `keys ${what} rests on`;
-  return p.tool === "tcb" ? `TCB of ${what}` : p.tool === "deps" ? `what ${what} uses` : p.tool === "apps" ? `what uses ${what}` : what;
+  return p.tool === "tcb" ? `TCB of ${what}` : p.tool === "deps" ? `what ${what} uses` : p.tool === "refs" ? `what ${what} uses directly` : p.tool === "apps" ? `what uses ${what}` : what;
 }
 
 /** What the panel tells of when a pick was the last clicked: its root. */
@@ -247,8 +249,8 @@ export function edgeMode(picks: Pick[]): Mode {
 // ---------------------------------------------------------------- Rests on and its steps
 
 /** The steps of Rests on, as its switch shows them: from everything used to the few key
- *  declarations (decided 2026-10-08, ViewSpec decision 20). */
-export const STEPS: Tool[] = ["deps", "tcb", "keys"];
+ *  declarations, then what it uses directly (decided 2026-10-08 and 2026-10-14, ViewSpec decision 20). */
+export const STEPS: Tool[] = ["deps", "tcb", "keys", "refs"];
 
 /** Whether a tool is a step of Rests on. */
 export const restsOn = (t: Tool): boolean => STEPS.includes(t);
@@ -260,10 +262,10 @@ export function enterStep(last: Tool | null | undefined): Tool {
 }
 
 /** What key 2 makes the tool: Rests on at the step last used (enterStep) from any other mode; within
- *  Rests on, the next step — TCB, Keys, Uses, TCB again. */
+ *  Rests on, the next step — TCB, Keys, Uses, Direct, TCB again. */
 export function keyTwo(now: Tool, last: Tool | null | undefined): Tool {
   if (!restsOn(now)) return enterStep(last);
-  const cycle: Tool[] = ["tcb", "keys", "deps"];
+  const cycle: Tool[] = ["tcb", "keys", "deps", "refs"];
   return cycle[(cycle.indexOf(now) + 1) % cycle.length];
 }
 

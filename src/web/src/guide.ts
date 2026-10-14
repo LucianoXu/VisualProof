@@ -93,6 +93,7 @@ const TOUCH: [string, Row[]][] = [
       { g: "Rests on · Uses", what: "and everything it uses, proofs included" },
       { g: "Rests on · TCB", what: "and what its statement rests on, proofs skipped: its trusted computing base" },
       { g: "Rests on · Keys", what: "and the key declarations in its TCB" },
+      { g: "Rests on · Direct", what: "and what it uses directly, proofs included" },
       { g: "Used by", what: "and everything that uses it" },
     ],
   ],
@@ -138,7 +139,7 @@ const KEYS: [string, Row[]][] = [
       { g: "click", what: "select a declaration, or a cluster (a circle, a row of the tree)" },
       { k: ["Shift"], g: "click", what: "with Selection: add it, or take it out" },
       { k: ["1", "2", "3"], what: "how a click selects: just it, what it rests on, what uses it" },
-      { k: ["2"], g: "again", what: "Rests on's next step: its TCB, the key declarations in it, everything it uses" },
+      { k: ["2"], g: "again", what: "Rests on's next step: its TCB, the key declarations in it, everything it uses, what it uses directly" },
       { g: "click empty space", what: "select nothing (also Esc)" },
       { k: ["Space"], what: "the selection's source, in a window that follows it" },
       { g: "the pin of a source window", what: "keep it on its declaration: the next opens beside it" },
@@ -289,7 +290,7 @@ export class Guide {
       },
       {
         title: "Select",
-        text: "Click a declaration, or a circle for all of its declarations. <b>Mode</b> is how a click selects: just it, what it <b>rests on</b> (everything it uses, its TCB, or the key declarations in it: <b>2</b> again for the next), or what uses it. Rest the pointer on a mode to read it. What you selected is listed above the panel.",
+        text: "Click a declaration, or a circle for all of its declarations. <b>Mode</b> is how a click selects: just it, what it <b>rests on</b> (everything it uses, its TCB, the key declarations in it, or what it uses directly: <b>2</b> again for the next), or what uses it. Rest the pointer on a mode to read it. What you selected is listed above the panel.",
         before: () => {
           const i = this.hooks.example();
           if (i !== null) this.hooks.select(i);

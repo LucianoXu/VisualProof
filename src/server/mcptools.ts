@@ -203,7 +203,7 @@ export const TOOLS: ToolDef[] = [
       review: str("a target: be on its view"),
       sel: str("the declaration you look at"),
       selection: str("what you select, as a query: decl(A.b) or tcb(A.c)"),
-      mode: str("how you select: plain; Rests on's deps, tcb, keys; apps", ["plain", "deps", "tcb", "keys", "apps"]),
+      mode: str("how you select: plain; Rests on's deps, tcb, keys, refs (what it uses directly); apps", ["plain", "deps", "tcb", "keys", "refs", "apps"]),
       source: bool("the source window open on sel"),
       paper: PAPER,
       focus: str("your focus on the view: a target, \"none\", or \"view\" for the view's own"),

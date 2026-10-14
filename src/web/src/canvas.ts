@@ -1123,6 +1123,20 @@ export class GraphCanvas {
     this.invalidate();
   }
 
+  /** Whether the edge u → v (of sites `site`) is drawn lit, as the board draws it (recomputeEdges):
+   *  between two lit declarations, of the sites the mode follows; none while the key graph's edges
+   *  are drawn instead (keyLinks). The linear form's arcs follow it (web/src/linear.ts). */
+  edgeLit(u: number, v: number, site: number): boolean {
+    const act = this.active;
+    return !this.keyEdges && !!act && !!act[u] && !!act[v] && (site & MODE_SITES[this.mode]) !== 0;
+  }
+
+  /** The key graph's edges drawn under the Keys step of Rests on, as pairs of nodes (the one that
+   *  rests on, then the one it rests on); null where they are not drawn. */
+  get keyLinks(): readonly number[] | null {
+    return this.keyEdges;
+  }
+
   /** Edges between active nodes that the mode follows, as triples (u, v, sites); none where the key
    *  graph's edges are drawn instead. */
   private recomputeEdges(): void {

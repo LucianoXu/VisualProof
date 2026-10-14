@@ -19,15 +19,28 @@
 // What is folded is the reader's own. The wheel zooms about the pointer as far as the board's does;
 // a drag on empty room pans.
 //
+// The right click opens the board's menu (ViewSpec decision 21) on what a row is — a declaration, a
+// section's cluster, a note — or on the board where it is on none: Fold folds a section here; a
+// note written from it goes right after the row (a section's: first in it), where the board would
+// read it there. A click on a note opens it or closes it, its text under it, as on the board (its
+// open state is the note's own, shared).
+//
+// What the pointer is on is the row whose point and name it is over, from the point to the name's end
+// (a folded section's count, an open note's card): lit while it is, it is what a click selects, a
+// drag takes and the right click opens the menu on (the owner's words of 2026-10-14: predictable).
+// Elsewhere a drag pans and the right click opens the board's menu.
+//
 // Dragging a declaration, a note or a section by its point or its label moves it among its siblings,
-// never out of its section, whatever the board's lock. As on the board, what is dragged follows the
+// never out of its section, whatever the board's lock. A note attached to a declaration moves with
+// it; dragged on its own and let go anywhere but right after it, it is attached no more, a note of
+// the section where it is let go (the document reads an attached note right after its declaration). As on the board, what is dragged follows the
 // pointer, off the line if the pointer goes there, and its siblings make room where it would go,
 // easing aside; at the edges the line scrolls. Let go, it settles on the line in that room and is
 // put on the board between its new neighbours, as a drop there would put it (web/src/canvas.ts,
 // orderSpot): a pin, for everyone on the view; a note moved within its cluster. The document's
 // order follows, and the outline is asked for again.
 
-import type { Outline, OutlineItem, OutlineNote, OutlineSection } from "../../shared/doc/outline.ts";
+import type { Outline, OutlineDecl, OutlineItem, OutlineNote, OutlineSection } from "../../shared/doc/outline.ts";
 import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../../shared/graph.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
@@ -44,6 +57,10 @@ export interface LinearHooks {
   noteSpot(id: string): [number, number] | null;
   /** whether declaration `i` (the canvas's numbering) is selected or lit, drawn larger */
   lit(i: number): boolean;
+  /** whether the board draws edge u → v (of sites `site`) lit (canvas.edgeLit) */
+  edgeLit(u: number, v: number, site: number): boolean;
+  /** the key graph's edges the board draws under Keys, pairs of nodes; null where it does not */
+  keyLinks(): readonly number[] | null;
   selectDecl(i: number, shift: boolean): void;
   selectSection(c: number, shift: boolean): void;
   /** why nothing on the board can be moved now (a snapshot, a read-only page, a past build's
@@ -51,14 +68,27 @@ export interface LinearHooks {
   frozen(): string | null;
   /** the edges the board draws, and its proof edges */
   edges(): { show: boolean; proofs: boolean };
-  /** put a note at a spot of the board in its cluster (null: none), as a drag would */
-  moveNote(id: string, key: string | null, world: [number, number]): boolean;
+  /** put a note at a spot of the board in its cluster (null: none), as a drag would; `detach`: no
+   *  longer attached to its declaration */
+  moveNote(id: string, key: string | null, world: [number, number], detach?: boolean): boolean;
+  /** a note's text, and whether it is open (its own state, shared) */
+  noteText(id: string): string | null;
+  noteOpen(id: string): boolean;
+  /** open a note, or close it, for everyone, as on the board */
+  toggleNote(id: string): void;
   say(text: string): void;
   /** the room taken at the right of the board beyond its panels (the Export window) */
   beside?(): number;
   /** the form was shown or put away */
   changed(on: boolean): void;
+  /** the board's menu, at a point of the screen, on what a row is (null: the board), and where on
+   *  the board a note written from it goes, now (null: where the board's would) */
+  menu(on: MenuOn | null, x: number, y: number, spot: [number, number] | null): void;
 }
+
+/** What the linear form's menu is open on: a declaration (the canvas's numbering), a section's
+ *  cluster (folded here or not), a note. */
+export type MenuOn = { kind: "decl"; i: number } | { kind: "cluster"; c: number; key: string; folded: boolean } | { kind: "note"; id: string };
 
 /** A row's height, the room a point and its label take on the line, and the room a section's
  *  circle keeps below what it holds, in the form's units (screen pixels at its zoom 1). */
@@ -69,6 +99,10 @@ const LABEL_AT = 16;
 const INDENT = 14;
 /** the room a section's ▸ takes before its title */
 const TRI = 13;
+/** an open note's text: a line's height, how wide it is set, and the most lines shown */
+const LINE = 16;
+const NOTE_W = 420;
+const NOTE_LINES = 14;
 const DOT = 4;
 const EASE_MS = 480;
 /** how fast a row eases to where it goes while rows make room (ms, the time constant) */
@@ -109,6 +143,8 @@ interface Row {
   members?: number[];
   /** the heading of the start of the document, which is no section: neither moved nor selected */
   start?: true;
+  /** an open note: its text, set in lines under its row */
+  lines?: string[];
   /** where the board drew it when the form eased in: centre and radius on the screen */
   from?: [number, number, number];
 }
@@ -157,6 +193,8 @@ export class LinearForm {
   /** where a row is drawn off its place on the line, by its key: `dy` in the outline's units, `dx`
    *  on the screen, easing to `ty`, `tx` */
   private off = new Map<string, { dy: number; dx: number; ty: number; tx: number }>();
+  /** the row the pointer is on, by its key (keyOf): lit */
+  private hover: string | null = null;
   private turn = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private dpr = 1;
@@ -170,7 +208,9 @@ export class LinearForm {
     el.addEventListener("pointermove", (e) => this.move(e));
     el.addEventListener("pointerup", (e) => this.up(e));
     el.addEventListener("pointercancel", () => this.cancel());
+    el.addEventListener("pointerleave", () => this.setHover(null));
     el.addEventListener("dblclick", (e) => this.dbl(e));
+    el.addEventListener("contextmenu", (e) => this.context(e));
     el.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
     window.addEventListener("resize", () => this.request());
   }
@@ -265,8 +305,11 @@ export class LinearForm {
     const open = new Set<string>();
     let y = 0;
     const note = (n: OutlineNote, depth: number, group: OutlineItem[], inKey: string | null, attached: boolean) => {
-      rows.push({ kind: "note", k: -1, name: n.id, label: n.words || "Note", depth, y0: y, y1: y + ROW, cy: y + ROW / 2, item: n, group, in: inKey, ...(attached ? { attached: true as const } : {}) });
-      y += ROW;
+      const lines = this.hooks.noteOpen(n.id) ? this.setText(this.hooks.noteText(n.id) ?? n.words ?? "") : [];
+      // open, its text is its row: a card from the row's top, in its label's place
+      const h = lines.length ? Math.max(ROW, lines.length * LINE + 8) : ROW;
+      rows.push({ kind: "note", k: -1, name: n.id, label: n.words || "Note", depth, y0: y, y1: y + h, cy: y + ROW / 2, item: n, group, in: inKey, ...(attached ? { attached: true as const } : {}), ...(lines.length ? { lines } : {}) });
+      y += h;
     };
     /** `fold`: the folded section the walk is in, which stands for all it holds; `path`: the keys
      *  of the sections around; `group`: the list the items are ordered in */
@@ -342,6 +385,39 @@ export class LinearForm {
     this.byY = rows;
     this.under = under;
     this.height = y;
+  }
+
+  /** A note's text in lines NOTE_W wide, its Markdown marks left out, at most NOTE_LINES. */
+  private setText(text: string): string[] {
+    const c = this.ctx;
+    c.font = `12px ${FONT}`;
+    const plain = text.replace(/\*\*|`/g, "").replace(/(^|\s)\*(\S[^*]*)\*/g, "$1$2");
+    const out: string[] = [];
+    for (const para of plain.split("\n")) {
+      let line = "";
+      for (const word of para.split(/\s+/).filter(Boolean)) {
+        const next = line ? `${line} ${word}` : word;
+        if (line && (c.measureText(next).width ?? 0) > NOTE_W) {
+          out.push(line);
+          line = word;
+        } else line = next;
+      }
+      out.push(line);
+    }
+    return out.length > NOTE_LINES ? [...out.slice(0, NOTE_LINES - 1), `${out[NOTE_LINES - 1]} …`] : out;
+  }
+
+  /** Fold the section of cluster `key` here, or open it (the menu's Fold). */
+  toggleFold(key: string): void {
+    const r = this.rows.find((x) => x.kind === "section" && x.name === key);
+    if (r) this.fold(r);
+  }
+
+  /** The whole line on the screen (the menu's Fit). */
+  fit(): void {
+    const v = this.view();
+    this.cam = { y: 0, k: Math.min(1, Math.max(ZOOM_LEAST, (v.h - v.top - 24) / Math.max(this.height, 1))) };
+    this.request();
   }
 
   /** Fold a section, or open it; its heading stays where it is on the screen. */
@@ -577,13 +653,30 @@ export class LinearForm {
         }
         c.font = r.start ? `italic 600 13px ${FONT}` : this.fontOf(r, lit);
         c.fillStyle = r.kind === "section" ? (lit ? css("--accent") : css("--text")) : lit ? css("--accent") : r.kind === "note" ? css("--text-2") : css("--label") || css("--text");
-        c.fillText(r.label, x, yy);
+        if (!r.lines) c.fillText(r.label, x, yy);
         if (r.members) {
           // what a folded section holds
           const wl = c.measureText(r.label).width;
           c.font = `12px ${FONT}`;
           c.fillStyle = css("--text-3");
           c.fillText(`${r.members.length}`, x + wl + 8, yy);
+        }
+        if (r.lines && all) {
+          // an open note's text, in a card under its row, as large as the zoom lets its lines be
+          const size = Math.min(12, LINE * k * 0.75);
+          if (size >= 7) {
+            const top = sy(r.y0 + 3 + oy(r)), h = r.lines.length * LINE * k + 6 * k;
+            c.save();
+            c.globalAlpha *= 0.9;
+            c.fillStyle = css("--note-bg") || "rgba(255,240,180,0.6)";
+            c.beginPath();
+            c.roundRect(x - 6, top, NOTE_W + 12, h, 6);
+            c.fill();
+            c.restore();
+            c.font = `${size}px ${FONT}`;
+            c.fillStyle = css("--text");
+            r.lines.forEach((line, j) => c.fillText(line, x, top + 3 * k + (j + 0.5) * LINE * k));
+          }
         }
       }
       c.globalAlpha = 1;
@@ -596,6 +689,22 @@ export class LinearForm {
     circles(still);
     const e = this.hooks.edges();
     if (e.show && p > 0.6) this.arcs(c, (r) => [v.x + ox(r), sy(r.cy + oy(r))], e.proofs, (p - 0.6) / 0.4, css);
+    // the row the pointer is on: its point and its name, lit
+    const on = this.hover && !this.drag ? this.rows.find((r) => keyOf(r) === this.hover) : undefined;
+    if (on && p >= 1) {
+      const top = sy(on.y0 + oy(on)), bottom = sy((on.kind === "section" ? on.y0 + ROW : on.y1) + oy(on));
+      const x0 = v.x - 12 + ox(on), x1 = this.nameEnd(on) + 8 + ox(on);
+      c.save();
+      c.fillStyle = css("--accent");
+      c.globalAlpha = 0.1;
+      c.beginPath();
+      c.roundRect(x0, top + 1, x1 - x0, Math.max(4, bottom - top - 2), 6);
+      c.fill();
+      c.globalAlpha = 0.35;
+      c.strokeStyle = css("--accent");
+      c.stroke();
+      c.restore();
+    }
     points(still);
     labels(still);
     if (lifted.length) {
@@ -609,34 +718,54 @@ export class LinearForm {
     }
   }
 
-  /** The edges between what the outline prints, as arcs on the left of the line from the one that
-   *  uses to the one it uses, orange to blue as on the board; a folded section's members' edges
-   *  end at its row, once per pair of rows. Past ARCS_MOST, only those of what is lit. */
-  private arcs(c: CanvasRenderingContext2D, pos: (r: Row) => [number, number], proofs: boolean, alpha: number, css: (v: string) => string): void {
+  /** The arcs to draw, once per pair of rows: the edges between what the outline prints, from the
+   *  one that uses to the one it uses, a folded section's members' ending at its row; each lit as
+   *  the board lights it (canvas.edgeLit: between two lit declarations, of the sites the mode
+   *  follows), so that the line and the board say the same. Under the Keys step, the board's key
+   *  graph instead lights its own links, dashed (`key`). */
+  private arcPairs(proofs: boolean): { a: Row; b: Row; lit: boolean; key?: true }[] {
     const g = this.hooks.graph();
     const rowOf = new Map<number, Row>();
     for (const r of this.rows) if (r.kind === "decl" && r.k >= 0) rowOf.set(r.k, r);
     for (const [i, r] of this.under) rowOf.set(i, r);
     const sites = SITE_STMT | SITE_BODY | (proofs ? SITE_PROOF : 0);
-    const pairs = new Map<string, [Row, Row, boolean]>();
+    const pairs = new Map<string, { a: Row; b: Row; lit: boolean; key?: true }>();
     for (const [u, ru] of rowOf) {
       for (let e = g.outStart[u]; e < g.outStart[u + 1]; e++) {
         const t = g.outDst[e];
         if (!(g.outSite[e] & sites)) continue;
         const rt = rowOf.get(t);
         if (!rt || rt === ru) continue;
-        const lit = this.hooks.lit(u) || this.hooks.lit(t);
+        const lit = this.hooks.edgeLit(u, t, g.outSite[e]);
         const key = `${ru.y0}:${rt.y0}`;
         const was = pairs.get(key);
-        if (was) was[2] ||= lit;
-        else pairs.set(key, [ru, rt, lit]);
+        if (was) was.lit ||= lit;
+        else pairs.set(key, { a: ru, b: rt, lit });
       }
     }
-    const few = pairs.size <= ARCS_MOST;
+    const links = this.hooks.keyLinks();
+    const out = [...pairs.values()];
+    if (links) {
+      const seen = new Set<string>();
+      for (let j = 0; j + 1 < links.length; j += 2) {
+        const ra = rowOf.get(links[j]), rb = rowOf.get(links[j + 1]);
+        if (!ra || !rb || ra === rb || seen.has(`${ra.y0}:${rb.y0}`)) continue;
+        seen.add(`${ra.y0}:${rb.y0}`);
+        out.push({ a: ra, b: rb, lit: true, key: true });
+      }
+    }
+    return out;
+  }
+
+  /** The arcs on the left of the line, orange at the end that uses and blue at the end used, as on
+   *  the board; the lit drawn bolder, a key link dashed. Past ARCS_MOST, only the lit. */
+  private arcs(c: CanvasRenderingContext2D, pos: (r: Row) => [number, number], proofs: boolean, alpha: number, css: (v: string) => string): void {
+    const pairs = this.arcPairs(proofs);
+    const few = pairs.length <= ARCS_MOST;
     const { h } = this.canvas.screen;
     const from = css("--edge-from") || "rgba(240,110,20,0.85)";
     const to = css("--edge-to") || "rgba(59,91,219,0.85)";
-    for (const [a, b, lit] of pairs.values()) {
+    for (const { a, b, lit, key } of pairs) {
       if (!few && !lit) continue;
       const [xa, ya] = pos(a), [xb, yb] = pos(b);
       if ((ya < -20 && yb < -20) || (ya > h + 20 && yb > h + 20)) continue;
@@ -648,28 +777,52 @@ export class LinearForm {
       c.strokeStyle = grad;
       c.lineWidth = lit ? 1.8 : 1;
       c.globalAlpha = alpha * (lit ? 0.95 : 0.35);
+      c.setLineDash(key ? [5, 4] : []);
       c.beginPath();
       c.moveTo(xa, ya);
       c.bezierCurveTo(left, ya, left, yb, xb, yb);
       c.stroke();
     }
+    c.setLineDash([]);
     c.lineWidth = 1;
     c.globalAlpha = 1;
   }
 
   // ---------------------------------------------------------------- the pointer
 
-  /** The row at a point of the screen: its own row on the line or right of it; a section by its
-   *  heading's row. */
+  /** The row at a point of the screen: the one at its height (a section by its heading's row) whose
+   *  point and name it is over, from a little left of the line to a little past the name's end. */
   private rowAt(px: number, py: number): Row | null {
     const v = this.view();
-    if (px < v.x - 24) return null;
     const y = this.cam.y + (py - v.top) / this.cam.k;
     for (const r of this.byY) {
       const top = r.y0, bottom = r.kind === "section" ? r.y0 + ROW : r.y1;
-      if (y >= top && y < bottom) return r;
+      if (y >= top && y < bottom) return px >= v.x - 12 && px <= this.nameEnd(r) + 8 ? r : null;
     }
     return null;
+  }
+
+  /** Where a row's name ends on the screen: its label (a section's ▸ before it, a folded one's count
+   *  after it), an open note's card. */
+  private nameEnd(r: Row): number {
+    const x = this.labelX(r);
+    if (r.lines) return x + NOTE_W;
+    const c = this.ctx;
+    c.font = r.start ? `italic 600 13px ${FONT}` : this.fontOf(r, r.kind === "decl" && r.k >= 0 && this.hooks.lit(r.k));
+    let end = x + (r.kind === "section" ? TRI : 0) + (c.measureText(r.label).width ?? 0);
+    if (r.members) {
+      c.font = `12px ${FONT}`;
+      end += 8 + (c.measureText(`${r.members.length}`).width ?? 0);
+    }
+    return end;
+  }
+
+  /** The row the pointer is on, lit; drawn again where it changed. */
+  private setHover(r: Row | null): void {
+    const key = r ? keyOf(r) : null;
+    if (key === this.hover) return;
+    this.hover = key;
+    this.request();
   }
 
   /** The point is on a section's ▸. */
@@ -679,28 +832,20 @@ export class LinearForm {
     return px >= x - 4 && px < x + TRI - 2;
   }
 
-  /** The point is on the row's point or its label: what a drag there takes along. */
-  private grabs(r: Row, px: number): boolean {
-    const v = this.view();
-    if (px < v.x - 12) return false;
-    this.ctx.font = this.fontOf(r, false);
-    const end = this.labelX(r) + (r.kind === "section" ? TRI : 0) + this.ctx.measureText(r.label).width;
-    return px <= end + 8;
-  }
-
   private down(e: PointerEvent): void {
     if (this.t < 1 || e.button !== 0) return;
     const row = this.rowAt(e.offsetX, e.offsetY);
     if (row && this.onTriangle(row, e.offsetX)) return this.fold(row);
     this.el.setPointerCapture(e.pointerId);
-    this.press = { x: e.offsetX, y: e.offsetY, row, moved: false, moves: !!row && !row.attached && !row.start && this.grabs(row, e.offsetX), camY: this.cam.y };
+    this.press = { x: e.offsetX, y: e.offsetY, row, moved: false, moves: !!row && !row.start, camY: this.cam.y };
   }
 
   private move(e: PointerEvent): void {
     const pr = this.press;
     if (!pr) {
-      const row = this.rowAt(e.offsetX, e.offsetY);
-      this.el.style.cursor = !row ? "" : this.onTriangle(row, e.offsetX) ? "pointer" : this.grabs(row, e.offsetX) && !row.attached && !row.start && !this.hooks.frozen() ? "grab" : "pointer";
+      const row = this.t < 1 ? null : this.rowAt(e.offsetX, e.offsetY);
+      this.setHover(row);
+      this.el.style.cursor = !row ? "" : this.onTriangle(row, e.offsetX) || row.start || this.hooks.frozen() ? "pointer" : "grab";
       return;
     }
     if (!pr.moved && Math.hypot(e.offsetX - pr.x, e.offsetY - pr.y) < 4) return;
@@ -725,6 +870,10 @@ export class LinearForm {
       const r = pr.row;
       if (r?.kind === "decl" && r.k >= 0) this.hooks.selectDecl(r.k, e.shiftKey);
       else if (r?.kind === "section" && r.k >= 0) this.hooks.selectSection(r.k, e.shiftKey);
+      else if (r?.kind === "note") {
+        this.hooks.toggleNote(r.name);
+        this.refresh();
+      }
       this.request();
       return;
     }
@@ -743,6 +892,75 @@ export class LinearForm {
     }
     this.el.style.cursor = "";
     this.request();
+  }
+
+  /** The right click: the board's menu on the row the pointer is on (lit), else the board's own. */
+  private context(e: MouseEvent): void {
+    e.preventDefault();
+    if (this.t < 1) return;
+    const row = this.rowAt(e.offsetX, e.offsetY);
+    const on: MenuOn | null = !row
+      ? null
+      : row.kind === "decl"
+        ? row.k >= 0
+          ? { kind: "decl", i: row.k }
+          : null
+        : row.kind === "note"
+          ? { kind: "note", id: row.name }
+          : row.start || row.k < 0
+            ? null
+            : { kind: "cluster", c: row.k, key: row.name, folded: !!row.members };
+    this.hooks.menu(on, e.clientX, e.clientY, row ? this.noteSpot(row) : null);
+  }
+
+  /** Where on the board, now, a note goes to come right after a row in the document, clear of what
+   *  is around so that the board settling again keeps it there: halfway between the row and the
+   *  next in its section (the board reads the lowest first), or halfway to the top of the section's
+   *  circle after the last; a section's, first in it: halfway between what it starts with and the
+   *  bottom of its circle. Null where the board does not draw it. */
+  private noteSpot(r: Row): [number, number] | null {
+    const R = this.canvas.atRest();
+    const C = this.canvas;
+    const disc = (key: string | null) => {
+      const c = key === null ? -1 : C.layout.clusters.findIndex((x) => x.key === key);
+      return c < 0 ? null : { y: R.cy[c], r: R.r[c] };
+    };
+    if (r.kind === "section") {
+      // first in it: below what it starts with, inside it
+      const items = r.start ? (this.outline?.items ?? []).filter((it) => it.t !== "section") : (r.item as OutlineSection).items;
+      const key = r.start ? null : r.name;
+      const first = items[0];
+      if (!first) return null;
+      const g = this.hooks.graph();
+      let at: [number, number] | null = null;
+      if (first.t === "decl") {
+        const i = g.byName.get(first.name);
+        at = i === undefined ? null : [R.nx[i], R.ny[i]];
+      } else if (first.t === "note") {
+        const n = this.hooks.noteSpot(first.id);
+        if (n) at = [this.toRest(key, n, R).x, this.toRest(key, n, R).y];
+      } else {
+        const c = C.layout.clusters.findIndex((x) => x.key === first.key);
+        if (c >= 0) at = [R.cx[c], R.cy[c] + R.r[c]];
+      }
+      if (!at) return null;
+      const d = disc(key);
+      const bottom = d ? d.y + d.r : at[1] + 40;
+      return C.restToNow(key, [at[0], (at[1] + bottom) / 2], R);
+    }
+    const here = this.spotOf(r, R);
+    if (!here) return null;
+    const sibs = this.siblings(r);
+    const next = sibs[sibs.indexOf(r) + 1];
+    const there = next ? this.spotOf(next, R) : null;
+    let y: number;
+    if (there && Math.abs(there[1] - here[1]) >= 1) y = (here[1] + there[1]) / 2;
+    else if (there) return C.restToNow(r.in, [(here[0] + there[0]) / 2, here[1]], R);
+    else {
+      const d = disc(r.in);
+      y = (here[1] + (d ? d.y - d.r : here[1] - 40)) / 2;
+    }
+    return C.restToNow(r.in, [here[0], y], R);
   }
 
   /** A double click on a section's heading folds or opens it, as on the board. */
@@ -798,7 +1016,8 @@ export class LinearForm {
   /** Take a row up, where it was pressed: it, and what goes with it, follow the pointer. */
   private lift(row: Row, px: number, py: number): void {
     const sibs = this.siblings(row);
-    const blocks = sibs.map((r) => this.blockOf(r));
+    // an attached note taken up leaves its declaration's block
+    const blocks = sibs.map((r) => (r === row ? [row] : this.blockOf(r).filter((x) => x !== row)));
     const from = sibs.indexOf(row);
     const block = blocks[from] ?? [row];
     const h = Math.max(...block.map((r) => r.y1)) - row.y0;
@@ -860,10 +1079,25 @@ export class LinearForm {
     for (const o of this.off.values()) o.ty = o.tx = 0;
   }
 
-  /** The rows ordered with `row`, it among them, in order. */
+  /** The rows ordered with `row`, it among them, in order. A note attached to a declaration is
+   *  among its section's rows where it is read, right after its declaration. */
   private siblings(row: Row): Row[] {
     const top = row.in === null;
-    return this.rows.filter((r) => r.group === row.group && !r.attached && !r.start && (!top || (r.kind === "section") === (row.kind === "section")));
+    const sibs = this.rows.filter((r) => r.group === row.group && !r.attached && !r.start && (!top || (r.kind === "section") === (row.kind === "section")));
+    if (!row.attached) return sibs;
+    const decl = this.declOf(row);
+    const at = decl ? sibs.indexOf(decl) + 1 : sibs.length;
+    return [...sibs.slice(0, at), row, ...sibs.slice(at)];
+  }
+
+  /** The declaration's row an attached note's row is under. */
+  private declOf(row: Row): Row | null {
+    for (let j = this.rows.indexOf(row) - 1; j >= 0; j--) {
+      const r = this.rows[j];
+      if (r.kind === "decl" && r.group === row.group && r.depth === row.depth - 1) return r;
+      if (!r.attached) return null;
+    }
+    return null;
   }
 
   /** Let go: the section's order made so on the board, as exactly as the board allows (`plans`),
@@ -880,18 +1114,22 @@ export class LinearForm {
     const R = this.canvas.atRest();
     const order = [...rest];
     order.splice(to, 0, d.row);
-    const plan = this.plans(d.row, order, sibs, Math.min(from, to), Math.max(from, to), prev, next, R).find((p) => p && this.holds(p, order, R));
+    const plans = this.plans(d.row, order, sibs, Math.min(from, to), Math.max(from, to), prev, next, R);
+    const plan = plans.find((p) => p && this.holds(p, order, R));
     if (!plan) {
-      this.hooks.say("There is no room for it there on the board: move it on the board.");
+      this.hooks.say(plans.some(Boolean) ? "There is no room for it there on the board: move it on the board." : "That cannot be moved from here: move it on the board.");
       return false;
     }
     if (plan.pins.length && !this.canvas.pinAtSpots(plan.pins, R)) return false;
-    for (const [r, spot] of plan.notes) if (!this.hooks.moveNote(r.name, r.in, this.canvas.restToNow(r.in, spot, R))) return false;
-    // at once here; the server's outline follows
+    for (const [r, spot] of plan.notes) if (!this.hooks.moveNote(r.name, r.in, this.canvas.restToNow(r.in, spot, R), r.attached)) return false;
+    // at once here; the server's outline follows. An attached note, let go elsewhere, is one of the
+    // section's
     const items = d.row.group;
     const it = d.row.item;
     const nextItem = next?.item ?? null;
-    items.splice(items.indexOf(it), 1);
+    const owner = d.row.attached ? (this.declOf(d.row)?.item as OutlineDecl | undefined) : undefined;
+    if (owner) owner.notes = owner.notes?.filter((n) => n !== it);
+    else items.splice(items.indexOf(it), 1);
     items.splice(nextItem ? items.indexOf(nextItem) : prev ? items.indexOf(prev.item) + 1 : items.length, 0, it);
     if (this.outline) this.setOutline(this.outline);
     this.refresh();
@@ -915,7 +1153,8 @@ export class LinearForm {
   }
 
   /** The ways to make `order` the board's order, the least change first (the owner's decision of
-   *  2026-10-14: the rest of the section keeps its places):
+   *  2026-10-14: the rest of the section keeps its places); a note dragged is put between its new
+   *  neighbours first, as nothing on the board makes way for a note:
    *  - each row from `lo` to `hi` to the place the row at its index had (`was`): nothing else moves
    *    and, the rows being of a size, none lands on another;
    *  - the dragged row alone between its new neighbours, as a drop there would put it;
@@ -964,7 +1203,7 @@ export class LinearForm {
       });
       return plan;
     };
-    return [reseat(), between(), stack()];
+    return row.kind === "note" ? [between(), reseat(), stack()] : [reseat(), between(), stack()];
   }
 
   /** Whether the board would give `order` were `plan` made, as the server reads it. */

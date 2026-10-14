@@ -147,9 +147,26 @@ Numbers missing below are withdrawn decisions.
     - **Labels** at the right of the line: a section's number and title ("2.1 CaseI") beside its
       circle, a declaration's name beside its point; the colours are the scheme's (Kind or Status).
       Edges, where shown (⋯), are arcs on the left of the line, unbundled: an arc diagram, each
-      orange at the end that uses and blue at the end used, as the board's (CanvasSpec, "Edges").
+      orange at the end that uses and blue at the end used, as the board's (CanvasSpec, "Edges"),
+      and lit as the board lights its own: between two lit declarations, of what the tool follows
+      (no proof's under TCB); under Keys, the key graph's links, dashed.
     - **Zoom**: the wheel zooms about the pointer, as far either way as the board's; zoomed out,
       the sections' titles stay where there is room for them. A drag on empty room pans.
+    - **What the pointer is on** (the owner's words of 2026-10-14: predictable): the row whose
+      point and name it is over — from the line to the name's end, a folded section's count, an
+      open note's card — lit while it is; it is what a click selects, a drag takes and the right
+      click opens the menu on. Elsewhere nothing is lit: a drag pans, the right click is the
+      board's.
+    - **The menu** (the owner's words of 2026-10-14: most of the board's, by the right click):
+      the board's menu (ViewSpec decision 21) on what the row at the pointer's height is — a
+      declaration, a section's cluster, a note — or the board's own on none. Fold folds the section
+      here, Fit fits the line; Hide this level hides it on the board, which the form follows. A note
+      written from it (Add a note here, for this view) goes where the document reads it right after
+      the row — a section's, first in it — its editor where the menu was.
+    - **Notes**: a click opens a note or closes it — its own state, shared, as on the board — and
+      open, its text is set in lines in its row's place. A note is dragged as any row; one attached
+      to a declaration moves with it, and dragged on its own and let go anywhere but right after it,
+      is attached no more: a note of the section, where it was let go.
     - **When**: while the Export window is open the board on show is drawn so, easing from its
       arrangement and back when the window closes; and at will, from ⋯ (*Linear form*, key `o`). It
       is the reader's own way of drawing the board, followed as the tool is (CollabSpec decision 4);
