@@ -204,9 +204,10 @@ export function openProject(path: string, rootsOverride: string[], requireBuild 
   if (lf.name) name = lf.name;
   const libDir = join(root, ".lake", "build", "lib", "lean");
   const files = indexSources(root);
-  if (roots.length === 0 && lf.defaultTargets) {
-    // a default target that is a library stands for the modules it builds; any other, for a module
-    targets = lf.defaultTargets;
+  // a target that is a library stands for the modules it builds; any other, for a module: the
+  // default targets, or those `--root` names (a library or a module)
+  if (roots.length === 0 && lf.defaultTargets) roots = targets = lf.defaultTargets;
+  if (targets.some((t) => lf.libs.some((l) => l.name === t))) {
     const known = knownModules(libDir, files);
     const out = new Set<string>();
     for (const t of targets) {

@@ -143,3 +143,12 @@ test("a default target that is no library is a module, as before", () => {
   const p = openProject(root, [], true);
   assert.deepEqual([p.roots, p.targets, targetsInWords(p)], [["Plain"], ["Plain"], "Plain"]);
 });
+
+test("--root names a library or a module: a library stands for its modules, as a default target does", () => {
+  const srcs = ["NavierStokes", "NavierStokes.Defs", "ComparatorChallenges.Torus"];
+  const root = project("byroot", nse, srcs, srcs);
+  const p = openProject(root, ["NavierStokes"], true);
+  assert.deepEqual([p.targets, p.roots], [["NavierStokes"], ["NavierStokes", "NavierStokes.Defs"]]);
+  const q = openProject(root, ["NavierStokes.Defs", "ComparatorChallenges"], true);
+  assert.deepEqual(q.roots, ["NavierStokes.Defs", "ComparatorChallenges.Torus"]);
+});

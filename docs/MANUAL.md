@@ -29,8 +29,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - Modules to read come from the default targets: `defaultTargets` in `lakefile.toml`, or the
   libraries marked `@[default_target]` in `lakefile.lean` (read as text, never run). A library
   stands for the modules Lake builds of it: its `globs` (`A`, `A.+` its submodules, `A.*` both),
-  else its `roots`, else its name; a target that is no library is a module. `--root Module`
-  (repeatable) wins.
+  else its `roots`, else its name; a target that is no library is a module. `--root Name`
+  (repeatable), a library or a module, wins: a project whose libraries cannot be imported together
+  (a library of reference statements beside the proofs that restate them, as NavierStokesAndEuler's
+  ComparatorChallenges) is read a part at a time.
 - The first read of flt-regular (27 modules, on Mathlib) takes about 14 s, 11 of them compiling the
   extractor for its toolchain, which is done once per toolchain; the showcase, Sphere-Packing-Lean
   (829 modules, 7,851 declarations), about 55 s, its extractor compiled included.
