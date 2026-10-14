@@ -2365,17 +2365,19 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #tabs::-webkit-scrollbar { display: none; }
   .vb-gap, .light-l { display: none; }
   .focus-btn { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* the modes, at the bottom, each an equal share of the width */
+  /* the modes, at the bottom, in one row: Selection, Rests on's three steps, Used by — each an equal
+     share of the width; Rests on is its steps */
   #lightup {
     position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 7;
-    display: flex; justify-content: stretch; height: 40px;
+    display: flex; height: 40px; padding: 2px;
   }
-  #lightup > button, #lightup .rests { flex: 1 1 0; min-width: 0; justify-content: center; }
-  #lightup button { padding: 6px 4px; font-size: 13px; white-space: nowrap; }
-  #lightup .steps { position: absolute; left: 0; right: 0; bottom: 46px; justify-content: center; padding: 3px; border-radius: 10px; background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg); }
-  #lightup .steps button { flex: 1; padding: 6px 4px; }
+  #lightup > button { flex: 1 1 0; min-width: 0; }
+  #lightup .rests { flex: 3 1 0; min-width: 0; display: flex; background: none !important; }
+  #rests-btn { display: none; }
+  #lightup .steps, #lightup .steps[hidden] { display: flex; flex: 1; margin: 0; padding: 0; gap: 0; background: none; }
+  #lightup button, #lightup .steps button { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 13px; white-space: nowrap; justify-content: center; }
   #zoom { right: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
-  #zoom-in, #zoom-out { display: none; }
+  #zoom #zoom-in, #zoom #zoom-out { display: none; }
   #foot { left: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
   #selbar { top: 100px; left: 8px; right: 8px; width: auto; }
   /* the panel: a sheet from the bottom, its height the reader's to drag */
@@ -2393,6 +2395,16 @@ span.tm-row { color: var(--text-2); cursor: default; }
   body.side-open::after { content: ""; position: fixed; inset: 0; z-index: 46; background: rgba(0, 0, 0, 0.3); }
   /* a field under 16 px makes iOS zoom the whole page into it */
   #panel textarea, #panel input, #share-pop input, #share-pop select, #who-menu input, #modal input, .sh-field input, .sh-field select { font-size: 16px; }
-  /* the floating windows: the screen's width */
-  .sw-win:not(.collapsed), .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
+  /* nothing slides sideways: the page is the screen */
+  html, body { overflow: hidden; overscroll-behavior: none; }
+  #panel { overflow-x: hidden; overscroll-behavior: contain; }
+  /* a source window: the whole screen, its title bar its name and a close */
+  .sw-win:not(.collapsed) {
+    left: 0 !important; top: 0 !important; right: 0 !important; bottom: 0 !important; width: auto !important; height: auto !important;
+    max-width: none !important; max-height: none !important; min-width: 0 !important; min-height: 0 !important;
+    border-radius: 0 !important; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); z-index: 48;
+  }
+  .sw-win .fl-rz, .sw-ns, .sw-loc, .sw-acts [data-sw-collapse] { display: none !important; }
+  .sw-head .sw-close { width: 40px; height: 40px; font-size: 20px; }
+  .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
 }
