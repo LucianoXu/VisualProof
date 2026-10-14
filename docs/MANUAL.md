@@ -881,13 +881,15 @@ a dependency counting where its two ends meet) with everything outside the clust
 and places its children by potential, the highest on top: sub-clusters at the free spot nearest
 their height, declarations packed tightly and handed their places from the top down. Nothing
 overlaps and the same graph always gives the same picture. On a large project about nine in ten of the
-dependencies inside the project point downwards where their two ends meet (on the showcase, 89% of
-them by namespace, 86% by module; on flt-regular, 72% and 87%). Between rebuilds what survived keeps
+dependencies inside the project point downwards where their two ends meet (on the showcase, 90% of
+them by namespace, 87% by module; on flt-regular, 73% and 87%). Between rebuilds what survived keeps
 its place, unless its height in its cluster moved by more than a tenth of the radius; newcomers
-are fitted in, and siblings pushed apart only where a grown cluster would overlap them. The page works
-in local coordinates from there on (`web/src/scene.ts`): folding compacts a parent's other
-children by area, keeping their directions; motion (`web/src/motion.ts`) is computed per cluster
-on its direct children, with dependency springs at the lowest common ancestor.
+are fitted in, and siblings pushed apart only where a grown cluster would overlap them. The graph
+the usage pass completes is not a rebuild: it is laid out against what the build's first graph was
+laid out against, from scratch on a first read, so that a first read and a Re-layout give the same
+picture. The page works in local coordinates from there on (`web/src/scene.ts`): folding compacts
+a parent's other children by area, keeping their directions; motion (`web/src/motion.ts`) is
+computed per cluster on its direct children, with dependency springs at the lowest common ancestor.
 
 ## Layout of the repository
 

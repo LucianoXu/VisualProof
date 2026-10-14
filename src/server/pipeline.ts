@@ -67,6 +67,11 @@ interface StoredMemory {
   version?: number;
   fingerprint: string;
   layouts: Partial<Record<ClusterMode, LayoutMemory>>;
+  /** Set when the layout is a build's graph still waiting for its usage pass: what it was laid out
+   *  against (null: from scratch). The build's graph is laid out against that too once the pass has
+   *  brought the notation's edges, not against this provisional layout, which lacked them
+   *  (CanvasSpec, "Stability"). */
+  before?: Partial<Record<ClusterMode, LayoutMemory>> | null;
 }
 
 function loadMemory(siteDir: string): StoredMemory | null {
@@ -78,8 +83,8 @@ function loadMemory(siteDir: string): StoredMemory | null {
   }
 }
 
-function saveMemory(siteDir: string, fingerprint: string, meta: ViewMeta): void {
-  const mem: StoredMemory = { version: LAYOUT_VERSION, fingerprint, layouts: {} };
+function saveMemory(siteDir: string, fingerprint: string, meta: ViewMeta, before?: StoredMemory["before"]): void {
+  const mem: StoredMemory = { version: LAYOUT_VERSION, fingerprint, layouts: {}, ...(before !== undefined ? { before } : {}) };
   for (const mode of ["namespace", "module"] as ClusterMode[]) mem.layouts[mode] = memoryOf(meta.layouts[mode], meta.nodes);
   mkdirSync(siteDir, { recursive: true });
   writeFileSync(join(siteDir, "layout-memory.json"), JSON.stringify(mem));
@@ -90,10 +95,12 @@ export async function prepare(
   dirs: Dirs,
   saved: string | null,
   log: (line: string) => void,
-  opts: { freshLayout?: boolean; reuse?: string; extraction?: Extraction } = {},
+  opts: { freshLayout?: boolean; reuse?: string; extraction?: Extraction; provisional?: boolean; completes?: string } = {},
 ): Promise<Prepared> {
   // `reuse`: lay out an extraction already held, without reading the build (which may be
-  // half-written right now); `extraction`: one in hand (the usage pass's, merged)
+  // half-written right now); `extraction`: one in hand (the usage pass's, merged); `provisional`:
+  // the graph waits for its usage pass; `completes`: the fingerprint of the build's extraction that
+  // this graph, the usage pass's merged, completes
   const held = opts.extraction ?? (opts.reuse ? cachedExtraction(dirs.cache, opts.reuse) : null);
   if (opts.reuse && !held) throw new Error("the graph on screen is no longer cached; it is laid out afresh at the next build");
   const ex = held ?? (saved ? loadSaved(saved) : await extract(project, dirs, log));
@@ -104,14 +111,18 @@ export async function prepare(
   const metaFile = join(viewDir, `${ex.fingerprint}-v${VIEW_VERSION}.meta.json.gz`);
   const edgeFile = join(viewDir, `${ex.fingerprint}-v${VIEW_VERSION}.edges.bin.gz`);
   const memory = opts.freshLayout ? null : loadMemory(dirs.site);
-  // a cached view is only right if it is the one last served: otherwise lay out again, from
-  // the memory of what was last served
-  const current = !memory || memory.fingerprint === ex.fingerprint;
+  // a cached view is only right if it is the one this site last served (a cache may outlive its
+  // site, or serve another): otherwise lay out again, from the memory of what was last served
+  const current = memory !== null && memory.fingerprint === ex.fingerprint;
   if (!opts.freshLayout && current && existsSync(metaFile) && existsSync(edgeFile)) {
     return { fingerprint: ex.fingerprint, cached: ex.cached, metaGz: readFileSync(metaFile), edgesGz: readFileSync(edgeFile), usage };
   }
-  const view = buildView(project, ex, log, memory?.layouts ?? null);
-  saveMemory(dirs.site, ex.fingerprint, view.meta);
+  // the usage pass completing the build last laid out: against what that provisional layout was
+  // laid out against, so that the build's graph is laid out as if the notation had come with it
+  const completing = memory !== null && opts.completes !== undefined && memory.fingerprint === opts.completes && memory.before !== undefined;
+  const against = completing ? (memory.before ?? null) : (memory?.layouts ?? null);
+  const view = buildView(project, ex, log, against);
+  saveMemory(dirs.site, ex.fingerprint, view.meta, opts.provisional ? against : undefined);
   const metaGz = gzipSync(JSON.stringify(view.meta));
   const edgesGz = gzipSync(Buffer.from(view.edges.buffer, view.edges.byteOffset, view.edges.byteLength));
   writeFileSync(metaFile, metaGz);

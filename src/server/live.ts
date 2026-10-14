@@ -500,7 +500,7 @@ export class Live {
       if (!plan.todo.length) {
         // every module's result is cached: the merged graph is the one served
         const merged = await this.merge(ex, plan);
-        if (merged) await this.install(merged, missing, "done");
+        if (merged) await this.install(merged, missing, "done", ex.fingerprint);
         return;
       }
       await this.install(ex, missing, "pending");
@@ -521,9 +521,11 @@ export class Live {
 
   /** Lay out an extraction and serve it as the next version of the graph, unless it is the one
    *  served already. A graph that waits for the usage pass is not compared with the targets' TCBs
-   *  (events.ts): it lacks the notation, and the next version brings it back. */
-  private async install(ex: Extraction, missing: string[], usage: "pending" | "done" | "off"): Promise<void> {
-    const laid = await prepare(this.project, this.dirs, null, (l) => this.say(l), { extraction: ex });
+   *  (events.ts): it lacks the notation, and the next version brings it back. Its layout is
+   *  provisional: the usage pass's graph, which `completes` that build's extraction, is laid out as
+   *  the build's own (server/pipeline.ts, prepare). */
+  private async install(ex: Extraction, missing: string[], usage: "pending" | "done" | "off", completes?: string): Promise<void> {
+    const laid = await prepare(this.project, this.dirs, null, (l) => this.say(l), { extraction: ex, provisional: usage === "pending", completes });
     if (this.graph && this.graph.fingerprint === laid.fingerprint) return;
     const failed = ex.graph.usage?.failed.length ?? 0;
     this.base = versionBase(ex.graph);
@@ -619,7 +621,7 @@ export class Live {
       while (this.extracting && this.passFor === ex.fingerprint) await new Promise((ok) => setTimeout(ok, 200));
       if (!merged || this.passFor !== ex.fingerprint) return;
       this.passFor = null;
-      await this.install(merged, missing, "done");
+      await this.install(merged, missing, "done", ex.fingerprint);
     } catch (e) {
       this.say(`usage pass: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -917,6 +919,8 @@ export class Live {
       const laid = await prepare(this.project, this.dirs, this.saved, (l) => this.say(l), {
         freshLayout: true,
         reuse: this.saved ? undefined : this.graph.fingerprint,
+        // laid out afresh while the usage pass runs: its graph is laid out afresh too
+        provisional: this.graph.usage?.state === "pending",
       });
       const prep = this.versioned(laid);
       this.graph = { ...this.graph, version: ++this.version, at: new Date().toISOString(), prep };
