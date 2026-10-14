@@ -101,6 +101,8 @@ import { ChatWindow } from "./chatwin.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
+import { ArtFrame } from "./artframe.ts";
+import type { ArtSettings } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
@@ -1005,6 +1007,30 @@ async function boot(): Promise<void> {
     },
   });
   linearBtn.addEventListener("click", () => linear.toggle());
+
+  // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): framed under a frame fixed
+  // in the middle of the screen, drawn in the browser
+  const art = new ArtFrame($("#art"), $("#art-panel"), canvas, {
+    title: () => views.title(nav.board.id),
+    saved: () => S.artwork as Partial<ArtSettings> | undefined,
+    save: (s) => {
+      S.artwork = { ...s };
+      store.save();
+    },
+    now: () => ({ scheme: canvas.scheme, theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
+    isTarget: (i) => canvas.isTarget(i),
+    notes: () => stickies.shownNotes(),
+    say: (text) => say(text),
+    framing: (on) => {
+      document.body.classList.toggle("framing", on);
+      if (on) linear.hide("reader");
+    },
+  });
+  // the frame's picture waits for the board to be still
+  canvas.onFrame = () => {
+    stickies.frame();
+    art.frame();
+  };
   // the notes the outline holds are those the board shows
   stickies.onRender = () => linear.refresh();
   /** the board the notes were last drawn for */
@@ -1744,8 +1770,11 @@ async function boot(): Promise<void> {
     start: (body) => data.exportDoc(body),
     poll: (id) => data.exportJob(id),
     shown: (open) => (open ? void linear.show("export") : linear.hide("export")),
+    artwork: () => art.open(),
+    artworkOnly: () => !!data.snapshot,
   });
-  if (data.snapshot) $("#export-btn").hidden = true;
+  // a snapshot of the page makes pictures of its board, not documents (ExportSpec decision 19)
+  if (data.snapshot) $("#export-btn").title = "Artwork: the board as a picture, PNG or SVG (a snapshot's documents are the server's)";
   // a snapshot of the page carries the links, not the library's files (they are the server's)
   if (data.snapshot) $("#library-btn").hidden = true;
 

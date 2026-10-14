@@ -71,6 +71,8 @@ export interface Saved {
   /** the Export window's choices last time (web/src/exportmodal.ts): the settings it sets (what a
    *  page before 2026-10-09 kept besides, its targets and preset, is not read) */
   export?: { settings?: Record<string, unknown> };
+  /** the artwork's size and look last time (web/src/artframe.ts), read back with care */
+  artwork?: Record<string, unknown>;
   /** the window of a conversation with an agent (web/src/chatwin.ts): where the reader put it and
    *  how large, the same for every agent, and whether it is collapsed; read back with care, as
    *  whatever is kept here may be from an older page. Nothing of the source windows is kept: each

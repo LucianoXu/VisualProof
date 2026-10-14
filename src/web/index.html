@@ -25,6 +25,10 @@
   <!-- the linear form: the board drawn as its document's outline (web/src/linear.ts, ExportSpec
        decision 18) -->
   <canvas id="linear" hidden></canvas>
+  <!-- framing an artwork: the frame and the shade around it, and the panel beside it
+       (web/src/artframe.ts, ExportSpec decision 19) -->
+  <div id="art" hidden></div>
+  <div id="art-panel" class="modal-box glass" hidden></div>
 
   <header id="bar" class="glass">
     <div class="brand"><span class="nav"><button id="nav-back" title="Back (Alt ←)" aria-label="Back" disabled><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button><button id="nav-fwd" title="Forward (Alt →)" aria-label="Forward" disabled><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg></button></span><span class="logo">VisualProof</span><span id="project" class="project"></span><span id="snapshot" class="snapshot" hidden></span><button id="build" class="build-pill" hidden title="Build status (b)"><span class="b-dot"></span><span class="b-text"></span></button></div>
@@ -49,7 +53,7 @@
         <div id="library-pop" class="glass" role="dialog" aria-label="The library" hidden></div>
       </div>
       <!-- a document of targets, typeset with LaTeX (web/src/exportmodal.ts) -->
-      <button id="export-btn" class="act-btn" title="Export: this view as a document, typeset with LaTeX">
+      <button id="export-btn" class="act-btn" title="Export: this view as a document, typeset with LaTeX; or the board as a picture (Artwork)">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 2.5v7.5M5 7l3 3 3-3M3 11.5v1.8h10v-1.8"/></svg>
         <span>Export</span>
       </button>

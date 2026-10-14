@@ -758,6 +758,22 @@ export class GraphCanvas {
     return i === undefined ? null : this.toScreen(...this.posOf(i));
   }
 
+  /** Whether declaration `i` is drawn as itself now (not folded away, not a hidden outside one):
+   *  what an artwork draws (web/src/artwork.ts). */
+  isNodeShown(i: number): boolean {
+    return this.visibleNode(i);
+  }
+
+  /** A declaration's point on the screen, in pixels, at the zoom now. */
+  get dotSize(): number {
+    return this.dotPx();
+  }
+
+  /** The graph the board is drawn from (its numbering). */
+  get graph(): Graph {
+    return this.g;
+  }
+
   /** Where cluster `key`'s circle is drawn on the screen: its centre and radius. */
   clusterDisc(key: string): [number, number, number] | null {
     const c = this.layout.clusters.findIndex((x) => x.key === key);
@@ -1172,6 +1188,23 @@ export class GraphCanvas {
     if (f) return this.moveTo(f.x, f.y, f.k, animate);
     const k = Math.min(vw / (x1 - x0), vh / (y1 - y0)) * 0.94;
     this.moveTo((x0 + x1) / 2, (y0 + y1) / 2, Math.min(k, 4), animate);
+  }
+
+  /** Frame the whole board in a rectangle of the screen (an artwork's frame, web/src/artframe.ts):
+   *  its top-level circles and declarations, at once. */
+  fitRect(rect: { x: number; y: number; w: number; h: number }): void {
+    const S = this.scene;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const c of S.rootC) {
+      if (!this.clusterVisible(c)) continue;
+      const r = S.drawnR[c];
+      [x0, y0, x1, y1] = [Math.min(x0, S.cwx[c] - r), Math.min(y0, S.cwy[c] - r), Math.max(x1, S.cwx[c] + r), Math.max(y1, S.cwy[c] + r)];
+    }
+    for (const i of S.rootN) [x0, y0, x1, y1] = [Math.min(x0, this.px[i] - 8), Math.min(y0, this.py[i] - 8), Math.max(x1, this.px[i] + 8), Math.max(y1, this.py[i] + 8)];
+    if (!isFinite(x0)) return;
+    const k = Math.min(ZOOM_MOST, Math.min(rect.w / (x1 - x0), rect.h / (y1 - y0)) * 0.94);
+    // the board's middle at the rectangle's
+    this.jumpTo({ x: (x0 + x1) / 2 - (rect.x + rect.w / 2 - this.w / 2) / k, y: (y0 + y1) / 2 - (rect.y + rect.h / 2 - this.h / 2) / k, k });
   }
 
   /** Put the camera at `cam` at once, ending any motion in progress, which would carry it off: a

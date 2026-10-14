@@ -168,7 +168,8 @@ part without a form does not typecheck.
 
 **Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order; the
 outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme; the layout lock (`l`);
-zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
+zoom, find and the box tool of the reference window; Share and its switch; Export; framing an artwork
+and its panel (ExportSpec decision 19); Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the name, its menu and window; the others' initials and a person's menu;
 the request banner; the follower's own conversation window and its pin, and the following strip;

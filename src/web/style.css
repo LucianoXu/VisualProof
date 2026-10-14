@@ -192,6 +192,21 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* the linear form, over the board and its notes, under the panels (web/src/linear.ts) */
 #linear { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; z-index: 5; }
 #linear[hidden] { display: none; }
+/* framing an artwork: the frame, everything around it shaded; the board under it takes the pointer */
+#art { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+#art[hidden] { display: none; }
+.art-frame { position: absolute; box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.45); outline: 2px solid var(--accent); border-radius: 2px; }
+.art-preview { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.art-preview[hidden] { display: none; }
+#art-panel { position: fixed; top: 76px; right: 16px; z-index: 41; width: 300px; max-height: calc(100vh - 100px); overflow: auto; }
+#art-panel[hidden] { display: none; }
+.art-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
+.art-grid .ex-wide, .art-grid .art-note, .art-grid .ex-checks { grid-column: 1 / -1; }
+.art-note { font-size: 11.5px; line-height: 1.4; }
+.ex-tabs { margin: 2px 0 4px; }
+/* while framing, the panels are put away: the frame has the room */
+body.framing #side, body.framing #panel, body.framing #selbar, body.framing #lensbar, body.framing #tm-kept,
+body.framing #viewbar, body.framing #foot, body.framing #zoom, body.framing #tabs { visibility: hidden; }
 
 .glass {
   background: var(--surface);
