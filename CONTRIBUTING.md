@@ -90,9 +90,13 @@ and whatever the showcase project needs (v4.28.0 at least).
   - the site folder (`--site`): the review's logs and what a site accumulates. A version that
     changes its form reads the old one, or moves it over, so that no review is lost;
   - the agents' API and the MCP server's tools (`docs/agent-api/`).
-- Releasing, by the owner: update `CHANGELOG.md` (the owner's own file), the version in
-  `package.json` and `CITATION.cff`, merge, then tag `main` and push the tag. Publishing to npm
-  from the tag, with provenance, and the GitHub release from the changelog are to be set up in CI
-  before the first release, which also takes `"private": true` out of `package.json` (it keeps
-  the package from being published by mistake until then).
+- Releasing, by the owner: update `CHANGELOG.md` (the owner's own file, a `## ` heading naming the
+  version), the version in `package.json` and `CITATION.cff`, merge, then tag `main` and push the
+  tag. `.github/workflows/release.yml` takes it from there: it checks that the tag, both files and
+  the changelog agree and that the tag is on `main`, runs the suite, publishes to npm with
+  provenance (a release candidate under `next`), and makes the GitHub release from the changelog's
+  section. It publishes in the `npm` environment of the repository (where the owner may require an
+  approval), with the `NPM_TOKEN` secret until npm's trusted publishing is set up for the package.
+  The first release also takes `"private": true` out of `package.json`, which until then makes
+  `npm publish` refuse.
 - AI agents work on branches: they never push to `main`, tag, or publish.
