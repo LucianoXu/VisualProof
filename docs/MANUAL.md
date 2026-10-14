@@ -325,6 +325,21 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
+### On a phone
+
+A screen at most 640 px wide gets a page for reading, reviewing and following; the board is
+arranged on a larger screen. On it:
+
+- **Fingers**: drag to move around, pinch to zoom, tap to select, double-tap empty board to zoom in
+  there; touch and hold opens the menu on what is under the finger. Nothing on the board is moved by
+  a finger, so the lock is gone.
+- **⋯ at the top** holds the modes (each with what a tap selects), Share, the library, Export,
+  Activity, your name and help; **☰** opens the targets and the board's namespaces or folders as a
+  drawer.
+- **The panel** is a sheet from the bottom: a tap on its handle gives it the whole screen or half of
+  it, ✕ closes it. A declaration's source, Activity and the lost-and-found take the whole screen.
+- No window is pinned, and the help (`?` in ⋯) lists the gestures instead of the keys.
+
 ## Views
 
 A view is a board ([ViewSpec.md](../SPEC/ViewSpec.md)): what is on it and how it is arranged are shared by

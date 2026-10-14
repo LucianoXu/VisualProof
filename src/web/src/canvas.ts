@@ -1450,10 +1450,10 @@ export class GraphCanvas {
     /** The press is a Mac's Ctrl+click: let go where it was pressed, it is the menu's (contextmenu). */
     let menu = false;
 
-    // Touch (CanvasSpec, "Touch"): the fingers on the canvas, by pointer. Two make a pinch, which
-    // zooms about their middle and moves with it; what the fingers leave after a pinch is no tap. A
-    // finger held still on the board opens the menu there; a second tap on empty board, soon after
-    // the first, zooms in there.
+    // Touch (SPEC.md, "Deployment": small touch devices): the fingers on the canvas, by pointer. Two
+    // make a pinch, which zooms about their middle and moves with it; what the fingers leave after a
+    // pinch is no tap. A finger held still on the board opens the menu there; a second tap on empty
+    // board, soon after the first, zooms in there.
     const touches = new Map<number, { x: number; y: number }>();
     let pinch: { d0: number; k0: number; wx: number; wy: number } | null = null;
     let pinched = false;
