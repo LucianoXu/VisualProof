@@ -1,0 +1,101 @@
+# A release (CONTRIBUTING.md, "Branches and releases"): the owner pushes a tag `vX.Y.Z`, or
+# `vX.Y.Z-rc.N` for a release candidate, on a commit of main. The tag is checked against
+# package.json, CITATION.cff and CHANGELOG.md; the suite runs; the package is published to npm
+# with provenance (a release candidate under the `next` tag, so that `npm install visualproof`
+# never gets it), and the GitHub release is made from the changelog's section for the version.
+# Nothing here runs for anything but such a tag, and `"private": true` in package.json makes
+# `npm publish` refuse until the first release takes it out.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      next: ${{ steps.v.outputs.next }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: v
+        name: The tag, package.json, CITATION.cff and CHANGELOG.md say the same version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p 'require("./package.json").version')"
+          cff="$(sed -n 's/^version: *"\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' CITATION.cff)"
+          [ "$tag" = "$pkg" ] || { echo "::error::the tag says $tag, package.json $pkg"; exit 1; }
+          [ "$tag" = "$cff" ] || { echo "::error::the tag says $tag, CITATION.cff $cff"; exit 1; }
+          grep -Eq "^## .*\b${tag//./\\.}\b" CHANGELOG.md || { echo "::error::CHANGELOG.md has no section for $tag"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "::error::the tag is not on main"; exit 1; }
+          echo "version=$tag" >> "$GITHUB_OUTPUT"
+          case "$tag" in *-rc.*) echo "next=true" >> "$GITHUB_OUTPUT" ;; *) echo "next=false" >> "$GITHUB_OUTPUT" ;; esac
+
+  # the suite as test.yml runs it, on the tagged commit, before anything is published
+  test:
+    needs: check
+    timeout-minutes: 30
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - if: runner.os == 'macOS'
+        run: brew install poppler
+      - run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh | sh -s -- -y --default-toolchain "$(cat test/fixture/lean-toolchain)"
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  publish:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: write
+      # provenance, and npm's trusted publishing where it is set up for the package
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      # trusted publishing needs npm 11.5.1 or later
+      - run: npm install --global npm@11
+      - run: npm ci
+      # prepack builds dist/
+      - name: Publish to npm
+        run: npm publish --provenance --access public ${{ needs.check.outputs.next == 'true' && '--tag next' || '' }}
+        env:
+          # a token, until trusted publishing is set up for the package on npmjs.com
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: The GitHub release, from the changelog
+        run: |
+          v="${{ needs.check.outputs.version }}"
+          awk -v v="$v" 'BEGIN { re = v; gsub(/\./, "\\.", re) } /^## / { if (on) exit; if ($0 ~ re) { on = 1; next } } on' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" --title "VisualProof $v" --notes-file notes.md ${{ needs.check.outputs.next == 'true' && '--prerelease' || '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
