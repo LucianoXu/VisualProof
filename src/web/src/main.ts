@@ -55,7 +55,7 @@ import type { ModuleContexts } from "../../shared/context.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
 import { Graph } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
-import { dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
+import { dragKeyHeld, dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
 import { Notes } from "./notes.ts";
 import { Stickies } from "./sticky.ts";
 import type { Dropped, NoteKind } from "./sticky.ts";
@@ -100,6 +100,7 @@ import { Talk } from "./talk.ts";
 import { ChatWindow } from "./chatwin.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
+import { LinearForm } from "./linear.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
@@ -925,6 +926,7 @@ async function boot(): Promise<void> {
     },
     pinsChanged: () => {
       sync.sharePins();
+      linear.refresh();
       const i = selected();
       if (i !== null) panel.show(i);
     },
@@ -972,6 +974,39 @@ async function boot(): Promise<void> {
   // Fit to screen, and a board's first framing, hold the notes' icons too, and their cards where
   // they fit
   canvas.fitExtra = (k, cards) => stickies.fitBoxes(k, cards);
+
+  // the linear form (ExportSpec decision 18, web/src/linear.ts): the board drawn as its document's
+  // outline, while the Export window is open or at the reader's asking (⋯, o)
+  const linearBtn = $("#linear-btn");
+  const linear: LinearForm = new LinearForm($("#linear") as HTMLCanvasElement, canvas, {
+    outline: () => {
+      const b = nav.board;
+      if (!b) return Promise.resolve("There is no board on show.");
+      // the build the board shows, as its document is printed at it (ExportSpec decision 16)
+      const version = b.preview ? (b.past?.past?.snapshot.id ?? null) : undefined;
+      return data.exportOutline(b.id, version);
+    },
+    graph: () => vg(),
+    noteSpot: (id) => stickies.spotOf(id),
+    lit: (i) => !!canvas.active?.[i],
+    selectDecl: (i, shift) => void clickOn(pickDecl(vg().nodes[i].name), shift),
+    selectSection: (c, shift) => void clickOn(pickCluster(c), shift),
+    frozen: () => (frozen() ? frozenWhy() : null),
+    moves: (e) => dragMoves(locked, dragKeyHeld(e)),
+    edges: () => ({ show: S.showEdges, proofs: S.proofEdges }),
+    moveNote: (id, key, world) => stickies.moveInto(id, key, world),
+    // the Export window, at the right, beside which the line is drawn
+    beside: () => (exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
+    say: (text) => say(text),
+    changed: (on) => {
+      linearBtn.classList.toggle("on", on);
+      linearBtn.setAttribute("aria-pressed", String(on));
+      people.report();
+    },
+  });
+  linearBtn.addEventListener("click", () => linear.toggle());
+  // the notes the outline holds are those the board shows
+  stickies.onRender = () => linear.refresh();
   /** the board the notes were last drawn for */
   let stickiesOn = "";
 
@@ -1068,6 +1103,7 @@ async function boot(): Promise<void> {
     lost: () => people.lost(),
     tabsChanged: () => renderTabs(),
     notesChanged: () => stickies.render(),
+    boardChanged: () => linear.refresh(),
     levelChanged: () => showLevel(),
     activityChanged: () => activity.changed(),
     hint: (text) => say(text),
@@ -1251,6 +1287,7 @@ async function boot(): Promise<void> {
       colouring: () => ({ scheme: canvas.scheme }),
       edges: () => ({ edges: S.showEdges }),
       proofEdges: () => ({ proofEdges: S.proofEdges }),
+      linear: () => ({ linear: linear.shown }),
     },
     // what this page shows is this reader's own once following ends, so it is kept as shown: the
     // colouring and the edges in this browser, as the reader's own choice is
@@ -1262,6 +1299,7 @@ async function boot(): Promise<void> {
       },
       edges: (v) => setEdges(v.edges!, S.proofEdges),
       proofEdges: (v) => setEdges(S.showEdges, v.proofEdges!),
+      linear: (v) => (v.linear ? void linear.show("reader") : linear.hide("reader")),
     },
   };
   /** Where this page is: what the others are told, and what Share tells an agent. */
@@ -1705,6 +1743,7 @@ async function boot(): Promise<void> {
     },
     start: (body) => data.exportDoc(body),
     poll: (id) => data.exportJob(id),
+    shown: (open) => (open ? void linear.show("export") : linear.hide("export")),
   });
   if (data.snapshot) $("#export-btn").hidden = true;
   // a snapshot of the page carries the links, not the library's files (they are the server's)
@@ -1927,6 +1966,7 @@ async function boot(): Promise<void> {
       }
     }
     canvas.setActivation(edgeMode(picks), decls, lit?.set ?? null, clusters, keyEdges);
+    linear.request();
     drawVisitors();
     renderSelBar(q, lit);
     syncTool();
@@ -2283,6 +2323,7 @@ async function boot(): Promise<void> {
     canvas.setPast(marks?.marks ?? null, marks?.now);
     canvas.setLayout(L, b.rec.pins[m], b.rec.folds[m], m);
     canvas.setFrozen(frozen());
+    linear.refresh();
     // a note being written stays while its board is drawn again (the review changed what it
     // holds); another board closes it
     if (b.id !== stickiesOn) stickies.reset();
@@ -3677,6 +3718,7 @@ async function boot(): Promise<void> {
     else if (e.key === "-" || e.key === "_") canvas.zoomBy(1 / 1.6);
     else if (e.key === "e") toggleOutside();
     else if (e.key === "g") edgesBtn.click();
+    else if (e.key === "o") linear.toggle();
     else if (e.key === "c") chooseScheme(canvas.scheme === "kind" ? "status" : "kind");
     else if (e.key === "l") toggleLock();
     else if (e.key === "[") canvas.stepLevels(-1);

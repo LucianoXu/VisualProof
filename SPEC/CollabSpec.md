@@ -160,6 +160,7 @@ step; the rest each on its own once the place is reached.
 | colouring | the legend's Kind or Status | `scheme` | `c` |
 | edges | edges drawn | `edges` | `g` |
 | proofEdges | proof edges drawn | `proofEdges` | |
+| linear | the board drawn as its document's outline, the linear form (ExportSpec decision 18) | `linear` | `o` |
 
 Presence also carries `tabs` (the views a page has open, which the server then keeps); no follower
 takes it. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a

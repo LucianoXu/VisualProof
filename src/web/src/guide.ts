@@ -110,6 +110,7 @@ const KEYS: [string, Row[]][] = [
     [
       { k: ["e"], what: "the outside world on this board, for everyone" },
       { k: ["g"], what: "edges, for you" },
+      { k: ["o"], what: "the linear form: the board as its document's outline, on one line" },
       { k: ["c"], what: "colour by kind or by status, for you" },
       { k: ["b"], what: "build status" },
       { k: ["p"], what: "frame meter" },

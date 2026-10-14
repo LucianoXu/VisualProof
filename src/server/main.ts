@@ -292,6 +292,11 @@ export class App {
   private async export(req: IncomingMessage, res: ServerResponse, url: URL, agent: boolean, readOnly = false): Promise<void> {
     const path = url.pathname;
     const api = this.agents;
+    // the document's outline, which the linear form draws: nothing is typeset for it
+    if (path === "/api/export/outline") {
+      const o = api.exportOutline(url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
+      return sendJson(res, o.body, o.status, o.headers);
+    }
     if (!this.exporter) return sendJson(res, { error: "This server does not export documents." }, 404);
     let a: Answer;
     if (path === "/api/export" && req.method === "POST") {

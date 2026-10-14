@@ -243,6 +243,23 @@ export class Scene {
     return true;
   }
 
+  /** Pin one body at a place in its parent's coordinates, as a drop there would (the linear form's
+   *  drop, web/src/linear.ts): brought inside the parent, the latest drop, the rest making way. */
+  pinAt(kind: "node" | "cluster", k: number, lx: number, ly: number): void {
+    if (kind === "cluster") {
+      this.pinC.set(k, this.inside(this.parent[k], this.homeSize(k), lx, ly));
+      this.dropSeq.set(k, this.dropNext++);
+      this.touch(this.parent[k]);
+    } else {
+      this.pinN.set(k, this.inside(this.nodeCluster[k], LEAF_R, lx, ly));
+      this.dropSeq.set(this.nc + k, this.dropNext++);
+      this.touch(this.nodeCluster[k]);
+    }
+    this.computeAnchors();
+    this.motion?.wakeDisplaced();
+    this.moving = true;
+  }
+
   pins(names: (i: number) => string): PinState {
     const out: PinState = { nodes: {}, clusters: {} };
     const r = (v: number) => Math.round(v * 10) / 10;

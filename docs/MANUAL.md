@@ -331,7 +331,7 @@ A view is a board ([ViewSpec.md](../SPEC/ViewSpec.md)): what is on it and how it
 everyone on it; where you look, what you selected and your mode are yours alone; the
 review is the same on every board. The page says so by where things are: the side panel on the
 left is the board, the buttons at the bottom right are your eyes (zoom and fit; behind ⋯ the
-lock, edges, proof edges, theme), the top holds your tabs and your mode.
+lock, edges, the linear form, proof edges, theme), the top holds your tabs and your mode.
 
 - **The side panel**: the **targets**, each with its progress, opening its view on the target (one
   with no view is given a temporary view of its TCB, linked to it while it lasts); then the cluster tree, whose rows select their cluster. Over the tree, **⚙ Board** opens
@@ -601,7 +601,7 @@ The informal references that explain the formal code — papers, and photos too 
 
 ## Exported documents
 
-**Export**, beside Share ([ExportSpec.md](../SPEC/ExportSpec.md), decisions 5–16), makes the document of the
+**Export**, beside Share ([ExportSpec.md](../SPEC/ExportSpec.md), decisions 5–18), makes the document of the
 view on show, typeset with LaTeX (XeLaTeX) on the server, for collaborators who read on paper or in
 a PDF viewer. **The view is the specification**: what it holds is what the document prints.
 
@@ -609,6 +609,19 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   panel) exported; the full review set is a view scoped to it (`review ★T`) exported; a curated set is any view —
   a namespace, a Zoom in, a board you add declarations to or take them off. Hide levels of the view
   (ViewSpec decision 24) to flatten its sections.
+- **The linear form** (decision 18): while the Export window is open — it stands at the right — the
+  board is drawn as the document's outline, beside it: every section's circle and every point on one
+  vertical line, in the document's order, the first at the top; a section's circle holds what it
+  holds, each level of nesting one more circle, the labels on the right indented by depth, numbered
+  as the PDF numbers its sections, the notes it prints in italics, and the edges (where ⋯ draws them)
+  as arcs on the left. Things ease from where the board has them to the line, and back when the
+  window closes. ⋯ → **Linear form**, or `o`, shows it at any time; those following you see it too.
+  The wheel scrolls it, Ctrl (⌘) with the wheel zooms, a drag on empty space pans, a click selects.
+  **Drag a declaration, a note or a section along the line** (as on the board: with the lock let go,
+  or the drag key held) to move it among its siblings — never out of its section: on release it is
+  put on the board between its new neighbours, as a drop there would (a pin, for everyone on the
+  view; a note moved in its cluster), and the document's order follows. A note attached to a
+  declaration moves with it. Not on a snapshot, a read-only page or a past build's preview.
 - **The window** says which view it exports and what that holds — *Export the view "X": N
   declarations in M sections*, and how many declarations from outside the project it holds, which
   are not printed — then the document's **title** and **author line** as they will print, then the

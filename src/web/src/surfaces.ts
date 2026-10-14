@@ -106,7 +106,7 @@ export const FOLLOWED = [
     part: "selection",
     what: "the selection, and going somewhere: a row, a name or a result that goes to a declaration or a cluster",
     fields: ["selection"],
-    changes: "#selbar, #ctxmenu, .cm-sub, #results .hit, [data-go], [data-ref], [data-walk], [data-c], [data-module], [data-tm-go], #help [data-help-tour]",
+    changes: "#selbar, #ctxmenu, .cm-sub, #results .hit, [data-go], [data-ref], [data-walk], [data-c], [data-module], [data-tm-go], #help [data-help-tour], #linear",
     keys: ["ContextMenu", "F10"],
     fieldKeys: [{ in: "#search", key: "Enter" }],
     place: true,
@@ -185,6 +185,13 @@ export const FOLLOWED = [
     what: "proof edges drawn, or not",
     fields: ["proofEdges"],
     changes: "#proofs-btn",
+  },
+  {
+    part: "linear",
+    what: "the linear form: the board drawn as its document's outline, or not",
+    fields: ["linear"],
+    changes: "#linear-btn",
+    keys: ["o"],
   },
 ] as const satisfies readonly Followed[];
 

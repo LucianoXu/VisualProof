@@ -35,12 +35,18 @@ import type { VisitPlace, VisitPlan } from "./visitors.ts";
 import { openFor, placeVisits, planOn, visitChain, visitWorld } from "./visits.ts";
 import type { Visits, VisitWorld } from "./visits.ts";
 import { fitFrame } from "../../shared/ring.ts";
+import { spotBetween } from "../../shared/doc/order.ts";
+import type { Disc } from "../../shared/doc/order.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { FitBox } from "../../shared/ring.ts";
 
 export const KINDS = [
   "def", "abbrev", "structure", "class", "inductive", "instance", "theorem", "opaque", "axiom", "notation",
 ] as const;
+
+/** Something the board orders (shared/doc/order.ts): a declaration or a cluster, by its index; or a
+ *  note's icon, where the board draws it at rest. */
+export type OrderBody = { kind: "node" | "cluster"; k: number } | { kind: "spot"; x: number; y: number };
 
 /** What the pointer is on: one declaration, one cluster (open or folded), or a visitor (by its index
  *  in the trail, setVisitors). */
@@ -750,6 +756,67 @@ export class GraphCanvas {
     }
     const i = this.g.byName.get(key);
     return i === undefined ? null : this.toScreen(...this.posOf(i));
+  }
+
+  /** Where cluster `key`'s circle is drawn on the screen: its centre and radius. */
+  clusterDisc(key: string): [number, number, number] | null {
+    const c = this.layout.clusters.findIndex((x) => x.key === key);
+    if (c < 0) return null;
+    const [sx, sy] = this.toScreen(this.scene.cwx[c], this.scene.cwy[c]);
+    return [sx, sy, this.scene.drawnR[c] * this.cam.k];
+  }
+
+  /** A declaration's colour in the scheme on show, as CSS. */
+  colourOf(i: number): string {
+    const [r, g, b, a] = this.colorOf(i);
+    return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
+  }
+
+  /** Where the board draws everything at rest, nothing folded — its layout and its pins, as the
+   *  server reads it for the document (server/boardspots.ts) — in the board's world. */
+  atRest(): { nx: Float32Array; ny: Float32Array; cx: Float32Array; cy: Float32Array; r: Float32Array } {
+    const S = new Scene(this.layout);
+    S.restore(this.pinsRecord(), [], (i) => this.pinName(i));
+    return { nx: S.nwx, ny: S.nwy, cx: S.cwx, cy: S.cwy, r: S.drawnR };
+  }
+
+  /** Where `a` goes between `prev` and `next` in the board's order — `prev` read before it, so
+   *  lower on the board; `next` after, higher (shared/doc/order.ts) — as the board draws things at
+   *  rest: at a height between theirs, where it is across; on their row, between them, where they
+   *  are level; below the first, above the last. All three are of one cluster, `parent` (-1: none).
+   *  Null where neither is given. */
+  orderSpot(a: OrderBody, prev: OrderBody | null, next: OrderBody | null, R = this.atRest()): [number, number] | null {
+    const disc = (b: OrderBody): Disc => (b.kind === "spot" ? { x: b.x, y: b.y, r: LEAF_R } : b.kind === "node" ? { x: R.nx[b.k], y: R.ny[b.k], r: LEAF_R } : { x: R.cx[b.k], y: R.cy[b.k], r: R.r[b.k] });
+    return spotBetween(disc(a), prev && disc(prev), next && disc(next));
+  }
+
+  /** Pin declaration or circle `a` between `prev` and `next` in the board's order (orderSpot), as a
+   *  drop there would, for everyone on the board. A section of the document standing for a chain of
+   *  circles is read where its innermost is (`a.k`) and moved by its outermost (`move`), which
+   *  carries the rest. False where nothing moved. */
+  pinInOrder(a: { kind: "node" | "cluster"; k: number; move?: number }, prev: OrderBody | null, next: OrderBody | null): boolean {
+    const R = this.atRest();
+    const spot = this.orderSpot(a, prev, next, R);
+    if (!spot) return false;
+    const m = a.kind === "cluster" ? (a.move ?? a.k) : a.k;
+    const [ax, ay] = a.kind === "node" ? [R.nx[a.k], R.ny[a.k]] : [R.cx[a.k], R.cy[a.k]];
+    const [mx, my] = a.kind === "node" ? [ax, ay] : [R.cx[m], R.cy[m]];
+    // in its parent's coordinates, which nothing folded scales at rest
+    const p = a.kind === "node" ? this.scene.nodeCluster[m] : this.scene.parent[m];
+    const [ox, oy] = p >= 0 ? [R.cx[p], R.cy[p]] : [0, 0];
+    this.scene.pinAt(a.kind, m, mx + spot[0] - ax - ox, my + spot[1] - ay - oy);
+    this.posDirty = true;
+    this.ev.pinsChanged();
+    this.request();
+    return true;
+  }
+
+  /** A spot of the board at rest (atRest) where the board draws it now: moved with its cluster
+   *  `key` (null: none), as folds and easing have moved that. */
+  restToNow(key: string | null, spot: [number, number], R = this.atRest()): [number, number] {
+    const c = key === null ? -1 : this.layout.clusters.findIndex((x) => x.key === key);
+    if (c < 0) return spot;
+    return [spot[0] - R.cx[c] + this.scene.cwx[c], spot[1] - R.cy[c] + this.scene.cwy[c]];
   }
 
   /** Folded, or inside a folded cluster: not drawn as itself. */

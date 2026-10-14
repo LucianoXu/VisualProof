@@ -124,6 +124,56 @@ Numbers missing below are withdrawn decisions.
     each with its title, what it is, where it came from (the address fetched, or the upload name) and
     the start of its hash. A link explains, it does not judge: it is not review. A past view prints
     the links of what its board holds, a declaration renamed since under its name then.
+18. **The linear form** (SPEC.md, "Export"; the owner's words of 2026-10-13: the cluster hierarchy
+    indented, strictly on one vertical line; dragging in it changes the document's order, and the
+    ordinary board shows the change; the owner's decisions of 2026-10-14: first at the top, the rest
+    as drafted).
+    - **What it is**: the board drawn as the document's outline (decision 13). Every circle's centre
+      and every point lies on one vertical line, in document order, **first at the top**, as a
+      document reads. Circles still mean containment (CanvasSpec decision 3): a section's circle
+      holds its members, stacked along the line, and each level of nesting is one more circle
+      around them — the indentation. Only what the document prints is drawn: the sections (hidden
+      levels taken out, a single-child chain merged, `A.B`), the project declarations and the notes;
+      outside declarations are left out, as the document only counts them. Nothing is folded in it.
+    - **Labels** at the right of the line: a section's number and title ("2.1 CaseI") beside its
+      circle, a declaration's name beside its point; the colours are the scheme's (Kind or Status).
+      Edges, where shown (⋯), are arcs on the left of the line, unbundled: an arc diagram.
+    - **When**: while the Export window is open the board on show is drawn so, easing from its
+      arrangement and back when the window closes; and at will, from ⋯ (*Linear form*, key `o`). It
+      is the reader's own way of drawing the board, followed as the tool is (CollabSpec decision 4);
+      the board itself is unchanged by it.
+    - **Dragging** a declaration, a note or a section along the line moves it among its siblings,
+      never out of its section (the clustering decides membership). Let go, it moves the document:
+      on the board it is pinned in its cluster at a height between its new neighbours', as a drag
+      there would pin it, for everyone on the view, and the document's order (bottom first on the
+      board) follows. Undone as a pin is. The rest of the section keeps its places.
+    - **Who may**: whoever may arrange the board (not a snapshot, a read-only reader, a past
+      build's preview); the others see the form and cannot drag.
+19. **Artwork** (SPEC.md, "Export"; the owner's words of 2026-10-13: PNG and SVG, the canvas's size
+    chosen and rendered at high resolution; a highlighted frame in the middle with shade around it,
+    the canvas dragged under it to choose what is drawn; the colours, the items and the targets
+    adjustable; the owner's decision of 2026-10-14: as drafted).
+    - **Where**: the Export window's second tab, *Artwork*, beside *Document*. Choosing it closes the
+      window into the framing mode; Esc or Done leaves it, the board as it was.
+    - **The frame**: fixed in the middle of the screen, its aspect the size chosen; outside it the
+      screen is shaded. The reader pans and zooms the board under it (drag, wheel, the keys), and
+      what lies in the frame is what is drawn, at the size chosen.
+    - **The size**: presets (1920 × 1080, 3840 × 2160, 4096 × 4096, A3 and A2 at 300 dpi, portrait or
+      landscape) or width and height in pixels, at most 16,384 on a side. A preview scale shows what
+      a label's size will be in the image.
+    - **The appearance**, in a small panel beside the frame, shown live: the colour scheme (Kind or
+      Status) and the theme (light, dark), the background (the theme's, white, or transparent for
+      PNG and SVG); labels (all, clusters only, none); edges (all, the selection's, none) and proof
+      edges; items — notes and attachments — shown or not; targets — their star and name marked,
+      shown as any declaration, or highlighted with the rest faded. The selection and what is lit
+      count as the reader sees them, or not at all.
+    - **The output**: PNG, drawn by the page off screen at the full size (in tiles where the size
+      passes what the graphics card draws at once); SVG, vector — circles, points, labels as text,
+      edges as paths. Made in the browser, from what the page holds: nothing is asked of the server,
+      so a read-only reader and a snapshot of the page can make one too. The file is named after the
+      view and the build ("TCB of Hilbert91 @ Oct 14 12:38.png").
+    - **What is kept**: the reader's own choices, in their browser; nothing is shared or recorded.
+      Agents have no artwork (the page draws it).
 
 ## Implementation notes
 
@@ -264,3 +314,28 @@ Numbers missing below are withdrawn decisions.
   one job. The MCP tool `export_file` saves to the new file `saveTo` names (absolute, never over an
   existing file) rather than handing the model a PDF; a request relaying `saveTo` for a PDF or zip
   (an MCP server before 0.3.0) is told to update.
+
+### The linear form
+
+- **The outline** (`GET /api/export/outline?view=&version=`, shared/doc/outline.ts) is the document's
+  plan in its board order without the text: sections `{key, keys, title, number, level, items}`
+  (`number` as the PDF numbers it, null at the paragraph level), declarations `{name, notes?}` (the
+  attached notes after it), notes `{id, kind, words}` (the first line, Markdown marks out, at most 60
+  characters). Served whether or not the server typesets, to read-only readers too; a view too
+  large to print has one.
+- **The page** (web/src/linear.ts) draws it on its own layer over the board (`#linear`): a row of 22
+  pixels (at its zoom 1) per declaration and note, a section's span its heading's row, its rows and 8
+  more; its circle the span's diameter, centred on the line; the line at 40% of the room the panels
+  and the Export window leave. Labels are drawn from a row of 11 pixels; the arcs, where there are
+  more than 6,000, only those of what is lit. The board fades as the line comes (480 ms), each thing
+  eased from where the board draws it; the board's camera, folds and visitors are untouched.
+- **A drop** (canvas `orderSpot` → shared/doc/order.ts `spotBetween`, from the board at rest as the
+  server reads it): between two neighbours across, at the middle of their heights, its own `x`; level
+  (within a unit), between them on their row; first, below the one after it, clear of it; last,
+  above. A declaration or a section is pinned there (scene `pinAt`; a section that stands for a chain
+  of circles is read by its innermost and moved by its outermost), a note moved there in its cluster
+  (sticky `moveInto`, keeping what it is attached to). The outline is drawn so at once and asked
+  for again 350 ms after the board last changed (a pin, a note, a remote change, another layout).
+- **Followed** as `linear` (CollabSpec, "Surfaces"): presence says whether the form is shown; a
+  follower's page shows it or puts it away as the other's does, and keeps it so once following ends,
+  as any part (CollabSpec decision 4).

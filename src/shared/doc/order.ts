@@ -78,6 +78,28 @@ export function boardOrder<T>(xs: readonly T[], at: (x: T) => readonly [number, 
   return keyed.map((e) => e.x);
 }
 
+/** A disc of the board: where something is drawn, and how large it is. */
+export interface Disc {
+  x: number;
+  y: number;
+  r: number;
+}
+
+/** Where `a` goes on the board to come between `prev` and `next` in the board's order (`prev` read
+ *  before it, so lower; `next` after, higher), all three of one cluster: the linear form's drop
+ *  (ExportSpec decision 18, web/src/linear.ts). At a height between theirs where they are across,
+ *  where `a` is across; on their row, between them, where they are level; below the first, above
+ *  the last, clear of it. Null where neither is given. */
+export function spotBetween(a: Disc, prev: Disc | null, next: Disc | null): [number, number] | null {
+  if (prev && next) {
+    if (Math.abs(prev.y - next.y) >= 1) return [a.x, (prev.y + next.y) / 2];
+    return [(prev.x + next.x) / 2, prev.y];
+  }
+  if (next) return [a.x, next.y + next.r + a.r + 2.5];
+  if (prev) return [a.x, prev.y - prev.r - a.r - 2.5];
+  return null;
+}
+
 /** The outline of the document of `plan` (of graph `g`) in the order of the board `spots` describes. */
 export function orderDoc(plan: DocPlan, g: Graph, spots: BoardSpots): Ordered {
   // the declarations the document prints, by name: where an attached note goes
