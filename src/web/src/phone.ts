@@ -34,6 +34,18 @@ const ITEMS: readonly { id: string; label: string }[] = [
   { id: "help-btn", label: "Help" },
 ];
 
+/** The icons of the items whose buttons have none drawn the same way: the name, help. */
+const OWN_ICON: Record<string, string> = {
+  who: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.5" r="2.6"/><path d="M3 13.6c.8-2.7 2.7-3.9 5-3.9s4.2 1.2 5 3.9"/></svg>`,
+  "help-btn": `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M6.2 6.3a1.9 1.9 0 1 1 2.6 1.8c-.5.2-.8.6-.8 1.1v.5"/><path d="M8 11.6v.1"/></svg>`,
+};
+
+/** The side panel's popovers, which take the drawer's place on a phone, and what opens each. */
+const SIDE_POPS: readonly { pop: string; opener: string; title: string }[] = [
+  { pop: "board-pop", opener: "board-btn", title: "The board" },
+  { pop: "trust-list", opener: "trusted-btn", title: "Trusted" },
+];
+
 /** The sheet's heights, as shares of the screen's: the middle it opens at, and the top. */
 const SHEET_MID = 0.55;
 const SHEET_TOP = 0.92;
@@ -63,9 +75,10 @@ export class Phone {
     document.addEventListener("pointerdown", (e) => {
       const t = e.target as Node;
       if (!this.pop.hidden && !this.pop.contains(t) && !this.btn.contains(t)) this.close();
-      // a press outside the drawer closes it
+      // a press outside the drawer, and outside what takes its place (⚙ Board, Trusted), closes it
       const side = document.getElementById("side");
-      if (document.body.classList.contains("side-open") && side && !side.contains(t) && !document.getElementById("side-btn")!.contains(t)) this.drawer(false);
+      const inPop = t instanceof Element && !!t.closest(".side-pop, #trust-pop");
+      if (document.body.classList.contains("side-open") && side && !side.contains(t) && !inPop && !document.getElementById("side-btn")!.contains(t)) this.drawer(false);
     });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
@@ -91,6 +104,24 @@ export class Phone {
     });
 
     this.bindSheet(document.getElementById("panel")!);
+
+    // ⚙ Board and Trusted take the drawer's place, with a way back to it: a row at their top,
+    // put back whenever what they show is drawn again
+    for (const { pop, opener, title } of SIDE_POPS) {
+      const el = document.getElementById(pop);
+      if (!el) continue;
+      const back = () => {
+        if (el.querySelector(":scope > .side-back")) return;
+        const b = document.createElement("button");
+        b.className = "side-back";
+        b.type = "button";
+        b.innerHTML = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg>${title}`;
+        b.addEventListener("click", () => document.getElementById(opener)?.click());
+        el.prepend(b);
+      };
+      new MutationObserver(() => !el.hidden && back()).observe(el, { attributes: true, attributeFilter: ["hidden"], childList: true });
+      back();
+    }
   }
 
   private open(): void {
@@ -99,7 +130,7 @@ export class Phone {
       const who = document.getElementById("who")!;
       return who.hidden ? "" : `Your name: ${who.textContent?.trim() || "set it"}`;
     };
-    const icon = (id: string) => document.getElementById(id)?.querySelector("svg")?.outerHTML ?? `<svg viewBox="0 0 16 16"></svg>`;
+    const icon = (id: string) => OWN_ICON[id] ?? document.getElementById(id)?.querySelector("svg")?.outerHTML ?? `<svg viewBox="0 0 16 16"></svg>`;
     this.pop.innerHTML = ITEMS.map(({ id, label: l }) => {
       const text = label(id, l);
       if (!text) return "";

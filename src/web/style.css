@@ -2332,7 +2332,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
    At most 640 px wide: a page for reading and reviewing (web/src/phone.ts). The bar keeps Back, the
    project's name, search and ⋯, which holds the rest; the side panel is a drawer from ☰; the modes
    sit at the bottom, under the thumb; the panel is a sheet from the bottom, the board above it. */
-.more-wrap, .side-btn { display: none; }
+.more-wrap, .side-btn, .side-back { display: none; }
 @media (max-width: 640px) {
   #bar { top: 8px; left: 8px; right: 8px; height: 44px; gap: 6px; padding: 0 6px 0 4px; }
   #bar .right { gap: 4px; }
@@ -2347,7 +2347,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #more-pop[hidden] { display: none; }
   .more-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--text); font: 15px var(--font); text-align: left; }
   .more-item:active { background: var(--code-bg); }
-  .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); }
+  .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .more-item .act-badge { position: static; margin-left: auto; }
   /* search: a narrow field that takes the whole bar while it is used */
   #search { width: 92px; height: 34px; padding: 0 10px; }
@@ -2404,6 +2404,17 @@ span.tm-row { color: var(--text-2); cursor: default; }
   /* the side panel: a drawer from the left, over a shade */
   body.side-open #side { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 86vw); border-radius: 0 16px 16px 0; z-index: 47; padding-top: env(safe-area-inset-top); background: var(--surface-solid); }
   body.side-open::after { content: ""; position: fixed; inset: 0; z-index: 46; background: rgba(0, 0, 0, 0.3); }
+  /* ⚙ Board and Trusted: in the drawer's place, over it, with a way back */
+  body.side-open .side-pop {
+    left: 0 !important; top: 0 !important; bottom: 0 !important; right: auto !important; width: min(320px, 86vw) !important;
+    height: auto !important; max-height: none !important; border-radius: 0 16px 16px 0; z-index: 48;
+    background: var(--surface-solid); padding-top: calc(8px + env(safe-area-inset-top));
+  }
+  body.side-open .side-back {
+    display: flex; align-items: center; gap: 4px; min-height: 40px; margin: 0 0 6px -6px; padding: 0 6px; border: 0;
+    background: none; color: var(--accent); font: 600 15px var(--font);
+  }
+  .side-back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   /* a field under 16 px makes iOS zoom the whole page into it */
   #panel textarea, #panel input, #share-pop input, #share-pop select, #who-menu input, #modal input, .sh-field input, .sh-field select { font-size: 16px; }
   /* nothing slides sideways: the page is the screen */
