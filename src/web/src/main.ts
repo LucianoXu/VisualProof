@@ -1198,6 +1198,8 @@ async function boot(): Promise<void> {
     const strip = !$("#lensbar").hidden || !$("#tm-kept").hidden;
     const bar = $("#selbar");
     document.body.style.setProperty("--selbar-h", bar.hidden ? "0px" : `${bar.offsetHeight + 8}px`);
+    // on a phone the selection bar goes under the strip
+    document.body.style.setProperty("--strip-h", strip ? `${$(!$("#lensbar").hidden ? "#lensbar" : "#tm-kept").offsetHeight + 6}px` : "0px");
     // a phone (web/src/phone.ts): the side panel is a drawer, the panel a sheet from the bottom,
     // the selection bar across the top, the legend and the zoom's box at the bottom
     const sheet = $("#panel").classList.contains("open") ? $("#panel").offsetHeight : 0;
@@ -1205,7 +1207,7 @@ async function boot(): Promise<void> {
       ? {
           left: 0,
           right: 0,
-          top: (bar.hidden ? $("#viewbar").getBoundingClientRect().bottom : bar.getBoundingClientRect().bottom) + (strip ? 44 : 12),
+          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 : 12) : bar.getBoundingClientRect().bottom + 12,
           bottom: sheet ? sheet + 8 : 56,
         }
       : {

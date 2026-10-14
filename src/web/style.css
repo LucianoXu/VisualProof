@@ -548,11 +548,11 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .sw-win.moving .sw-head { cursor: grabbing; }
 .sw-head .nav { margin-right: 2px; }
 /* under the title bar, why the pairing opened no reference beside it (AttachmentSpec decision 8) */
-.sw-pair { padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); }
-/* a narrow window shortens the namespace and the place, never its buttons */
-.sw-name { font: 600 15px var(--font); flex: none; }
-.sw-ns { color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; min-width: 0; }
-.sw-loc { color: var(--text-3); font: 11.5px var(--mono); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.sw-pair { padding: 5px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+/* a narrow window shortens the namespace and the place, then the name, never its buttons */
+.sw-name { font: 600 15px var(--font); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-ns { color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40vw; min-width: 0; flex-shrink: 1000; }
+.sw-loc { color: var(--text-3); font: 11.5px var(--mono); margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1000; }
 .sw-acts { display: inline-flex; align-items: center; gap: 2px; align-self: center; flex: none; }
 .sw-acts .icon, .sw-pill .icon {
   display: inline-grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--text-2);
@@ -1707,7 +1707,7 @@ details.lf-archived > summary { cursor: pointer; }
   word-break: break-word;
 }
 .p-ns { color: var(--text-2); font-size: 12.5px; word-break: break-all; }
-.p-mod { color: var(--text-3); font-size: 12px; margin: 6px 0 12px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.p-mod { color: var(--text-3); font-size: 12px; margin: 6px 0 12px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; overflow-wrap: anywhere; }
 .p-gen { color: var(--text-2); font-size: 12px; margin: -6px 0 12px; line-height: 1.45; }
 .sw-print { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
 .sw-print-h { color: var(--text-3); font-size: 12px; margin-bottom: 6px; font-family: var(--mono, ui-monospace, monospace); }
@@ -2396,7 +2396,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .help-touch .help-g { color: var(--text); font-weight: 600; }
   #zoom #zoom-in, #zoom #zoom-out { display: none; }
   #foot { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
-  #selbar { top: 100px; left: 8px; right: 8px; width: auto; }
+  /* under the view bar, the review strip, then the selection bar (--strip-h: main.ts) */
+  #lensbar, #tm-kept { top: 100px; left: 8px; right: 8px; transform: none; max-width: none; }
+  #selbar { top: calc(100px + var(--strip-h, 0px)); left: 8px; right: 8px; width: auto; }
   /* the panel: a sheet from the bottom, its height the reader's to drag */
   #panel {
     top: auto; left: 0; right: 0; bottom: 0; width: auto; height: var(--sheet-h, 55dvh); max-height: calc(100dvh - 60px);
@@ -2446,5 +2448,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #tmbar .tm-acts, #tmbar .tm-sum, #tmbar .tm-growth, #tmbar .tm-latest { display: none !important; }
   #tmbar .tm-x { flex: none; width: 36px; height: 34px; font-size: 16px; }
   .sw-head .sw-close { width: 40px; height: 40px; font-size: 20px; }
+  /* a long name goes on over a second line, its end (what tells it from its neighbours) in sight;
+     the buttons keep their place at the right */
+  .sw-head { align-items: center; }
+  .sw-name { flex: 1 1 auto; white-space: normal; overflow-wrap: anywhere; }
   .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
 }
