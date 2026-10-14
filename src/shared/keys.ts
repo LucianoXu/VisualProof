@@ -21,7 +21,7 @@
 //
 // A review holds many members and a target a dozen key declarations: after one walk over the
 // target's TCB, each walk reads the edges of the members and of what it passes through, never the
-// whole graph's (the showcase's `Dim24.MainTheorem`: its TCB of 226 in 72 ms, its keys in 1 ms).
+// whole graph's (Sphere-Packing-Lean's `Dim24.MainTheorem`: its TCB of 226 in 72 ms, its keys in 1 ms).
 
 import type { ReviewData } from "./review.ts";
 import { keyMarks, statusOf } from "./review.ts";

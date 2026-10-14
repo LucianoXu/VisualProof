@@ -35,10 +35,14 @@ The README says how to install the `visualproof` command. A checkout also runs a
   (a library of reference statements beside the proofs that restate them, as NavierStokesAndEuler's
   ComparatorChallenges) is read a part at a time.
 - The first read of flt-regular (27 modules, on Mathlib) takes about 14 s, 11 of them compiling the
-  extractor for its toolchain, which is done once per toolchain; the showcase, Sphere-Packing-Lean
-  (829 modules, 7,851 declarations), about 55 s, its extractor compiled included.
+  extractor for its toolchain, which is done once per toolchain; Sphere-Packing-Lean (829 modules,
+  7,851 declarations), about 55 s, its extractor compiled included; the showcase,
+  NavierStokesAndEuler (read with `--root NavierStokes --root Euler`: 2,657 modules, 52,648
+  declarations, 5.0 million edges), about 3 minutes.
   It is cached (`<cache>/extract/`) by a fingerprint of the `.olean` files, so a restart without a
-  rebuild is instant (under a second). The usage pass follows (`--jobs`).
+  rebuild reads it at once (under a second). The usage pass follows (`--jobs`). Laying out a very
+  large graph is not cached: every start of the showcase spends about 50 s on it, its graph served
+  when that is done.
 - `--port N` (default 4173).
 - **Where it keeps things**: in two places — the site and the cache. Nothing else goes into the
   project, and nothing into this repository.
@@ -65,12 +69,12 @@ The README says how to install the `visualproof` command. A checkout also runs a
   meanwhile, and its findings come as the next version of the graph, so open pages update. One
   process per module (a process cannot import twice); each takes hundreds of MB of its own besides
   the `.olean` files they all map, and import is bound by memory bandwidth, so past about a quarter
-  of the cores more jobs gain less and less (a cold pass on the showcase, on 32 cores: 320 s at 4
-  jobs, 195 s at 8, 148 s at 16; the workers together hold 3 GB at 4 jobs, 4 GB at 8 and 6 GB at
-  16, the `.olean` files counted once). A cold pass on flt-regular (27 modules) takes about 14 s at
+  of the cores more jobs gain less and less (a cold pass on Sphere-Packing-Lean, on 32 cores: 320 s
+  at 4 jobs, 195 s at 8, 148 s at 16; the workers together hold 3 GB at 4 jobs, 4 GB at 8 and 6 GB
+  at 16, the `.olean` files counted once; on the showcase's 2,657 modules, 26 min at 6 jobs). A cold pass on flt-regular (27 modules) takes about 14 s at
   4 jobs, its worker compiled first; results are cached per module (`<cache>/usage/`), so after a
   build only the modules whose `.olean` or imports changed run again (a build of flt-regular that
-  touched 11 of them: 8 s; one of the showcase that changed a module 80 others import: those 81 in
+  touched 11 of them: 8 s; one of Sphere-Packing-Lean that changed a module 80 others import: those 81 in
   24 s, the merged graph served 51 s after the build), and a restart without a build serves the
   merged graph at once (under a second).
   Progress is in `GET /api/status` (`usage`) and the log; a module that cannot be elaborated is
@@ -126,7 +130,8 @@ The README says how to install the `visualproof` command. A checkout also runs a
 Lean v4.28.0 to v4.35.0. The extractor and the usage pass are compiled with each project's own
 toolchain, and Lean's internals change between releases, so every supported toolchain is tested:
 [test/toolchains.json](../test/toolchains.json) lists them. The policy is the last six or so stable
-releases, and whatever the showcase project needs (v4.28.0, for the sphere packing formalization).
+releases, and whatever the showcase project needs (v4.34.0-rc2, for NavierStokesAndEuler); v4.28.0,
+for the sphere packing formalization (the showcase before it), stays the floor.
 
 - `npm run test:toolchains` runs the whole suite once per toolchain, the fixture built by each
   (`-- --jobs N` runs N at once, two by default; `-- v4.28.0` only that one); `VP_TOOLCHAIN=v4.30.0
@@ -720,7 +725,7 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   server has them as its `export` tool, whose action `file` saves the PDF where the agent says
   ([docs/agent-api/export.md](agent-api/export.md)).
 - On flt-regular: the Key view of `Hilbert91`, 4 declarations, 2 pages typeset in 1.4 s; a view of
-  its review set, 16 declarations, 4 pages in 1.5 s. On the showcase, Sphere-Packing-Lean (7,851
+  its review set, 16 declarations, 4 pages in 1.5 s. On Sphere-Packing-Lean (7,851
   declarations), the review set of `SpherePacking.Dim24.MainTheorem`, 18 of the 226 declarations
   its TCB holds, 5 pages in 2.1 s: a large project's review sets are small.
 
@@ -858,10 +863,10 @@ project's modules. It is compiled once per toolchain and version of its source i
 compiling fails it is interpreted instead. Per-module results are cached under a key built from
 Lake's `.olean` hash and the keys of the module's imports, so after an edit only the edited file
 and what imports it are walked again (flt-regular: 3.4 s cold for its 27 modules, most of it the walk
-for axioms through what they import; the showcase: 14 s for its 829, 7 of them that walk, and a
-restart from the cache serves its graph in a second; NavierStokesAndEuler, 2,520 modules and 49,977
-declarations with 4.7 million edges: about 2 min, 10 GB resident, 7.5 GB of it the `.olean` files
-mapped from disk). A term is walked once per distinct subterm, however often it repeats, and what
+for axioms through what they import; Sphere-Packing-Lean: 14 s for its 829, 7 of them that walk,
+and a restart from the cache serves its graph in a second; the showcase, NavierStokesAndEuler, 2,657
+modules and 52,648 declarations with 5.0 million edges: about 2 min, 10 GB resident, most of it the
+`.olean` files mapped from disk). A term is walked once per distinct subterm, however often it repeats, and what
 Lean infers on the way is dropped after each constant.
 
 - **Edges carry the place a reference occurs**: in the statement, in a definition body, or inside
@@ -948,7 +953,7 @@ a dependency counting where its two ends meet) with everything outside the clust
 and places its children by potential, the highest on top: sub-clusters at the free spot nearest
 their height, declarations packed tightly and handed their places from the top down. Nothing
 overlaps and the same graph always gives the same picture. On a large project about nine in ten of the
-dependencies inside the project point downwards where their two ends meet (on the showcase, 90% of
+dependencies inside the project point downwards where their two ends meet (on Sphere-Packing-Lean, 90% of
 them by namespace, 87% by module; on flt-regular, 73% and 87%). Between rebuilds what survived keeps
 its place, unless its height in its cluster moved by more than a tenth of the radius; newcomers
 are fitted in, and siblings pushed apart only where a grown cluster would overlap them. The graph

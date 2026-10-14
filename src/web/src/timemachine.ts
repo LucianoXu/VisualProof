@@ -16,7 +16,7 @@
 // view's at its own build. Keep this version, or Save as new view, makes a build one to arrange.
 //
 // A step must stay quick though a snapshot's graph is large (on a large project, megabytes compressed,
-// and long to lay out by namespace: the showcase's, 1.1 MB, in about 1.5 s): the snapshots read are
+// and long to lay out by namespace: Sphere-Packing-Lean's, 1.1 MB, in about 1.5 s): the snapshots read are
 // kept here, each fetched in two parts
 // the server keeps compressed (server/historyapi.ts), and laid out off the page's thread
 // (web/src/layoutworker.ts, in turn: web/src/layoutqueue.ts), each layout kept; the builds beside the

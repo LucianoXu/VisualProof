@@ -15,7 +15,7 @@
 // (a diagnostic), not as a hover.
 //
 // Lean runs each open file in a worker process of its own, which can die (a worker on a large
-// project holds gigabytes: 4.1 GB for the showcase's main theorem's module; and the kernel's OOM killer picks the
+// project holds gigabytes: 4.1 GB for Sphere-Packing-Lean's main theorem's module; and the kernel's OOM killer picks the
 // largest). Lean then says the file's progress
 // is a fatal error, and starts the worker again only when the document changes: until then every
 // question about it would wait forever. So a crashed document is closed and opened again here, as a
@@ -77,8 +77,8 @@ const IDLE_MS = 10 * 60 * 1000;
 const REQUEST_MS = 5 * 60 * 1000;
 /** a document still being elaborated that Lean has said nothing about for this long has stopped,
  *  whatever Lean says: it is opened again, as a crashed one (loading a large project's imports can
- *  take minutes on a machine short of memory, in which Lean says nothing; on an idle one the
- *  showcase's main theorem's module answers in 2 s) */
+ *  take minutes on a machine short of memory, in which Lean says nothing; on an idle one
+ *  Sphere-Packing-Lean's main theorem's module answers in 2 s) */
 const STALL_MS = 10 * 60 * 1000;
 /** crashes in a row (the document never elaborated to its end between them) after which a document
  *  is not opened again until GIVE_UP_MS have passed */

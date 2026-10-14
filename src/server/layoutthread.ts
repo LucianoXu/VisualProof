@@ -1,5 +1,5 @@
 // The graph's layouts, off the server's thread: computeLayout then stabilize, for each clustering in
-// a worker of its own, both at once. Laid out on the server's thread, the showcase's graph held
+// a worker of its own, both at once. Laid out on the server's thread, Sphere-Packing-Lean's graph held
 // every request for seconds (2.5 s a clustering, more against a memory far off); a worker holds
 // none. A worker is given what a layout reads of each declaration, the edges and the memory, as
 // the page's own (web/src/layoutworker.ts), and gives the layout back. This module is its own
