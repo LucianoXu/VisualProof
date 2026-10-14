@@ -8,7 +8,8 @@ the definitions its statement rests on and the axioms behind its proof. The owne
 is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/CanvasSpec.md),
 [ReviewSpec.md](../SPEC/ReviewSpec.md), [CollabSpec.md](../SPEC/CollabSpec.md), [AgentSpec.md](../SPEC/AgentSpec.md),
 [ViewSpec.md](../SPEC/ViewSpec.md), [TCBSpec.md](../SPEC/TCBSpec.md), [ExportSpec.md](../SPEC/ExportSpec.md),
-[HistorySpec.md](../SPEC/HistorySpec.md) and [AttachmentSpec.md](../SPEC/AttachmentSpec.md).
+[HistorySpec.md](../SPEC/HistorySpec.md), [AttachmentSpec.md](../SPEC/AttachmentSpec.md) and
+[PhoneSpec.md](../SPEC/PhoneSpec.md).
 
 ## Run
 
@@ -328,7 +329,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
 ### On a phone
 
 A screen at most 640 px wide gets a page for reading, reviewing and following; the board is
-arranged on a larger screen. On it:
+arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
 
 - **Fingers**: drag to move around, pinch to zoom, tap to select, double-tap empty board to zoom in
   there; touch and hold opens the menu on what is under the finger. Nothing on the board is moved by
@@ -971,6 +972,7 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `server/access.ts`, `server/invites.ts`, `server/identity.ts`, `server/presence.ts`, `server/events.ts`, `server/snapshot.ts`, `web/src/people.ts`, `web/src/whomenu.ts`, `web/src/verified.ts` | the access link, personal links, names and who records what (a private reader's layout without a name, a link holder's under their link), presence, the timeline, the exported snapshot; on the page, the others and following, the menu under the name, and a link holder's ✓ |
 | `web/` | the page: scene graph, motion, bundles, WebGL renderer (`web/src/gl/`), panels, tabs and boards, history, the source windows (`web/src/sourcewin.ts`, the following and pinned ones `web/src/sources.ts`), the conversation with an agent (`web/src/talk.ts`, its window `web/src/chatwin.ts`), the floating windows they all are (`web/src/floatwin.ts`) |
 | `web/src/timemachine.ts`, `web/src/past.ts`, `shared/pastgraph.ts`, `web/src/layoutworker.ts`, `web/src/layoutqueue.ts` | the Time Machine (HistorySpec): its bar, the past graph and its marks against now (shared with the server, which prints a view of a past build from it), the build aimed at and the one shown (latest wins), its layouts off the page's thread, in turn |
+| `web/src/phone.ts` | a phone's page (PhoneSpec): ⋯ of the bar, the side panel's drawer, the panel's sheet; its styles are the last block of `web/style.css`, the fingers' gestures in `web/src/canvas.ts` |
 | `shared/graph.ts`, `shared/edgecodec.ts`, `shared/build.ts` | the data crossing the boundaries, the edges packed for pages, build status |
 | `shared/review.ts`, `shared/reviewqueue.ts`, `web/src/trust.ts`, `web/src/linediff.ts` | the review's events and replay, review order and why-chains, trusting from the page, what changed in a stale opinion (ReviewSpec) |
 | `shared/collab.ts`, `shared/places.ts`, `shared/timeline.ts` | names and presence, shared pins, the timeline (CollabSpec) |

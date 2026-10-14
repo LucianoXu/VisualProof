@@ -72,7 +72,7 @@ interface Row {
   what: string;
 }
 
-/** The sheet on a phone (SPEC.md, "Deployment"; web/src/phone.ts): what the fingers do, and where
+/** The sheet on a phone (PhoneSpec decision 15; web/src/phone.ts): what the fingers do, and where
  *  the page keeps what reading and reviewing need. Nothing on the board is moved by a finger. */
 const TOUCH: [string, Row[]][] = [
   [

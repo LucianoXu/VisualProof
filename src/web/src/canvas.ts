@@ -1450,10 +1450,10 @@ export class GraphCanvas {
     /** The press is a Mac's Ctrl+click: let go where it was pressed, it is the menu's (contextmenu). */
     let menu = false;
 
-    // Touch (SPEC.md, "Deployment": small touch devices): the fingers on the canvas, by pointer. Two
-    // make a pinch, which zooms about their middle and moves with it; what the fingers leave after a
-    // pinch is no tap. A finger held still on the board opens the menu there; a second tap on empty
-    // board, soon after the first, zooms in there.
+    // Touch (PhoneSpec decisions 3 and 4): the fingers on the canvas, by pointer. Two make a pinch,
+    // which zooms about their middle and moves with it; what the fingers leave after a pinch is no
+    // tap. A finger held still on the board opens the menu there; a second tap on empty board, soon
+    // after the first, zooms in there.
     const touches = new Map<number, { x: number; y: number }>();
     let pinch: { d0: number; k0: number; wx: number; wy: number } | null = null;
     let pinched = false;
@@ -1470,10 +1470,10 @@ export class GraphCanvas {
       pinch = { d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), k0: this.cam.k, wx, wy };
     };
 
-    // a finger on the board is the board's alone: iOS would take one held still for its own, and
-    // select the text it then finds under it (the menu, which opens there) or offer the canvas as
-    // an image. Nothing on the board waits for a click; a field being typed in loses the focus, as
-    // it would to a press anywhere else.
+    // a finger on the board is the board's alone (PhoneSpec decision 5): iOS would take one held
+    // still for its own, and select the text it then finds under it (the menu, which opens there)
+    // or offer the canvas as an image. Nothing on the board waits for a click; a field being typed
+    // in loses the focus, as it would to a press anywhere else.
     el.addEventListener(
       "touchstart",
       (e) => {

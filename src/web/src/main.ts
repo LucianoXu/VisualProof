@@ -3056,7 +3056,7 @@ async function boot(): Promise<void> {
       write: canName() && !blocked() && !pastShown(),
       past: pastShown(),
       preview: frozen(),
-      // a phone: a source takes the whole screen, nothing is pinned beside it (web/src/phone.ts)
+      // a phone: a source takes the whole screen, nothing is pinned beside it (PhoneSpec decision 13)
       noPin: isPhone(),
     };
   };

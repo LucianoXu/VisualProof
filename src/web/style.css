@@ -2331,7 +2331,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
 @media (max-width: 1150px) { .tm-view { display: none; } .tm-n { padding: 0 6px; } }
 @media (max-width: 900px) { .tm-btn[data-tm-save] { display: none; } }
 
-/* ---------------------------------------------------------------- a phone (SPEC.md, "Deployment")
+/* ---------------------------------------------------------------- a phone (PhoneSpec)
 
    At most 640 px wide: a page for reading and reviewing (web/src/phone.ts). The bar keeps Back, the
    project's name, search and ⋯, which holds the modes and the rest; the side panel is a drawer from
