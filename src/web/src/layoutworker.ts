@@ -1,9 +1,9 @@
 // The Time Machine's layouts, off the page's thread (HistorySpec, "The Time Machine"): a past graph is
 // laid out as a board is — computeLayout, then stabilize with the view's memory, or the latest
-// build's layout — and a large project's whole graph takes long to lay out by namespace, which would
-// hold the page still at every step on the timeline (TODO(scale, sphere packing): re-measure). The page sends what a layout reads of each declaration,
-// the edges, the levels hidden and the memory; it gets the layout back. Bundled beside the page
-// (server/pipeline.ts).
+// build's layout — and a large project's whole graph takes long to lay out by namespace (the
+// showcase's: about 1.5 s on the server), which would hold the page still at every step on the
+// timeline. The page sends what a layout reads of each declaration, the edges, the levels hidden and
+// the memory; it gets the layout back. Bundled beside the page (server/pipeline.ts).
 
 import type { ClusterMode, ViewNode } from "../../shared/graph.ts";
 import { computeLayout, stabilize } from "../../shared/layout.ts";
