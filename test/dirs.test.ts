@@ -60,8 +60,9 @@ test("a project's site and caches: by its key under the homes, or where --site a
     cache: `/home/u/.cache/visualproof/projects/${key}`,
     lean: "/home/u/.cache/visualproof/lean",
   });
-  // --site: relative to the project, or absolute (a deployed server's); --cache: the root of all caches
-  assert.equal(projectDirs("/work/My Proof", "review/site", null, h).site, "/work/My Proof/review/site");
+  // --site: relative to the current directory, as --cache is, or absolute (a deployed server's);
+  // --cache: the root of all caches
+  assert.equal(projectDirs("/work/My Proof", "review/site", null, h).site, join(process.cwd(), "review/site"));
   assert.deepEqual(projectDirs("/work/My Proof", "/srv/vp-site", "/var/cache/vp", h), {
     site: "/srv/vp-site",
     cache: `/var/cache/vp/projects/${key}`,

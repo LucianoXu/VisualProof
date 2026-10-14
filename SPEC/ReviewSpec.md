@@ -29,7 +29,7 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
 4. **Targets** are marked by people and agents at level full. Marking makes no view (ViewSpec
    decision 29). Targets have no checkpoints: an opinion goes stale by itself, what newly enters a
    TCB shows as not yet reviewed, and the timeline records TCB changes (CollabSpec decision 5).
-5. **Storage: in the site**, its `log/` (`--site <dir>`, relative to the project or absolute;
+5. **Storage: in the site**, its `log/` (`--site <dir>`, relative to the current directory or absolute, the owner's decision of 2026-10-14;
    default `<data home>/sites/<project>-<hash>/`), local, never committed; one server at a time
    (`.lock`). **One append-only log per writer** ("The logs"); a damaged file is reported, never
    rewritten; files changed on disk are read again. The server binds what is written: it takes the

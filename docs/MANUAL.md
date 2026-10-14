@@ -41,8 +41,8 @@ The README says how to install the `visualproof` command. A checkout also runs a
     VisualProof site accumulates — the history of builds, the library's files, the views and their
     layouts (with the notes they keep), the timeline, conversations with agents, agents' tokens and
     personal links. By default `~/.local/share/visualproof/sites/<project>-<hash>/` (macOS:
-    `~/Library/Application Support/visualproof/sites/…`); `--site` is relative to the project, or
-    absolute; `<site>` below. It is local: it cannot be derived again and holds secrets, so back it
+    `~/Library/Application Support/visualproof/sites/…`); `--site` is relative to the current directory,
+    as `--cache` is, or absolute; `<site>` below. It is local: it cannot be derived again and holds secrets, so back it
     up and never commit it. A folder the server makes gets a README saying so; one already there
     is left as it is. One server at a time uses a site (`<site>/.lock`): a second is refused, and
     says which process holds it.

@@ -49,7 +49,7 @@ interface Options {
   roots: string[];
   port: number;
   host: string;
-  /** the site's folder (server/dirs.ts), relative to the project or absolute; null: under the data home */
+  /** the site's folder (server/dirs.ts), relative to the current directory or absolute; null: under the data home */
   site: string | null;
   /** the root of the caches; null: the cache home */
   cache: string | null;
@@ -97,7 +97,7 @@ function usage(code = 2): never {
            history of builds, the library's files, the views and their layouts, the timeline,
            conversations with agents, agents' tokens and personal links. It cannot be derived
            again and holds secrets: back it up, never commit it. One server at a time uses a
-           site. Relative to the project, or absolute; default:
+           site. Relative to the current directory, or absolute; default:
            ${join(dataHome(), "sites", "<project>-<hash>")}
   --cache  the root of the caches, which a rebuild makes again: the project's (extractions, the
            usage pass's results, prepared views, typeset documents, Lean's language server's
