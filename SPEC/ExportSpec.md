@@ -124,6 +124,60 @@ Numbers missing below are withdrawn decisions.
     each with its title, what it is, where it came from (the address fetched, or the upload name) and
     the start of its hash. A link explains, it does not judge: it is not review. A past view prints
     the links of what its board holds, a declaration renamed since under its name then.
+18. **The linear form** (SPEC.md, "Export"; the owner's words of 2026-10-13: the cluster hierarchy
+    indented, strictly on one vertical line; dragging in it changes the document's order, and the
+    ordinary board shows the change). *Draft, for the owner's review (2026-10-14).*
+    - **What it is**: the board drawn as the document's outline (decision 13). Every circle's centre
+      and every point lies on one vertical line, in document order, **first at the top**, as a
+      document reads. Circles still mean containment (CanvasSpec decision 3): a section's circle
+      holds its members, stacked along the line, and each level of nesting is one more circle
+      around them — the indentation. Only what the document prints is drawn: the sections (hidden
+      levels taken out, a single-child chain merged, `A.B`), the project declarations and the notes;
+      outside declarations are left out, as the document only counts them. Nothing is folded in it.
+    - **Labels** at the right of the line: a section's number and title ("2.1 CaseI") beside its
+      circle, a declaration's name beside its point; the colours are the scheme's (Kind or Status).
+      Edges, where shown (⋯), are arcs on the left of the line, unbundled: an arc diagram.
+    - **When**: while the Export window is open the board on show is drawn so, easing from its
+      arrangement and back when the window closes; and at will, from ⋯ (*Linear form*, key `L`). It
+      is the reader's own way of drawing the board, followed as the tool is (CollabSpec decision 4);
+      the board itself is unchanged by it.
+    - **Dragging** a declaration, a note or a section along the line moves it among its siblings,
+      never out of its section (the clustering decides membership). Let go, it moves the document:
+      on the board it is pinned in its cluster at a height between its new neighbours', as a drag
+      there would pin it, for everyone on the view, and the document's order (bottom first on the
+      board) follows. Undone as a pin is. The rest of the section keeps its places.
+    - **Who may**: whoever may arrange the board (not a snapshot, a read-only reader, a past
+      build's preview); the others see the form and cannot drag.
+    - *Open questions*: first at the top (reading order) or at the bottom (the board's order, no flip
+      when the form eases in)? Edges as arcs, or none? Should a drop also reorder siblings that are
+      not dragged, to keep heights evenly spaced on the board?
+19. **Artwork** (SPEC.md, "Export"; the owner's words of 2026-10-13: PNG and SVG, the canvas's size
+    chosen and rendered at high resolution; a highlighted frame in the middle with shade around it,
+    the canvas dragged under it to choose what is drawn; the colours, the items and the targets
+    adjustable). *Draft, for the owner's review (2026-10-14).*
+    - **Where**: the Export window's second tab, *Artwork*, beside *Document*. Choosing it closes the
+      window into the framing mode; Esc or Done leaves it, the board as it was.
+    - **The frame**: fixed in the middle of the screen, its aspect the size chosen; outside it the
+      screen is shaded. The reader pans and zooms the board under it (drag, wheel, the keys), and
+      what lies in the frame is what is drawn, at the size chosen.
+    - **The size**: presets (1920 × 1080, 3840 × 2160, 4096 × 4096, A3 and A2 at 300 dpi, portrait or
+      landscape) or width and height in pixels, at most 16,384 on a side. A preview scale shows what
+      a label's size will be in the image.
+    - **The appearance**, in a small panel beside the frame, shown live: the colour scheme (Kind or
+      Status) and the theme (light, dark), the background (the theme's, white, or transparent for
+      PNG and SVG); labels (all, clusters only, none); edges (all, the selection's, none) and proof
+      edges; items — notes and attachments — shown or not; targets — their star and name marked,
+      shown as any declaration, or highlighted with the rest faded. The selection and what is lit
+      count as the reader sees them, or not at all.
+    - **The output**: PNG, drawn by the page off screen at the full size (in tiles where the size
+      passes what the graphics card draws at once); SVG, vector — circles, points, labels as text,
+      edges as paths. Made in the browser, from what the page holds: nothing is asked of the server,
+      so a read-only reader and a snapshot of the page can make one too. The file is named after the
+      view and the build ("TCB of Hilbert91 @ Oct 14 12:38.png").
+    - **What is kept**: the reader's own choices, in their browser; nothing is shared or recorded.
+      Agents have no artwork (the page draws it).
+    - *Open questions*: should the frame, the size and the appearance be kept per view (an artwork
+      made again from the same view looking the same), and shared?
 
 ## Implementation notes
 
