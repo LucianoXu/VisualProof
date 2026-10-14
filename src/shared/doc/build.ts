@@ -312,7 +312,8 @@ export function buildDoc(input: DocInput): DocModel {
       title: docTitle(view, titles),
       author: authorLine(view.authors),
       project: meta.project.name,
-      roots: meta.project.roots,
+      // the libraries, not the thousands of modules one may stand for
+      roots: meta.project.targets ?? meta.project.roots,
       fingerprint: input.build.fingerprint,
       commit: input.build.commit,
       toolchain: input.build.toolchain ?? meta.project.toolchain,

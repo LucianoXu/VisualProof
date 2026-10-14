@@ -182,6 +182,9 @@ export interface ViewMeta {
     name: string;
     root: string;
     roots: string[];
+    /** what the roots were asked for as (server/project.ts): the libraries, where one stands for
+     *  many modules; absent: the roots */
+    targets?: string[];
     toolchain: string;
     extractedAt: string;
     extractMs: number;

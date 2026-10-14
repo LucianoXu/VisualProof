@@ -67,6 +67,7 @@ export function buildView(
       name: p.name,
       root: p.root,
       roots: p.roots,
+      ...(p.targets ? { targets: p.targets } : {}),
       toolchain: p.toolchain,
       extractedAt: ex.at,
       extractMs: g.stats.ms,

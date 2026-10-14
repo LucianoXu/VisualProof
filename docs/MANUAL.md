@@ -26,9 +26,11 @@ The README says how to install the `visualproof` command. A checkout also runs a
   never builds the project. A build in progress or a broken one is shown as such (see Live), with
   the last graph that could be read. It writes nothing into the project: what it keeps is in the
   site's folder and the cache (below).
-- Modules to read come from `defaultTargets` in `lakefile.toml`, or the libraries marked
-  `@[default_target]` in `lakefile.lean` (their `roots`, else their names; the lakefile is read as
-  text, never run), or `--root Module` (repeatable), which wins.
+- Modules to read come from the default targets: `defaultTargets` in `lakefile.toml`, or the
+  libraries marked `@[default_target]` in `lakefile.lean` (read as text, never run). A library
+  stands for the modules Lake builds of it: its `globs` (`A`, `A.+` its submodules, `A.*` both),
+  else its `roots`, else its name; a target that is no library is a module. `--root Module`
+  (repeatable) wins.
 - The first read of flt-regular (27 modules, on Mathlib) takes about 14 s, 11 of them compiling the
   extractor for its toolchain, which is done once per toolchain; the showcase, Sphere-Packing-Lean
   (829 modules, 7,851 declarations), about 55 s, its extractor compiled included.

@@ -11,7 +11,7 @@ import { extname, join, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { WEB, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import { SiteBusy, cacheHome, dataHome, lockSite, openSite, projectDirs } from "./dirs.ts";
-import { ProjectError, openProject } from "./project.ts";
+import { ProjectError, openProject, targetsInWords } from "./project.ts";
 import type { Project } from "./project.ts";
 import { Live } from "./live.ts";
 import { ReviewStore } from "./review.ts";
@@ -1275,7 +1275,7 @@ async function main(): Promise<void> {
   const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, new Exporter(dirs.cache), o.publicUrl, o.publicRead);
   const server = createServer((req, res) => app.handle(req, res));
   server.listen(o.port, o.host, () => {
-    console.log(`VisualProof — ${project.name} (${project.roots.join(", ")})`);
+    console.log(`VisualProof — ${project.name} (${targetsInWords(project)})`);
     console.log(`  http://${o.host}:${o.port}/`);
     console.log(`  site: ${dirs.site}${review.error ? ` — the review: ${review.error}` : ""}`);
     console.log(`  cache: ${dirs.cache}`);
