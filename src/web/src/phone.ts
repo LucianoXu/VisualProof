@@ -4,6 +4,7 @@
 //
 // - the bar's buttons — Share, the library, Export, Activity, the reader's name, help — are in one
 //   menu, ⋯, each item pressing the button it stands for, so that everything they do is as ever;
+//   the modes head it, each with a few words on what a tap selects, as its button would;
 // - the side panel (the targets, the board's clusters) is a drawer from ☰, which closes when the
 //   reader goes somewhere from it;
 // - the panel is a sheet from the bottom, the board above it, with a handle at its top:
@@ -22,6 +23,8 @@ export interface PhoneHooks {
   closePanel(): void;
   /** the panel's sheet changed height: the board's room changed */
   resized(): void;
+  /** what a tap selects in a mode, in a few words */
+  modeHint(mode: string): string;
 }
 
 /** The ⋯ menu's items: the button each stands for, and its label. */
@@ -63,12 +66,13 @@ export class Phone {
     this.pop = document.getElementById("more-pop")!;
     this.btn.addEventListener("click", () => (this.pop.hidden ? this.open() : this.close()));
     this.pop.addEventListener("click", (e) => {
-      const item = (e.target as HTMLElement).closest<HTMLElement>("[data-for]");
+      const item = (e.target as HTMLElement).closest<HTMLElement>("[data-for], [data-mode-for]");
       if (!item) return;
       this.close();
       // the button it stands for, pressed after this click is done (its popover's outside-click
       // would close it otherwise)
-      setTimeout(() => document.getElementById(item.dataset.for!)?.click(), 0);
+      const button = item.dataset.for ? document.getElementById(item.dataset.for) : document.querySelector<HTMLElement>(`#lightup [data-mode="${item.dataset.modeFor}"]`);
+      setTimeout(() => button?.click(), 0);
     });
     document.addEventListener("pointerdown", (e) => {
       const t = e.target as Node;
@@ -131,7 +135,7 @@ export class Phone {
       return who.hidden ? "" : `Your name: ${who.textContent?.trim() || "set it"}`;
     };
     const icon = (id: string) => OWN_ICON[id] ?? document.getElementById(id)?.querySelector("svg")?.outerHTML ?? `<svg viewBox="0 0 16 16"></svg>`;
-    this.pop.innerHTML = ITEMS.map(({ id, label: l }) => {
+    this.pop.innerHTML = this.modes() + ITEMS.map(({ id, label: l }) => {
       const text = label(id, l);
       if (!text) return "";
       const badge = id === "activity-btn" ? document.getElementById("activity-badge") : null;
@@ -139,6 +143,22 @@ export class Phone {
     }).join("");
     this.pop.hidden = false;
     this.btn.setAttribute("aria-expanded", "true");
+  }
+
+  /** The modes, as their buttons have them (web/src/main.ts): Selection, Rests on's three steps
+   *  under its name, Used by; the one in use ticked. */
+  private modes(): string {
+    let rows = `<div class="more-h">Mode · what a tap selects</div>`;
+    for (const b of document.querySelectorAll<HTMLElement>("#lightup [data-mode]")) {
+      const mode = b.dataset.mode!;
+      const step = !!b.closest("#rests-steps");
+      if (step && !b.previousElementSibling) rows += `<div class="more-sub">${document.getElementById("rests-btn")?.textContent ?? ""}</div>`;
+      const on = b.classList.contains("on");
+      rows +=
+        `<button class="more-item more-mode${step ? " step" : ""}${on ? " on" : ""}" role="menuitemradio" aria-checked="${on}" data-mode-for="${mode}">` +
+        `<span class="more-tick" aria-hidden="true">${on ? "✓" : ""}</span><span class="more-l">${b.textContent}<small>${this.hooks.modeHint(mode)}</small></span></button>`;
+    }
+    return rows + `<div class="more-sep" role="separator"></div>`;
   }
 
   private close(): void {

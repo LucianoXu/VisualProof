@@ -101,7 +101,7 @@ import { ChatWindow } from "./chatwin.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
-import { isPhone, Phone, PHONE } from "./phone.ts";
+import { isPhone, Phone } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
@@ -146,6 +146,9 @@ const MODE_HINT: Record<Tool, string> = {
  *  granularities, everything used ⊇ the TCB ⊇ the key declarations in it. */
 const RESTS_HINT = "A click selects what you click rests on, as much of it as the step says:";
 const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything it uses, proofs included", tcb: "what its statement rests on, proofs skipped", keys: "the key declarations in its TCB" };
+/** What a tap selects with each tool, in a few words: under the tool's name in a phone's ⋯, where
+ *  nothing is said while a pointer rests on a button (web/src/phone.ts). */
+const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap", apps: "everything that uses it" };
 
 interface GraphInfo {
   version: number;
@@ -1184,6 +1187,7 @@ async function boot(): Promise<void> {
   new Phone({
     closePanel: () => $<HTMLElement>("#panel [data-close]")?.click(),
     resized: () => syncInsets(),
+    modeHint: (m) => TAP_HINT[m as Tool] ?? "",
   });
   const syncInsets = () => {
     const side = $("#side").getBoundingClientRect();
@@ -1195,14 +1199,14 @@ async function boot(): Promise<void> {
     const bar = $("#selbar");
     document.body.style.setProperty("--selbar-h", bar.hidden ? "0px" : `${bar.offsetHeight + 8}px`);
     // a phone (web/src/phone.ts): the side panel is a drawer, the panel a sheet from the bottom,
-    // the selection bar across the top, the modes at the bottom
+    // the selection bar across the top, the legend and the zoom's box at the bottom
     const sheet = $("#panel").classList.contains("open") ? $("#panel").offsetHeight : 0;
     canvas.insets = isPhone()
       ? {
           left: 0,
           right: 0,
           top: (bar.hidden ? $("#viewbar").getBoundingClientRect().bottom : bar.getBoundingClientRect().bottom) + (strip ? 44 : 12),
-          bottom: sheet ? sheet + 8 : 64,
+          bottom: sheet ? sheet + 8 : 56,
         }
       : {
           left: side.width ? side.right + 8 : 0,
@@ -2045,16 +2049,13 @@ async function boot(): Promise<void> {
     const rests = restsOn(S.mode);
     $("#rests").classList.toggle("on", rests);
     $("#rests-btn").setAttribute("aria-pressed", String(rests));
-    // on a phone Rests on is its steps, always in the modes' row (web/src/phone.ts)
-    $("#rests-steps").hidden = !rests && !isPhone();
+    $("#rests-steps").hidden = !rests;
     document.body.dataset.mode = S.mode;
     if (keyLegend !== (S.mode === "keys")) {
       keyLegend = S.mode === "keys";
       legend.render();
     }
   };
-  // a window narrowed to a phone's width, or widened from it, shows the modes as it then does
-  matchMedia(PHONE).addEventListener("change", () => syncTool());
 
   /** What a mode does, under its button while the pointer is on it (or it has the focus); null
    *  puts it away. It is said nowhere else: the reader who knows the modes is not told again. Rests

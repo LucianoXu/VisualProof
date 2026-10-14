@@ -189,6 +189,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 #labels { position: fixed; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 #cards { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+/* a finger held on the board opens its menu there, under the finger (web/src/canvas.ts): iOS would
+   select the text it then finds under it, or offer the canvas as an image */
+#canvas, #cards, #ctxmenu { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#ctxmenu input, #ctxmenu textarea { -webkit-user-select: text; user-select: text; }
 /* the linear form, over the board and its notes, under the panels (web/src/linear.ts) */
 #linear { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; z-index: 5; }
 #linear[hidden] { display: none; }
@@ -2330,8 +2334,8 @@ span.tm-row { color: var(--text-2); cursor: default; }
 /* ---------------------------------------------------------------- a phone (SPEC.md, "Deployment")
 
    At most 640 px wide: a page for reading and reviewing (web/src/phone.ts). The bar keeps Back, the
-   project's name, search and ⋯, which holds the rest; the side panel is a drawer from ☰; the modes
-   sit at the bottom, under the thumb; the panel is a sheet from the bottom, the board above it. */
+   project's name, search and ⋯, which holds the modes and the rest; the side panel is a drawer from
+   ☰; the panel is a sheet from the bottom, the board above it. */
 .more-wrap, .side-btn, .side-back { display: none; }
 @media (max-width: 640px) {
   #bar { top: 8px; left: 8px; right: 8px; height: 44px; gap: 6px; padding: 0 6px 0 4px; }
@@ -2349,6 +2353,17 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .more-item:active { background: var(--code-bg); }
   .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .more-item .act-badge { position: static; margin-left: auto; }
+  /* the modes, at the top of ⋯: each with what a tap selects under its name, the one in use ticked */
+  #more-pop { max-height: calc(100dvh - 70px); overflow-y: auto; }
+  .more-h { padding: 6px 12px 2px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .more-sub { padding: 6px 12px 0 36px; font-size: 12px; color: var(--text-2); }
+  .more-mode { gap: 6px; padding: 4px 12px; }
+  .more-mode.step { padding-left: 28px; }
+  .more-mode.on { color: var(--accent); }
+  .more-tick { flex: none; width: 16px; text-align: center; font-weight: 700; }
+  .more-l { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .more-l small { font-size: 12px; color: var(--text-2); }
+  .more-sep { height: 1px; margin: 6px 4px; background: var(--line); }
   /* search: a narrow field that takes the whole bar while it is used */
   #search { width: 92px; height: 34px; padding: 0 10px; }
   .search-wrap:focus-within { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 45; }
@@ -2365,18 +2380,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #tabs::-webkit-scrollbar { display: none; }
   .vb-gap, .light-l { display: none; }
   .focus-btn { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* the modes, at the bottom, in one row: Selection, Rests on's three steps, Used by — each an equal
-     share of the width; Rests on is its steps */
-  #lightup {
-    position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 7;
-    display: flex; height: 40px; padding: 2px;
-  }
-  #lightup > button { flex: 1 1 0; min-width: 0; }
-  #lightup .rests { flex: 3 1 0; min-width: 0; display: flex; background: none !important; }
-  #rests-btn { display: none; }
-  #lightup .steps { display: flex; flex: 1; margin: 0; padding: 0; gap: 0; background: none; }
-  #lightup button, #lightup .steps button { flex: 1 1 0; min-width: 0; padding: 6px 2px; font-size: 13px; white-space: nowrap; justify-content: center; }
-  #zoom { right: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
+  /* the modes are in ⋯ */
+  #lightup { display: none; }
+  #zoom { right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   /* ⋯ opens upwards from its box, at the right (the box's blur makes it the popover's frame) */
   #eyes-pop { right: 0; bottom: calc(100% + 8px); width: min(280px, calc(100vw - 16px)); min-width: 0; background: var(--surface-solid); }
   #zoom #eyes-pop button.eye { min-height: 40px; }
@@ -2389,7 +2395,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .help-touch .help-row { grid-template-columns: 116px minmax(0, 1fr); font-size: 14px; padding: 5px 0; }
   .help-touch .help-g { color: var(--text); font-weight: 600; }
   #zoom #zoom-in, #zoom #zoom-out { display: none; }
-  #foot { left: 8px; bottom: calc(56px + env(safe-area-inset-bottom)); }
+  #foot { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   #selbar { top: 100px; left: 8px; right: 8px; width: auto; }
   /* the panel: a sheet from the bottom, its height the reader's to drag */
   #panel {

@@ -87,19 +87,19 @@ const TOUCH: [string, Row[]][] = [
     ],
   ],
   [
-    "How a tap selects",
+    "How a tap selects: the modes, in ⋯ at the top",
     [
       { g: "Selection", what: "just what you tap" },
-      { g: "Uses", what: "and what it uses directly" },
-      { g: "TCB", what: "and everything it rests on: its trusted computing base" },
-      { g: "Keys", what: "and the key declarations in its TCB" },
-      { g: "Used by", what: "and what uses it" },
+      { g: "Rests on · Uses", what: "and everything it uses, proofs included" },
+      { g: "Rests on · TCB", what: "and what its statement rests on, proofs skipped: its trusted computing base" },
+      { g: "Rests on · Keys", what: "and the key declarations in its TCB" },
+      { g: "Used by", what: "and everything that uses it" },
     ],
   ],
   [
     "Reading and reviewing",
     [
-      { g: "the sheet", what: "what you tapped; drag its handle up to read more, down to close it" },
+      { g: "the sheet", what: "what you tapped; tap its handle for the whole screen or half of it, ✕ to close it" },
       { g: "Source", what: "its code, on the whole screen; ✕ closes it" },
       { g: "Approve, Comment", what: "your opinion, under your name (⋯ at the top: your name)" },
       { g: "☰", what: "the targets under review, and the board's namespaces or folders" },
@@ -111,7 +111,7 @@ const TOUCH: [string, Row[]][] = [
     "Together, and the rest",
     [
       { g: "someone's initials", what: "follow them: you see what they see" },
-      { g: "⋯ at the top", what: "share, the library, export, activity, your name, this sheet" },
+      { g: "⋯ at the top", what: "the modes, share, the library, export, activity, your name, this sheet" },
       { g: "⋯ at the bottom", what: "edges, the linear form, the theme" },
       { g: "Kind ▾", what: "colour by kind or by review status" },
     ],

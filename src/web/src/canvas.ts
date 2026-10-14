@@ -1470,6 +1470,19 @@ export class GraphCanvas {
       pinch = { d0: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), k0: this.cam.k, wx, wy };
     };
 
+    // a finger on the board is the board's alone: iOS would take one held still for its own, and
+    // select the text it then finds under it (the menu, which opens there) or offer the canvas as
+    // an image. Nothing on the board waits for a click; a field being typed in loses the focus, as
+    // it would to a press anywhere else.
+    el.addEventListener(
+      "touchstart",
+      (e) => {
+        e.preventDefault();
+        const a = document.activeElement;
+        if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) a.blur();
+      },
+      { passive: false },
+    );
     // the right click is the page's: its menu, on what is under the pointer (a card's, on a card)
     el.addEventListener("contextmenu", (e) => {
       e.preventDefault();
