@@ -75,7 +75,7 @@ jobs:
     environment: npm
     permissions:
       contents: write
-      # provenance, and npm's trusted publishing where it is set up for the package
+      # npm's trusted publishing (OIDC), which also signs the provenance
       id-token: write
     steps:
       - uses: actions/checkout@v5
@@ -89,9 +89,6 @@ jobs:
       # prepack builds dist/
       - name: Publish to npm
         run: npm publish --provenance --access public ${{ needs.check.outputs.next == 'true' && '--tag next' || '' }}
-        env:
-          # a token, until trusted publishing is set up for the package on npmjs.com
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: The GitHub release, from the changelog
         run: |
           v="${{ needs.check.outputs.version }}"
