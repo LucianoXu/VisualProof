@@ -314,7 +314,51 @@ Numbers missing below are withdrawn decisions.
       vectors draw what the renderer draws. Made in the browser, from what the page holds: nothing
       is asked of the server, so a read-only reader and a snapshot of the page can make one too.
       The file is named after the view and the build ("TCB of Hilbert91 @ Oct 14 12:38.png").
-    - Agents have no artwork (the page draws it).
+    - Agents have no artwork of their own (the page draws it); they make links to one, by a recipe
+      (decision 20).
+20. **Artwork by recipe** (DRAFT of 2026-10-15, for the owner's review; the owner's words of
+    2026-10-15: posters of many codebases are made by hand with much effort — an API and a batch
+    export for them; the owner's decisions of 2026-10-15, on the draft's questions: names chosen by
+    a rule never overlap, and the reader is told of the browser's prompt when a link saves several
+    files; an installed command wanted, its design pending; the rest as drafted): a picture of the
+    board is said by a **recipe**, in words that hold on any project, so that one recipe makes the
+    same kind of picture of every codebase.
+    - **What a recipe says**, every part optional, the rest as a new artwork has it (4K
+      landscape, as the board, light, names as the board writes them, every target marked): the
+      size by its name (HD, 4K, square, A3, A2) or in pixels, its orientation; the style, the theme,
+      transparency, the colouring, the border; the title, its line, their sizes, the foot's size,
+      the source; the names; the targets — all, none, faded, or those named; the key marks; the
+      notes; the edges; the selection — a declaration and how it is selected — and whether it is
+      drawn; the view.
+    - **Names by a rule**: from none (or from what the board writes), the clusters to a depth, or
+      by key; the targets' names; declarations by name; what to leave out. A depth names the
+      outside world's cluster and the project's clusters down to it that hold at least a share of
+      the project (1% unless said, the top level too: as drafted, not yet answered), so that a rule
+      names neither the many small namespaces of a project that extends a library nor every small
+      circle. **Names chosen by a rule never overlap** (the owner's decision of 2026-10-15): each is
+      written where the board writes it only where it covers no name already written — after the
+      names given (clusters by key, declarations, the targets' names), which are written wherever
+      they fall, as names ticked by hand are; a parent's before its children's. The panel picks no
+      name by a rule: each tick there, one by one or All and None, is by hand; a name the rule
+      chose is the reader's once ticked, written wherever it falls, and the rule's no more once
+      unticked.
+    - **A link carries it**: an agent sends the recipe (`POST /api/agent/artwork`, any level: it
+      changes nothing) and gets a link — the selection in its address, the recipe after it — which
+      opens the page in the artwork mode as the recipe says, fitted to the whole board; asked, the
+      page saves the PNG and the SVG once the board is still, its fonts and the git commit there.
+      The page resolves the recipe against the board it opens on; the server resolves it first
+      against the Project's, and refuses what the recipe names that the board has not (a
+      declaration, a target, a cluster, a view) rather than make a picture unlike the one meant; a
+      target of the review the graph no longer has (renamed or removed since it was marked) is left
+      out unsaid where the recipe does not name it, and what is beyond what an artwork carries is
+      counted (`left`), not refused. The link holds no key, as
+      Share's do. The settings it opens with are not kept as the reader's until they change one (as
+      drafted, not yet answered). Saving both files, the page says first that the browser may ask
+      to allow the site to download several files (the owner's decision of 2026-10-15).
+    - **A batch**: `scripts/artwork-batch.mjs` (a tool of the repository, not of the package) takes
+      a list of servers, keys, recipes and names, and saves each picture with a headless browser.
+    - **An installed command** (`visualproof artwork`), making a picture without a full browser, is
+      wanted (the owner's decision of 2026-10-15); its design is pending.
 
 ## Implementation notes
 
@@ -519,7 +563,7 @@ Numbers missing below are withdrawn decisions.
   where As shown writes it. The list (canvas `artNames`; artwork `nameRows`, at most 2,000 lines, the
   rest narrowed to by the filter) is read again when the board has been still 300 ms, at least every
   second while it moves. The lists are kept within what a heartbeat carries (collab
-  `ART_NAMES_BYTES`, 4,500 bytes of JSON each list of names, `ART_TARGETS_BYTES`, 2,500: a heartbeat
+  `ART_NAMES_BYTES`, 4,000 bytes of JSON each list of names, `ART_TARGETS_BYTES`, 2,500: a heartbeat
   is at most 16 KB), checked by `cleanNames` wherever they are read; what does not fit is left out
   and said. A
   page from before them chose none, and its key marks are as its targets drew them. The filter is the
@@ -543,7 +587,11 @@ Numbers missing below are withdrawn decisions.
   outside the frame clipped away. What the renderer draws is read from its layers (renderer `drawn`,
   canvas `artShapes`), each instance that reaches the frame a shape: a circle or point with its ring
   (dashed where the renderer dashes it), a segment, a bundled edge as the shader's spline
-  (`bundlePoints`, 48 pieces) with a gradient from its end that uses to its end used. What the board
+  (`bundlePoints`, 48 steps) coloured along its own path as the shader mixes it, from its end that
+  uses to its end used: in up to 12 pieces, each of the colour at its middle, the more the farther
+  apart its two colours (one path where they are one). A gradient of SVG runs straight between two
+  points and left most of a bent edge one end's colour, the picture brighter than the PNG; the owner
+  prefers the PNG's look (2026-10-15). What the board
   writes over it — names, stars, keys, rings, the key graph's edges — is recorded as it is written
   (`SvgContext`, a 2D context's methods writing SVG; canvas `drawMarks`); then the notes, their
   glyphs as SVG. Named after the view's title, stripped of what Windows refuses (`artName`).
@@ -574,3 +622,44 @@ Numbers missing below are withdrawn decisions.
   whose cache would hold them as the build was read (the owner's decision of 2026-10-15). A snapshot
   of the page carries them as it was taken (in its graph); a past build's board, that build's own
   commit (shared/pastgraph.ts) with the project's source.
+
+### Artwork by recipe
+
+- **The recipe** (shared/artrecipe.ts): `readRecipe` checks one (unknown fields refused, at most
+  6,000 bytes of JSON), `resolveRecipe` turns it into an artwork's settings over a board — its
+  layout's clusters (key, depth, parent, count, outside world or not), where a declaration lies, the
+  review's targets, the project's size — and says what it names, what a depth rule left out and what
+  the board has not. Sizes by name are the panel's presets (`ART_PRESETS`, web/src/artwork.ts
+  `PRESETS`). Names by a rule are `labels: "chosen"` from none: the clusters by key, the
+  declarations and the targets' names in `shownNames`, each written wherever it falls (decision
+  19); the clusters a depth names in `ruledNames` (shared/collab.ts, at most `ART_RULED_BYTES`,
+  1,000 bytes, the four lists sharing a heartbeat's room with the longest title and line;
+  carried to those following and in Share's links like the rest).
+- **Never one over another** (web/src/canvas.ts, drawLabels): after the clusters and declarations
+  shown, the rule's clusters, in the layout's order (a parent before its children), each where the
+  board writes it (an arc over a circle large enough, else straight above it) and only where its
+  box is free of every box already taken (`artCluster(c, "fit")`); then the rule's declarations.
+  The board's own names (As shown) come after, as ever. A rule's name not written is not ticked
+  in the panel's list.
+- **The endpoint** (server/agent.ts `artwork`; MCP: `export`, action `artwork`): the recipe checked
+  and resolved against the Project's layout in the view's clustering; the selection a
+  declaration's, under its mode (`#mode=…&s=…`), the view's id where one is named; then
+  `&art=<the recipe's JSON, base64url>&save=png,svg`. It answers what it named, so that an agent
+  sees a rule's outcome before anyone opens the link.
+- **The page** (web/src/main.ts `openRecipe`): after the board its address opened (and a snapshot,
+  where the link has one), the recipe is resolved against the board on show (`canvas.layout`) and
+  the mode opened with it (artframe `open(given)`, which resolves once the mode has come: its look
+  applied, so the git commit asked for as it came, `gitAsked`, is this mode's); the address goes
+  back to the board's at once. Saving waits for that commit, the fonts, a frame drawn after the mode
+  came and then 800 ms without one (artwork `untilStill`: the overview's edges come from a worker;
+  at most 20 s), then saves as Save SVG and Save PNG do (artframe `save`, which says the files
+  made); `data-artwork-saved` on the page's root names them, or `none`. Saving both, a line says first that the browser may
+  ask to allow the site to download several files.
+- **The batch** (scripts/artwork-batch.mjs, Playwright): per job, the API asked with the server's
+  key as a Bearer (and the script's name, as an agent), a fresh browser context whose requests to
+  that server alone carry the key as a Bearer (server/access.ts takes one on every path; the key is
+  never printed), the link's fragment opened on the batch's server (the link may name the server's
+  public address) at the batch's viewport (1920 × 1200 unless said: the frame's size on screen sets the names' size
+  in the picture), the downloads saved as `<name>.png` and `.svg`, the name made safe for every
+  file system (no reserved device name, with an extension or none) and no two jobs' the same in any
+  case.

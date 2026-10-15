@@ -49,7 +49,7 @@ function heavy(): PresenceView {
     scheme: "status",
     edges: false,
     linear: false,
-    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", namesFrom: "board", hiddenNames: [], shownNames: [], edges: "selection", notes: true, targets: "highlight", shownTargets: [], keys: true, selection: true, source: true, style: "stars", title: "Sphere Packing", subtitle: null, titleSize: 9.5, footSize: 2.4, border: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
+    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", namesFrom: "board", hiddenNames: [], shownNames: [], edges: "selection", notes: true, targets: "highlight", shownTargets: [], keys: true, selection: true, source: true, style: "stars", title: "Sphere Packing", subtitle: null, titleSize: 9.5, footSize: 2.4, ruledNames: [], border: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
     tabs: ["project", "v7f3a9c2e41"],
   };
 }
@@ -132,18 +132,21 @@ test("a heavy snapshot stays small: several windows, filters, visitors, a long s
   assert.deepEqual((await readSnapshot(small, null))!.view, { edges: true });
 });
 
-test("an artwork with as many names and targets chosen as it carries, of names the longer in bytes, fits in a heartbeat the server takes (16 KB) and in a link", async () => {
+test("an artwork with as many names and targets chosen as it carries — those hidden, shown, chosen by a rule — of names the longer in bytes, and the longest title and line, fits in a heartbeat the server takes (16 KB) and in a link", async () => {
   const many = Array.from({ length: 2000 }, (_, i) => N(`«term_∘_∣_»_lemma_${i}`));
   const v = heavy();
-  const art = cleanArtwork({ ...v.artwork, labels: "chosen", targets: "chosen", hiddenNames: many.map((n) => `d:${n}`), shownNames: many.map((n) => `c:${n}`), shownTargets: many })!;
-  assert.ok(art.hiddenNames.length > 30 && art.shownNames.length > 30 && art.shownTargets.length > 20, `${art.hiddenNames.length} + ${art.shownNames.length} names, ${art.shownTargets.length} targets`);
+  // a title and its line as long as they are kept, each character three bytes
+  const long = "∣".repeat(200);
+  const art = cleanArtwork({ ...v.artwork, labels: "chosen", targets: "chosen", hiddenNames: many.map((n) => `d:${n}`), shownNames: many.map((n) => `c:${n}`), ruledNames: many.map((n) => `c:${n}.ruled`), shownTargets: many, title: long, subtitle: long })!;
+  assert.ok(art.hiddenNames.length > 30 && art.shownNames.length > 30 && art.ruledNames.length > 5 && art.shownTargets.length > 20, `${art.hiddenNames.length} + ${art.shownNames.length} + ${art.ruledNames.length} names, ${art.shownTargets.length} targets`);
+  assert.deepEqual([art.title!.length, art.subtitle!.length], [120, 120]);
   const view = cleanView({ ...v, artwork: art })!;
   const beat = JSON.stringify({ token: "t".repeat(64), view, idle: false });
   assert.ok(Buffer.byteLength(beat) < 16384, `${Buffer.byteLength(beat)} bytes`);
   const snap = await writeSnapshot(view, WIDE);
   assert.ok(snap.length < SNAPSHOT_MAX, `${snap.length} characters`);
   const back = (await readSnapshot(snap, WIDE))!.view.artwork!;
-  assert.deepEqual([back.hiddenNames, back.shownNames, back.shownTargets], [art.hiddenNames, art.shownNames, art.shownTargets], "read back as written");
+  assert.deepEqual([back.hiddenNames, back.shownNames, back.ruledNames, back.shownTargets], [art.hiddenNames, art.shownNames, art.ruledNames, art.shownTargets], "read back as written");
 });
 
 test("a snapshot is anyone's to write: what is not one is not read, and what of it is wrong is left out", async () => {

@@ -27,7 +27,7 @@ export const DOC_TOPICS: readonly DocTopic[] = [
   { topic: "following", title: "Following", about: "where people are, your view, links to it, what people see" },
   { topic: "views", title: "Views and the layout", about: "queries, views, places, pins" },
   { topic: "library", title: "The library and links", about: "papers and images, their pages, links to them" },
-  { topic: "export", title: "Exported documents", about: "a view's document, typeset" },
+  { topic: "export", title: "Exported documents", about: "a view's document, typeset; a picture" },
   { topic: "history", title: "History and activity", about: "the timeline, builds, renames, the lost-and-found" },
   { topic: "talking", title: "Talking with people", about: "your inbox, replies, your state" },
   { topic: "mcp", title: "VisualProof's MCP server", about: "installing it, its tools and their actions" },

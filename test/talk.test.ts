@@ -629,7 +629,7 @@ test("a conversation keeps 30 days: older messages are left out and dropped from
   }
 });
 
-test("the MCP server offers export: a view's model, its document typeset, its file saved where the agent says", async () => {
+test("the MCP server offers export: a view's model, its document typeset, its file saved where the agent says; a link to a picture of the board", async () => {
   const S = await site({ exporter: true });
   const { token } = await share(S);
   const M = mcp({ VISUALPROOF_URL: S.base, VISUALPROOF_TOKEN: token });
@@ -637,12 +637,16 @@ test("the MCP server offers export: a view's model, its document typeset, its fi
   try {
     await M.start();
     const tools = (await M.ask("tools/list")).result.tools as Json[];
-    assert.deepEqual(tools.find((x) => x.name === "export")!.inputSchema.properties.action.enum, ["model", "typeset", "job", "file"]);
+    assert.deepEqual(tools.find((x) => x.name === "export")!.inputSchema.properties.action.enum, ["model", "typeset", "job", "file", "artwork"]);
     assert.ok(!tools.some((x) => x.name === "export_outline"), "no outline: the view is what is printed");
     const call = async (action: string, args: Json) => (await M.ask("tools/call", { name: "export", arguments: { action, ...args } })).result as { content: { text: string }[]; isError?: boolean };
     const model = await call("model", { view: "project", settings: { paper: "letter" } });
     assert.ok(!model.isError, model.content[0].text);
     assert.equal(JSON.parse(model.content[0].text).settings.paper, "letter", "an object argument goes as JSON");
+    // an artwork's recipe goes as JSON too (ExportSpec decision 20)
+    const art = await call("artwork", { recipe: { size: "hd", names: { clusters: 0 }, selection: { name: "N.b" } }, save: "svg" });
+    assert.ok(!art.isError, art.content[0].text);
+    assert.match(JSON.parse(art.content[0].text).link, /#mode=tcb&s=N\.b&art=[A-Za-z0-9_-]+&save=svg$/);
     const relative = await call("file", { id: "0".repeat(32), saveTo: "doc.pdf" });
     assert.equal(relative.isError, true);
     assert.match(relative.content[0].text, /absolute path/);

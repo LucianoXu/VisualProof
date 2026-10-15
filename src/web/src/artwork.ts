@@ -13,22 +13,18 @@
 // frame. Nothing is asked of the server, so a read-only page and a snapshot can make one too.
 
 import type { ArtStyle, ArtworkLook } from "../../shared/collab.ts";
-import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_STYLES, ART_TARGETS_BYTES, cleanFootSize, cleanNames, cleanTitle, cleanTitleSize, FOOT_SIZE, isArtNameId, TITLE_SIZE } from "../../shared/collab.ts";
+import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_RULED_BYTES, ART_STYLES, ART_TARGETS_BYTES, cleanFootSize, cleanNames, cleanTitle, cleanTitleSize, FOOT_SIZE, isArtNameId, TITLE_SIZE } from "../../shared/collab.ts";
 import type { GitSource } from "../../shared/graph.ts";
+import { ART_PRESETS } from "../../shared/artrecipe.ts";
 import type { ArtShape } from "./canvas.ts";
 import { ART_DISPLAY, ART_SANS, ART_SERIF, spacedWidth, writeNames } from "./halo.ts";
 import type { Written } from "./halo.ts";
 
 export type ArtSettings = ArtworkLook;
 
-/** The sizes offered, each in either orientation (`oriented`): given landscape. */
-export const PRESETS: readonly { name: string; w: number; h: number }[] = [
-  { name: "HD", w: 1920, h: 1080 },
-  { name: "4K", w: 3840, h: 2160 },
-  { name: "Square", w: 4096, h: 4096 },
-  { name: "A3, 300 dpi", w: 4961, h: 3508 },
-  { name: "A2, 300 dpi", w: 7016, h: 4961 },
-];
+/** The sizes offered, each in either orientation (`oriented`): given landscape; a recipe names
+ *  them by `key` (shared/artrecipe.ts). */
+export const PRESETS = ART_PRESETS;
 
 /** The preset a size is, in either orientation; -1 for none. */
 export function presetOf(w: number, h: number): number {
@@ -52,6 +48,7 @@ const DEFAULTS: ArtSettings = {
   namesFrom: "board",
   hiddenNames: [],
   shownNames: [],
+  ruledNames: [],
   edges: "all",
   notes: true,
   targets: "marked",
@@ -84,6 +81,7 @@ export function cleanSettings(s: Partial<ArtSettings> | undefined, now: { scheme
     namesFrom: o.namesFrom === "none" ? "none" : "board",
     hiddenNames: cleanNames(o.hiddenNames, ART_NAMES_BYTES, isArtNameId),
     shownNames: cleanNames(o.shownNames, ART_NAMES_BYTES, isArtNameId),
+    ruledNames: cleanNames(o.ruledNames, ART_RULED_BYTES, isArtNameId),
     edges: one(o.edges, ["all", "selection", "none"], DEFAULTS.edges),
     notes: typeof o.notes === "boolean" ? o.notes : DEFAULTS.notes,
     targets,
@@ -548,6 +546,9 @@ function glColour(c: readonly number[]): { rgb: string; a: number } {
   return { rgb: `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`, a: +c[3].toFixed(3) };
 }
 
+/** the most pieces an edge of two colours is written in, by an SVG (SvgContext.shape) */
+const BUNDLE_PIECES = 12;
+
 const paint = (attr: "fill" | "stroke", c: { rgb: string; a: number }) => ` ${attr}="${c.rgb}"${c.a < 1 ? ` ${attr}-opacity="${c.a}"` : ""}`;
 
 /** A gradient handed out by SvgContext.createLinearGradient or createRadialGradient: its stops,
@@ -759,19 +760,25 @@ export class SvgContext {
       this.body.push(`<line x1="${n2(s.x0)}" y1="${n2(s.y0)}" x2="${n2(s.x1)}" y2="${n2(s.y1)}"${paint("stroke", glColour(s.colour))} stroke-width="${n2(s.width)}"/>`);
     } else {
       // the shader's spline, as finely as it draws it
-      const pts = bundlePoints(s.ctrl, s.beta, 48);
-      const d = `M${n2(pts[0])},${n2(pts[1])}${Array.from({ length: pts.length / 2 - 1 }, (_, k) => `L${n2(pts[2 * k + 2])},${n2(pts[2 * k + 3])}`).join("")}`;
+      const pts = bundlePoints(s.ctrl, s.beta, BUNDLE_PIECES * 4);
+      const n = pts.length / 2 - 1;
+      const path = (i0: number, i1: number, c: { rgb: string; a: number }) =>
+        `<path d="M${n2(pts[2 * i0])},${n2(pts[2 * i0 + 1])}${Array.from({ length: i1 - i0 }, (_, k) => `L${n2(pts[2 * (i0 + k + 1)])},${n2(pts[2 * (i0 + k + 1) + 1])}`).join("")}" fill="none"${paint("stroke", c)} stroke-width="${n2(s.width)}"/>`;
       const a = glColour(s.c0), b = glColour(s.c1);
-      let stroke: string;
-      if (a.rgb === b.rgb && a.a === b.a) stroke = paint("stroke", a);
+      if (a.rgb === b.rgb && a.a === b.a) this.body.push(path(0, n, a));
       else {
-        // from the end that uses to the end used, as the renderer colours it
-        const id = `e${this.ids++}`;
-        const n = pts.length;
-        this.defs.push(`<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n2(pts[0])}" y1="${n2(pts[1])}" x2="${n2(pts[n - 2])}" y2="${n2(pts[n - 1])}"><stop offset="0" stop-color="${a.rgb}" stop-opacity="${a.a}"/><stop offset="1" stop-color="${b.rgb}" stop-opacity="${b.a}"/></linearGradient>`);
-        stroke = ` stroke="url(#${id})"`;
+        // coloured along its own path from the end that uses to the end used, as the renderer mixes
+        // it (mix(c0, c1, t)), in pieces, the more the farther apart its colours: a gradient of SVG
+        // runs straight between two points, which leaves most of a bent edge one end's colour, the
+        // picture brighter than the PNG (the owner's preference of 2026-10-15: the PNG's look)
+        const apart = Math.max(...s.c0.map((v, k) => Math.abs(v - s.c1[k])));
+        const pieces = Math.min(BUNDLE_PIECES, Math.max(2, Math.ceil(apart * BUNDLE_PIECES)));
+        for (let p = 0; p < pieces; p++) {
+          const i0 = Math.floor((p * n) / pieces), i1 = Math.floor(((p + 1) * n) / pieces);
+          const t = (i0 + i1) / (2 * n);
+          this.body.push(path(i0, i1, glColour(s.c0.map((v, k) => v + (s.c1[k] - v) * t))));
+        }
       }
-      this.body.push(`<path d="${d}" fill="none"${stroke} stroke-width="${n2(s.width)}"/>`);
     }
   }
 
@@ -965,4 +972,44 @@ export async function encodePng(w: number, h: number, bands: AsyncIterable<Uint8
   ihdr.set([8, 6, 0, 0, 0], 8);
   const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
   return new Blob([sig, ...chunk("IHDR", ihdr), ...chunk("IDAT", idat), ...chunk("IEND", new Uint8Array(0))] as BlobPart[], { type: "image/png" });
+}
+
+/** Names ticked (`on`) or unticked in the artwork's list (By selection; web/src/artframe.ts,
+ *  chooseNames), `written` those the board writes now: a name ticked is no longer hidden, and is
+ *  shown besides where the board does not write it now — a name a recipe's rule chose becomes the
+ *  reader's so, written wherever it falls; a name unticked is no longer shown besides, nor the
+ *  rule's, and is hidden where the board would write it all the same (from As shown). The lists as
+ *  they become, and what is to be added to those shown and to those hidden (each within what the
+ *  artwork carries: withChosen). */
+export function chooseIn(s: Pick<ArtSettings, "namesFrom" | "hiddenNames" | "shownNames" | "ruledNames">, written: ReadonlySet<string>, ids: readonly string[], on: boolean): { hidden: string[]; shown: string[]; ruled: string[]; add: string[]; hide: string[] } {
+  const hidden = new Set(s.hiddenNames), shown = new Set(s.shownNames), ruled = new Set(s.ruledNames);
+  const add: string[] = [], hide: string[] = [];
+  for (const id of ids) {
+    if (on) {
+      hidden.delete(id);
+      if (!written.has(id) && !shown.has(id)) {
+        add.push(id);
+        ruled.delete(id);
+      }
+    } else if (shown.has(id)) shown.delete(id);
+    else if (ruled.has(id)) {
+      ruled.delete(id);
+      if (s.namesFrom === "board") hide.push(id);
+    } else if (s.namesFrom === "board" && written.has(id)) hide.push(id);
+  }
+  return { hidden: [...hidden], shown: [...shown], ruled: [...ruled], add, hide };
+}
+
+/** Wait until the board has been drawn after `since` and then not again for `quiet` ms — still,
+ *  with what came after `since` on it — at most `most` ms (a link's recipe saves then, ExportSpec
+ *  decision 20); whether it was still before that. A frame drawn before `since` (before the mode
+ *  came) never counts. */
+export async function untilStill(o: { now(): number; drawnAt(): number; sleep(ms: number): Promise<void> }, since: number, quiet = 800, most = 20_000): Promise<boolean> {
+  const t0 = o.now();
+  for (;;) {
+    const t = o.now();
+    if (o.drawnAt() >= since && t - o.drawnAt() >= quiet) return true;
+    if (t - t0 >= most) return false;
+    await o.sleep(100);
+  }
 }

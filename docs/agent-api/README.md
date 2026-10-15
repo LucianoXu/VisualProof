@@ -85,7 +85,7 @@ parameters and answer.
 | [following](following.md) | where people are, your own view, links to it, asking to follow, what people see |
 | [views](views.md) | the query language, views, places on the board, pins and undo |
 | [library](library.md) | papers and images, their pages, links to them |
-| [export](export.md) | a view's document: its model, typesetting, its files |
+| [export](export.md) | a view's document: its model, typesetting, its files; a picture (artwork) |
 | [history](history.md) | the timeline, the builds kept, diffs, renames, the lost-and-found |
 | [talking](talking.md) | your inbox, replies, your status line, your state, the conversation |
 | [mcp](mcp.md) | the MCP server: installing it, its tools and their actions, `wait_for_message` |

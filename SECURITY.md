@@ -36,6 +36,12 @@ into the latest release only.
   them): the host and path alone,
   never a user name, password or token written into the remote's URL, and nothing for a remote that
   is a path on the machine. Git is only asked, never written to.
+- **Links that save a picture.** A link to an artwork (ExportSpec decision 20) carries its recipe
+  after `#`, unsigned: anyone who can send a reader a link — not only an agent the server answered —
+  can make it, and make the reader's browser save the picture the page draws of the board, PNG or
+  SVG, at most the largest size an artwork has (16,384 pixels a side), as Save PNG and Save SVG
+  would. Nothing else: the page reads the recipe as settings, the browser asks before a site saves
+  several files, and the link holds no key.
 - **Plain HTTP.** The server speaks HTTP only: the key and the cookies cross the network in the
   clear. Beyond a trusted network, put a TLS reverse proxy (or a VPN such as Tailscale) in front.
   Its cookies are `HttpOnly` and `SameSite=Lax`.

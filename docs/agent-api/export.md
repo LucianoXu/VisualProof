@@ -1,7 +1,7 @@
 # Exported documents
 
-A view's document, read as JSON or typeset as a PDF. Any level: it only reads. MCP: `export`
-(`model`, `typeset`, `job`, `file`).
+A view's document, read as JSON or typeset as a PDF; and a picture of the board ([Artwork](#artwork)).
+Any level: it only reads. MCP: `export` (`model`, `typeset`, `job`, `file`, `artwork`).
 
 ## What it holds
 
@@ -118,3 +118,42 @@ kept). 503: no XeLaTeX.
   typeset it again (`.tex`, style file, fonts). **409** with `Retry-After: 2` while running, 409 if
   failed, 404 if unknown or gone from the cache. E.g.
   `curl -fsSK ~/.visualproof/curl.cfg "$VP/api/agent/export/file?id=<id>" -o doc.pdf`.
+
+## Artwork
+
+`POST /api/agent/artwork {recipe, save?}`: a link that opens the board as a picture in the artwork mode, as a **recipe** says, in words that
+hold on any project: one recipe makes the same kind of picture of every codebase. The page that
+opens it draws the picture and, with `save` (`png`, `svg`, `png,svg`), saves the files there once
+the board is still; nothing comes back to the server. The link holds no key (a script enters with
+it: `scripts/artwork-batch.mjs` in VisualProof's repository).
+
+```json
+{ "recipe": { "size": "a2", "orientation": "portrait", "theme": "light", "border": true,
+    "names": { "clusters": 1 }, "targets": ["Lib.mainTheorem"],
+    "selection": { "name": "Lib.mainTheorem", "mode": "tcb" }, "keys": false, "notes": false,
+    "source": true, "title": "Lib", "subtitle": "One line about the work" }, "save": "png,svg" }
+```
+
+Every field is optional; left out, as a new artwork has it.
+
+- `size`: `hd`, `4k` (default), `square`, `a3`, `a2` (300 dpi), or `{w, h}`; `orientation`;
+  `style` (`board`, `cells`, `stars`); `theme` (`light`, `dark`), `transparent`; `colouring`
+  (`kind`, `status`); `border`; `title`, `subtitle` (null: the project's own; `""`: none),
+  `titleSize`, `footSize` (hundredths of the height); `source` (git source and commit).
+- `names`: `board`, `clusters`, `none`, or a rule `{clusters, minShare, targets, decls, omit,
+  from}`: `clusters` a depth (0: the top level) or keys; a depth names the outside world and the
+  clusters holding at least `minShare` of the project (default 0.01), each written only where it
+  covers no name already written (`ruled`), never over another; keys, `decls` (full names) and
+  `targets` (default true: the marked targets' names) written wherever they fall; `omit` keys or
+  names; `from` `none` (default) or `board`.
+- `targets`: `all` (default), `none`, `faded`, or a list of targets marked alone. `keys`, `notes`:
+  default true. `edges`: `all` (under a selection, the rest faint), `selection`, `none`.
+- `selection`: `{name, mode}` (`mode` as `POST view`'s; default `tcb`), lit while `lit` (default
+  true). `view`: a view's id; left out, the Project.
+
+Answer: `{ok, link, length, size, names: {clusters, decls, ruled}, targets, selection, left, note}`;
+`left`: names or targets beyond what an artwork carries, left out. Saving both files, the page says
+the browser may ask to allow several downloads. 400: a field unknown or wrong; 404: a name, target,
+cluster or view the recipe names that the board has not (`problems`; a target of the review the
+graph no longer has is left out unsaid).
+

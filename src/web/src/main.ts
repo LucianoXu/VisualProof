@@ -92,6 +92,7 @@ import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
 import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, writeSnapshot } from "../../shared/sharesnap.ts";
+import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { uploadFile } from "./library.ts";
 import { STATUS_LABEL, STATUSES, statusCodes, statusState } from "./status.ts";
 import type { Scheme } from "./status.ts";
@@ -105,7 +106,7 @@ import { LinearForm } from "./linear.ts";
 import { isPhone, Phone } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
-import { sourceLine, titleOf } from "./artwork.ts";
+import { sourceLine, titleOf, untilStill } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
@@ -1042,7 +1043,8 @@ async function boot(): Promise<void> {
   /** the project's git source and commit as git says them, asked when the page opens and again
    *  whenever the artwork comes (its foot; GET /api/git): a commit made after the build is told */
   let gitNow: GitSource | null = null;
-  void data.git().then((git) => {
+  /** the last asking of it, which a link's recipe waits for before it saves (openRecipe) */
+  let gitAsked: Promise<void> = data.git().then((git) => {
     gitNow ??= git;
   });
   const art = new ArtFrame($("#art"), $("#art-panel"), $("#art-sky") as HTMLCanvasElement, canvas, {
@@ -1058,7 +1060,7 @@ async function boot(): Promise<void> {
       artLook = s && { ...s };
       drawLook();
       if (coming)
-        void data.git().then((git) => {
+        gitAsked = data.git().then((git) => {
           gitNow = git;
           art.refresh();
         });
@@ -1106,12 +1108,15 @@ async function boot(): Promise<void> {
       linear.hide("reader");
       document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
     } else applyTheme();
-    canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
+    canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
     applyScheme();
     syncEdges();
     apply();
   };
+  /** when the board was last drawn: a link's recipe saves its files once the board is still */
+  let drawnAt = 0;
   canvas.onFrame = () => {
+    drawnAt = performance.now();
     stickies.frame();
     // the artwork's list of names follows what its frame holds
     art.frame();
@@ -1656,6 +1661,44 @@ async function boot(): Promise<void> {
     if (v.artwork) art.follow(v.artwork);
     const line = missingLine(gone);
     if (line) say(line);
+  };
+  /** Open a link's artwork recipe (ExportSpec decision 20, shared/artrecipe.ts) on the board its
+   *  address opened, the selection it carries made: resolved against this board, the artwork mode
+   *  opened with what it says (not kept as this reader's settings until they change one), the whole
+   *  board fitted in its frame; the files it asks for saved once the board has been still a moment,
+   *  with its fonts and the git commit there. What it names that this board has not is said in a
+   *  line; `data-artwork-saved` on the page says what was saved, for a script that waits for it. */
+  const openRecipe = async (link: { text: string; save: ("png" | "svg")[] }) => {
+    const read = readRecipe(decodeRecipe(link.text));
+    if ("error" in read) return say(`This link's artwork could not be read: ${read.error}`);
+    const L = canvas.layout;
+    const { look, problems, left } = resolveRecipe(read.recipe, {
+      clusters: L.clusters,
+      clusterOf: (name) => {
+        const i = g.byName.get(name);
+        const j = i === undefined ? -1 : toView(i);
+        return j < 0 ? undefined : L.cluster[j];
+      },
+      targets: Object.keys(review.data.targets),
+      projectCount: g.projectCount,
+    });
+    if (problems.length || left) say(`This link's artwork: ${[...problems, ...(left ? [`${left} names left out, more than an artwork carries`] : [])].join("; ")}.`);
+    if (art.isOpen) await art.close();
+    // come: the board drawn with the look, which asked for the git commit as it came (gitAsked)
+    await art.open(look);
+    if (!link.save.length) return;
+    const since = performance.now();
+    await gitAsked;
+    await document.fonts?.ready;
+    // drawn since the mode came, then still for 800 ms (the overview's edges come from a worker), at
+    // most 20 s
+    canvas.request();
+    await untilStill({ now: () => performance.now(), drawnAt: () => drawnAt, sleep: (ms) => new Promise((ok) => setTimeout(ok, ms)) }, since);
+    // a browser asks before a site saves several files at once (the owner's decision of 2026-10-15:
+    // the reader is told)
+    if (link.save.length > 1) say(`Saving the picture as ${link.save.map((k) => k.toUpperCase()).join(" and ")}: your browser may ask to allow this site to download several files.`);
+    const made = await art.save(link.save);
+    document.documentElement.dataset.artworkSaved = made.length ? made.join(",") : "none";
   };
   // a layout's memory is handed over under a name, or by a private reader, as the server takes it
   handsOver = () => !reader && (!!data.snapshot || !!people.name || !!data.privateSession);
@@ -2703,10 +2746,18 @@ async function boot(): Promise<void> {
     const st = decodeState(location.hash);
     const cam = (e.state as { cam?: { x: number; y: number; k: number } } | null)?.cam ?? null;
     const tmAt = (e.state as { tm?: unknown } | null)?.tm;
-    // a link with a snapshot opened in this tab: its board, then what its sharer saw, once
+    // a link with a snapshot opened in this tab: its board, then what its sharer saw, once; and an
+    // artwork's recipe, once
     const snap = snapshotIn(location.hash);
+    const recipe = recipeIn(location.hash);
     void (st ? restore(st, cam, typeof tmAt === "number" ? tmAt : undefined) : Promise.resolve())
       .then(() => (snap ? openSnapshot(snap).then(() => writeAddress(false)) : undefined))
+      .then(() => {
+        // the recipe is read: the address goes back to the board's at once, as at the first load
+        if (!recipe) return;
+        void openRecipe(recipe);
+        writeAddress(false);
+      })
       .then(() => {
         renderNav();
         people.report();
@@ -3956,6 +4007,10 @@ async function boot(): Promise<void> {
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
   if (snap) await openSnapshot(snap);
+  // a link with an artwork's recipe (ExportSpec decision 20): once, after the board is there; the
+  // files it asks for are saved meanwhile
+  const recipe = recipeIn(location.hash);
+  if (recipe) void openRecipe(recipe);
   // the builds the history holds: the clocks of views kept at one say which
   if (!data.snapshot) void tm.load().then(() => renderTabs());
   try {

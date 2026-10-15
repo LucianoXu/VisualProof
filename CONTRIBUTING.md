@@ -61,6 +61,12 @@ manual's figures come from it, on these projects, each built at its commit:
 
 A project on Mathlib is built with `lake exe cache get && lake build`.
 
+`node scripts/artwork-batch.mjs <batch.json> [--out <dir>] [--headed]` makes pictures of many
+boards in one go (ExportSpec decision 20): per job, a server, its key (or key file), an artwork
+recipe and a name; the file's head comment says its format. It needs Playwright, which the package
+does not depend on: `npm install --no-save playwright && npx playwright install chromium` (or point
+`VP_CHROMIUM` at a Chromium of your own).
+
 ## Lean versions
 
 The supported toolchains are those of `test/toolchains.json`: the last six or so stable releases,

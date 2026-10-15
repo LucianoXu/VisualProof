@@ -24,7 +24,7 @@ test("the picture is the frame's at the size chosen: its viewBox the frame's pix
   assert.ok(!artSvg(frame, { w: 10, h: 10 }, null, FAMILY, measure, () => {}).includes(`height="100%"`), "transparent: no background");
 });
 
-test("the renderer's shapes as SVG draws them: a point and its ring, a dashed ring apart from its disc, a segment, an edge's spline coloured from end to end", () => {
+test("the renderer's shapes as SVG draws them: a point and its ring, a dashed ring apart from its disc, a segment, an edge's spline coloured along its path", () => {
   const pen = new SvgContext(measure, FAMILY);
   const shapes: ArtShape[] = [
     { kind: "circle", x: 10, y: 20, r: 3, fill: [0, 0, 1, 0.5], stroke: [0, 0, 0, 1], ring: 1, ringR: 3, dashed: false },
@@ -35,17 +35,21 @@ test("the renderer's shapes as SVG draws them: a point and its ring, a dashed ri
     { kind: "bundle", ctrl: [0, 0, 100, 0], beta: 0.85, width: 1, c0: [1, 0, 0, 1], c1: [1, 0, 0, 1] },
   ];
   for (const s of shapes) pen.shape(s);
-  const [dot, dashed, disc, ring, line, bent, straight] = pen.body;
+  const [dot, dashed, disc, ring, line] = pen.body;
+  const bent = pen.body.slice(5, -1), straight = pen.body.at(-1)!;
   assert.equal(dot, `<circle cx="10" cy="20" r="3" fill="rgb(0,0,255)" fill-opacity="0.5" stroke="rgb(0,0,0)" stroke-width="1"/>`);
   assert.equal(dashed, `<circle cx="50" cy="50" r="32.5" fill="none" stroke="rgb(128,128,128)" stroke-opacity="0.75" stroke-width="1.2" stroke-dasharray="5 4"/>`, "a ring alone: no disc");
   assert.equal(disc, `<circle cx="60" cy="60" r="8" fill="rgb(0,255,0)"/>`);
   assert.equal(ring, `<circle cx="60" cy="60" r="10" fill="none" stroke="rgb(0,0,0)" stroke-width="2"/>`, "a ring off its disc: apart");
   assert.equal(line, `<line x1="0" y1="0" x2="10" y2="10" stroke="rgb(255,255,255)" stroke-opacity="0.25" stroke-width="1.5"/>`);
-  // the shader's spline, as finely as it draws it, its colours by a gradient from end to end
-  assert.equal(bent.match(/[ML]/g)!.length, 49);
-  assert.match(bent, /^<path d="M0,0L.*L100,0" fill="none" stroke="url\(#e0\)" stroke-width="1.6"\/>$/);
-  assert.deepEqual(pen.defs, [`<linearGradient id="e0" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="0"><stop offset="0" stop-color="rgb(255,128,0)" stop-opacity="0.4"/><stop offset="1" stop-color="rgb(0,128,255)" stop-opacity="0.4"/></linearGradient>`]);
-  assert.match(straight, /stroke="rgb\(255,0,0\)" stroke-width="1"\/>$/, "one colour: no gradient");
+  // the shader's spline, as finely as it draws it, in pieces each of the colour the renderer mixes
+  // there along its path, from orange to blue: no gradient, which would run straight between its ends
+  assert.equal(bent.length, 12, "as many pieces as its colours are apart");
+  assert.match(bent[0], /^<path d="M0,0(L[\d.-]+,[\d.-]+){4}" fill="none" stroke="rgb\(244,128,11\)" stroke-opacity="0.4" stroke-width="1.6"\/>$/);
+  assert.match(bent[11], /L100,0" fill="none" stroke="rgb\(11,128,244\)" stroke-opacity="0.4" stroke-width="1.6"\/>$/);
+  for (let p = 1; p < 12; p++) assert.equal(/^<path d="M([^L]+)L/.exec(bent[p])![1], /L([^L"]+)" fill/.exec(bent[p - 1])![1], "each piece starting where the one before ends");
+  assert.deepEqual(pen.defs, []);
+  assert.match(straight, /^<path d="M0,0(L[\d.-]+,[\d.-]+){48}" fill="none" stroke="rgb\(255,0,0\)" stroke-width="1"\/>$/, "one colour: one path");
 });
 
 test("what the board writes is recorded as it is written: paths filled and stroked, arcs, dashes, the context's alpha, texts in their fonts, gradients once", () => {
@@ -206,6 +210,8 @@ test("names and targets by selection (the owner's decision of 2026-10-15): kept 
   const kept = cleanSettings({ labels: "chosen", namesFrom: "none", hiddenNames: ["c:A", "nope", 3], shownNames: ["d:A.b", "d:A.b", ""], targets: "chosen", shownTargets: ["A.t", "A.t", ""], keys: false } as never, now);
   assert.deepEqual([kept.labels, kept.namesFrom, kept.hiddenNames, kept.shownNames, kept.targets, kept.shownTargets, kept.keys], ["chosen", "none", ["c:A"], ["d:A.b"], "chosen", ["A.t"], false]);
   assert.equal(cleanSettings({ namesFrom: "all" } as never, now).namesFrom, "board");
+  // the names a recipe's rule chose (ExportSpec decision 20), kept; none at first
+  assert.deepEqual([fresh.ruledNames, cleanSettings({ ruledNames: ["c:A", "nope", "c:A"] } as never, now).ruledNames], [[], ["c:A"]]);
   // kept before the key marks had a switch of their own: as the targets drew them, with their stars
   assert.equal(cleanSettings({ targets: "plain" }, now).keys, false);
   assert.equal(cleanSettings({ targets: "highlight" }, now).keys, true);
