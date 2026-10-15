@@ -7,9 +7,9 @@ import { test } from "node:test";
 import type { ArtShape } from "../src/web/src/canvas.ts";
 import type { NotePicture } from "../src/web/src/artwork.ts";
 import type { NameRow } from "../src/web/src/artwork.ts";
-import { artName, artSvg, bundlePoints, cleanSettings, drawFoot, drawNotes, MAX_SIDE, NAME_ROWS, nameRows, oriented, PRESETS, presetOf, sourceLine, SvgContext, svgColour, withChosen, wrapText } from "../src/web/src/artwork.ts";
+import { artName, artSvg, bundlePoints, cleanSettings, drawBackdrop, drawFoot, drawNotes, drawTitle, MAX_SIDE, NAME_ROWS, nameRows, oriented, presetOf, PRESETS, sourceLine, svgColour, SvgContext, titleOf, withChosen, wrapText } from "../src/web/src/artwork.ts";
 import { ART_NAMES_BYTES } from "../src/shared/collab.ts";
-import { HALO, writeNames } from "../src/web/src/halo.ts";
+import { arcHalf, HALO, writeNames } from "../src/web/src/halo.ts";
 
 const FAMILY = `"Inter", sans-serif`;
 const measure = (t: string) => t.length * 6;
@@ -318,3 +318,84 @@ test("a PNG made band by band is a PNG: its chunks and their CRCs, its pixels as
   await assert.rejects(encodePng(w, h + 1, bands()), /rows/);
 });
 
+
+test("the styles and the title (the owner's decisions of 2026-10-15): read with care; the project's own title and line; a style's ground the same in every frame of a shape", () => {
+  const now = { scheme: "kind" as const, theme: "light" as const };
+  const fresh = cleanSettings(undefined, now);
+  assert.deepEqual([fresh.style, fresh.title, fresh.subtitle, fresh.titleSize], ["board", null, null, 7], "as the board; the project's own title, 7 % high");
+  const odd = cleanSettings({ style: "neon" as never, title: "A\u0007B" + "x".repeat(200), subtitle: 5 as never, titleSize: 99 }, now);
+  assert.deepEqual([odd.style, odd.title!.slice(0, 3), odd.title!.length, odd.subtitle, odd.titleSize], ["board", "A B", 120, null, 16]);
+  assert.deepEqual([cleanSettings({ style: "stars", title: "", titleSize: 2.26 }, now)].map((s) => [s.style, s.title, s.titleSize]), [["stars", "", 3]], "no title is a title too");
+  assert.deepEqual(titleOf("LeanyCrypt", 1, 1), { title: "LeanyCrypt", subtitle: "1 declaration · 1 target" });
+  assert.deepEqual(titleOf("SpherePacking", 7851, 4).subtitle, "7,851 declarations · 4 targets");
+  // the ground: none for the board's style; the cells' a field, the starfield's a sky with its dust
+  const board = new SvgContext(measure, FAMILY);
+  drawBackdrop(ctxOf(board), "board", { x: 0, y: 0, w: 400, h: 300 });
+  assert.equal(board.body.length, 0);
+  const sky = () => {
+    const pen = new SvgContext(measure, FAMILY);
+    drawBackdrop(ctxOf(pen), "stars", { x: 10, y: 20, w: 400, h: 300 });
+    return pen;
+  };
+  const a = sky(), b = sky();
+  assert.deepEqual(a.body, b.body, "the same dust in the same places");
+  assert.match(a.body[0], /^<path d="M10,20L410,20L410,320L10,320Z" fill="url\(#g0\)"\/>$/);
+  assert.match(a.defs[0], /^<radialGradient id="g0" gradientUnits="userSpaceOnUse" fx="210" fy="140" fr="0" cx="210" cy="140" r="320">/);
+  assert.ok(a.body.length > 100, `${a.body.length - 1} stars of dust`);
+});
+
+test("the title at the top left, as each style writes it, on halos: the board's in a serif over spaced capitals, the starfield's in spaced serif capitals", () => {
+  const frame = { x: 0, y: 0, w: 1000, h: 600 };
+  const texts = (style: "board" | "cells" | "stars") => {
+    const pen = new SvgContext(measure, FAMILY);
+    drawTitle(ctxOf(pen), frame, "Sphere Packing", "7,851 declarations · 4 targets", 7, style, { ink: "#111", quiet: "#666", halo: "#fff" });
+    return pen.body.filter((x) => x.startsWith("<text") && !x.includes('fill="none"'));
+  };
+  const board = texts("board");
+  // the title letter by letter (its spacing), then its line in capitals
+  assert.ok(board[0].includes(`font-size="42" font-weight="600" font-family="&quot;Source Serif 4&quot;, Georgia, &quot;Times New Roman&quot;, serif"`), board[0]);
+  assert.match(board[0], /x="35" y="59.64"/);
+  assert.ok(board.some((x) => />7<\/text>$/.test(x)), "the line in capitals, letter by letter");
+  const stars = texts("stars");
+  assert.ok(stars.some((x) => />S<\/text>$/.test(x)) && !stars.some((x) => />h<\/text>$/.test(x)), "the starfield's title in capitals");
+  assert.ok(stars.some((x) => x.includes(`font-style="italic"`) && x.includes(">7,851 declarations · 4 targets<")), "its line in italics, whole");
+  const cells = texts("cells");
+  assert.ok(cells.some((x) => x.includes(`fill="url(#`)), "the cells' title in a pale light");
+  // none: nothing
+  const none = new SvgContext(measure, FAMILY);
+  drawTitle(ctxOf(none), frame, "", "", 7, "board", { ink: "#111", quiet: "#666", halo: "#fff" });
+  assert.equal(none.body.length, 0);
+});
+
+test("names along an arc, letter by letter, each turned to its circle; the recorder turns and moves as the canvas does", () => {
+  const pen = new SvgContext(measure, FAMILY);
+  writeNames(ctxOf(pen), [{ text: "AB", x: 0, y: 0, font: `600 10px ${FAMILY}`, align: "center", fill: "#222", spacing: 2, arc: { cx: 100, cy: 100, r: 50 } }], "#fff");
+  const fills = pen.body.filter((x) => !x.includes('fill="none"'));
+  assert.equal(fills.length, 2, "a text for each letter");
+  // the two letters either side of the top, turned by as much as they lie off it
+  const at = fills.map((x) => /x="([\d.-]+)" y="([\d.-]+)" font-size="10" transform="rotate\(([\d.-]+) /.exec(x)!.slice(1).map(Number));
+  assert.ok(at[0][0] < 100 && at[1][0] > 100 && at[0][1] < 52 && at[1][1] < 52, JSON.stringify(at));
+  assert.ok(at[0][2] < 0 && at[1][2] > 0 && Math.abs(at[0][2] + at[1][2]) < 1e-6, "turned alike, either way");
+  assert.ok(arcHalf(ctxOf(new SvgContext(measure, FAMILY)), { text: "AB", x: 0, y: 0, font: "10px x", align: "center", fill: "#222", spacing: 2, arc: { cx: 0, cy: 0, r: 50 } }) > 0.13);
+  // straight, spaced
+  const sp = new SvgContext(measure, FAMILY);
+  writeNames(ctxOf(sp), [{ text: "AB", x: 100, y: 10, font: `10px ${FAMILY}`, align: "center", fill: "#222", spacing: 4 }], "#fff");
+  assert.deepEqual(sp.body.filter((x) => !x.includes('fill="none"')).map((x) => /x="([\d.]+)"/.exec(x)![1]), ["92", "102"], "centred, its letters 4 apart");
+});
+
+test("a style's circles in the SVG as the renderer draws them: a glow, a fill from a light, a halo round a rim; gradients of one look and colour written once", () => {
+  const pen = new SvgContext(measure, FAMILY);
+  pen.shape({ kind: "circle", x: 0, y: 0, r: 4, fill: [1, 0, 0, 0.2], stroke: null, ring: 0, ringR: 4, dashed: false, look: "glow" });
+  pen.shape({ kind: "circle", x: 9, y: 9, r: 6, fill: [1, 0, 0, 0.2], stroke: null, ring: 0, ringR: 6, dashed: false, look: "glow" });
+  pen.shape({ kind: "circle", x: 50, y: 50, r: 40, fill: [0, 0, 1, 0.2], stroke: [0, 0, 1, 0.6], ring: 1.3, ringR: 40, dashed: false, look: "radial" });
+  pen.shape({ kind: "circle", x: 50, y: 50, r: 40, fill: [0, 0, 0, 0], stroke: [0, 0, 1, 0.3], ring: 26, ringR: 40, dashed: false, halo: true });
+  assert.equal(pen.defs.filter((d) => d.includes('id="l')).length, 2, "one glow, one fill");
+  assert.equal(pen.body[0], `<circle cx="0" cy="0" r="4" fill="url(#l0)"/>`);
+  assert.equal(pen.body[1], `<circle cx="9" cy="9" r="6" fill="url(#l0)"/>`);
+  assert.match(pen.defs[0], /<stop offset="0" stop-color="rgb\(255,0,0\)" stop-opacity="0.2"\/>.*<stop offset="1" stop-color="rgb\(255,0,0\)" stop-opacity="0"\/>/);
+  assert.match(pen.defs[1], /cx="0.375" cy="0.35" r="0.65"/);
+  assert.equal(pen.body[3], `<circle cx="50" cy="50" r="40" fill="none" stroke="rgb(0,0,255)" stroke-opacity="0.6" stroke-width="1.3"/>`, "the rim over its fill");
+  // the halo: a ring of light 26 wide round the rim, fading both ways
+  assert.equal(pen.body[4], `<circle cx="50" cy="50" r="53" fill="url(#h2)"/>`);
+  assert.match(pen.defs[2], /<stop offset="0.5094" stop-color="rgb\(0,0,255\)" stop-opacity="0"\/>.*<stop offset="0.7547" stop-color="rgb\(0,0,255\)" stop-opacity="0.3"\/>/);
+});

@@ -670,8 +670,15 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   of the shape of the size chosen, the rest shaded and the panels put away, the whole board fitted
   in it to start with. What lies in the frame is the picture. The panel at the right sets the size —
   HD, 4K, a square, A3 or A2 at 300 dpi, landscape or portrait, or width and height up to 16,384
-  pixels — and the look: the theme (light, dark, or transparent for a light page or a dark one,
-  shown as a checkerboard), Kind or Status, names (as the board shows them, the clusters' only,
+  pixels — and the look. **Style**: *As the board*; *Cells*, each top-level namespace a glowing
+  territory of its own colour on a dark field; or *Starfield*, a night sky where each declaration
+  is a star, the brighter the more it is used, and each cluster a constellation. In any style a
+  cluster's name runs along the top of its circle, in the fonts VisualProof ships (Source Sans 3,
+  and Source Serif 4 for the starfield). **Title** and the line **Under it** go at the top left —
+  the project's name and how many declarations and targets it has, until you write your own (empty
+  for none; *The project's own* brings them back) — at the **Title size** you slide; opening the
+  mode fits the board below them. Then the theme (light, dark, or transparent for a light page or a
+  dark one, shown as a checkerboard; a dark style's own ground, or transparent), Kind or Status, names (as the board shows them, the clusters' only,
   none, or by selection), edges (all, the selection's, none) and proof edges, notes, targets (star
   and name, as any, alone with the rest faded, or by selection), the key declarations' diamonds
   (**Key marks**), the selection as you see it, and whether the project's git source and commit go

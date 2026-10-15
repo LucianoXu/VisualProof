@@ -14,7 +14,7 @@ import type { ClusterMode, Layout } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { rgba } from "./gl/gl.ts";
 import type { RGBA } from "./gl/gl.ts";
-import { FLAG_DASHED, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle } from "./gl/renderer.ts";
+import { FLAG_DASHED, FLAG_GLOW, FLAG_HALO, FLAG_RADIAL, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle, segment } from "./gl/renderer.ts";
 import { joinChains, pathOf } from "./bundles.ts";
 import { EdgeQueue } from "./edgequeue.ts";
 import type { EdgeWorker } from "./edgequeue.ts";
@@ -23,10 +23,11 @@ import type { Weighted, Weights } from "./overview.ts";
 import { MODE_SITES } from "../../shared/viewgraph.ts";
 import type { Graph, Mode } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
-import { writeNames } from "./halo.ts";
+import { ART_SANS, ART_SERIF, spacedWidth, writeNames } from "./halo.ts";
 import type { Written } from "./halo.ts";
 import type { NameRow } from "./artwork.ts";
 import { artNameId } from "../../shared/collab.ts";
+import type { ArtStyle } from "../../shared/collab.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
 import { ST_APPROVED, ST_BUILDING, ST_COMMENTED, ST_FAILED, ST_SORRY, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
@@ -78,6 +79,33 @@ export interface ArtLook {
   targets: "marked" | "plain" | "highlight" | "chosen";
   shownTargets: ReadonlySet<string>;
   keys: boolean;
+  /** as the board; as cells; as a starfield (artStyle) */
+  style: ArtStyle;
+}
+
+/** the cells' territories' hues, a top-level namespace's each by its size, the outside world's apart */
+const CELL_HUES = ["#62a8ff", "#7fe0a6", "#ffc46b", "#ff7d92", "#62dada", "#b994ff", "#f0a982", "#cbdc66"];
+const CELL_OUTSIDE = "#8a93a6";
+/** the starfield's lines: its constellations' figures and its clusters' bounds */
+const STAR_LINE = "rgba(175, 198, 255, 1)";
+
+/** How an artwork writes its names, by its style (ExportSpec decision 19, the owner's decisions of
+ *  2026-10-15): a cluster's along the top of its circle where it fits, a top-level one in spaced
+ *  capitals, the others in italics; in Source Sans 3, or the starfield's in Source Serif 4. */
+function artText(style: ArtStyle, th: { label: string; text: string }) {
+  const serif = style === "stars";
+  const fam = serif ? ART_SERIF : ART_SANS;
+  return {
+    /** the halo's colour: the theme's ground, or the style's (artwork.ts, drawBackdrop) */
+    halo: style === "cells" ? "#0f1520" : style === "stars" ? "#090d1a" : null,
+    clusterFill: style === "board" ? th.label : style === "cells" ? "rgba(226, 232, 246, 0.85)" : "rgba(238, 228, 200, 0.88)",
+    declFill: style === "board" ? th.text : style === "cells" ? "rgba(205, 214, 232, 0.8)" : "rgba(206, 216, 236, 0.76)",
+    top: (size: number) => `${serif ? 500 : 600} ${size}px ${fam}`,
+    sub: (size: number) => `italic 400 ${size}px ${fam}`,
+    decl: serif ? `italic 400 11.5px ${ART_SERIF}` : `400 11px ${ART_SANS}`,
+    target: serif ? `italic 600 12px ${ART_SERIF}` : `600 11px ${ART_SANS}`,
+    spacing: (top: boolean, size: number) => size * (top ? (serif ? 0.26 : 0.22) : 0.03),
+  };
 }
 
 /** What the board's renderer draws, as an artwork's SVG writes it (ExportSpec decision 19), in the
@@ -86,7 +114,7 @@ export interface ArtLook {
  *  spline's straightening `beta`, its colours from the end that uses to the end used). Colours are
  *  the renderer's, 0 to 1. */
 export type ArtShape =
-  | { kind: "circle"; x: number; y: number; r: number; fill: RGBA; stroke: RGBA | null; ring: number; ringR: number; dashed: boolean }
+  | { kind: "circle"; x: number; y: number; r: number; fill: RGBA; stroke: RGBA | null; ring: number; ringR: number; dashed: boolean; look?: "glow" | "radial"; halo?: true }
   | { kind: "line"; x0: number; y0: number; x1: number; y1: number; colour: RGBA; width: number }
   | { kind: "bundle"; ctrl: number[]; beta: number; width: number; c0: RGBA; c1: RGBA };
 
@@ -376,6 +404,10 @@ export class GraphCanvas {
   proofEdges = false;
   /** the artwork's look while its mode is on (ExportSpec decision 19): the board is the picture */
   art: ArtLook | null = null;
+  /** the cells' hues of the layout's clusters (hueOf), and the use of the declaration used most
+   *  (mostUsed) */
+  private hues: { layout: Layout; of: RGBA[] } | null = null;
+  private used: { g: Graph; most: number } | null = null;
   /** of its names shown by selection, the clusters' keys and the declarations' full names */
   private artClusters = new Set<string>();
   private artDecls: string[] = [];
@@ -441,7 +473,8 @@ export class GraphCanvas {
     this.labels = labels;
     this.ctx = labels.getContext("2d")!;
     // layers draw in this order
-    for (const [name, kind] of [["discs", "circles"], ["overview", "bundles"], ["selection", "bundles"], ["dots", "points"],
+    // (an artwork's: the starfield's figures under the edges, a glow under the points)
+    for (const [name, kind] of [["discs", "circles"], ["figures", "lines"], ["overview", "bundles"], ["selection", "bundles"], ["glow", "points"], ["dots", "points"],
       ["rings", "points"], ["bubbles", "circles"], ["active", "points"], ["hoverC", "circles"], ["hoverP", "points"]] as const)
       this.gl.layer(name, kind);
     this.cardsEl = cardsEl;
@@ -1228,7 +1261,12 @@ export class GraphCanvas {
           if (!meets(x - ext, y - ext, x + ext, y + ext)) continue;
           const fill = four(d, o + 4), stroke = ring > 0 && d[o + 11] > 0 ? four(d, o + 8) : null;
           if (fill[3] <= 0.002 && !stroke) continue;
-          out.push({ kind: "circle", x, y, r, fill, stroke, ring, ringR, dashed: (Math.round(d[o + 13]) & FLAG_DASHED) !== 0 });
+          const flags = Math.round(d[o + 13]);
+          out.push({
+            kind: "circle", x, y, r, fill, stroke, ring, ringR, dashed: (flags & FLAG_DASHED) !== 0,
+            ...(flags & FLAG_GLOW ? { look: "glow" as const } : flags & FLAG_RADIAL ? { look: "radial" as const } : {}),
+            ...(flags & FLAG_HALO ? { halo: true as const } : {}),
+          });
         } else if (L.kind === "lines") {
           const x0 = sx(d[o]), y0 = sy(d[o + 1]), x1 = sx(d[o + 2]), y1 = sy(d[o + 3]), w = d[o + 8];
           if (!meets(Math.min(x0, x1) - w, Math.min(y0, y1) - w, Math.max(x0, x1) + w, Math.max(y0, y1) + w)) continue;
@@ -2039,18 +2077,43 @@ export class GraphCanvas {
     // outline in that state's colour, thin: its declarations say the rest. By kind, every circle is
     // plain (decided 2026-10-08: status is read by switching schemes, not from rings).
     const byStatus = this.scheme === "status";
+    // an artwork's style (ExportSpec decision 19): its clusters drawn as cells, each top-level
+    // namespace a territory of its own hue — a glow round the outermost, a fill fading from a light,
+    // the deeper ones only their rims; or as a starfield's, the outermost two levels' bounds dotted
+    const style = this.art?.style ?? "board";
+    const glow = g.layer("glow", "points"), figures = g.layer("figures", "lines");
+    glow.clear();
+    figures.clear();
     for (let c = 0; c < S.nc; c++) {
       if (S.rep[c] >= 0 || !this.clusterVisible(c)) continue;
+      const [x, y, r] = [S.cwx[c], S.cwy[c], S.drawnR[c]];
+      const depth = this.layout.clusters[c].depth;
+      if (style === "cells") {
+        const h = this.hueOf(c);
+        if (depth === 0) {
+          circle(discs, x, y, r, UNIT_WORLD, [0, 0, 0, 0], fade(h, 0.3), 26, FLAG_HALO);
+          circle(discs, x, y, r, UNIT_WORLD, fade(h, 0.2), fade(h, 0.6), 1.3, FLAG_RADIAL);
+        } else if (depth === 1) circle(discs, x, y, r, UNIT_WORLD, fade(h, 0.12), fade(h, 0.35), 0.9, FLAG_RADIAL);
+        else circle(discs, x, y, r, UNIT_WORLD, [0, 0, 0, 0], fade(h, 0.18), 0.6);
+        continue;
+      }
+      if (style === "stars") {
+        if (depth <= 1) circle(discs, x, y, r, UNIT_WORLD, [0, 0, 0, 0], rgba(STAR_LINE, depth === 0 ? 0.24 : 0.14), 1, FLAG_DASHED);
+        continue;
+      }
       const t = byStatus ? this.clusterTrouble[c] ?? -1 : -1;
-      if (t < 0) circle(discs, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, th.disc, th.discLine, 1);
-      else circle(discs, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, th.disc, th.status[t], 1.5);
+      if (t < 0) circle(discs, x, y, r, UNIT_WORLD, th.disc, th.discLine, 1);
+      else circle(discs, x, y, r, UNIT_WORLD, th.disc, th.status[t], 1.5);
     }
     for (let c = 0; c < S.nc; c++) {
       if (S.rep[c] !== c || !this.clusterVisible(c)) continue;
       const lit = act !== null && this.clusterHasActive(c);
-      const base = lit ? th.lit : th.discLine;
-      const fill: RGBA = [base[0], base[1], base[2], lit ? 1 : Math.min(1, base[3] * 3 + 0.15) * (act ? 0.5 : 1)];
-      circle(bubbles, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, fill, null, 0, FLAG_SHADED, 0, 6);
+      const base = lit ? th.lit : style === "cells" ? this.hueOf(c) : style === "stars" ? rgba(STAR_LINE) : th.discLine;
+      const a = lit ? 1 : style === "board" ? Math.min(1, base[3] * 3 + 0.15) * (act ? 0.5 : 1) : (act ? 0.2 : 0.4);
+      const fill: RGBA = [base[0], base[1], base[2], a];
+      // a folded cluster: a shaded body; in a starfield, a glow, as a far cluster of stars
+      if (style === "stars" && !lit) circle(bubbles, S.cwx[c], S.cwy[c], S.drawnR[c] * 1.4, UNIT_WORLD, fill, null, 0, FLAG_GLOW, 0, 8);
+      else circle(bubbles, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, fill, null, 0, FLAG_SHADED, 0, 6);
     }
     if (!this.art) this.tempDiscs(discs);
 
@@ -2070,20 +2133,42 @@ export class GraphCanvas {
         // coloured from the end that uses to the end that is used; an edge that only occurs
         // inside a proof, or on grammar, is drawn fainter: no TCB follows it
         const f = (this.edges[e + 2] & (SITE_STMT | SITE_BODY) ? 1 : 0.33) * fade;
-        const c0: RGBA = [th.edgeFrom[0], th.edgeFrom[1], th.edgeFrom[2], th.edgeFrom[3] * f];
-        const c1: RGBA = [th.edgeTo[0], th.edgeTo[1], th.edgeTo[2], th.edgeTo[3] * f];
+        const [from, to] = this.edgeEnds(a, b, th);
+        const c0: RGBA = [from[0], from[1], from[2], from[3] * f];
+        const c1: RGBA = [to[0], to[1], to[2], to[3] * f];
         bundle(sel, pathOf(S, a, b), 0.85, width, c0, c1);
       }
     }
     if (!this.art) this.visitBundles(sel);
 
     // points: dots for declarations, rings for the world outside the project, in the scheme's
-    // colours; what is lit is drawn over them in draw()
+    // colours; what is lit is drawn over them in draw(). An artwork's cells give each a glow; its
+    // starfield makes each a star, as bright as it is used, its colour the scheme's towards white, and
+    // each cluster a constellation
     const dim = act ? 0.22 : 0.9;
+    const most = style === "stars" ? this.mostUsed() : 1;
     for (let i = 0; i < this.g.n; i++) {
       if (!this.visibleNode(i) || (act && act[i])) continue;
+      if (style === "stars") {
+        const x = this.px[i], y = this.py[i];
+        if (this.g.isExt(i)) {
+          circle(dots, x, y, 0.6, UNIT_DOT, [0.72, 0.77, 0.88, 0.4 * dim]);
+          continue;
+        }
+        const c = this.colorOf(i);
+        const star: RGBA = [c[0] + (1 - c[0]) * 0.55, c[1] + (1 - c[1]) * 0.55, c[2] + (1 - c[2]) * 0.55, 0.95 * dim];
+        const k = 0.65 + 1.15 * (Math.log1p(this.g.inStart[i + 1] - this.g.inStart[i]) / Math.log1p(most));
+        circle(glow, x, y, k * 3.4, UNIT_DOT, fade(star, 0.2), null, 0, FLAG_GLOW);
+        circle(dots, x, y, k, UNIT_DOT, star);
+        continue;
+      }
+      if (style === "cells") {
+        const c = this.colorOf(i);
+        circle(glow, this.px[i], this.py[i], 2.8, UNIT_DOT, [c[0], c[1], c[2], 0.16 * dim], null, 0, FLAG_GLOW);
+      }
       this.point(dots, i, dim, false);
     }
+    if (style === "stars") this.constellations(figures, act);
     // a pinned point carries a thin ring: where it is was chosen by hand. Nothing else rings a
     // point but a past graph's marks; status is the Status scheme's (decided 2026-10-08)
     for (let i = 0; i < this.g.n; i++) {
@@ -2099,6 +2184,74 @@ export class GraphCanvas {
         // a rename is the lighter news: its ring is thinner and fainter than a change's
         if (M[i] & PAST_RENAMED) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], fade(th.tmRenamed, 0.7 * faded), 1.1, 0, M[i] & PAST_CHANGED ? 4.4 : 2.2);
       }
+  }
+
+  /** Of a cluster, its top-level namespace's hue among the cells' (CELL_HUES, by their size); the
+   *  outside world's apart. Read again for each layout. */
+  private hueOf(c: number): RGBA {
+    if (this.hues?.layout !== this.layout) {
+      const C = this.layout.clusters;
+      const top = C.map((_, j) => {
+        let t = j;
+        while (C[t].parent >= 0) t = C[t].parent;
+        return t;
+      });
+      const rank = new Map(C.map((cl, j) => [j, cl] as const).filter(([, cl]) => cl.depth === 0 && !cl.ext).sort((a, b) => b[1].count - a[1].count).map(([j], k) => [j, k]));
+      const hues = CELL_HUES.map((h) => rgba(h)), outside = rgba(CELL_OUTSIDE);
+      this.hues = { layout: this.layout, of: top.map((t) => (C[t].ext ? outside : hues[(rank.get(t) ?? 0) % hues.length])) };
+    }
+    return this.hues.of[c] ?? rgba(CELL_OUTSIDE);
+  }
+
+  /** The hue of what a bundled edge's end is (a cluster, or a declaration, past the clusters' ids). */
+  private hueOfId(id: number): RGBA {
+    const S = this.scene;
+    return this.hueOf(id < S.nc ? id : this.layout.cluster[id - S.nc]);
+  }
+
+  /** How often the declaration used most is used: what a star's size is measured against. */
+  private mostUsed(): number {
+    if (this.used?.g !== this.g) {
+      let m = 1;
+      for (let i = 0; i < this.g.n; i++) m = Math.max(m, this.g.inStart[i + 1] - this.g.inStart[i]);
+      this.used = { g: this.g, most: m };
+    }
+    return this.used.most;
+  }
+
+  /** The starfield's constellations (ExportSpec decision 19): in each open cluster, the stars it
+   *  holds itself — the seven used most — joined by the shortest lines that join them all. */
+  private constellations(L: ReturnType<Renderer["layer"]>, act: Uint8Array | null): void {
+    const S = this.scene;
+    const own = new Map<number, number[]>();
+    for (let i = 0; i < this.g.n; i++) {
+      if (!this.visibleNode(i) || this.g.isExt(i)) continue;
+      const c = this.layout.cluster[i];
+      if (c < 0 || S.rep[c] >= 0) continue;
+      let m = own.get(c);
+      if (!m) own.set(c, (m = []));
+      m.push(i);
+    }
+    const used = (i: number) => this.g.inStart[i + 1] - this.g.inStart[i];
+    const colour = rgba(STAR_LINE, act ? 0.16 : 0.38);
+    for (const members of own.values()) {
+      if (members.length < 2) continue;
+      const stars = members.sort((a, b) => used(b) - used(a) || a - b).slice(0, 7);
+      // Prim's: from the brightest, each time the nearest star not yet joined
+      const joined = [stars[0]];
+      const rest = stars.slice(1);
+      while (rest.length) {
+        let best = Infinity, from = -1, k = -1;
+        for (const a of joined)
+          for (let j = 0; j < rest.length; j++) {
+            const d = (this.px[a] - this.px[rest[j]]) ** 2 + (this.py[a] - this.py[rest[j]]) ** 2;
+            if (d < best) [best, from, k] = [d, a, j];
+          }
+        const b = rest.splice(k, 1)[0];
+        segment(L, this.px[from], this.py[from], this.px[b], this.py[b], colour, 0.9);
+        joined.push(b);
+      }
+    }
   }
 
   /** A node's colour in the scheme in force. */
@@ -2376,15 +2529,28 @@ export class GraphCanvas {
     const drawn = `${this.overviewStyle}|${dim}|${W.map((x) => `${Q.points.get(x.point)!.serial}:${x.w.toFixed(3)}`).join(",")}`;
     if (drawn === this.overviewDrawn) return;
     this.overviewDrawn = drawn;
-    const from = this.theme.edgeFrom, to = this.theme.edgeTo;
-    const c0: RGBA = [from[0], from[1], from[2], 0], c1: RGBA = [to[0], to[1], to[2], 0];
+    const c0: RGBA = [0, 0, 0, 0], c1: RGBA = [0, 0, 0, 0];
+    const styled = !!this.art && this.art.style !== "board";
     L.clear();
     blendPoints(sets, (P, j, beta, width, alpha) => {
       // from the part that uses to the part it uses
-      c0[3] = alpha;
-      c1[3] = alpha;
+      // the theme's colours at the overview's opacity; an artwork style's at theirs times it
+      const [from, to] = this.edgeEnds(P.path[8 * j], P.path[8 * j + P.len[j] - 1], this.theme);
+      [c0[0], c0[1], c0[2], c0[3]] = [from[0], from[1], from[2], (styled ? from[3] : 1) * alpha];
+      [c1[0], c1[1], c1[2], c1[3]] = [to[0], to[1], to[2], (styled ? to[3] : 1) * alpha];
       bundlePath(L, P.path, 8 * j, P.len[j], beta, width, c0, c1);
     });
+  }
+
+  /** The colours of a bundled edge from `a` to `b` (ids of the scene's clusters, and of its
+   *  declarations past them), from the end that uses: the theme's; an artwork's cells', from one
+   *  territory's hue to the other's; its starfield's, a faint starlight. Their opacity is the most
+   *  the edge has. */
+  private edgeEnds(a: number, b: number, th: { edgeFrom: RGBA; edgeTo: RGBA }): [RGBA, RGBA] {
+    const style = this.art?.style ?? "board";
+    if (style === "cells") return [fade(this.hueOfId(a), 0.7), fade(this.hueOfId(b), 0.7)];
+    if (style === "stars") return [rgba(STAR_LINE, 0.2), rgba(STAR_LINE, 0.2)];
+    return [th.edgeFrom, th.edgeTo];
   }
 
   /** The highlight of what the pointer is on: a cluster's circle lit, or a ring round a point. */
@@ -2488,17 +2654,63 @@ export class GraphCanvas {
       return onScreen(sx, sy, 8);
     };
     const targets = art ? this.markedTargets() : [];
+    // an artwork's names (the owner's decisions of 2026-10-15): in its fonts and its style's colours;
+    // a cluster's along the top of its circle where it fits there (arc labels), a top-level one in
+    // spaced capitals, the others in italics; under a folded one's disc, or inside the top of a
+    // circle too small for the arc, straight
+    const look = art ? artText(art.style, th) : null;
+    const artCluster = (c: number, force: boolean): boolean => {
+      const L = look!;
+      const cl = this.layout.clusters[c];
+      const id = artNameId("cluster", cl.key);
+      const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
+      ctx.fillStyle = L.clusterFill;
+      ctx.textAlign = "center";
+      if (S.rep[c] === c) {
+        const r = Math.max(6, S.drawnR[c] * k);
+        if (!force && (r <= 10 || !onScreen(sx, sy, r) || (act && this.clusterHasActive(c)))) return false;
+        ctx.font = L.sub(11);
+        return place(cl.label, sx, sy + r + 13, 11, id, force);
+      }
+      const sr = S.drawnR[c] * k;
+      if (!force && (sr <= 38 || !onScreen(sx, sy, sr))) return false;
+      const top = cl.depth === 0;
+      const size = Math.max(10, Math.min(top ? 22 : 16, 9 + sr / 40));
+      const text = top ? cl.label.toUpperCase() : cl.label;
+      const font = top ? L.top(size) : L.sub(size);
+      const sp = L.spacing(top, size);
+      ctx.font = font;
+      const len = spacedWidth(ctx, text, sp);
+      const R = sr - size * 0.35 - 6;
+      const half = len / Math.max(R, 1) / 2;
+      let box: [number, number, number, number];
+      let item: Written;
+      if (sr > 60 && half < Math.PI * 0.45) {
+        const reach = R * Math.sin(half) + 4;
+        box = [sx - reach, sy - sr, sx + reach, sy - R * Math.cos(half) + size * 0.4];
+        item = { text, x: sx, y: sy, font, align: "center", fill: L.clusterFill, spacing: sp, arc: { cx: sx, cy: sy, r: R } };
+      } else {
+        const by = sr > 38 ? sy - sr + size + 6 : sy - sr - 4;
+        box = [sx - len / 2 - 3, by - size, sx + len / 2 + 3, by + size * 0.3];
+        item = { text, x: sx, y: by, font, align: "center", fill: L.clusterFill, spacing: sp };
+      }
+      if (!force && !free(...box)) return false;
+      take(...box);
+      if (hidden(id)) return true;
+      written.push(item);
+      wrote.add(id);
+      labels.push(...this.toWorld(box[0], box[1]), ...this.toWorld(box[2], box[3]));
+      named.set(c, labels.length - 4);
+      return true;
+    };
     ctx.fillStyle = th.label;
     // the clusters' shown, where the board writes them
     if (chosen)
       for (let c = 0; c < S.nc; c++) {
         const cl = this.layout.clusters[c];
-        if (!this.artClusters.has(cl.key)) continue;
-        const spot = this.chosenSpot(c);
-        if (!spot || !onScreen(spot.x, spot.y, 400)) continue;
-        ctx.font = spot.font;
-        place(cl.label, spot.x, spot.y, spot.size, artNameId("cluster", cl.key), true);
-        if (S.rep[c] < 0) named.set(c, labels.length - 4);
+        if (!this.artClusters.has(cl.key) || (S.rep[c] >= 0 && S.rep[c] !== c) || !this.clusterVisible(c)) continue;
+        const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
+        if (onScreen(sx, sy, 400)) artCluster(c, true);
       }
     // the declarations' shown, beside their points: a target marked in bold
     if (chosen) {
@@ -2507,8 +2719,8 @@ export class GraphCanvas {
       for (const name of this.artDecls) {
         const i = this.g.byName.get(name);
         if (i === undefined || !shown(i)) continue;
-        ctx.font = bold.has(i) ? `600 11px ${FONT}` : `11px ${FONT}`;
-        ctx.fillStyle = bold.has(i) ? th.label : th.text;
+        ctx.font = bold.has(i) ? look!.target : look!.decl;
+        ctx.fillStyle = bold.has(i) ? look!.clusterFill : look!.declFill;
         nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width, true);
       }
       ctx.textAlign = "center";
@@ -2519,6 +2731,10 @@ export class GraphCanvas {
       if (chosen && this.artClusters.has(this.layout.clusters[c].key)) continue;
       const rep = S.rep[c];
       if (!this.clusterVisible(c)) continue;
+      if (art) {
+        if (rep < 0 || rep === c) artCluster(c, false);
+        continue;
+      }
       const cl = this.layout.clusters[c];
       const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
       if (rep === c) {
@@ -2557,8 +2773,8 @@ export class GraphCanvas {
     // the middle first
     const marked = art && art.labels !== "none" && asShown ? targets.filter((i) => shown(i) && !extra(artNameId("decl", this.g.nodes[i].name))) : [];
     ctx.textAlign = "left";
-    ctx.font = `600 11px ${FONT}`;
-    ctx.fillStyle = th.label;
+    ctx.font = look ? look.target : `600 11px ${FONT}`;
+    ctx.fillStyle = look ? look.clusterFill : th.label;
     for (const i of marked) nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width);
     const seen = new Set(marked);
     if (chosen) for (const name of this.artDecls) {
@@ -2566,8 +2782,8 @@ export class GraphCanvas {
       if (i !== undefined) seen.add(i);
     }
     if (art && asShown && act) {
-      ctx.font = `11px ${FONT}`;
-      ctx.fillStyle = th.text;
+      ctx.font = look!.decl;
+      ctx.fillStyle = look!.declFill;
       const cx = this.w / 2, cy = this.h / 2;
       const lit = this.activeList.filter((i) => !seen.has(i) && shown(i));
       const d = (i: number) => {
@@ -2582,9 +2798,9 @@ export class GraphCanvas {
       }
     }
     if (asShown && k > 1.1 && !act) {
-      ctx.font = `11px ${FONT}`;
+      ctx.font = look ? look.decl : `11px ${FONT}`;
       ctx.textAlign = "left";
-      ctx.fillStyle = th.text;
+      ctx.fillStyle = look ? look.declFill : th.text;
       // declaration names, nearest the middle of the screen first; one that would cover another
       // name (or a cluster's) is left out, so what is written can be read and the edges show
       const cx = this.w / 2, cy = this.h / 2;
@@ -2604,19 +2820,21 @@ export class GraphCanvas {
         const i = near[t];
         if (seen.has(i)) continue;
         let w = this.nameW[i];
-        if (!(w >= 0)) w = this.nameW[i] = ctx.measureText(this.g.short(i)).width;
+        // (the widths kept are in the board's own font; an artwork writes in its own)
+        if (look) w = ctx.measureText(this.g.short(i)).width;
+        else if (!(w >= 0)) w = this.nameW[i] = ctx.measureText(this.g.short(i)).width;
         if (nameAt(i, this.g.short(i), w)) budget--;
       }
     }
-    this.writeNames(written);
+    this.writeNames(written, look?.halo ?? null);
     this.namesWritten = wrote;
   }
 
   /** The names, over everything else written on the board, each on its halo of the background
    *  (web/src/halo.ts). */
-  private writeNames(names: readonly Written[]): void {
+  private writeNames(names: readonly Written[], halo: string | null): void {
     const bg = this.theme.bg;
-    writeNames(this.ctx, names, `rgb(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)})`);
+    writeNames(this.ctx, names, halo ?? `rgb(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)})`);
   }
 
   /** In the Status scheme, how far the review of each cluster on screen has come, on its outline: an

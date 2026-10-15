@@ -20,9 +20,10 @@ import type { ArtworkView } from "../../shared/collab.ts";
 import { ART_NAMES_BYTES, ART_TARGETS_BYTES } from "../../shared/collab.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { ArtSettings, NameRow, NotePicture } from "./artwork.ts";
-import { artName, artSvg, cleanSettings, drawFoot, drawNotes, encodePng, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
+import { artName, artSvg, cleanSettings, drawBackdrop, drawFoot, drawNotes, drawTitle, encodePng, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
-import { FONT } from "./canvas.ts";
+import { ART_SANS, ART_SERIF } from "./halo.ts";
+import { TITLE_SIZE } from "../../shared/collab.ts";
 import { escapeHtml } from "./highlight.ts";
 
 export interface ArtHooks {
@@ -44,6 +45,8 @@ export interface ArtHooks {
   source(): string | null;
   /** every target of the review, by full name, with the name the board writes */
   targets(): { name: string; label: string }[];
+  /** the title and its line where the reader gave none: the project's name, and what it holds */
+  titles(): { title: string; subtitle: string };
   say(text: string): void;
 }
 
@@ -66,6 +69,10 @@ const NO_ROOM = (left: number, what: string) =>
 export class ArtFrame {
   private root: HTMLElement;
   private frameEl: HTMLElement;
+  private sky: HTMLCanvasElement;
+  private ink: HTMLCanvasElement;
+  /** those following are told of the title once it has been still a moment */
+  private titleWait = 0;
   private panel: HTMLElement;
   private canvas: GraphCanvas;
   private hooks: ArtHooks;
@@ -103,20 +110,28 @@ export class ArtFrame {
     this.close();
   };
 
-  constructor(root: HTMLElement, panel: HTMLElement, canvas: GraphCanvas, hooks: ArtHooks) {
+  constructor(root: HTMLElement, panel: HTMLElement, sky: HTMLCanvasElement, canvas: GraphCanvas, hooks: ArtHooks) {
     this.root = root;
     this.panel = panel;
+    this.sky = sky;
     this.canvas = canvas;
     this.hooks = hooks;
-    root.innerHTML = `<div class="art-frame"><div class="art-foot"></div></div>`;
+    // over the board within the frame, the title and the foot as the files have them (`ink`); under
+    // it, the style's ground (`sky`)
+    root.innerHTML = `<div class="art-frame"><canvas class="art-ink"></canvas></div>`;
     this.frameEl = root.querySelector(".art-frame")!;
+    this.ink = root.querySelector(".art-ink")!;
     panel.addEventListener("change", (e) => this.changed(e.target as HTMLInputElement));
     panel.addEventListener("input", (e) => {
       const t = e.target as HTMLInputElement;
+      // the title and its size, as they are typed and slid
+      if (t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize") return this.titled(t);
       if (t.dataset.artFilter === undefined) return;
       this.filter = t.value;
       this.renderRows();
     });
+    // the fonts arrive after the first drawing: drawn again with them
+    document.fonts?.addEventListener?.("loadingdone", () => this.isOpen && this.renderInk());
     panel.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
       if (t.closest("[data-art-done]")) this.close();
@@ -170,7 +185,11 @@ export class ArtFrame {
   open(): void {
     if (this.isOpen) return;
     this.start(cleanSettings(this.hooks.saved(), this.hooks.now()));
-    this.canvas.fitRect(this.rect);
+    // the whole board in the frame, below the title where there is one
+    const s = this.s!, r = this.rect, own = this.hooks.titles();
+    const titled = !!(s.title ?? own.title) || !!(s.subtitle ?? own.subtitle);
+    const below = titled ? Math.min(r.h * 0.4, ((s.titleSize * 1.7) / 100) * r.h + Math.max(14, r.h * 0.035)) : 0;
+    this.canvas.fitRect({ x: r.x, y: r.y + below, w: r.w, h: r.h - below });
     this.hooks.changed();
   }
 
@@ -220,6 +239,7 @@ export class ArtFrame {
     if (!this.isOpen) return;
     this.rect = { x: 0, y: 0, w: 0, h: 0 };
     this.root.hidden = true;
+    this.sky.hidden = true;
     this.panel.hidden = true;
     document.removeEventListener("keydown", this.onKey, true);
     this.s = null;
@@ -255,6 +275,67 @@ export class ArtFrame {
     }
     this.rect = { x, y, w, h };
     Object.assign(this.frameEl.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
+    Object.assign(this.sky.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
+    this.renderSky();
+    this.renderInk();
+  }
+
+  /** The style's ground under the board, within the frame (artwork.ts, drawBackdrop): none for the
+   *  board's style, or where the picture is transparent. */
+  private renderSky(): void {
+    const s = this.s, r = this.rect;
+    const on = !!s && s.style !== "board" && s.background !== "transparent" && r.w > 0;
+    this.sky.hidden = !on;
+    if (!on) return;
+    const dpr = window.devicePixelRatio || 1;
+    [this.sky.width, this.sky.height] = [Math.round(r.w * dpr), Math.round(r.h * dpr)];
+    const ctx = this.sky.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBackdrop(ctx, s.style, { x: 0, y: 0, w: r.w, h: r.h });
+  }
+
+  /** The title and the foot over the board, within the frame, as the files will have them. */
+  private renderInk(): void {
+    const s = this.s, r = this.rect;
+    if (!s || !r.w) return;
+    const dpr = window.devicePixelRatio || 1;
+    [this.ink.width, this.ink.height] = [Math.round(r.w * dpr), Math.round(r.h * dpr)];
+    const ctx = this.ink.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.writeOver(ctx, s, { x: 0, y: 0, w: r.w, h: r.h });
+  }
+
+  /** What an artwork writes over the board within `rect`: its title and its foot. */
+  private writeOver(ctx: CanvasRenderingContext2D, s: ArtSettings, rect: { x: number; y: number; w: number; h: number }): void {
+    const own = this.hooks.titles();
+    const cs = getComputedStyle(document.body);
+    const v = (name: string) => cs.getPropertyValue(name).trim();
+    const halo = s.style === "cells" ? "#0f1520" : s.style === "stars" ? "#090d1a" : v("--canvas");
+    drawTitle(ctx, rect, s.title ?? own.title, s.subtitle ?? own.subtitle, s.titleSize, s.style, { ink: v("--text"), quiet: v("--text-2"), halo });
+    const quiet = s.style === "board" ? v("--text-2") : "rgba(200, 208, 224, 0.7)";
+    drawFoot(ctx, rect, s.source ? this.hooks.source() : null, { text: quiet, halo }, ART_SANS);
+  }
+
+  /** The title, its line or its size changed in the panel: kept, drawn over the board at once, and
+   *  said to those following once it has been still a moment. */
+  private titled(t: HTMLInputElement): void {
+    const s = this.s;
+    if (!s || this.busy) return;
+    if (t.dataset.art === "titleSize") {
+      s.titleSize = Math.min(TITLE_SIZE.most, Math.max(TITLE_SIZE.least, Number(t.value) || TITLE_SIZE.first));
+      const out = this.panel.querySelector("[data-art-size]");
+      if (out) out.textContent = `${s.titleSize}%`;
+    } else {
+      s[t.dataset.art as "title" | "subtitle"] = t.value.slice(0, 120);
+      const own = this.panel.querySelector<HTMLElement>("[data-art-own]");
+      if (own) own.hidden = false;
+    }
+    this.hooks.save(s);
+    this.renderInk();
+    clearTimeout(this.titleWait);
+    this.titleWait = window.setTimeout(() => this.hooks.changed(), 400);
   }
 
   private measure = (text: string, font: string): number => {
@@ -268,8 +349,9 @@ export class ArtFrame {
   /** A setting changed in the panel: kept as the reader's, drawn on the board at once. */
   private changed(t: HTMLInputElement): void {
     const s = this.s;
-    // the filter over the names is the reader's own (the panel's `input`)
-    if (t.dataset.artFilter !== undefined) return;
+    // the filter over the names is the reader's own (the panel's `input`); the title is taken as it is
+    // typed (titled)
+    if (t.dataset.artFilter !== undefined || t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize") return;
     if (t.dataset.artName !== undefined) return this.chooseNames([t.dataset.artName], t.checked);
     if (t.dataset.artTarget !== undefined) return this.choose("targets", [t.dataset.artTarget], t.checked);
     const k = t.dataset.art;
@@ -281,6 +363,11 @@ export class ArtFrame {
       const p = PRESETS[Number(t.value)];
       if (p) ({ w: s.w, h: s.h } = oriented(p.w, p.h, s.h > s.w));
     } else if (k === "orient") ({ w: s.w, h: s.h } = oriented(s.w, s.h, t.value === "portrait"));
+    // the cells and the starfield are dark: drawn on their own ground, or on none
+    else if (k === "style") {
+      s.style = t.value === "cells" || t.value === "stars" ? t.value : "board";
+      if (s.style !== "board") s.theme = "dark";
+    }
     else if (k === "w" || k === "h") s[k] = Math.max(16, Math.min(MAX_SIDE, Math.round(Number(t.value)) || s[k]));
     else if (k === "look") {
       // the theme, on its background or on none
@@ -369,6 +456,11 @@ export class ArtFrame {
     const s = this.s;
     if (!s) return;
     if (which === "targets") return this.choose("targets", this.hooks.targets().map((t) => t.name), all === "all");
+    // the title and its line as the project has them
+    if (which === "title") {
+      [s.title, s.subtitle] = [null, null];
+      return this.settled();
+    }
     if (!this.filter.trim()) {
       if (this.busy) return this.renderPanel();
       [s.namesFrom, s.hiddenNames, s.shownNames] = [all === "all" ? "board" : "none", [], []];
@@ -421,19 +513,11 @@ export class ArtFrame {
     return `${here.toLocaleString("en")} of ${this.rows.length.toLocaleString("en")} in the frame written${s?.namesFrom === "none" ? " · from none" : ""}${n(s?.hiddenNames.length ?? 0, "hidden")}${n(s?.shownNames.length ?? 0, "shown besides")}`;
   }
 
-  /** The foot in the frame, as the files will have it: "Generated by VisualProof" at the bottom
-   *  left, and where asked the source and commit at the bottom right (artwork.ts, drawFoot). */
-  private renderFoot(): void {
-    const s = this.s;
-    const el = this.frameEl.querySelector<HTMLElement>(".art-foot")!;
-    const source = s?.source ? this.hooks.source() : null;
-    el.innerHTML = `<span>Generated by <b class="logo">VisualProof</b></span>${source ? `<span>${escapeHtml(source)}</span>` : ""}`;
-  }
-
   private renderPanel(held = false): void {
     const s = this.s;
     if (!s) return;
-    this.renderFoot();
+    this.renderSky();
+    this.renderInk();
     // what the reader was at in the panel, kept: the lists' scroll, the control with the focus
     const scrolls = [...this.panel.querySelectorAll<HTMLElement>("[data-art-rows]")].map((el) => [el.dataset.artRows!, el.scrollTop] as const);
     const was = document.activeElement instanceof HTMLElement && this.panel.contains(document.activeElement) ? document.activeElement : null;
@@ -458,14 +542,22 @@ export class ArtFrame {
       `<label class="ex-field"><span>Width</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="w" value="${s.w}"></label>` +
       `<label class="ex-field"><span>Height</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="h" value="${s.h}"></label>` +
       `<div class="art-note muted">${mp} megapixels · names ${Math.round((11 * s.w) / Math.max(this.rect.w, 1))} px high</div>` +
-      `<label class="ex-field ex-wide"><span>Theme</span><select data-art="look">${[
-        ["light", "Light"],
-        ["dark", "Dark"],
-        ["light-clear", "Transparent, for a light page"],
-        ["dark-clear", "Transparent, for a dark page"],
-      ]
+      sel("style", "Style", [["board", "As the board"], ["cells", "Cells"], ["stars", "Starfield"]]) +
+      `<label class="ex-field"><span>Theme</span><select data-art="look">${(s.style === "board"
+        ? [
+            ["light", "Light"],
+            ["dark", "Dark"],
+            ["light-clear", "Transparent, for a light page"],
+            ["dark-clear", "Transparent, for a dark page"],
+          ]
+        : [
+            ["dark", s.style === "stars" ? "Night sky" : "Dark field"],
+            ["dark-clear", "Transparent, for a dark page"],
+          ]
+      )
         .map(([v, l]) => opt(v, l, look))
         .join("")}</select></label>` +
+      this.titleHtml() +
       sel("scheme", "Colouring", [["kind", "Kind"], ["status", "Status"]]) +
       sel("labels", "Names", [["board", "As shown"], ["clusters", "Clusters only"], ["none", "None"], ["chosen", "By selection"]]) +
       (s.labels === "chosen" ? this.namesHtml() : "") +
@@ -487,6 +579,20 @@ export class ArtFrame {
       now?.focus({ preventScroll: true });
       if (now instanceof HTMLInputElement && caret) now.setSelectionRange(caret[0], caret[1]);
     }
+  }
+
+  /** The title, its line and its size; the project's own again. */
+  private titleHtml(): string {
+    const s = this.s!;
+    const own = this.hooks.titles();
+    const field = (k: "title" | "subtitle", label: string) =>
+      `<label class="ex-field ex-wide"><span>${label}</span><input type="text" data-art="${k}" maxlength="120" spellcheck="false" value="${escapeHtml(s[k] ?? own[k])}" placeholder="None"></label>`;
+    return (
+      field("title", "Title") +
+      field("subtitle", "Under it") +
+      `<label class="ex-field ex-wide art-size"><span>Title size <output data-art-size>${s.titleSize}%</output></span><input type="range" data-art="titleSize" min="${TITLE_SIZE.least}" max="${TITLE_SIZE.most}" step="0.5" value="${s.titleSize}" aria-label="The title's size, in hundredths of the picture's height"></label>` +
+      `<div class="art-note"${s.title !== null || s.subtitle !== null ? "" : " hidden"} data-art-own><button class="rv-btn" data-art-pick="title-own" title="The project's name, and what it holds">The project's own</button></div>`
+    );
   }
 
   /** Names by selection: the filter, All and None, the names the frame holds ticked or not. */
@@ -528,21 +634,23 @@ export class ArtFrame {
     const s = { ...this.s };
     const C = this.canvas;
     const rect = { ...this.rect }, cam = { ...C.cam };
-    const bg = s.background === "transparent" ? null : themeBackground();
+    // the ground: the theme's, the style's own (drawBackdrop), or none
+    const ground = s.background !== "transparent";
+    const bg = ground && s.style === "board" ? themeBackground() : null;
     const notes = s.notes ? this.hooks.notes() : [];
-    const source = s.source ? this.hooks.source() : null;
-    const cs = getComputedStyle(document.body);
-    const foot = { text: cs.getPropertyValue("--text-2").trim(), halo: cs.getPropertyValue("--canvas").trim() };
     const name = artName(this.hooks.title(), kind);
+    // the fonts written in, there before anything is drawn with them
+    await Promise.all(ART_FACES.map((f) => document.fonts?.load(f).catch(() => []))).catch(() => {});
     if (kind === "svg") {
-      const svg = artSvg(rect, s, bg, FONT, this.measure, (pen) => {
-        for (const sh of C.artShapes(rect)) pen.shape(sh);
+      const svg = artSvg(rect, s, bg, ART_SANS, this.measure, (pen) => {
         const ctx = pen as unknown as CanvasRenderingContext2D;
+        if (ground) drawBackdrop(ctx, s.style, rect);
+        for (const sh of C.artShapes(rect)) pen.shape(sh);
         C.drawMarks(ctx);
         // a note's glyph is SVG already
-        drawNotes(ctx, notes, FONT, (n) => pen.raw(`<g transform="translate(${n.x - n.glyphPx / 2} ${n.y - n.glyphPx / 2}) scale(${n.glyphPx / 16})" color="${n.colour}">${n.glyph}</g>`));
-        drawFoot(ctx, rect, source, foot, FONT);
-      });
+        drawNotes(ctx, notes, ART_SANS, (n) => pen.raw(`<g transform="translate(${n.x - n.glyphPx / 2} ${n.y - n.glyphPx / 2}) scale(${n.glyphPx / 16})" color="${n.colour}">${n.glyph}</g>`));
+        this.writeOver(ctx, s, rect);
+      }, await faces());
       return download(new Blob([svg], { type: "image/svg+xml" }), name);
     }
     this.busy = true;
@@ -567,6 +675,7 @@ export class ArtFrame {
       cv.height = band;
       const ctx = cv.getContext("2d", { willReadFrequently: true });
       if (!ctx) throw new Error("no canvas");
+      const write = (c: CanvasRenderingContext2D) => this.writeOver(c, s, rect);
       async function* bands(): AsyncGenerator<Uint8ClampedArray> {
         for (let y = 0; y < s.h; y += band) {
           const n = Math.min(band, s.h - y);
@@ -575,14 +684,18 @@ export class ArtFrame {
           if (bg) {
             ctx!.fillStyle = bg;
             ctx!.fillRect(0, 0, s.w, n);
+          } else if (ground) {
+            ctx!.setTransform(f, 0, 0, f, -rect.x * f, -(rect.y * f + y));
+            drawBackdrop(ctx!, s.style, rect);
+            ctx!.setTransform(1, 0, 0, 1, 0, 0);
           }
           C.paintArtBand(ctx!, rect, f, y, n, cam);
           ctx!.setTransform(f, 0, 0, f, -rect.x * f, -(rect.y * f + y));
-          drawNotes(ctx!, notes, FONT, (n) => {
+          drawNotes(ctx!, notes, ART_SANS, (n) => {
             const img = glyphs.get(n.colour + n.glyph);
             if (img?.complete && img.naturalWidth) ctx!.drawImage(img, n.x - n.glyphPx / 2, n.y - n.glyphPx / 2, n.glyphPx, n.glyphPx);
           });
-          drawFoot(ctx!, rect, source, foot, FONT);
+          write(ctx!);
           yield ctx!.getImageData(0, 0, s.w, n).data;
         }
       }
@@ -594,6 +707,41 @@ export class ArtFrame {
       this.renderPanel();
     }
   }
+}
+
+/** the faces an artwork writes in: drawn with them once they are there */
+const ART_FACES = [`400 16px ${ART_SANS}`, `italic 400 16px ${ART_SANS}`, `600 16px ${ART_SANS}`, `700 16px ${ART_SANS}`, `400 16px ${ART_SERIF}`, `italic 400 16px ${ART_SERIF}`, `500 16px ${ART_SERIF}`, `600 16px ${ART_SERIF}`];
+
+/** The artwork's fonts as an SVG carries them, so that it is written in them wherever it is opened:
+ *  each face the page declares for them (web/style.css), its file within. A face that cannot be
+ *  read is left to the name of its family. */
+async function faces(): Promise<string> {
+  const out: string[] = [];
+  for (const sheet of [...document.styleSheets]) {
+    let rules: CSSRuleList;
+    try {
+      rules = sheet.cssRules;
+    } catch {
+      continue;
+    }
+    for (const rule of [...rules]) {
+      if (!(rule instanceof CSSFontFaceRule)) continue;
+      const st = rule.style;
+      const family = st.getPropertyValue("font-family").replace(/["']/g, "").trim();
+      if (family !== "Source Sans 3" && family !== "Source Serif 4") continue;
+      const url = /url\(["']?([^"')]+)["']?\)/.exec(st.getPropertyValue("src"))?.[1];
+      if (!url) continue;
+      try {
+        const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+        let bin = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        out.push(`@font-face{font-family:"${family}";font-style:${st.getPropertyValue("font-style") || "normal"};font-weight:${st.getPropertyValue("font-weight") || "400"};src:url(data:font/woff2;base64,${btoa(bin)}) format("woff2");unicode-range:${st.getPropertyValue("unicode-range") || "U+0-10FFFF"}}`);
+      } catch {
+        // its family's name alone
+      }
+    }
+  }
+  return out.join("");
 }
 
 /** Hand a file to the browser to save. */

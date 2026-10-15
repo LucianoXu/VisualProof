@@ -215,6 +215,35 @@ export interface ArtworkLook {
   selection: boolean;
   /** the project's git source and the commit it was read from, at the bottom right */
   source: boolean;
+  /** how it is drawn (the owner's decisions of 2026-10-15): as the board; as cells, each namespace a
+   *  glowing territory on a dark ground; as a starfield, each declaration a star and each cluster a
+   *  constellation */
+  style: ArtStyle;
+  /** the title at the top left and the line under it: the project's name and what it holds where
+   *  null, the reader's words where given ("" for none); the title's size, in hundredths of the
+   *  picture's height */
+  title: string | null;
+  subtitle: string | null;
+  titleSize: number;
+}
+
+/** An artwork's ways of being drawn (ArtworkLook `style`). */
+export const ART_STYLES = ["board", "cells", "stars"] as const;
+export type ArtStyle = (typeof ART_STYLES)[number];
+/** the title's size, in hundredths of the picture's height: the least, the most, the first */
+export const TITLE_SIZE = { least: 3, most: 16, first: 7 } as const;
+/** the most characters a title, or the line under it, has */
+export const TITLE_CHARS = 120;
+
+/** An artwork's title or its line as given: the reader's words, at most so long, or null (the
+ *  project's own). */
+export function cleanTitle(v: unknown): string | null {
+  return typeof v === "string" ? v.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, TITLE_CHARS) : null;
+}
+
+/** An artwork's title size as given, within its bounds; the first where it is none. */
+export function cleanTitleSize(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(TITLE_SIZE.most, Math.max(TITLE_SIZE.least, Math.round(v * 2) / 2)) : TITLE_SIZE.first;
 }
 
 /** What a name of an artwork's names (ArtworkLook `names`) names: a cluster, by its key, or a
@@ -289,7 +318,9 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   const hiddenNames = cleanNames(o.hiddenNames, ART_NAMES_BYTES, isArtNameId), shownNames = cleanNames(o.shownNames, ART_NAMES_BYTES, isArtNameId);
   const shownTargets = cleanNames(o.shownTargets, ART_TARGETS_BYTES);
   const keys = typeof o.keys === "boolean" ? o.keys : targets !== "plain";
-  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, proofs: o.proofs, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, region: [...r] };
+  // the style and the title, said since that night: as the board, the project's own
+  const style = one(ART_STYLES, o.style) ?? "board";
+  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, proofs: o.proofs, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), region: [...r] };
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */

@@ -7,7 +7,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import type { ViewMeta } from "../shared/graph.ts";
 import type { ReviewData } from "../shared/review.ts";
 import type { ModuleContexts } from "../shared/context.ts";
-import { WEB, bundleDir } from "./pipeline.ts";
+import { WEB, WEBFONTS, bundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
 import type { ViewBook } from "../shared/views.ts";
 import type { Project } from "./project.ts";
@@ -35,7 +35,8 @@ export function writeSnapshot(project: Project, prep: Prepared, out: string, lab
     }
   }
   const b64 = (buf: Buffer) => buf.toString("base64");
-  const css = readFileSync(join(WEB, "style.css"), "utf8");
+  // the artwork's fonts within the page, which has no server to ask for them
+  const css = readFileSync(join(WEB, "style.css"), "utf8").replace(/url\("\/fonts\/([a-z0-9-]+\.woff2)"\)/g, (_, f: string) => `url("data:font/woff2;base64,${b64(readFileSync(join(WEBFONTS, f)))}")`);
   const js = readFileSync(join(bundleDir(), "app.js"), "utf8").replace(/\n\/\/# sourceMappingURL=.*$/m, "");
   const info = { createdAt: new Date().toISOString(), label };
   const html = readFileSync(join(WEB, "index.html"), "utf8")

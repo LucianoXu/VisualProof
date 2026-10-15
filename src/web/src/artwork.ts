@@ -12,11 +12,12 @@
 // board writes over it — its names, stars, rings — recorded as it is written (SvgContext), within the
 // frame. Nothing is asked of the server, so a read-only page and a snapshot can make one too.
 
-import type { ArtworkLook } from "../../shared/collab.ts";
-import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_TARGETS_BYTES, cleanNames, isArtNameId } from "../../shared/collab.ts";
+import type { ArtStyle, ArtworkLook } from "../../shared/collab.ts";
+import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_STYLES, ART_TARGETS_BYTES, cleanNames, cleanTitle, cleanTitleSize, isArtNameId, TITLE_SIZE } from "../../shared/collab.ts";
 import type { GitSource } from "../../shared/graph.ts";
 import type { ArtShape } from "./canvas.ts";
-import { writeNames } from "./halo.ts";
+import { ART_SANS, ART_SERIF, writeNames } from "./halo.ts";
+import type { Written } from "./halo.ts";
 
 export type ArtSettings = ArtworkLook;
 
@@ -59,6 +60,10 @@ const DEFAULTS: ArtSettings = {
   keys: true,
   selection: true,
   source: false,
+  style: "board",
+  title: null,
+  subtitle: null,
+  titleSize: TITLE_SIZE.first,
 };
 
 const one = <T extends string>(v: unknown, of: readonly T[], d: T): T => (of.includes(v as T) ? (v as T) : d);
@@ -87,6 +92,10 @@ export function cleanSettings(s: Partial<ArtSettings> | undefined, now: { scheme
     keys: typeof o.keys === "boolean" ? o.keys : targets !== "plain",
     selection: typeof o.selection === "boolean" ? o.selection : DEFAULTS.selection,
     source: typeof o.source === "boolean" ? o.source : DEFAULTS.source,
+    style: one(o.style, ART_STYLES, DEFAULTS.style),
+    title: cleanTitle(o.title),
+    subtitle: cleanTitle(o.subtitle),
+    titleSize: cleanTitleSize(o.titleSize),
   };
 }
 
@@ -346,6 +355,80 @@ export function drawFoot(ctx: CanvasRenderingContext2D, rect: { x: number; y: nu
   ctx.restore();
 }
 
+// ---------------------------------------------------------------- the ground and the title
+
+/** The ground of an artwork's style behind the board, within the frame `rect` (the screen's pixels),
+ *  written with `ctx` (the owner's decisions of 2026-10-15): the cells' a dark field lit towards its
+ *  middle; the starfield's a night sky, darker at its edges, with a dust of faint stars that keeps
+ *  its place in the frame. None for the board's style, whose ground is the theme's. */
+export function drawBackdrop(ctx: CanvasRenderingContext2D, style: ArtStyle, rect: { x: number; y: number; w: number; h: number }): void {
+  if (style === "board") return;
+  const { x, y, w, h } = rect;
+  ctx.save();
+  const stars = style === "stars";
+  const g = stars ? ctx.createRadialGradient(x + w * 0.5, y + h * 0.4, 0, x + w * 0.5, y + h * 0.4, w * 0.8) : ctx.createRadialGradient(x + w * 0.55, y + h * 0.45, 0, x + w * 0.55, y + h * 0.45, w * 0.7);
+  g.addColorStop(0, stars ? "#101833" : "#121a28");
+  g.addColorStop(1, stars ? "#04060c" : "#090c12");
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+  if (stars) {
+    // the dust: the same faint stars in the same places of every frame of this shape
+    let seed = 0x9e3779b9;
+    const rnd = () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const n = Math.round(Math.min(1500, (w * h) / 700));
+    for (let k = 0; k < n; k++) {
+      const [px, py, r, a] = [x + rnd() * w, y + rnd() * h, 0.25 + rnd() * rnd() * 0.9, 0.12 + rnd() * 0.45];
+      ctx.beginPath();
+      ctx.arc(px, py, r, 0, 2 * Math.PI);
+      ctx.fillStyle = rnd() < 0.2 ? `rgba(255, 226, 190, ${a.toFixed(3)})` : `rgba(214, 226, 255, ${a.toFixed(3)})`;
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/** An artwork's title and the line under it at the top left of the frame `rect` (the screen's
+ *  pixels), written with `ctx` on halos of `halo` (the owner's decisions of 2026-10-15): the title
+ *  `size` hundredths of the frame's height high, the line about a third of it; in the style's fonts
+ *  and colours — the board's in Source Serif 4 over spaced capitals, the cells' bold Source Sans 3 in
+ *  a pale light, the starfield's in spaced serif capitals of a pale gold. `ink` and `quiet`: the
+ *  theme's strong and quiet text, for the board's style. */
+export function drawTitle(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, title: string, subtitle: string, size: number, style: ArtStyle, colours: { ink: string; quiet: string; halo: string }): void {
+  if (!title && !subtitle) return;
+  const t = (size / 100) * rect.h, sub = Math.max(7, t * 0.34);
+  const x = rect.x + Math.max(14, rect.w * 0.035), top = rect.y + Math.max(14, rect.h * 0.035);
+  const ty = top + t * 0.92, sy = title ? ty + sub * 1.9 : top + sub;
+  const items: Written[] = [];
+  ctx.save();
+  if (style === "cells") {
+    const fill = ctx.createLinearGradient(x, 0, x + t * 7.5, 0);
+    fill.addColorStop(0, "#dfe7ff");
+    fill.addColorStop(1, "#9fb6ff");
+    if (title) items.push({ text: title, x, y: ty, font: `700 ${t}px ${ART_SANS}`, align: "left", fill, spacing: -0.02 * t });
+    if (subtitle) items.push({ text: subtitle, x: x + t * 0.03, y: sy, font: `400 ${sub}px ${ART_SANS}`, align: "left", fill: "rgba(200, 208, 224, 0.78)" });
+  } else if (style === "stars") {
+    if (title) items.push({ text: title.toUpperCase(), x, y: ty, font: `500 ${t}px ${ART_SERIF}`, align: "left", fill: "#f1e6c8", spacing: 0.16 * t });
+    if (subtitle) items.push({ text: subtitle, x: x + t * 0.04, y: sy, font: `italic 400 ${sub * 1.1}px ${ART_SERIF}`, align: "left", fill: "rgba(200, 212, 236, 0.8)" });
+  } else {
+    if (title) items.push({ text: title, x, y: ty, font: `600 ${t}px ${ART_SERIF}`, align: "left", fill: colours.ink, spacing: -0.01 * t });
+    if (subtitle) items.push({ text: subtitle.toUpperCase(), x: x + t * 0.04, y: sy, font: `600 ${sub * 0.86}px ${ART_SANS}`, align: "left", fill: colours.quiet, spacing: sub * 0.1 });
+  }
+  writeNames(ctx, items, colours.halo);
+  ctx.restore();
+}
+
+/** The title an artwork has where the reader gave none: the project's name; and its line: how many
+ *  declarations the project holds and how many targets its review has. */
+export function titleOf(project: string, declarations: number, targets: number): { title: string; subtitle: string } {
+  const n = (k: number, one: string) => `${k.toLocaleString("en-US")} ${one}${k === 1 ? "" : "s"}`;
+  return { title: project, subtitle: `${n(declarations, "declaration")} · ${n(targets, "target")}` };
+}
+
 /** An icon's glyph as a picture of its own (`<svg>`, `px` across) in `colour`. */
 export function glyphSvg(glyph: string, colour: string, px: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="${px}" height="${px}" color="${esc(colour)}">${glyph}</svg>`;
@@ -405,8 +488,8 @@ function glColour(c: readonly number[]): { rgb: string; a: number } {
 
 const paint = (attr: "fill" | "stroke", c: { rgb: string; a: number }) => ` ${attr}="${c.rgb}"${c.a < 1 ? ` ${attr}-opacity="${c.a}"` : ""}`;
 
-/** A gradient handed out by SvgContext.createLinearGradient: its stops, written into the picture's
- *  definitions where it is used. */
+/** A gradient handed out by SvgContext.createLinearGradient or createRadialGradient: its stops,
+ *  written into the picture's definitions where it is used; `r`, a radial one's circles' radii. */
 class SvgGradient {
   stops: [number, string][] = [];
   id = "";
@@ -414,8 +497,9 @@ class SvgGradient {
   readonly y0: number;
   readonly x1: number;
   readonly y1: number;
-  constructor(x0: number, y0: number, x1: number, y1: number) {
-    [this.x0, this.y0, this.x1, this.y1] = [x0, y0, x1, y1];
+  readonly r: [number, number] | null;
+  constructor(x0: number, y0: number, x1: number, y1: number, r: [number, number] | null = null) {
+    [this.x0, this.y0, this.x1, this.y1, this.r] = [x0, y0, x1, y1, r];
   }
   addColorStop(offset: number, colour: string): void {
     this.stops.push([offset, colour]);
@@ -433,8 +517,9 @@ interface PenState {
   lineCap: CanvasLineCap;
   lineJoin: CanvasLineJoin;
   dash: number[];
-  /** setTransform's scale and offset (the board writes with no rotation) */
+  /** the transform: setTransform's, translate's and rotate's */
   m: [number, number, number, number, number, number];
+  letterSpacing: string;
 }
 
 /** What a canvas's 2D context draws, recorded as SVG: as much of the context as the board uses to
@@ -444,11 +529,13 @@ interface PenState {
 export class SvgContext {
   readonly body: string[] = [];
   readonly defs: string[] = [];
-  private st: PenState = { fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, font: "10px sans-serif", textAlign: "start", textBaseline: "alphabetic", globalAlpha: 1, lineCap: "butt", lineJoin: "miter", dash: [], m: [1, 0, 0, 1, 0, 0] };
+  private st: PenState = { fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, font: "10px sans-serif", textAlign: "start", textBaseline: "alphabetic", globalAlpha: 1, lineCap: "butt", lineJoin: "miter", dash: [], m: [1, 0, 0, 1, 0, 0], letterSpacing: "0px" };
   private stack: PenState[] = [];
   private d: string[] = [];
   private open = false;
   private ids = 0;
+  /** gradients written once for every circle of their look and colour */
+  private shared = new Map<string, string>();
   private measure: (text: string, font: string) => number;
   private family: string;
 
@@ -475,6 +562,8 @@ export class SvgContext {
   set lineCap(v: CanvasLineCap) { this.st.lineCap = v; }
   get lineJoin(): CanvasLineJoin { return this.st.lineJoin; }
   set lineJoin(v: CanvasLineJoin) { this.st.lineJoin = v; }
+  get letterSpacing(): string { return this.st.letterSpacing; }
+  set letterSpacing(v: string) { this.st.letterSpacing = v; }
 
   save(): void {
     this.stack.push({ ...this.st, dash: [...this.st.dash], m: [...this.st.m] });
@@ -485,6 +574,15 @@ export class SvgContext {
   setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void {
     this.st.m = [a, b, c, d, e, f];
   }
+  translate(x: number, y: number): void {
+    const [a, b, c, d, e, f] = this.st.m;
+    this.st.m = [a, b, c, d, a * x + c * y + e, b * x + d * y + f];
+  }
+  rotate(t: number): void {
+    const [a, b, c, d, e, f] = this.st.m;
+    const [cs, sn] = [Math.cos(t), Math.sin(t)];
+    this.st.m = [a * cs + c * sn, b * cs + d * sn, c * cs - a * sn, d * cs - b * sn, e, f];
+  }
   clearRect(): void {}
   setLineDash(segments: number[]): void {
     this.st.dash = [...segments];
@@ -493,11 +591,22 @@ export class SvgContext {
     return [...this.st.dash];
   }
   measureText(text: string): { width: number } {
-    return { width: this.measure(text, this.st.font) };
+    const spacing = parseFloat(this.st.letterSpacing) || 0;
+    return { width: this.measure(text, this.st.font) + spacing * [...text].length };
   }
   createLinearGradient(x0: number, y0: number, x1: number, y1: number): SvgGradient {
     const [a, b] = this.at(x0, y0), [c, d] = this.at(x1, y1);
     return new SvgGradient(a, b, c, d);
+  }
+  /** A radial gradient: from a circle at (x0, y0) of radius r0 to one at (x1, y1) of radius r1. */
+  createRadialGradient(x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): SvgGradient {
+    const [a, b] = this.at(x0, y0), [c, d] = this.at(x1, y1), k = this.scale();
+    return new SvgGradient(a, b, c, d, [r0 * k, r1 * k]);
+  }
+  fillRect(x: number, y: number, w: number, h: number): void {
+    this.beginPath();
+    this.rect(x, y, w, h);
+    this.fill();
   }
 
   // the path
@@ -568,6 +677,7 @@ export class SvgContext {
 
   /** A shape the board's renderer draws (GraphCanvas.artShapes), as SVG draws it. */
   shape(s: ArtShape): void {
+    if (s.kind === "circle" && (s.look || s.halo)) return this.lit(s);
     if (s.kind === "circle") {
       const fill = s.fill[3] > 0.002 ? glColour(s.fill) : null;
       const ring = s.stroke ? `${paint("stroke", glColour(s.stroke))} stroke-width="${n2(s.ring)}"${s.dashed ? ` stroke-dasharray="5 4"` : ""}` : "";
@@ -597,6 +707,37 @@ export class SvgContext {
     }
   }
 
+  /** A circle of an artwork's style, as the renderer draws it: a glow fading from its centre; a
+   *  fill fading from a light at its top left; its ring a halo fading to both sides. Gradients a glow
+   *  or a fill of one colour share are written once. */
+  private lit(s: Extract<ArtShape, { kind: "circle" }>): void {
+    const c = `cx="${n2(s.x)}" cy="${n2(s.y)}"`;
+    if (s.halo && s.stroke) {
+      const k = glColour(s.stroke), R = s.ringR + s.ring / 2;
+      const at = (d: number) => +Math.max(0, Math.min(1, d / R)).toFixed(4);
+      const id = `h${this.ids++}`;
+      const stops = [[0, 0], [at(s.ringR - s.ring / 2), 0], [at(s.ringR - s.ring / 4), 0.25], [at(s.ringR), 1], [at(s.ringR + s.ring / 4), 0.25], [1, 0]];
+      this.defs.push(`<radialGradient id="${id}">${stops.map(([o, a]) => `<stop offset="${o}" stop-color="${k.rgb}" stop-opacity="${+(a * k.a).toFixed(3)}"/>`).join("")}</radialGradient>`);
+      this.body.push(`<circle ${c} r="${n2(R)}" fill="url(#${id})"/>`);
+    }
+    if (s.fill[3] > 0.002) {
+      const k = glColour(s.fill);
+      const key = `${s.look}|${k.rgb}|${k.a}`;
+      let id = this.shared.get(key);
+      if (!id) {
+        id = `l${this.ids++}`;
+        this.shared.set(key, id);
+        this.defs.push(
+          s.look === "glow"
+            ? `<radialGradient id="${id}">${[0, 0.25, 0.5, 0.75, 1].map((o) => `<stop offset="${o}" stop-color="${k.rgb}" stop-opacity="${+((1 - o) ** 2 * k.a).toFixed(3)}"/>`).join("")}</radialGradient>`
+            : `<radialGradient id="${id}" cx="0.375" cy="0.35" r="0.65"><stop offset="0" stop-color="${k.rgb}" stop-opacity="${k.a}"/><stop offset="1" stop-color="${k.rgb}" stop-opacity="${+(k.a * 0.25).toFixed(3)}"/></radialGradient>`,
+        );
+      }
+      this.body.push(`<circle ${c} r="${n2(s.r)}" fill="url(#${id})"/>`);
+    }
+    if (s.stroke && !s.halo) this.body.push(`<circle ${c} r="${n2(s.ringR)}" fill="none"${paint("stroke", glColour(s.stroke))} stroke-width="${n2(s.ring)}"${s.dashed ? ` stroke-dasharray="5 4"` : ""}/>`);
+  }
+
   private scale(): number {
     const [a, b, c, d] = this.st.m;
     return Math.sqrt(Math.abs(a * d - b * c));
@@ -620,7 +761,11 @@ export class SvgContext {
         const k = svgColour(c);
         return `<stop offset="${o}" stop-color="${k.rgb}" stop-opacity="${k.a}"/>`;
       });
-      this.defs.push(`<linearGradient id="${v.id}" gradientUnits="userSpaceOnUse" x1="${n2(v.x0)}" y1="${n2(v.y0)}" x2="${n2(v.x1)}" y2="${n2(v.y1)}">${stops.join("")}</linearGradient>`);
+      this.defs.push(
+        v.r
+          ? `<radialGradient id="${v.id}" gradientUnits="userSpaceOnUse" fx="${n2(v.x0)}" fy="${n2(v.y0)}" fr="${n2(v.r[0])}" cx="${n2(v.x1)}" cy="${n2(v.y1)}" r="${n2(v.r[1])}">${stops.join("")}</radialGradient>`
+          : `<linearGradient id="${v.id}" gradientUnits="userSpaceOnUse" x1="${n2(v.x0)}" y1="${n2(v.y0)}" x2="${n2(v.x1)}" y2="${n2(v.y1)}">${stops.join("")}</linearGradient>`,
+      );
     }
     return ` ${attr}="url(#${v.id})"${alpha < 1 ? ` ${attr}-opacity="${+alpha.toFixed(3)}"` : ""}`;
   }
@@ -641,8 +786,14 @@ export class SvgContext {
     const anchor = align === "center" ? "middle" : align === "right" || align === "end" ? "end" : null;
     const base = this.st.textBaseline;
     const baseline = base === "middle" ? "central" : base === "top" || base === "hanging" ? "hanging" : base === "bottom" || base === "ideographic" ? "text-after-edge" : null;
+    // turned where the transform turns (a name along an arc), spaced where the letters are
+    const [ma, mb] = this.st.m;
+    const turn = Math.atan2(mb, ma) * (180 / Math.PI);
+    const spacing = parseFloat(this.st.letterSpacing) || 0;
     return (
       `x="${n2(px)}" y="${n2(py)}" font-size="${n2(size)}"` +
+      (Math.abs(turn) > 0.01 ? ` transform="rotate(${n2(turn)} ${n2(px)} ${n2(py)})"` : "") +
+      (spacing ? ` letter-spacing="${n2(spacing * this.scale())}"` : "") +
       (weight && weight !== "400" && weight !== "normal" ? ` font-weight="${weight}"` : "") +
       (italic ? ` font-style="italic"` : "") +
       (family !== this.family ? ` font-family="${esc(family)}"` : "") +
@@ -655,13 +806,13 @@ export class SvgContext {
 /** The picture as SVG: what `draw` draws with an SvgContext in the screen's pixels, within the
  *  rectangle `frame` of the screen, `size` pixels in size; on `background` where there is one.
  *  `family`: the board's font, the picture's own. */
-export function artSvg(frame: { x: number; y: number; w: number; h: number }, size: { w: number; h: number }, background: string | null, family: string, measure: (text: string, font: string) => number, draw: (pen: SvgContext) => void): string {
+export function artSvg(frame: { x: number; y: number; w: number; h: number }, size: { w: number; h: number }, background: string | null, family: string, measure: (text: string, font: string) => number, draw: (pen: SvgContext) => void, faces = ""): string {
   const pen = new SvgContext(measure, family);
   draw(pen);
   const bg = background ? svgColour(background) : null;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n2(frame.w)} ${n2(frame.h)}" width="${size.w}" height="${size.h}" font-family="${esc(family)}">` +
-    `<defs><clipPath id="frame"><rect width="${n2(frame.w)}" height="${n2(frame.h)}"/></clipPath>${pen.defs.join("")}</defs>` +
+    `<defs>${faces ? `<style>${faces}</style>` : ""}<clipPath id="frame"><rect width="${n2(frame.w)}" height="${n2(frame.h)}"/></clipPath>${pen.defs.join("")}</defs>` +
     (bg ? `<rect width="100%" height="100%"${paint("fill", bg)}/>` : "") +
     `<g clip-path="url(#frame)"><g transform="translate(${n2(-frame.x)} ${n2(-frame.y)})">${pen.body.join("")}</g></g></svg>`
   );

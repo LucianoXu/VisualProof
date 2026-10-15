@@ -141,6 +141,10 @@ const ART: ArtworkView = {
   keys: false,
   selection: false,
   source: true,
+  style: "cells",
+  title: "",
+  subtitle: "Fermat's Last Theorem for regular primes",
+  titleSize: 7,
   region: [10, -20, 640, 360],
 };
 
@@ -162,6 +166,9 @@ test("presence carries exactly the followed parts, and the views a page holds op
   for (const bad of [{ ...ART, w: 99999 }, { ...ART, w: 15 }, { ...ART, scheme: "rainbow" }, { ...ART, notes: "yes" }, { ...ART, background: "white" }, { ...ART, labels: "all" }, { ...ART, region: [0, 0, 0, 10] }, { ...ART, region: [0, 0, 1] }, { ...ART, region: [0, 0, 1, Infinity] }, "on"])
     assert.equal(cleanView({ ...v, artwork: bad })!.artwork, undefined, JSON.stringify(bad));
   assert.deepEqual(cleanView({ ...v, artwork: { ...ART, extra: 1 } })!.artwork, ART, "nothing else is carried");
+  // the style and the title (said since that night): read with care, the project's own where none
+  const styled = cleanView({ ...v, artwork: { ...ART, style: "neon", title: 5, subtitle: "x".repeat(300), titleSize: 0 } })!.artwork!;
+  assert.deepEqual([styled.style, styled.title, styled.subtitle!.length, styled.titleSize], ["board", null, 120, 3]);
   // a page from before the source was said: none
   const { source: _source, ...older } = ART;
   assert.equal(cleanView({ ...v, artwork: older })!.artwork!.source, false);

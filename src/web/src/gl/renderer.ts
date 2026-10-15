@@ -44,9 +44,13 @@ out vec4 o;
 void main() {
   float d = length(v_local);
   float w = max(fwidth(d), u_aa);
-  float fa = (1.0 - smoothstep(v_r - w, v_r + w, d)) * v_fill.a;
-  vec3 fill = v_fill.rgb;
   int flags = int(v_extra.y + 0.5);
+  float fa = (1.0 - smoothstep(v_r - w, v_r + w, d)) * v_fill.a;
+  // an artwork's looks (ExportSpec decision 19): a glow fading from the centre to nothing at the
+  // edge; or a fill fading from a light up and to the left to a quarter at the edge
+  if ((flags & 4) != 0) fa = pow(1.0 - clamp(d / max(v_r, 0.001), 0.0, 1.0), 2.0) * v_fill.a;
+  else if ((flags & 8) != 0) fa *= mix(1.0, 0.25, clamp(length(v_local / max(v_r, 1.0) - vec2(-0.25, -0.3)) / 1.3, 0.0, 1.0));
+  vec3 fill = v_fill.rgb;
   if ((flags & 2) != 0) {
     // a soft light from the top left, for folded clusters
     float t = clamp(length(v_local / max(v_r, 1.0) - vec2(-0.4, -0.4)) / 1.5, 0.0, 1.0);
@@ -56,6 +60,8 @@ void main() {
   if (v_extra.x > 0.0) {
     float rr = v_r + v_extra.z;
     sa = (1.0 - smoothstep(v_extra.x * 0.5 - w, v_extra.x * 0.5 + w, abs(d - rr))) * v_stroke.a;
+    // a halo: the ring fading from full on its circle to nothing at its edges
+    if ((flags & 16) != 0) sa = pow(clamp(1.0 - abs(d - rr) / (v_extra.x * 0.5), 0.0, 1.0), 2.0) * v_stroke.a;
     if ((flags & 1) != 0) {
       float s = atan(v_local.y, v_local.x) * rr;
       if (mod(s, 9.0) > 5.0) sa = 0.0;
@@ -213,6 +219,9 @@ export const BUNDLE_STRIDE = 20;
 
 export const UNIT_WORLD = 0, UNIT_PX = 1, UNIT_DOT = 2;
 export const FLAG_DASHED = 1, FLAG_SHADED = 2;
+/** an artwork's looks (ExportSpec decision 19): a glow, its fill fading from the centre to nothing; a
+ *  fill fading from a light at the top left to a quarter at the edge; a ring fading to its edges */
+export const FLAG_GLOW = 4, FLAG_RADIAL = 8, FLAG_HALO = 16;
 
 /** Write one bundled edge: up to 8 control point indices into the positions texture. */
 export function bundle(L: Instances, path: readonly number[], beta: number, widthPx: number, c0: readonly number[], c1: readonly number[]): void {

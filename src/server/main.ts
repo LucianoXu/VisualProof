@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { WEB, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
+import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import { SiteBusy, cacheHome, dataHome, lockSite, openSite, projectDirs } from "./dirs.ts";
 import { ProjectError, openProject, targetsInWords } from "./project.ts";
 import type { Project } from "./project.ts";
@@ -765,6 +765,8 @@ export class App {
       if (cookies.length) res.setHeader("set-cookie", cookies);
       if (path === "/" || path === "/index.html") return sendFile(req, res, join(WEB, "index.html"));
       if (path === "/style.css") return sendFile(req, res, join(WEB, "style.css"));
+      // the fonts an artwork is drawn in (ExportSpec decision 19)
+      if (FONT_PATH.test(path)) return sendFile(req, res, join(WEBFONTS, path.slice("/fonts/".length)));
       // the page, and its workers: the one that lays out the Time Machine's past graphs
       // (web/src/layoutworker.ts), the one that chooses the overview's edges (web/src/edgeworker.ts),
       // and pdf.js's, which reads the library's PDFs for the reference window (AttachmentSpec decision 11)
@@ -987,7 +989,11 @@ export class App {
   }
 }
 
+/** an artwork's font file (assets/webfonts/) */
+const FONT_PATH = /^\/fonts\/source-(sans-3|serif-4)-[a-z-]+\.woff2$/;
+
 const TYPES: Record<string, string> = {
+  ".woff2": "font/woff2",
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",

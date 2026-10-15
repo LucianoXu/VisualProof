@@ -105,7 +105,7 @@ import { LinearForm } from "./linear.ts";
 import { isPhone, Phone } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
-import { sourceLine } from "./artwork.ts";
+import { sourceLine, titleOf } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
@@ -1035,7 +1035,7 @@ async function boot(): Promise<void> {
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
   /** the artwork's settings the board is drawn with: null where its mode is off */
   let artLook: ArtSettings | null = null;
-  const art = new ArtFrame($("#art"), $("#art-panel"), canvas, {
+  const art = new ArtFrame($("#art"), $("#art-panel"), $("#art-sky") as HTMLCanvasElement, canvas, {
     title: () => views.title(nav.board.id),
     saved: () => S.artwork as Partial<ArtSettings> | undefined,
     save: (s) => {
@@ -1058,7 +1058,15 @@ async function boot(): Promise<void> {
       Object.keys(review.data.targets)
         .map((name) => ({ name, label: name.split(".").pop() ?? name }))
         .sort((a, b) => a.label.localeCompare(b.label) || a.name.localeCompare(b.name)),
+    // the title where the reader gave none: the project's name, its declarations and its targets
+    titles: () => titleOf(meta.project.name, meta.projectCount, Object.keys(review.data.targets).length),
     say: (text) => say(text),
+  });
+  // the board's names are written in an artwork's fonts once they are there
+  document.fonts?.addEventListener?.("loadingdone", () => {
+    if (!artLook) return;
+    canvas.invalidate();
+    canvas.request();
   });
   /** The board drawn with the artwork's settings while its mode is on, or as the reader's own again
    *  (ExportSpec decision 19): the colouring and the theme, the background, the notes, the edges, the
@@ -1070,11 +1078,14 @@ async function boot(): Promise<void> {
     document.body.classList.toggle("art-nonotes", !!a && !a.notes);
     if (a && a.background !== "theme") document.body.dataset.artBg = a.background;
     else delete document.body.dataset.artBg;
+    // the cells and the starfield are dark, on a dark ground round the frame
+    if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
+    else delete document.body.dataset.artStyle;
     if (a) {
       linear.hide("reader");
-      document.documentElement.dataset.theme = a.theme;
+      document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
     } else applyTheme();
-    canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys });
+    canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
     applyScheme();
     syncEdges();
     apply();

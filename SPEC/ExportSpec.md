@@ -202,7 +202,10 @@ Numbers missing below are withdrawn decisions.
     choice; no "all names"; that evening, as many targets' stars and diamonds cover the picture:
     targets and names by selection, each ticked in a list, and the key marks a switch of their own;
     then, names by selection kept as what differs from As shown: the names hidden and those shown
-    besides).
+    besides; that night, after a page of styles drawn from a real project: clusters' names along
+    their circles, adopted; two styles besides the board's, cells and a starfield; a title at the top
+    left, the project's name over what it holds, both to be changed, its size too; one or two open
+    fonts shipped with the package).
     - **Where**: the Export window's second tab, *Artwork*, beside *Document*. Choosing it closes the
       window into the artwork mode; Esc or Done leaves it, the board drawn as before.
     - **The board is the picture**: while the artwork mode is on, the board itself is drawn with the
@@ -213,9 +216,27 @@ Numbers missing below are withdrawn decisions.
     - **The size**: presets (HD 1920 × 1080, 4K 3840 × 2160, square 4096 × 4096, A3 and A2 at 300 dpi)
       in either orientation, landscape or portrait, or width and height in pixels, at most 16,384 on
       a side. What a name's size will be in the image is said beside it.
+    - **The style**: *As the board*; *Cells* — on a dark field lit towards its middle, each top-level
+      namespace a territory of its own hue, the outermost circles glowing round their rims and filled
+      from a light at their top left, the next ones fainter, the deeper only their rims; the points
+      glowing; the edges from one territory's hue to the other's; *Starfield* — a night sky with a
+      dust of faint stars, each declaration a star as bright as it is used (its colour the scheme's
+      towards white, a glow round it), each cluster a constellation (lines joining its seven stars
+      used most, as short as join them all), the outermost two levels' bounds dotted, the edges a
+      faint starlight. The cells and the starfield are dark: on their own ground, or transparent.
+    - **Names in an artwork**: a cluster's name runs along the top of its circle where it fits there,
+      a top-level one in spaced capitals, the others in italics; under a folded cluster's disc, and
+      inside the top of a circle too small for the arc, straight. In Source Sans 3; the starfield's in
+      Source Serif 4, its declarations' names in italics. Each on its halo of the style's ground.
+    - **The title**: at the top left, the project's name over a line of what it holds ("7,851
+      declarations · 4 targets"), both the reader's to change (empty for none) or to have the
+      project's own again; its size from 3 to 16 hundredths of the picture's height. Each style
+      writes it its own way: the board's in Source Serif 4 over a line in spaced capitals, the cells'
+      in bold Source Sans 3 of a pale light, the starfield's in spaced serif capitals of a pale gold
+      over a line in italics. Opening the mode fits the board below it.
     - **The appearance**, in a small panel at the right, applied to the board at once: the theme —
       light, dark, or transparent in the light or the dark theme's colours (for a light page or a dark
-      one); the colour scheme (Kind or Status); names (as the board shows them — a lit declaration's
+      one; a dark style's own ground or transparent); the colour scheme (Kind or Status); names (as the board shows them — a lit declaration's
       where the board would give it a card, which an artwork has not —, the clusters' and the
       targets' only, none, or by selection); edges (all, the selection's, none) and proof edges;
       notes shown or not; targets — their star and name marked, drawn as any declaration, alone with
@@ -479,7 +500,23 @@ Numbers missing below are withdrawn decisions.
   writes over it — names, stars, keys, rings, the key graph's edges — is recorded as it is written
   (`SvgContext`, a 2D context's methods writing SVG; canvas `drawMarks`); then the notes, their
   glyphs as SVG. Named after the view's title, stripped of what Windows refuses (`artName`).
-- **The foot** (artwork `drawFoot`, in both files and as `.art-foot` in the frame): 10 pixels of the
+- **Styles** (canvas `buildScene`, `edgeEnds`, `constellations`): the circles' looks are the
+  renderer's (gl/renderer.ts `FLAG_GLOW`, a fill fading from the centre to nothing; `FLAG_RADIAL`, a
+  fill fading from a light at the top left to a quarter at the edge; `FLAG_HALO`, a ring fading to
+  both its sides), a glow under the points in a layer of its own (`glow`), the constellations'
+  lines in another (`figures`, under the edges). The territories' hues are the top-level clusters'
+  by their size (`hueOf`); a star's size `0.65 + 1.15 · log(1 + uses) / log(1 + most uses)` times a
+  point's. The ground (artwork `drawBackdrop`) is drawn under the board within the frame
+  (`#art-sky`), and in the files under the board's drawing; the starfield's dust is seeded, so the
+  same in every frame of a shape. In the SVG a glow and a fill are radial gradients, written once
+  for a look and a colour, a halo a gradient of its own (`SvgContext.lit`).
+- **The title and the foot** (artwork `drawTitle`, `drawFoot`; artframe `writeOver`): written over
+  the board within the frame on a canvas of their own (`.art-ink`), and over each band of the PNG and
+  into the SVG by the same code. The fonts (assets/webfonts/: Source Sans 3 and Source Serif 4, their
+  Latin, Latin Extended and Greek, variable weight, SIL Open Font License) are the page's
+  (`/fonts/…`, web/style.css; within a snapshot of the page, inlined); a file is drawn once they are
+  there, and an SVG carries them, each face in base64 (artframe `faces`).
+- **The foot** (artwork `drawFoot`, in both files and on the frame's `.art-ink`): 10 pixels of the
   frame in from its corners, 10 px text and an 11 px bold wordmark in the page's `--grad` colours,
   scaled with the picture. The source line (artwork `sourceLine`: "github.com/A/B · main @ 1a2b3c4",
   "(modified)" where a `.lean` file differed) comes from the project's description: the server reads

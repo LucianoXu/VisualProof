@@ -256,9 +256,9 @@ export const BOOKKEEPING = ["tabs"] as const satisfies readonly (keyof PresenceV
  *  the reader, as on the canvas), and what is in them is declared each. */
 export const FRAMES = ["#bar", "#viewbar", "#foot", "#windows", "#zoom"] as const;
 /** Elements of the page's skeleton that are no surface: the bar's words, and what passes —
- *  tooltips, hints, notes of others' changes, the loader, the artwork's frame (the pointer passes it
- *  to the board under it; its panel is the artwork part's). */
-export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art"] as const;
+ *  tooltips, hints, notes of others' changes, the loader, the artwork's frame and its ground (the
+ *  pointer passes them to the board; its panel is the artwork part's). */
+export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art", "#art-sky"] as const;
 
 export type Part = (typeof FOLLOWED)[number]["part"];
 type Of<P extends Part> = Extract<(typeof FOLLOWED)[number], { part: P }>;
