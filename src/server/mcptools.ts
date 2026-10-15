@@ -420,12 +420,13 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "export",
-    about: "A view's document — every declaration of the project its board holds, in its sections and order: its model as JSON, or typeset as a PDF and saved on your machine.",
+    about: "A view's document — every declaration of the project its board holds, in its sections and order: its model as JSON, or typeset as a PDF and saved on your machine. Or a picture of the board: a link that opens it in the artwork mode as a recipe says.",
     actions: {
       model: { method: "GET", path: "/api/agent/export", says: "the document's model", args: ["view", "settings", "version"] },
       typeset: { method: "POST", path: "/api/agent/export", says: "start typesetting: a job", args: ["view", "settings", "version"] },
       job: { method: "GET", path: "/api/agent/export/job", says: "how the job is doing", args: ["id"] },
       file: { method: "GET", path: "/api/agent/export/file", saves: true, says: "a file of it saved on your machine", args: ["id", "what", "saveTo"] },
+      artwork: { method: "POST", path: "/api/agent/artwork", says: "a link to a picture of the board, as a recipe says", args: ["recipe", "save"] },
     },
     args: {
       view: str("the view's id: a target's Key view is open on key(<target>)"),
@@ -434,6 +435,8 @@ export const TOOLS: ToolDef[] = [
       id: str("the job's id"),
       what: str("pdf (default), tex, sty or zip", ["pdf", "tex", "sty", "zip"]),
       saveTo: SAVE_TO,
+      recipe: { type: "object", description: "the picture: size, orientation, style, theme, names (e.g. {clusters: 1}), targets, selection {name, mode}, title, subtitle, edges… (docs: export)" },
+      save: str("png, svg or png,svg: saved by the page once ready"),
     },
   },
 ];

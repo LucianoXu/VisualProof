@@ -206,10 +206,12 @@ export class ArtFrame {
     if (this.isOpen) this.renderPanel();
   }
 
-  /** The mode, from the Export window: the reader's last settings, the whole board in the frame. */
-  open(): void {
+  /** The mode, from the Export window: the reader's last settings, the whole board in the frame; or,
+   *  from a link's recipe (ExportSpec decision 20, shared/artrecipe.ts), the settings it gives — not
+   *  kept as the reader's until they change one. */
+  open(given?: Partial<ArtSettings>): void {
     if (this.isOpen && !this.leaving) return;
-    const s = cleanSettings(this.hooks.saved(), this.hooks.now());
+    const s = cleanSettings(given ?? this.hooks.saved(), this.hooks.now());
     // the whole board in the frame, below the title where there is one
     this.start(s, (r) => {
       const own = this.hooks.titles();
@@ -504,7 +506,7 @@ export class ArtFrame {
       (s as unknown as Record<string, string>)[k] = t.value;
       // by selection, from what was drawn: As shown, nothing hidden or added; every target
       if (k === "labels" && t.value === "chosen") {
-        [s.namesFrom, s.hiddenNames, s.shownNames] = ["board", [], []];
+        [s.namesFrom, s.hiddenNames, s.shownNames, s.ruledNames] = ["board", [], [], []];
         this.filter = "";
       } else if (k === "targets" && t.value === "chosen") {
         const r = withChosen([], this.hooks.targets().map((x) => x.name), ART_TARGETS_BYTES);
@@ -538,20 +540,27 @@ export class ArtFrame {
   /** Names shown, or hidden (By selection): from their list, its All and None, or the board's menu.
    *  A name ticked is no longer hidden, and is shown besides where the board does not write it now; a
    *  name unticked is no longer shown besides, and is hidden where the board would write it all the
-   *  same. What does not fit in what the artwork carries is left out, and said. */
+   *  same. What does not fit in what the artwork carries is left out, and said. A name a recipe's
+   *  rule chose (ExportSpec decision 20) is the reader's once ticked — written wherever it falls, as
+   *  one ticked by hand — and no longer the rule's once unticked. */
   private chooseNames(ids: readonly string[], on: boolean): void {
     const s = this.s;
     if (!s || this.busy) return this.renderPanel();
     const now = this.canvas.writtenNames();
-    const hidden = new Set(s.hiddenNames), shown = new Set(s.shownNames);
+    const hidden = new Set(s.hiddenNames), shown = new Set(s.shownNames), ruled = new Set(s.ruledNames);
     const add: string[] = [], hide: string[] = [];
     for (const id of ids) {
       if (on) {
         hidden.delete(id);
-        if (!now.has(id) && !shown.has(id)) add.push(id);
+        if (!now.has(id) && !shown.has(id)) {
+          add.push(id);
+          ruled.delete(id);
+        }
       } else if (shown.has(id)) shown.delete(id);
+      else if (ruled.has(id)) ruled.delete(id);
       else if (s.namesFrom === "board" && now.has(id)) hide.push(id);
     }
+    s.ruledNames = [...ruled];
     const a = withChosen([...shown], add, ART_NAMES_BYTES), h = withChosen([...hidden], hide, ART_NAMES_BYTES);
     [s.shownNames, s.hiddenNames] = [a.list, h.list];
     if (a.left + h.left) this.hooks.say(NO_ROOM(a.left + h.left, "name"));
@@ -588,7 +597,7 @@ export class ArtFrame {
     }
     if (!this.filter.trim()) {
       if (this.busy) return this.renderPanel();
-      [s.namesFrom, s.hiddenNames, s.shownNames] = [all === "all" ? "board" : "none", [], []];
+      [s.namesFrom, s.hiddenNames, s.shownNames, s.ruledNames] = [all === "all" ? "board" : "none", [], [], []];
       return this.settled();
     }
     this.chooseNames(nameRows(this.rows, this.filter, Infinity).rows.map((r) => r.id), all === "all");
@@ -635,7 +644,7 @@ export class ArtFrame {
     const s = this.s;
     const here = this.rows.filter((r) => this.wrote.has(r.id)).length;
     const n = (k: number, what: string) => (k ? ` · ${k.toLocaleString("en")} ${what}` : "");
-    return `${here.toLocaleString("en")} of ${this.rows.length.toLocaleString("en")} in the frame written${s?.namesFrom === "none" ? " · from none" : ""}${n(s?.hiddenNames.length ?? 0, "hidden")}${n(s?.shownNames.length ?? 0, "shown besides")}`;
+    return `${here.toLocaleString("en")} of ${this.rows.length.toLocaleString("en")} in the frame written${s?.namesFrom === "none" ? " · from none" : ""}${n(s?.hiddenNames.length ?? 0, "hidden")}${n(s?.shownNames.length ?? 0, "shown besides")}${n(s?.ruledNames.length ?? 0, "by a rule")}`;
   }
 
   private renderPanel(held = false): void {
@@ -772,6 +781,14 @@ export class ArtFrame {
 
   /** Make the file, at the full size, from the board as it is drawn now, and hand it to the browser
    *  to save. */
+  /** The files a link's recipe asks for (ExportSpec decision 20), one after the other, as Save SVG
+   *  and Save PNG make them; whether the mode was on to make them. */
+  async save(kinds: readonly ("png" | "svg")[]): Promise<boolean> {
+    if (!this.isOpen || !this.s) return false;
+    for (const k of kinds) await this.saveFile(k);
+    return true;
+  }
+
   private async saveFile(kind: "png" | "svg"): Promise<void> {
     if (this.busy || !this.s) return;
     const s = { ...this.s };

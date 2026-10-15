@@ -39,6 +39,7 @@ import { gunzipSync } from "node:zlib";
 import { ACTIVITY_KINDS, ACTIVITY_WHO, cleanView, MAX_PINNED, SCHEMES, validName } from "../shared/collab.ts";
 import type { PaperWindow, Peer, PresenceView } from "../shared/collab.ts";
 import { addressOf, readRegion, showing, writeSnapshot } from "../shared/sharesnap.ts";
+import { encodeRecipe, readRecipe, RECIPE_PARAM, resolveRecipe, SAVE_PARAM } from "../shared/artrecipe.ts";
 import { contextText, exactContext, readContext } from "../shared/context.ts";
 import type { FileContext, ModuleContexts } from "../shared/context.ts";
 import { compiledExcerpt, excerptOf } from "../shared/excerpt.ts";
@@ -2543,6 +2544,59 @@ export class AgentApi {
     return { place: cleanView(next)!, temporary };
   }
 
+  /** A link to a picture of the board (ExportSpec decision 20, drafted 2026-10-15): a recipe
+   *  (shared/artrecipe.ts) checked, and resolved against the board of the view it names — the
+   *  Project's layout in the view's clustering — so that a name, a target or a cluster the board has
+   *  not is refused here rather than drawn as a picture unlike the one meant; the selection it gives
+   *  goes in the address, the recipe after it. The page that opens the link resolves it again
+   *  against the board it opens on, opens the artwork mode, and saves the files asked for. Nothing
+   *  changes here, and the link holds no key. */
+  private async artwork(a: Ask): Promise<Answer> {
+    const no = needAgent(a.caller);
+    if (no) return no;
+    const b = body(a);
+    const read = readRecipe(b.recipe);
+    if ("error" in read) return fail(400, read.error, read.hint);
+    const r = read.recipe;
+    const save = b.save === undefined || b.save === null ? [] : typeof b.save === "string" ? b.save.split(",").map((k) => k.trim()) : null;
+    if (!save || save.some((k) => k !== "png" && k !== "svg")) return fail(400, "save is png, svg or png,svg.", "The files the page saves once the board is ready; left out, none.");
+    const v = this.graph();
+    if (!(v instanceof View)) return v;
+    let sel: string | null = null;
+    if (r.selection) {
+      const i = this.find(v, r.selection.name, "selection.name");
+      if (typeof i !== "number") return i;
+      sel = v.g.nodes[i].name;
+    }
+    const rec = r.view && r.view !== PROJECT ? this.world.views?.book.get(r.view) : undefined;
+    if (r.view && r.view !== PROJECT && !rec) return fail(404, `There is no view ${r.view}.`, "GET /api/agent/views lists them; left out, the Project.");
+    const L = v.meta.layouts[rec?.clustering ?? "namespace"];
+    const res = resolveRecipe(r, {
+      clusters: L.clusters,
+      clusterOf: (name) => {
+        const i = v.g.byName.get(name);
+        return i === undefined ? undefined : L.cluster[i];
+      },
+      targets: Object.keys(this.world.review.data.targets),
+      projectCount: v.meta.projectCount,
+    });
+    if (res.problems.length)
+      return fail(404, `The recipe names what the board has not: ${res.problems.join("; ")}.`, "Clusters by key (GET /api/agent/views/view lists a view's), declarations and targets by full name (GET /api/agent/search; the targets: GET /api/agent/targets).", { problems: res.problems });
+    const address = addressOf({ view: rec ? rec.id : null, scope: null, mode: r.selection?.mode ?? "tcb", selection: null, sel });
+    const link = `${a.base ?? ""}/#${address}&${RECIPE_PARAM}=${encodeRecipe(r)}${save.length ? `&${SAVE_PARAM}=${[...new Set(save)].join(",")}` : ""}`;
+    const look = res.look;
+    return ok({
+      ok: true,
+      link,
+      length: link.length,
+      size: [look.w, look.h],
+      names: look.labels === "chosen" ? res.named : look.labels,
+      targets: look.targets === "chosen" ? look.shownTargets : look.targets,
+      selection: sel ? { name: sel, mode: r.selection!.mode ?? "tcb" } : null,
+      note: "It holds no key: it opens for whoever is let in already, or for a script that enters with the key (scripts/artwork-batch.mjs). The page that opens it resolves the recipe again against its board, opens the artwork mode fitted to the whole board, and saves the files asked for on that machine; nothing comes back here.",
+    });
+  }
+
   /** A link to what the agent looks at, or to a place it gives over its own, as a person's Share makes
    *  one with Exactly what I see (CollabSpec decision 7, the owner's decision of 2026-10-12): the
    *  address, and after it a snapshot of everything followed, which the page that opens it applies
@@ -2910,6 +2964,12 @@ export class AgentApi {
         run: (a) => this.viewLink(a),
       },
       {
+        method: "POST", path: "/api/agent/artwork", about: "A link that opens the board as a picture, in the artwork mode, as the recipe says (ExportSpec decision 20): its size, its look, names by a rule, the targets marked, the selection — in words that hold on any project, so that one recipe makes the same kind of picture of every codebase; the page saves the PNG or SVG where asked, once the board is ready. It changes nothing, and holds no key. A name, a target or a cluster the board has not is refused (404, problems).",
+        params: { recipe: "the picture: {size, orientation, style, theme, transparent, colouring, border, title, subtitle, titleSize, footSize, source, names, targets, keys, notes, edges, selection, lit, view}, each optional (GET /api/agent/docs/export, \"Artwork\")", save: "png, svg or png,svg: the files the page saves once the board is ready; left out, none" },
+        returns: "{ok, link, length, size: [w, h], names: {clusters, decls: written wherever they fall; ruled: by the rule, each only where it covers no other name} | how the board writes them, targets, selection, note}",
+        run: (a) => this.artwork(a),
+      },
+      {
         method: "POST", path: "/api/agent/pins", needs: "full", about: "Drop or let go of pins on the Project view, as people drag (for another view: POST /api/agent/views/arrange): one batch, recorded in the timeline with what it replaced, undoable at once.",
         params: { mode: "namespace (default) or module", pins: `[{name or cluster, at: [x, y] in the parent's coordinates (GET /api/agent/place), or null to let go}], at most ${MAX_PINS}` },
         returns: "{ok, id (the batch, for undo; null when nothing changed), count}",
@@ -3164,6 +3224,8 @@ export function doingOf(a: Ask): string | null {
       return of("going to", clip(b.sel)) ?? of("going to the view of", clip(b.review)) ?? "moving its view";
     case "/api/agent/view/link":
       return "making a link to what it looks at";
+    case "/api/agent/artwork":
+      return "making a link to a picture of the board";
     case "/api/agent/ask-follow":
       return clip(b.who) ? `asking ${clip(b.who)} to follow it` : "asking everyone to follow it";
     case "/api/agent/opinion":

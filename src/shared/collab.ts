@@ -199,6 +199,10 @@ export interface ArtworkLook {
    *  (ART_NAMES_BYTES) */
   hiddenNames: string[];
   shownNames: string[];
+  /** by selection, names a recipe's rule chose (ExportSpec decision 20; the owner's decision of
+   *  2026-10-15): written after those shown, each only where it covers no name already written —
+   *  never one over another; within ART_RULED_BYTES */
+  ruledNames: string[];
   edges: "all" | "selection" | "none";
   notes: boolean;
   /** a target's star and name marked; drawn as any declaration; it alone, the rest faded; or those
@@ -268,6 +272,8 @@ export function artNameId(kind: "cluster" | "decl", s: string): string {
  *  As shown, so that a few names hidden or added are a few names carried. */
 export const ART_NAMES_BYTES = 4500;
 export const ART_TARGETS_BYTES = 2500;
+/** the names a recipe's rule chose (ArtworkLook `ruledNames`): a rule names a few clusters */
+export const ART_RULED_BYTES = 1500;
 
 /** What `x` adds to a list's JSON: itself, quoted, and a comma. */
 const jsonBytes = (x: string) => new TextEncoder().encode(JSON.stringify(x)).length + 1;
@@ -327,12 +333,14 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   // say them, and the key marks as the targets drew them before (with their stars, unless As any)
   const namesFrom = o.namesFrom === "none" ? "none" : "board";
   const hiddenNames = cleanNames(o.hiddenNames, ART_NAMES_BYTES, isArtNameId), shownNames = cleanNames(o.shownNames, ART_NAMES_BYTES, isArtNameId);
+  // the names a recipe's rule chose, said since later that night: none where a page does not say them
+  const ruledNames = cleanNames(o.ruledNames, ART_RULED_BYTES, isArtNameId);
   const shownTargets = cleanNames(o.shownTargets, ART_TARGETS_BYTES);
   const keys = typeof o.keys === "boolean" ? o.keys : targets !== "plain";
   // the style and the title, said since that night: as the board, the project's own; the foot's
   // size, said since later that night: the first
   const style = one(ART_STYLES, o.style) ?? "board";
-  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), footSize: cleanFootSize(o.footSize), border: o.border === true, region: [...r] };
+  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, ruledNames, edges, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), footSize: cleanFootSize(o.footSize), border: o.border === true, region: [...r] };
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */

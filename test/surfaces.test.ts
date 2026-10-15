@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { ART_NAMES_BYTES, ART_TARGETS_BYTES, cleanView, withoutArtwork } from "../src/shared/collab.ts";
+import { ART_NAMES_BYTES, ART_RULED_BYTES, ART_TARGETS_BYTES, cleanView, withoutArtwork } from "../src/shared/collab.ts";
 import type { ActivityView, ArtworkView, PresenceView } from "../src/shared/collab.ts";
 import { Activity } from "../src/web/src/activity.ts";
 import type { ActivityHooks } from "../src/web/src/activity.ts";
@@ -132,6 +132,7 @@ const ART: ArtworkView = {
   namesFrom: "board",
   hiddenNames: ["c:FltRegular.CaseI"],
   shownNames: ["d:FltRegular.CaseI.Statement.caseI", "d:FltRegular.«term_∣_»"],
+  ruledNames: ["c:FltRegular.CaseII"],
   edges: "selection",
   notes: false,
   targets: "chosen",
@@ -199,6 +200,13 @@ test("presence carries exactly the followed parts, and the views a page holds op
   assert.deepEqual(cut.hiddenNames, many.slice(0, cut.hiddenNames.length).map((n) => `d:${n}`));
   for (const list of [cut.hiddenNames, cut.shownNames]) assert.ok(Buffer.byteLength(JSON.stringify(list)) <= ART_NAMES_BYTES);
   assert.ok(Buffer.byteLength(JSON.stringify(cut.shownTargets)) <= ART_TARGETS_BYTES);
+  // the names a recipe's rule chose (ExportSpec decision 20): carried as named, cut within their own
+  // room; a page from before them chose none
+  const ruled = cleanView({ ...v, artwork: { ...ART, ruledNames: ["c:A", "x:B", "c:A", ...many.map((n) => `c:${n}`)] } })!.artwork!.ruledNames;
+  assert.deepEqual(ruled.slice(0, 2), ["c:A", `c:${many[0]}`]);
+  assert.ok(Buffer.byteLength(JSON.stringify(ruled)) <= ART_RULED_BYTES && ruled.length > 10, `${ruled.length} names`);
+  const { ruledNames: _ruled, ...unruled } = ART;
+  assert.deepEqual(cleanView({ ...v, artwork: unruled })!.artwork!.ruledNames, []);
   // an agent's presence carries none: agents have no artwork
   const { artwork: _artwork, ...rest } = cleanView(v)!;
   assert.deepEqual(withoutArtwork(cleanView(v)), rest);

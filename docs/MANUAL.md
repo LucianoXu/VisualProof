@@ -708,7 +708,12 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   of the page, whose Export goes straight to the artwork. Esc or **Done** leaves as smoothly, the
   board drawn as before. The artwork is followed and shared: those following you see your board drawn with it and
   your frame, and Share's *Exactly what I see* carries it. Your last settings are kept in this
-  browser for the next one.
+  browser for the next one. An agent can also say a picture in words — "A2 portrait, the
+  top-level clusters' names, this target's TCB" — and hand you a link that opens it ready, and
+  saves its files if asked (decision 20; saving both, the page warns that your browser may ask to
+  allow this site to download several files). Names such a picture's rule picks never cover one
+  another: one that would is left out. `scripts/artwork-batch.mjs` in VisualProof's repository
+  makes such pictures of many projects in one go.
 - **The window** says which view it exports and what that holds — *Export the view "X": N
   declarations in M sections*, and how many declarations from outside the project it holds, which
   are not printed — then the document's **title** and **author line** as they will print, then the

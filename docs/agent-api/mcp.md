@@ -40,7 +40,7 @@ Each wraps the endpoints of a topic, which says what their answers hold. `*`: th
 | `library` | `list`, `file`, `text`, `search`, `page`, `clip`, `save`; `add_url`, `add_file`, `edit`, `archive` (advise) | `library/…`, [library](library.md) |
 | `links` | `list`; `make`, `edit`, `remove` (advise) | `GET links`, `POST link`, `link/edit`, `unlink`, [library](library.md) |
 | `history` | `snapshots`, `diff`, `moves`, `last`, `lost`, `archived`; `attach`, `unmove`, `archive` (full) | `history/…`, [history](history.md) |
-| `export` | `model`, `typeset`, `job`, `file` | `export`, `export/job`, `export/file`, [export](export.md) |
+| `export` | `model`, `typeset`, `job`, `file`, `artwork` | `export`, `export/job`, `export/file`, `artwork`, [export](export.md) |
 
 Paths are under `/api/agent/`. `GET /api/agent/history/graph` has no tool (it is large: ask it over
 HTTP when you need a past build's whole graph).

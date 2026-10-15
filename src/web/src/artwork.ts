@@ -13,22 +13,18 @@
 // frame. Nothing is asked of the server, so a read-only page and a snapshot can make one too.
 
 import type { ArtStyle, ArtworkLook } from "../../shared/collab.ts";
-import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_STYLES, ART_TARGETS_BYTES, cleanFootSize, cleanNames, cleanTitle, cleanTitleSize, FOOT_SIZE, isArtNameId, TITLE_SIZE } from "../../shared/collab.ts";
+import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_RULED_BYTES, ART_STYLES, ART_TARGETS_BYTES, cleanFootSize, cleanNames, cleanTitle, cleanTitleSize, FOOT_SIZE, isArtNameId, TITLE_SIZE } from "../../shared/collab.ts";
 import type { GitSource } from "../../shared/graph.ts";
+import { ART_PRESETS } from "../../shared/artrecipe.ts";
 import type { ArtShape } from "./canvas.ts";
 import { ART_DISPLAY, ART_SANS, ART_SERIF, spacedWidth, writeNames } from "./halo.ts";
 import type { Written } from "./halo.ts";
 
 export type ArtSettings = ArtworkLook;
 
-/** The sizes offered, each in either orientation (`oriented`): given landscape. */
-export const PRESETS: readonly { name: string; w: number; h: number }[] = [
-  { name: "HD", w: 1920, h: 1080 },
-  { name: "4K", w: 3840, h: 2160 },
-  { name: "Square", w: 4096, h: 4096 },
-  { name: "A3, 300 dpi", w: 4961, h: 3508 },
-  { name: "A2, 300 dpi", w: 7016, h: 4961 },
-];
+/** The sizes offered, each in either orientation (`oriented`): given landscape; a recipe names
+ *  them by `key` (shared/artrecipe.ts). */
+export const PRESETS = ART_PRESETS;
 
 /** The preset a size is, in either orientation; -1 for none. */
 export function presetOf(w: number, h: number): number {
@@ -52,6 +48,7 @@ const DEFAULTS: ArtSettings = {
   namesFrom: "board",
   hiddenNames: [],
   shownNames: [],
+  ruledNames: [],
   edges: "all",
   notes: true,
   targets: "marked",
@@ -84,6 +81,7 @@ export function cleanSettings(s: Partial<ArtSettings> | undefined, now: { scheme
     namesFrom: o.namesFrom === "none" ? "none" : "board",
     hiddenNames: cleanNames(o.hiddenNames, ART_NAMES_BYTES, isArtNameId),
     shownNames: cleanNames(o.shownNames, ART_NAMES_BYTES, isArtNameId),
+    ruledNames: cleanNames(o.ruledNames, ART_RULED_BYTES, isArtNameId),
     edges: one(o.edges, ["all", "selection", "none"], DEFAULTS.edges),
     notes: typeof o.notes === "boolean" ? o.notes : DEFAULTS.notes,
     targets,

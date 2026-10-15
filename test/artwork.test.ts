@@ -206,6 +206,8 @@ test("names and targets by selection (the owner's decision of 2026-10-15): kept 
   const kept = cleanSettings({ labels: "chosen", namesFrom: "none", hiddenNames: ["c:A", "nope", 3], shownNames: ["d:A.b", "d:A.b", ""], targets: "chosen", shownTargets: ["A.t", "A.t", ""], keys: false } as never, now);
   assert.deepEqual([kept.labels, kept.namesFrom, kept.hiddenNames, kept.shownNames, kept.targets, kept.shownTargets, kept.keys], ["chosen", "none", ["c:A"], ["d:A.b"], "chosen", ["A.t"], false]);
   assert.equal(cleanSettings({ namesFrom: "all" } as never, now).namesFrom, "board");
+  // the names a recipe's rule chose (ExportSpec decision 20), kept; none at first
+  assert.deepEqual([fresh.ruledNames, cleanSettings({ ruledNames: ["c:A", "nope", "c:A"] } as never, now).ruledNames], [[], ["c:A"]]);
   // kept before the key marks had a switch of their own: as the targets drew them, with their stars
   assert.equal(cleanSettings({ targets: "plain" }, now).keys, false);
   assert.equal(cleanSettings({ targets: "highlight" }, now).keys, true);

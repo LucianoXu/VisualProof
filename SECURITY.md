@@ -35,6 +35,9 @@ into the latest release only.
   them): the host and path alone,
   never a user name, password or token written into the remote's URL, and nothing for a remote that
   is a path on the machine. Git is only asked, never written to.
+- **Links that save a picture.** A link to an artwork (made by an agent, ExportSpec decision 20)
+  may ask the page that opens it to save the picture it draws, PNG or SVG, as Save PNG and Save SVG
+  would: nothing else, and the browser asks before a site saves several files. It holds no key.
 - **Plain HTTP.** The server speaks HTTP only: the key and the cookies cross the network in the
   clear. Beyond a trusted network, put a TLS reverse proxy (or a VPN such as Tailscale) in front.
   Its cookies are `HttpOnly` and `SameSite=Lax`.

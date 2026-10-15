@@ -75,6 +75,8 @@ export interface ArtLook {
   namesFrom: "board" | "none";
   hidden: ReadonlySet<string>;
   shown: ReadonlySet<string>;
+  /** names a recipe's rule chose: written after those shown, only where they cover no other name */
+  ruled: ReadonlySet<string>;
   edges: "all" | "selection" | "none";
   targets: "marked" | "plain" | "highlight" | "chosen";
   shownTargets: ReadonlySet<string>;
@@ -412,6 +414,9 @@ export class GraphCanvas {
   /** of its names shown by selection, the clusters' keys and the declarations' full names */
   private artClusters = new Set<string>();
   private artDecls: string[] = [];
+  /** the names a recipe's rule chose (ExportSpec decision 20): clusters by key, declarations */
+  private artRuled = new Set<string>();
+  private artRuledDecls: string[] = [];
   /** what the names the last frame wrote name (artNameId), on an artwork: what its list of names
    *  shows ticked */
   private namesWritten = new Set<string>();
@@ -1310,7 +1315,7 @@ export class GraphCanvas {
     for (let c = 0; c < S.nc; c++) {
       const spot = this.chosenSpot(c);
       const cl = this.layout.clusters[c];
-      if (!spot || !inside(spot.x, spot.y) || (!spot.board && !this.artClusters.has(cl.key))) continue;
+      if (!spot || !inside(spot.x, spot.y) || (!spot.board && !this.artClusters.has(cl.key) && !this.artRuled.has(cl.key))) continue;
       out.push({ id: artNameId("cluster", cl.key), label: cl.label, full: cl.key.replace("⟨external⟩", "External"), cluster: true });
     }
     const mx = rect.x + rect.w / 2, my = rect.y + rect.h / 2;
@@ -1372,9 +1377,15 @@ export class GraphCanvas {
     this.art = look;
     this.artClusters = new Set();
     this.artDecls = [];
+    this.artRuled = new Set();
+    this.artRuledDecls = [];
     for (const id of look?.shown ?? []) {
       if (id.startsWith("c:")) this.artClusters.add(id.slice(2));
       else if (id.startsWith("d:")) this.artDecls.push(id.slice(2));
+    }
+    for (const id of look?.ruled ?? []) {
+      if (id.startsWith("c:")) this.artRuled.add(id.slice(2));
+      else if (id.startsWith("d:")) this.artRuledDecls.push(id.slice(2));
     }
     this.overviewBase = "";
     this.setHover(null, 0, 0);
@@ -2673,7 +2684,11 @@ export class GraphCanvas {
     // spaced capitals, the others in italics; under a folded one's disc, or inside the top of a
     // circle too small for the arc, straight
     const look = art ? artText(art.style, th) : null;
-    const artCluster = (c: number, force: boolean): boolean => {
+    /** `how`: written all the same (true); where the board writes it, wherever it falls, but only
+     *  where it covers no name already written ("fit": a recipe's rule chose it); or as the board
+     *  writes names (false) */
+    const artCluster = (c: number, how: boolean | "fit"): boolean => {
+      const force = how === true, anywhere = how !== false;
       const L = look!;
       const cl = this.layout.clusters[c];
       const id = artNameId("cluster", cl.key);
@@ -2682,12 +2697,12 @@ export class GraphCanvas {
       ctx.textAlign = "center";
       if (S.rep[c] === c) {
         const r = Math.max(6, S.drawnR[c] * k);
-        if (!force && (r <= 10 || !onScreen(sx, sy, r) || (act && this.clusterHasActive(c)))) return false;
+        if (!anywhere && (r <= 10 || !onScreen(sx, sy, r) || (act && this.clusterHasActive(c)))) return false;
         ctx.font = L.sub(11);
         return place(cl.label, sx, sy + r + 13, 11, id, force);
       }
       const sr = S.drawnR[c] * k;
-      if (!force && (sr <= 38 || !onScreen(sx, sy, sr))) return false;
+      if (!anywhere && (sr <= 38 || !onScreen(sx, sy, sr))) return false;
       const top = cl.depth === 0;
       const size = Math.max(10, Math.min(top ? 22 : 16, 9 + sr / 40));
       const text = top ? cl.label.toUpperCase() : cl.label;
@@ -2740,9 +2755,30 @@ export class GraphCanvas {
       ctx.textAlign = "center";
       ctx.fillStyle = th.label;
     }
+    // the names a recipe's rule chose (ExportSpec decision 20; the owner's decision of 2026-10-15:
+    // never one over another): after those shown, each where the board writes it, only where it
+    // covers no name already written — a parent's before its children's
+    if (chosen) {
+      for (let c = 0; c < S.nc; c++) {
+        const cl = this.layout.clusters[c];
+        if (!this.artRuled.has(cl.key) || this.artClusters.has(cl.key) || (S.rep[c] >= 0 && S.rep[c] !== c) || !this.clusterVisible(c)) continue;
+        const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
+        if (onScreen(sx, sy, 400)) artCluster(c, "fit");
+      }
+      ctx.textAlign = "left";
+      for (const name of this.artRuledDecls) {
+        const i = this.g.byName.get(name);
+        if (i === undefined || !shown(i)) continue;
+        ctx.font = look!.decl;
+        ctx.fillStyle = look!.declFill;
+        nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width);
+      }
+      ctx.textAlign = "center";
+      ctx.fillStyle = th.label;
+    }
     for (let c = 0; c < S.nc; c++) {
       if (art?.labels === "none" || (chosen && !asShown)) break;
-      if (chosen && this.artClusters.has(this.layout.clusters[c].key)) continue;
+      if (chosen && (this.artClusters.has(this.layout.clusters[c].key) || this.artRuled.has(this.layout.clusters[c].key))) continue;
       const rep = S.rep[c];
       if (!this.clusterVisible(c)) continue;
       if (art) {

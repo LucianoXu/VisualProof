@@ -98,7 +98,8 @@ and tokens at rest: SECURITY.md. Presence, following and Share: CollabSpec.md.
      agent can do no more than its token allows. The conversation is kept in the site, apart from
      the review's logs, for a while; sending is rate-limited.
 9. **Three levels.** An agent's level is the lower of its token's and the server's `--agents`.
-   - **read**: it reads, shows what it looks at, and typesets documents (ExportSpec decision 11).
+   - **read**: it reads, shows what it looks at, typesets documents (ExportSpec decision 11), and
+     makes links to pictures of the board (ExportSpec decision 20, drafted 2026-10-15).
    - **advise**: also advice (decision 2), notes (decision 5), files and links of the library
      (AttachmentSpec decision 20), its own changed, moved, archived or deleted; asking people to
      follow it (decision 8).
