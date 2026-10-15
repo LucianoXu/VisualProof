@@ -36,7 +36,8 @@ Everything about one declaration; here `include=print` while Lean loads:
 - `axioms`: all its proof and definition reach; `nonStandardAxioms`: beyond the standard three
   (`sorryAx`). `review`: `opinions` (people's latest) and `advice` (agents', `yours: true`), one
   each; `onPresentVersion: false`: on an earlier version; `verified: true`: from someone invited by
-  a personal link, `by` their name now; `trustedBy`: covering prefixes, or `["standard axiom"]`.
+  a personal link, `by` their name now; `recordedBy`: typed for `by` by that person, at one screen
+  (theirs all the same); `trustedBy`: covering prefixes, or `["standard axiom"]`.
 - `editedSinceCompiled`: file differs from what was compiled (null outside the project); `keyFor`,
   `inTcbOf`: targets it is key for, whose TCB holds it; `usesDirect`, `usedBy.direct`: what it
   refers to by name, what refers to it (`uses`, `users` list them); `usedBy.all`: all reaching it,

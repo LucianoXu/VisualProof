@@ -329,13 +329,18 @@ export class Activity {
           o.verdict === "approve"
             ? o.agent ? `suggests <span class="ok">approving</span>` : `<span class="ok">approved</span>`
             : `<span class="commented">${o.agent ? "comments" : "commented"}</span> on`;
+        // one recorded for someone else is the doing of who typed it (ReviewSpec decision 8): their
+        // name, then theirs it is, without its ✓
+        const rec = o.recordedBy;
         out.push({
           key: `o:${o.agent ? "a" : "p"}:${name}:${o.by}:${o.at}`,
           at: o.at,
-          by: now(o.by, o.person),
+          by: rec ? now(rec.by, rec.person) : now(o.by, o.person),
           agent: !!o.agent,
           cat: "review",
-          html: `${who(o.by, o.agent, o.person)} ${verb} ${decl(name)}`,
+          html: rec
+            ? `${who(rec.by, false, rec.person)} recorded <b>${escapeHtml(o.by)}</b>'s ${o.verdict === "approve" ? `<span class="ok">approval</span> of` : `<span class="commented">comment</span> on`} ${decl(name)}`
+            : `${who(o.by, o.agent, o.person)} ${verb} ${decl(name)}`,
           ...(o.comment ? { comment: { text: o.comment, on: name } } : {}),
           names: [name],
           targets: [],

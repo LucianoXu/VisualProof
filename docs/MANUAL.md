@@ -424,6 +424,12 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   version*, and **What changed** shows the lines removed and added since (the opinion
   records the text it was given on: the context it is written in, then its source), so a
   re-review reads only the change.
+- **Speaking for someone else**, when several of you review at one screen: type their name in
+  **Speaking for**, beside Approve and Comment (the list offers the people invited and those who
+  have recorded something). Until you clear it, every review box says *Recording for* them and its
+  buttons say *Approve for* them: what you record is their opinion — it replaces theirs, counts as
+  theirs, and shows under their name, *recorded by* you, without their ✓. Their own next opinion
+  replaces it. Only approvals and comments; nobody records for an agent, nor does an agent.
 - **Comments** read as light Markdown: `> quotes`, `` `code` ``, ```` ```lean ```` blocks (highlighted as in
   the source window), `**bold**`, `*italics*`; a declaration's full name in backticks links to it.
   Nothing else becomes HTML, and the logs and the agents' API keep the text as written.

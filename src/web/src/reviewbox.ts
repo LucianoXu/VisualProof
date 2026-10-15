@@ -36,7 +36,7 @@ import { lineDiff } from "./linediff.ts";
 import type { LineDiff } from "./linediff.ts";
 import { renderComment } from "./markdown.ts";
 import { membersOf } from "./trust.ts";
-import { VERIFIED } from "./verified.ts";
+import { invitedNames, VERIFIED } from "./verified.ts";
 
 /** "3 h ago", for an opinion. */
 export function ago(iso: string): string {
@@ -142,19 +142,70 @@ export class ReviewBox {
    *  it already */
   private flashing: { key: string; until: number; since: number; shown: WeakSet<HTMLElement> } | null = null;
 
+  /** whom the opinions given on this page are for, where not the reader (ReviewSpec decision 8): it
+   *  stays, on every review box, until changed back; kept for the tab */
+  private speakingFor: string | null = readFor();
+
   constructor(g: Graph, hooks: ReviewHooks) {
     this.g = g;
     this.hooks = hooks;
   }
 
-  /** Keep what is typed into a comment box: the other boxes of the declaration show it too. */
+  /** Whom an opinion given now is for: another person's name, or null for the reader's own. */
+  private forName(): string | null {
+    const f = this.speakingFor?.trim() || null;
+    return f && f !== this.hooks.review().reviewer?.trim() ? f : null;
+  }
+
+  /** Keep what is typed into a comment box: the other boxes of the declaration show it too. Whom
+   *  one speaks for, typed into any box, is every box's. */
   input(t: HTMLElement, i: number): void {
+    if (t.matches("[data-rv-for]")) return this.speakFor((t as HTMLInputElement).value, t);
     if (!t.matches("[data-rv-comment]")) return;
     const name = this.g.nodes[i].name;
     const value = (t as HTMLTextAreaElement).value;
     this.drafts.set(name, value);
     this.mirror(name, value, t);
     fitBox(t as HTMLTextAreaElement);
+  }
+
+  /** The opinions given from now on are `name`'s (none: the reader's own): every review box on the
+   *  page says so at once, without being drawn again (ReviewSpec decision 8). */
+  private speakFor(name: string, except: Element | null): void {
+    this.speakingFor = name.slice(0, 120) || null;
+    try {
+      if (this.speakingFor) sessionStorage.setItem(FOR_KEY, this.speakingFor);
+      else sessionStorage.removeItem(FOR_KEY);
+    } catch {
+      // a page that cannot keep it forgets it with the tab: nothing else changes
+    }
+    if (typeof document === "undefined") return;
+    const f = this.forName();
+    for (const b of document.querySelectorAll<HTMLInputElement>("input[data-rv-for]")) if (b !== except && b.value !== name) b.value = name;
+    for (const on of document.querySelectorAll<HTMLElement>("[data-rv-for-on]")) {
+      on.hidden = !f;
+      on.innerHTML = f ? `Recording for <b>${escapeHtml(f)}</b> — their opinion, recorded by you` : "";
+    }
+    for (const w of document.querySelectorAll<HTMLElement>("[data-rv-for-who]")) w.textContent = f ? ` for ${f}` : "";
+  }
+
+  /** The names the "Speaking for" box offers: the people invited by a personal link and those the
+   *  logs name, agents left out, the reader not; kept in the page's one list of them. */
+  private people(d: ReviewData): void {
+    if (typeof document === "undefined") return;
+    const me = this.hooks.review().reviewer?.trim();
+    const names = new Set(invitedNames());
+    for (const ops of Object.values(d.opinions)) for (const o of ops) if (!o.agent) names.add(o.by);
+    for (const t of Object.values(d.targets)) if (!t.agent) names.add(t.by);
+    if (me) names.delete(me);
+    let list = document.getElementById("rv-people");
+    if (!list) {
+      list = document.createElement("datalist");
+      list.id = "rv-people";
+      document.body.append(list);
+    }
+    const html = [...names].sort((a, b) => a.localeCompare(b)).map((n) => `<option value="${escapeHtml(n)}"></option>`).join("");
+    if (list.innerHTML !== html) list.innerHTML = html;
   }
 
   /** Every comment box of declaration `name` on the page but `except` shows `value`: the panel and
@@ -328,7 +379,8 @@ export class ReviewBox {
     }
     // an opinion about text that is not what was compiled would be about nothing; what it is
     // about (the hash, the text judged) the server records from the graph (server/reviewapi.ts)
-    this.send(root, v.name, async () => ((await this.hooks.edited(i)) ? EDITED : this.hooks.submit({ op: "opinion", name: v.name, verdict, comment: comment || undefined })));
+    const f = this.forName();
+    this.send(root, v.name, async () => ((await this.hooks.edited(i)) ? EDITED : this.hooks.submit({ op: "opinion", name: v.name, verdict, comment: comment || undefined, ...(f ? { for: f } : {}) })));
   }
 
   /** Approve or comment on an axiom by its name, from the panel of target `i` (the board has no
@@ -343,7 +395,8 @@ export class ReviewBox {
       root.querySelector<HTMLTextAreaElement>("[data-rv-comment]")?.focus();
       return;
     }
-    this.send(root, target, () => this.hooks.submit({ op: "opinion", name, verdict, comment: comment || undefined }));
+    const f = this.forName();
+    this.send(root, target, () => this.hooks.submit({ op: "opinion", name, verdict, comment: comment || undefined, ...(f ? { for: f } : {}) }));
   }
 
   /** Send an opinion with the comment written under `key` (the declaration's name; for an axiom,
@@ -532,8 +585,10 @@ export class ReviewBox {
     const opinion = (o: Opinion, compare = false) => {
       const now = fresh(o, v.hash);
       return (
-        `<div class="rv-op rv-${o.verdict}${now ? "" : " old"}" data-rv-op="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person ? VERIFIED : ""} ${VERB[o.verdict]}` +
-        ` <span class="muted">· ${ago(o.at)}${now ? "" : " · on an earlier version"}</span>${quote(o)}` +
+        // recorded for them by someone else: theirs, without the mark they did not give it under
+        // (ReviewSpec decision 8)
+        `<div class="rv-op rv-${o.verdict}${now ? "" : " old"}" data-rv-op="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person && !o.recordedBy ? VERIFIED : ""} ${VERB[o.verdict]}` +
+        ` <span class="muted">· ${ago(o.at)}${o.recordedBy ? ` · recorded by ${esc(o.recordedBy.by)}` : ""}${now ? "" : " · on an earlier version"}</span>${quote(o)}` +
         (o.comment ? `<div class="rv-c md">${this.comment(o.comment, v.name)}</div>` : "") +
         `</div>` +
         // beside the opinion, not in it: a stale opinion is faded, what changed must read clearly
@@ -568,12 +623,18 @@ export class ReviewBox {
     else if (R.blocked) controls = `<div class="banner bad">${esc(R.blocked)}</div>`;
     else if (this.hooks.editedNow(i) === true)
       controls = `<div class="banner warn">${EDITED}</div>`;
-    else
+    else {
+      // whom the opinion is for (ReviewSpec decision 8): the reader, or another person by name
+      this.people(d);
+      const f = this.forName();
       controls =
+        `<div class="rv-for-on" data-rv-for-on${f ? "" : " hidden"}>${f ? `Recording for <b>${esc(f)}</b> — their opinion, recorded by you` : ""}</div>` +
         `<textarea class="rv-text" data-rv-comment="${esc(v.name)}" rows="${rowsFor(this.drafts.get(v.name) ?? "")}" placeholder="Comment (optional with an approval) · Markdown" title="Markdown: &gt; quote, \`code\`, \`\`\`lean blocks, **bold**, *italics*; a declaration's full name in backticks links to it. Quote an opinion with its Quote, lines of code by selecting them in the source window">${esc(this.drafts.get(v.name) ?? "")}</textarea>` +
-        `<div class="rv-actions"><button class="rv-btn approve" data-rv="approve" title="Approve (a), with the comment if there is one">Approve</button>` +
-        `<button class="rv-btn comment" data-rv="comment" title="Comment (m): send what you wrote in the box">Comment</button>` +
+        `<div class="rv-actions"><button class="rv-btn approve" data-rv="approve" title="Approve (a), with the comment if there is one">Approve<span data-rv-for-who>${f ? ` for ${esc(f)}` : ""}</span></button>` +
+        `<button class="rv-btn comment" data-rv="comment" title="Comment (m): send what you wrote in the box">Comment<span data-rv-for-who>${f ? ` for ${esc(f)}` : ""}</span></button>` +
+        `<label class="rv-for" title="Record the opinion as another person's, at the same screen: it counts as theirs, recorded by you. Empty: your own">Speaking for <input class="rv-for-in" data-rv-for list="rv-people" value="${esc(this.speakingFor ?? "")}" placeholder="${esc(R.reviewer ?? "yourself")}" maxlength="120" spellcheck="false" autocomplete="off"></label>` +
         `</div><div class="rv-err" hidden></div>`;
+    }
     // lines of someone's log that cannot be read: the rest of the review is read, and shown
     if (R.error && !R.readOnly && !R.blocked) controls += `<div class="banner warn">${esc(R.error)}</div>`;
     // trusted, and by what: taking that prefix off (Trusted, in the side panel) is how to undo it
@@ -694,4 +755,16 @@ export class ReviewBox {
 function quotedCode(link: HTMLElement): string[] | null {
   const pre = link.matches(".md-cq-h") ? link.closest(".md-cq")?.querySelector("pre") : null;
   return pre?.textContent ? pre.textContent.split("\n") : null;
+}
+
+/** where a tab keeps whom its opinions are for (ReviewSpec decision 8) */
+const FOR_KEY = "visualproof.speakingFor";
+
+/** Whom this tab's opinions were for, where it said so: none in a page that cannot keep it. */
+function readFor(): string | null {
+  try {
+    return typeof sessionStorage === "undefined" ? null : sessionStorage.getItem(FOR_KEY);
+  } catch {
+    return null;
+  }
 }

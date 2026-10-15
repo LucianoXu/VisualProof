@@ -75,6 +75,9 @@ export interface Opinion {
   person?: string;
   /** the names it was given on before moves brought it here, oldest first (shared/moves.ts) */
   was?: string[];
+  /** recorded for them by someone else at the same screen (ReviewSpec decision 8): who typed it,
+   *  and the link they came by where invited; `by` and `person` are theirs it was recorded for */
+  recordedBy?: { by: string; person?: string };
 }
 
 export interface Target {
@@ -168,7 +171,8 @@ export function validPersonId(s: unknown): s is string {
  *  says it comes from the request's headers, and what an opinion is about (the declaration's hash,
  *  the text judged) is the server's to work out from the graph. */
 export type ReviewRequest =
-  | { op: "opinion"; name: string; verdict: Verdict; comment?: string }
+  /** `for`: recorded as another person's, named as the page gives them (ReviewSpec decision 8) */
+  | { op: "opinion"; name: string; verdict: Verdict; comment?: string; for?: string }
   | { op: "target"; name: string; on: boolean }
   | { op: "trust"; prefix: string; on: boolean }
   /** `name` marked as a key declaration of `target`, or no longer (ExportSpec decision 1) */
@@ -181,7 +185,9 @@ export type ReviewRequest =
  *  by, which the server says from who asks, never from the request's body — and what the graph
  *  says the opinion is about. */
 export type ReviewOp = (
-  | { op: "opinion"; name: string; verdict: Verdict; comment?: string; hash?: string; text?: string; statement?: string }
+  /** `for`, `forPerson`: recorded as another person's, by name and, where they are invited, by
+   *  their link's id, which the server finds (ReviewSpec decision 8) */
+  | { op: "opinion"; name: string; verdict: Verdict; comment?: string; hash?: string; text?: string; statement?: string; for?: string; forPerson?: string }
   | { op: "target"; name: string; on: boolean }
   | { op: "trust"; prefix: string; on: boolean }
   | { op: "key"; target: string; name: string; on: boolean }
@@ -196,7 +202,8 @@ export type ReviewOp = (
  *  every line of the log of someone invited by a personal link — whose `name` line says only that
  *  they go by `by` from then on. */
 export type ReviewEvent =
-  | ({ op: "opinion"; name: string } & Opinion)
+  /** `for`, `forPerson`: written by `by` as another person's (ReviewSpec decision 8) */
+  | ({ op: "opinion"; name: string; for?: string; forPerson?: string } & Opinion)
   | { op: "target"; at: string; by: string; name: string; on: boolean; agent?: true; person?: string }
   | { op: "trust"; at: string; by: string; prefix: string; on: boolean; agent?: true; person?: string }
   | { op: "key"; at: string; by: string; target: string; name: string; on: boolean; agent?: true; person?: string }
@@ -233,6 +240,14 @@ export function invalid(r: unknown): string | null {
   // an agent may record is its level's to say, checked where the request comes in
   if (o.agent !== undefined && typeof o.agent !== "boolean") return "agent";
   if (o.person !== undefined && (!validPersonId(o.person) || o.agent)) return "person";
+  // an opinion recorded for someone else (ReviewSpec decision 8): a person's, for another person
+  if (o.for !== undefined || o.forPerson !== undefined) {
+    if (o.op !== "opinion") return "only an opinion is recorded for someone else";
+    if (o.agent) return "an agent records for no one";
+    if (!str(o.for, 120) || !(o.for as string).trim()) return "for";
+    if (o.forPerson !== undefined && !validPersonId(o.forPerson)) return "forPerson";
+    if ((o.for as string).trim() === (o.by as string).trim() || (o.forPerson !== undefined && o.forPerson === o.person)) return "an opinion of one's own is recorded as one's own";
+  }
   switch (o.op) {
     case "opinion":
       if (o.verdict !== "approve" && o.verdict !== "comment") return "verdict";
@@ -273,12 +288,17 @@ export function eventOf(d: ReviewData, r: ReviewOp, toolchain: string, now: stri
   switch (r.op) {
     case "opinion": {
       const e: OpinionEvent = { op: "opinion", name: r.name, by, ...person, verdict: r.verdict, at: now, toolchain };
+      // recorded for someone else (ReviewSpec decision 8)
+      if (r.for?.trim()) {
+        e.for = r.for.trim();
+        if (r.forPerson) e.forPerson = r.forPerson;
+      }
       if (r.comment?.trim()) e.comment = r.comment.trim();
       if (r.agent) e.agent = true;
       // the text matters only to an opinion that can go stale, one bound to a version
       if (r.hash) {
         e.hash = r.hash;
-        const was = (Object.hasOwn(d.opinions, r.name) ? d.opinions[r.name] : []).findLast((p) => author(p) === author(e));
+        const was = (Object.hasOwn(d.opinions, r.name) ? d.opinions[r.name] : []).findLast((p) => author(p) === voice(e));
         const same = was?.hash === r.hash ? judgedOn(d, r.name, was) : null;
         if (r.text !== undefined && !(same?.of === "source" && same.text === r.text)) e.text = r.text;
         else if (r.text === undefined && r.statement !== undefined && !(same?.of === "statement" && same.text === r.statement)) e.statement = r.statement;
@@ -329,8 +349,8 @@ export function applyEvent(d: ReviewData, e: ReviewEvent): void {
     case "name":
       return;
     case "opinion": {
-      const { op: _op, name, ...o } = e;
-      (Object.hasOwn(d.opinions, name) ? d.opinions[name] : (d.opinions[name] = [])).push(o);
+      const { op: _op, name, for: forName, forPerson, ...o } = e;
+      (Object.hasOwn(d.opinions, name) ? d.opinions[name] : (d.opinions[name] = [])).push(forName === undefined ? o : recordedFor(d, o, forName, forPerson));
       return;
     }
     case "target":
@@ -373,7 +393,11 @@ function named(d: ReviewData, id: string, name: string): void {
   }
   p.was = [...p.was.filter((n) => n !== p.name && n !== name), p.name];
   p.name = name;
-  for (const ops of Object.values(d.opinions)) for (const o of ops) if (o.person === id) o.by = name;
+  for (const ops of Object.values(d.opinions))
+    for (const o of ops) {
+      if (o.person === id) o.by = name;
+      if (o.recordedBy?.person === id) o.recordedBy.by = name;
+    }
   for (const t of Object.values(d.targets)) if (t.person === id) t.by = name;
   for (const marks of Object.values(d.keys)) for (const m of Object.values(marks)) if (m.person === id) m.by = name;
   renamePerson(d, id, name);
@@ -444,6 +468,15 @@ export function readEvent(raw: unknown, agentLog: boolean, personLog: string | n
         e[k] = o[k] as string;
       }
       if (e.text !== undefined && e.statement !== undefined) return "a text and a statement";
+      // recorded for someone else (ReviewSpec decision 8): a person's line, for another person
+      if (o.for !== undefined || o.forPerson !== undefined) {
+        if (agentLog) return "an agent's opinion recorded for someone else";
+        if (!str(o.for, 120) || !(o.for as string).trim()) return "for";
+        if (o.forPerson !== undefined && !validPersonId(o.forPerson)) return "forPerson";
+        if (o.for === by || (o.forPerson !== undefined && o.forPerson === personLog)) return "an opinion recorded for its own writer";
+        e.for = o.for as string;
+        if (o.forPerson !== undefined) e.forPerson = o.forPerson as string;
+      }
       if (agentLog) e.agent = true;
       return e;
     }
@@ -632,6 +665,19 @@ export type Status = "none" | "approved" | "commented" | "stale";
  *  by, and a guest who took a name they once had is someone else. */
 function author(o: Opinion): string {
   return o.person ? `link ${o.person}` : (o.agent ? "agent " : "person ") + o.by;
+}
+
+/** Whose an opinion line is: theirs it was recorded for (ReviewSpec decision 8), else its writer's. */
+function voice(e: OpinionEvent): string {
+  return e.for === undefined ? author(e) : author({ by: e.for, verdict: e.verdict, at: e.at, ...(e.forPerson ? { person: e.forPerson } : {}) });
+}
+
+/** An opinion recorded for someone else (ReviewSpec decision 8), as the review holds it: theirs —
+ *  under their latest name where they are invited — saying who recorded it. */
+function recordedFor(d: ReviewData, o: Opinion, forName: string, forPerson: string | undefined): Opinion {
+  const { by, person, ...rest } = o;
+  const name = forPerson && Object.hasOwn(d.people, forPerson) ? d.people[forPerson].name : forName;
+  return { ...rest, by: name, ...(forPerson ? { person: forPerson } : {}), recordedBy: { by, ...(person ? { person } : {}) } };
 }
 
 /** Each author's latest opinion on a declaration, people's or agents': a new one replaces their

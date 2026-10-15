@@ -40,6 +40,19 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
    what they record shows under their latest name.
 7. **Live and frozen.** What is recorded reaches every open page at once; a snapshot shows the
    review as it was, read-only.
+8. **An opinion recorded for someone else** (the owner's decisions of 2026-10-15, for a review held
+   together at one screen). Whoever is at the keyboard may record an opinion, approve or comment,
+   as another person's.
+   - **It is that person's opinion**: it replaces their earlier one and counts as theirs in every
+     status, count and query (decision 1); a later opinion of their own, or another recorded for
+     them, replaces it in turn.
+   - **It says who recorded it**: shown under their name, "recorded by" the one who typed it, and
+     without their ✓ where they are invited (CollabSpec decision 9): they did not record it
+     themselves. An invited person may be recorded for like anyone.
+   - **Opinions only**: targets, trust, key marks, moves and the library stay each writer's own.
+   - **People only**: a person records for another person; an agent never records for anyone, a
+     read-only reader records nothing (CollabSpec decision 11), and nobody records for an agent.
+   - **One person each time**: several people approve separately; there is no joint opinion.
 
 ## What the page shows
 
@@ -51,6 +64,13 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   empties when the opinion is taken and keeps its text when refused. Each reviewer's latest opinion
   (stale ones marked, with What changed) and the history; ☆ Mark as target; for a target, progress
   (key declarations, then all) and its view (ViewSpec decision 29).
+- **Speaking for** (decision 8), beside Approve and Comment wherever a review box stands: yourself to
+  start with; the people the site knows — invited people, and the names in the logs, agents left
+  out; or someone else, by a name typed. The choice stays, on every review box of the page, until
+  it is changed back; while it is someone else's, the box carries a coloured line, "Recording for
+  <name>", and its buttons say so ("Approve for <name>"). An opinion recorded for someone shows
+  under their name, "recorded by <typist>", without ✓; Activity says "<typist> recorded <name>'s
+  approval of X" (or comment); the agents' API gives `recordedBy` beside such an opinion.
 - **Comments** are plain text in the logs, given to agents as written, read by the page as light
   Markdown: `>` quotes, `code`, fenced code (```` ```lean ```` highlighted), **bold**, *italics*;
   all else, HTML included, is text. A full declaration name in backticks links (a generated name to
@@ -174,6 +194,14 @@ agent's ends `.agent.jsonl`; an invited person's is the link's id, `3f2a9c1b07.p
   `{"op":"name","person":"3f2a9c1b07","by":"<new name>","at":"…"}` where the log exists. The replay
   shows all an id recorded under its latest name, keeping the earlier ones. The id is the writer: a
   guest who gives a name the id once had is someone else.
+- **An opinion recorded for someone else** (decision 8) is a line of the typist's own log: `by` (and
+  `person`) are the typist's, as on every line; `for` is the name it is recorded for, and
+  `forPerson` that person's link id where they are invited, so that it follows their renames. The
+  replay gives the opinion to `forPerson`, else to `for`; it is refused where `for` names the typist
+  or `forPerson` is the typist's own id, on an agent's line, and on any event but an opinion. A
+  name typed for someone that is an invited person's protected name is that person (the server
+  fills in `forPerson`); no one records for an agent's name. A version before 0.3.0 reads such a
+  line as the typist's own: nothing is lost, the attribution is.
 - `comment`: as written, at most 10,000 characters. `text` (or `statement` where there was no
   source; never both): what was judged, at most 64 Ki characters, only on opinions with a `hash`,
   not repeated by an opinion replacing the same reviewer's on the same version and text.

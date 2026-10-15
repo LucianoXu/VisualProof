@@ -13,7 +13,9 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
    timeline records who did it (a person, or an agent at level full, AgentSpec decision 9).
 3. **Identity: the name a reader gives, or the proxy's.** A guest's name is free and changeable; the
    only check is that it is not an invited person's (decision 9). What is recorded is under the
-   name the page sends (a private reader's layout under none, decision 8). `--identity-header`
+   name the page sends (a private reader's layout under none, decision 8); an opinion may be
+   recorded for another person, under theirs, saying who recorded it (ReviewSpec decision 8, the
+   owner's decision of 2026-10-15, for a review held together at one screen). `--identity-header`
    takes the name from an authenticating proxy's header, believed as it comes (SECURITY.md): the
    page cannot change it and there are no personal links. No login of the tool's own.
 4. **Following: what you see is followed; how you look at it is yours.** A follower sees exactly

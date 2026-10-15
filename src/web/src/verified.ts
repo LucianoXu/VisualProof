@@ -20,6 +20,12 @@ export function setPeople(list: Invited[]): void {
   for (const p of Array.isArray(list) ? list : []) if (p && typeof p.id === "string" && typeof p.name === "string") known.set(p.id, p);
 }
 
+/** The names the people invited by a personal link go by now, their links in force: whom an
+ *  opinion may be recorded for (ReviewSpec decision 8). */
+export function invitedNames(): string[] {
+  return [...known.values()].filter((p) => !p.revoked).map((p) => p.name);
+}
+
 /** The name someone goes by now: for someone invited by a personal link (`person`, their link's
  *  id), the one the server knows, else the name the record carries. */
 export function nameNow(by: string | null, person?: string): string | null {
