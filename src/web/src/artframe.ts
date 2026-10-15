@@ -40,8 +40,8 @@ export interface ArtHooks {
   changed(): void;
   /** the notes as the board shows them now, on the screen */
   notes(): NotePicture[];
-  /** the foot's line for the project's git source and the commit of the build on show; null where
-   *  the project is no git repository */
+  /** the foot's line for the project's git source and the commit checked out when the mode came
+   *  (on a past build's board, that build's); null where the project is no git repository */
   source(): string | null;
   /** every target of the review, by full name, with the name the board writes */
   targets(): { name: string; label: string }[];

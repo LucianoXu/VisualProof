@@ -75,6 +75,15 @@ function then(): { nodes: SnapshotNodes; edges: Int32Array; diff: HistoryDiff } 
   return { nodes, edges: new Int32Array([1, 0, SITE_STMT, 2, 1, SITE_STMT]), diff };
 }
 
+test("a past build's board has that build's commit, its source the page's to add; none where the commit is not known or only guessed", () => {
+  const T = then();
+  assert.deepEqual(pastGraph(T.nodes, T.edges, now(), T.diff).graph.meta.project.git, { source: null, commit: "fb2839694847e44953455013d845621a8e71acb4", branch: "main", dirty: true });
+  const guessed = { ...T.nodes, snapshot: { ...T.nodes.snapshot, commit: { ...T.nodes.snapshot.commit!, guessed: true as const } } };
+  assert.equal(pastGraph(guessed, T.edges, now(), T.diff).graph.meta.project.git, undefined);
+  const none = { ...T.nodes, snapshot: { ...T.nodes.snapshot, commit: null } };
+  assert.equal(pastGraph(none, T.edges, now(), T.diff).graph.meta.project.git, undefined);
+});
+
 test("a past declaration's text: at the place its build recorded, with that build's line numbers", () => {
   const T = then();
   const p = pastGraph(T.nodes, T.edges, now(), T.diff);

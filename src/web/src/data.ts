@@ -398,6 +398,7 @@ function snapshotViews(json: <T>(id: string) => Promise<T>): ViewsApi {
 
 function snapshotSource(info: { createdAt: string; label: string }): DataSource {
   let sources: Promise<Record<string, Source>> | null = null;
+  let git: Promise<GitSource | null> | null = null;
   const json = async <T>(id: string): Promise<T> => JSON.parse(new TextDecoder().decode(await inflate(id)));
   return {
     views: snapshotViews(json),
@@ -406,7 +407,8 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     status: async () => ({ state: "ready", log: [] }),
     forget: () => {},
     meta: () => json<ViewMeta>("vp-meta"),
-    git: () => json<ViewMeta>("vp-meta").then((m) => m.project.git ?? null),
+    // the commit as the snapshot was taken, in its graph: read once
+    git: () => (git ??= json<ViewMeta>("vp-meta").then((m) => m.project.git ?? null)),
     edges: () => inflate("vp-edges"),
     // a snapshot shows the review as it was when taken
     review: () => json<ReviewData>("vp-review").then((data) => ({ epoch: "snapshot", rev: 0, data: reviewFromJson(data), problems: [], error: null })),
