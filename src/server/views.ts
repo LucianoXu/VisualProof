@@ -216,6 +216,27 @@ function cleanMemory(x: unknown): BoardMemory | null {
   return { set: m.set, mem: { nodes, clusters } as BoardMemory["mem"] };
 }
 
+/** The Project view as a site keeps it — its pins, folds, hidden levels and clustering — read and
+ *  nothing written (the artwork command, ExportSpec decision 21; the Views class sets aside a file
+ *  it cannot read): null where the site keeps none, or `why` where its views cannot be read. Pins
+ *  dropped under another way of laying out mean nothing in this one, as Views reads them. */
+export function readProjectView(siteDir: string, layoutVersion: number): { view: ViewData | null; why?: string } {
+  const file = join(siteDir, "views.json");
+  if (!existsSync(file)) return { view: null };
+  try {
+    const raw = JSON.parse(readFileSync(file, "utf8")) as Stored;
+    for (const r of Array.isArray(raw.views) ? raw.views : []) {
+      const v = readView(r);
+      if (typeof v === "string" || v.id !== PROJECT) continue;
+      if (raw.layoutVersion !== layoutVersion) v.pins = emptyLayouts();
+      return { view: v };
+    }
+    return { view: null };
+  } catch (e) {
+    return { view: null, why: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export class Views {
   readonly book: ViewBook;
   private file: string;

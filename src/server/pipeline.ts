@@ -105,14 +105,14 @@ export async function prepare(
   // half-written right now); `extraction`: one in hand (the usage pass's, merged); `provisional`:
   // the graph waits for its usage pass; `completes`: the fingerprint of the build's extraction that
   // this graph, the usage pass's merged, completes; `readOnlySite`: the site's layout memory read,
-  // never written (the artwork command, ExportSpec decision 21)
+  // never written, and the view laid out not kept in the cache either, which a server would take for
+  // its site's (the artwork command, ExportSpec decision 21)
   const held = opts.extraction ?? (opts.reuse ? cachedExtraction(dirs.cache, opts.reuse) : null);
   if (opts.reuse && !held) throw new Error("the graph on screen is no longer cached; it is laid out afresh at the next build");
   const ex = held ?? (saved ? loadSaved(saved) : await extract(project, dirs, log));
   if (!opts.extraction) log(ex.cached ? `extraction ${ex.fingerprint} reused` : `extraction ${ex.fingerprint} done`);
   const usage = ex.graph.usage ?? null;
   const viewDir = join(dirs.cache, "view");
-  mkdirSync(viewDir, { recursive: true });
   const metaFile = join(viewDir, `${ex.fingerprint}-v${VIEW_VERSION}.meta.json.gz`);
   const edgeFile = join(viewDir, `${ex.fingerprint}-v${VIEW_VERSION}.edges.bin.gz`);
   const memory = opts.freshLayout ? null : loadMemory(dirs.site);
@@ -130,10 +130,13 @@ export async function prepare(
   if (!opts.readOnlySite) saveMemory(dirs.site, ex.fingerprint, view.meta, opts.provisional ? against : undefined);
   const metaGz = gzipSync(JSON.stringify(view.meta));
   const edgesGz = gzipSync(Buffer.from(view.edges.buffer, view.edges.byteOffset, view.edges.byteLength));
-  writeFileSync(metaFile, metaGz);
-  writeFileSync(edgeFile, edgesGz);
-  prune(viewDir, /\.meta\.json\.gz$/, 3);
-  prune(viewDir, /\.edges\.bin\.gz$/, 3);
+  if (!opts.readOnlySite) {
+    mkdirSync(viewDir, { recursive: true });
+    writeFileSync(metaFile, metaGz);
+    writeFileSync(edgeFile, edgesGz);
+    prune(viewDir, /\.meta\.json\.gz$/, 3);
+    prune(viewDir, /\.edges\.bin\.gz$/, 3);
+  }
   return { fingerprint: ex.fingerprint, cached: ex.cached, metaGz, edgesGz, usage };
 }
 

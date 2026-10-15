@@ -182,9 +182,11 @@ export const FRAME_ROOM = { panel: 300, margin: 32, gap: 12, head: 60, tail: 34,
  *  places it so, on the screen it is given: ExportSpec decision 21). */
 export function frameRect(screen: { w: number; h: number }, size: { w: number; h: number }): { x: number; y: number; w: number; h: number } {
   const R = FRAME_ROOM;
-  const roomW = screen.w - R.panel - 3 * R.margin, roomH = screen.h - R.bar - R.head - R.tail - 2 * R.gap;
+  // a screen too small for the panel and the strips leaves the frame a room of 40 pixels at least;
+  // the frame keeps the picture's shape whatever the room
+  const roomW = Math.max(40, screen.w - R.panel - 3 * R.margin), roomH = Math.max(40, screen.h - R.bar - R.head - R.tail - 2 * R.gap);
   const scale = Math.min(roomW / size.w, roomH / size.h);
-  const w = Math.max(40, size.w * scale), h = Math.max(40, size.h * scale);
+  const w = size.w * scale, h = size.h * scale;
   return { x: R.margin + (roomW - w) / 2, y: R.bar + R.gap + R.head + (roomH - h) / 2, w, h };
 }
 

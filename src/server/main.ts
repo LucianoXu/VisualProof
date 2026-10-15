@@ -23,7 +23,7 @@ import { isDeclName, LeanHover } from "./hover.ts";
 import { Identities, layoutAuthor } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import type { GitSource } from "../shared/graph.ts";
-import { MAX_MEMORY_BYTES, Views } from "./views.ts";
+import { MAX_MEMORY_BYTES, readProjectView, Views } from "./views.ts";
 import { cleanView, defaultAgentName, validSession, withoutArtwork } from "../shared/collab.ts";
 import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
@@ -136,8 +136,9 @@ function usage(code = 2): never {
            the project. With --site, the board as that site keeps it (its layout, pins and folds)
            and its review's targets; without, the board as a new site would lay it out, and the
            targets the recipe names. --screen: the screen the board is drawn on, as a reader's
-           (default 1920x1200): how large names are in the picture. It reads the site, never
-           writes it; it writes the files and the cache. Notes are not drawn yet.
+           (default 1920x1200, at least 640x480): how large names are in the picture. It reads
+           the site, never writes it; it writes the files and the cache's extraction. Anything
+           that fails ends it with status 1. Notes are not drawn yet.
 
   --identity-header  behind a proxy that authenticates (Tailscale, oauth2-proxy, …): take each
            reader's name from this header instead of the name the page gives. Only use it when
@@ -220,7 +221,7 @@ function parseArgs(argv: string[]): Options {
     else if (a === "--svg" && cmd === "artwork") o.svg = true;
     else if (a === "--screen" && cmd === "artwork") {
       const m = /^(\d+)x(\d+)$/.exec(val());
-      if (!m || +m[1] < 320 || +m[2] < 320 || +m[1] > 10000 || +m[2] > 10000) usage();
+      if (!m || +m[1] < 640 || +m[2] < 480 || +m[1] > 10000 || +m[2] > 10000) usage();
       o.screen = { w: +m[1], h: +m[2] };
     }
     else if (a === "--public-url") {
@@ -1241,8 +1242,9 @@ async function main(): Promise<void> {
     console.log(printReport(report, o.path || null));
     process.exit(report.checks.some((c) => c.level === "fail") ? 1 : 0);
   }
-  // a live server outlives any one failed task: log it and keep serving
-  process.on("unhandledRejection", (e) => console.error("unhandled:", e instanceof Error ? e.message : e));
+  // a live server outlives any one failed task: log it and keep serving (a picture is no server:
+  // whatever fails ends it, with status 1)
+  if (o.cmd !== "artwork") process.on("unhandledRejection", (e) => console.error("unhandled:", e instanceof Error ? e.message : e));
   let project: Project;
   try {
     project = openProject(o.path, o.roots, o.graph === null);
@@ -1356,41 +1358,47 @@ async function artworkCommand(project: Project, o: Options): Promise<void> {
     console.error(`visualproof artwork: ${why}`);
     process.exit(1);
   };
+  try {
+    await artwork(project, o, fail);
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function artwork(project: Project, o: Options, fail: (why: string) => never): Promise<void> {
   const dirs = projectDirs(project.root, o.site, o.cache);
   const site = o.site ? dirs.site : null;
   if (site && !existsSync(site)) fail(`there is no site at ${site}`);
-  // without a site, none is read: a folder that is not there, never made (prepare reads no memory)
-  const readDirs = site ? dirs : { ...dirs, site: join(tmpdir(), `visualproof-artwork-no-site-${process.pid}`) };
   let recipe: unknown;
   try {
     recipe = JSON.parse(readFileSync(o.recipe!, "utf8"));
   } catch (e) {
     fail(`the recipe ${o.recipe} cannot be read: ${e instanceof Error ? e.message : String(e)}`);
   }
+  // -o: a name, or a path without its extension, in a folder that is there
+  const outBase = o.out ? o.out.replace(/\.(png|svg)$/i, "") : null;
+  const dir = outBase ? dirname(outBase) : process.cwd();
+  if (!existsSync(dir)) fail(`there is no folder ${dir} to write the files in`);
   mkdirSync(dirs.cache, { recursive: true });
   const log = (l: string) => console.log(l);
-  let prep: Prepared;
-  try {
-    let ex = o.graph ? undefined : await extract(project, readDirs, log);
-    if (ex && o.jobs > 0) {
-      const pass = new UsagePass(project, readDirs, o.jobs, log);
-      const plan = pass.plan(ex.graph);
-      if (plan.todo.length) log(`usage pass: elaborating ${plan.todo.length} of ${plan.modules.length} modules, ${o.jobs} at a time`);
-      const results = await pass.run(plan);
-      if (results) {
-        ex = mergeUsage(ex, plan, results, pass.status.failed, pass.status.ms ?? 0);
-        saveMerged(readDirs.cache, ex);
-      }
+  let ex = o.graph ? undefined : await extract(project, dirs, log);
+  if (ex && o.jobs > 0) {
+    const pass = new UsagePass(project, dirs, o.jobs, log);
+    const plan = pass.plan(ex.graph);
+    if (plan.todo.length) log(`usage pass: elaborating ${plan.todo.length} of ${plan.modules.length} modules, ${o.jobs} at a time`);
+    const results = await pass.run(plan);
+    if (results) {
+      ex = mergeUsage(ex, plan, results, pass.status.failed, pass.status.ms ?? 0);
+      saveMerged(dirs.cache, ex);
     }
-    prep = await prepare(project, readDirs, o.graph, log, { ...(ex ? { extraction: ex } : {}), readOnlySite: true });
-  } catch (e) {
-    return fail(e instanceof Error ? e.message : String(e));
   }
-  const views = site ? new Views(site, LAYOUT_VERSION, () => {}) : null;
+  // the site's layout memory read and never written, nor the views laid out written to the cache;
+  // without a site, none read: the board as a new site lays it out
+  const prep = await prepare(project, dirs, o.graph, log, { ...(ex ? { extraction: ex } : {}), readOnlySite: true, ...(site ? {} : { freshLayout: true }) });
+  const kept = site ? readProjectView(site, LAYOUT_VERSION) : { view: null };
+  if (kept.why) console.error(`visualproof artwork: the site's views cannot be read (${kept.why}): the Project view as a new site has it`);
   const review = site ? new ReviewStore(project.root, site).data : null;
-  // -o: a name, or a path without its extension
-  const outBase = o.out ? o.out.replace(/\.(png|svg)$/i, "") : null;
-  const a = makeArtwork(prep, review, projectView(views?.book ?? null), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root });
+  const a = makeArtwork(prep, review, projectView(kept.view), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root });
   if (!("svg" in a)) {
     for (const p of a.problems) console.error(`visualproof artwork: ${p}`);
     process.exit(1);
@@ -1402,7 +1410,6 @@ async function artworkCommand(project: Project, o: Options): Promise<void> {
   console.log(`targets marked: ${list(a.targets)}`);
   console.log(`selection: ${a.selection ? `${a.selection.mode} of ${a.selection.name}` : "none"}`);
   if (a.notesLeftOut) console.log(`notes: ${a.notesLeftOut} on the board, not drawn (the command draws no notes yet)`);
-  const dir = outBase ? dirname(outBase) : process.cwd();
   const both = !o.png && !o.svg;
   const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
   if (both || o.svg) {

@@ -98,5 +98,7 @@ speaks plain HTTP: beyond a trusted network, put a TLS proxy in front. [SECURITY
 ## License and citation
 
 VisualProof is licensed under Apache-2.0 ([LICENSE](LICENSE)). The fonts in `src/assets/fonts/`
-are JuliaMono, under the SIL Open Font License. If you use VisualProof in your work, please cite
-it ([CITATION.cff](CITATION.cff)).
+are JuliaMono; those in `src/assets/webfonts/`, which artworks are drawn in, are Source Sans 3,
+Source Serif 4, Jost, Noto Sans and Noto Sans Math. All are under the SIL Open Font License, whose
+text is beside them. If you use VisualProof in your work, please cite it
+([CITATION.cff](CITATION.cff)).

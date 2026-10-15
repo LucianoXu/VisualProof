@@ -130,14 +130,19 @@ The README says how to install the `visualproof` command. A checkout also runs a
   name, or a path without its extension); else the recipe's title, else the project's name. With
   `--site`, the board is the Project view as that site keeps it — its layout, pins, folds and hidden
   levels — and the targets are its review's; without, the board as a new site would lay it out and
-  the targets the recipe names. `--screen 1920x1200` (the default) is the screen the board is drawn
-  on, as a reader's would be: the smaller the screen, the larger the names in the picture. It says
-  what it wrote — the names, those a rule left out where they would have covered another, the
-  targets, the selection — then the files; a name, target or view the build has not ends it with
-  status 1. It reads the build and the site and writes only the files (and the cache); the same
-  build, site and recipe make the same bytes. An A2 poster at 300 dpi of a project of 15,000
-  declarations takes about 20 seconds and 1.2 GB of memory, most of it drawing the PNG. Notes are
-  not drawn yet.
+  the targets the recipe names. `--screen 1920x1200` (the default; 640x480 at least) is the screen
+  the board is drawn on, as a reader's would be: the smaller the screen, the larger the names in the
+  picture. A selection is a declaration's full name, or a name the graph folds into one (an equation
+  lemma, a constructor: the one it is folded into); a name it has not is answered with the name
+  likely meant. It says what it wrote — the names, those a rule left out where they would have
+  covered another, the targets, the selection — then the files; a name, target or view the build has
+  not, or anything else that fails, ends it with status 1. It reads the build and the site and writes
+  only the files and, in the cache, the extraction and the usage pass's results (never the site, nor
+  the laid-out views the cache keeps for a server); the same build, site and recipe make the same
+  bytes. An A2 poster at 300 dpi of a project of 15,000 declarations takes about 20 seconds and
+  1.2 GB of memory, most of it drawing the PNG; a picture of more than 80 million pixels is drawn in
+  bands, in 2 GB at most but three times as long (16,384 pixels a side: 3½ minutes). Notes are not
+  drawn yet.
 
 ## Supported Lean versions
 

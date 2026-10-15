@@ -3513,6 +3513,8 @@ export class GraphCanvas {
 
   /** Place the cards for this frame; returns the nodes that got one. */
   private drawCards(activeDots: number[]): Set<number> {
+    // without a browser there are no cards (ExportSpec decision 21): they are elements of the page
+    if (this.headless) return new Set();
     const k = this.cam.k;
     const S = this.scene;
     // what is selected has no card: a ring says where it is (drawSelection)
@@ -3570,8 +3572,8 @@ export class GraphCanvas {
       const [lx, ly] = this.toScreen(this.px[i], this.py[i]);
       grid.add(lx - lr, ly - lr, lx + lr, ly + lr);
     }
-    // what lies over the canvas: a card under a panel is no card (without a browser, nothing does)
-    const box0 = this.headless ? { left: 0, top: 0 } : this.canvas.getBoundingClientRect();
+    // what lies over the canvas: a card under a panel is no card
+    const box0 = this.canvas.getBoundingClientRect();
     for (const r of this.ev.covers?.() ?? []) if (r.width && r.height) grid.add(r.left - box0.left, r.top - box0.top, r.right - box0.left, r.bottom - box0.top);
     // the lit points themselves
     const pr = Math.max(3, dotR) + 2;

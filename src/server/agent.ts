@@ -70,6 +70,7 @@ import type { Queue } from "../shared/reviewqueue.ts";
 import { reviewThen } from "../shared/pastgraph.ts";
 import { contextAt, namespacesOf } from "../shared/scope.ts";
 import { PLACES, search, SearchIndex, snippet } from "../shared/search.ts";
+import { foldedAt, guessNames } from "../shared/declfind.ts";
 import { fullWhen } from "../shared/titles.ts";
 import type { NewEvent, StoredEvent } from "../shared/timeline.ts";
 import { ALL_SITES, Graph } from "../shared/viewgraph.ts";
@@ -326,9 +327,6 @@ type Part = (typeof PARTS)[number];
 const WHERE: Record<string, number> = { statement: SITE_STMT, body: SITE_BODY, proof: SITE_PROOF, grammar: SITE_GRAMMAR };
 /** what a trusted standard axiom is trusted by */
 const STANDARD = "standard axiom";
-/** the last components of names Lean generates beside a declaration (extractor/Extract.lean,
- *  `generatedSuffixes`, and the like) */
-const GENERATED_LAST = /^(?:rec|recOn|casesOn|noConfusion|noConfusionType|ctorElim|ctorElimType|below|brecOn|binductionOn|ibelow|ctorIdx|toCtorIdx|ofNat|ofNat_ctorIdx|sizeOf_spec|injEq|inj|eq_def|induct|mutual_induct|fun_cases|induct_unfolding|ext_iff|congr_simp|mk|elim|(?:eq|match|proof)_\d+|_.*)$/;
 
 /** The graph on show, as the API reads it: built from the server's prepared view once per
  *  version. The page's review route reads it too (server/reviewapi.ts). */
@@ -544,36 +542,9 @@ export class AgentApi {
     return this.view;
   }
 
-  /** Up to five names like `name`: the same name in another case; then the same last component,
-   *  or one a typo or two away, in the same namespace first; then what the search finds. */
+  /** Up to five names like `name` (shared/declfind.ts, `guessNames`). */
   private guess(v: View, name: string): string[] {
-    const g = v.g;
-    const dot = name.lastIndexOf(".");
-    const last = name.slice(dot + 1).toLowerCase();
-    const ns = dot < 0 ? "" : name.slice(0, dot);
-    const scored = new Map<string, number>();
-    const offer = (n: string, score: number) => {
-      if ((scored.get(n) ?? Infinity) > score) scored.set(n, score);
-    };
-    const lower = name.toLowerCase();
-    const most = last.length < 5 ? 1 : 2;
-    // the graph's declarations, and the names Lean generated from a command that they fold
-    for (const name of [...g.nodes.map((n) => n.name), ...g.foldedInto.keys()]) {
-      if (name.toLowerCase() === lower) offer(name, -1);
-      const k = name.lastIndexOf(".");
-      const d = editDistance(name.slice(k + 1).toLowerCase(), last, most);
-      if (d <= most) offer(name, 2 * d + (name.slice(0, Math.max(0, k)) === ns ? 0 : 1));
-    }
-    let rank = 0;
-    for (const q of [name.slice(dot + 1), name.replace(/\./g, " ")]) {
-      if (q.trim().length < 2) continue;
-      const f = search(v.index, q);
-      for (const h of [...f.hits.name, ...f.hits.statement].slice(0, 10)) offer(g.nodes[h.i].name, 10 + rank++);
-    }
-    return [...scored]
-      .sort((a, b) => a[1] - b[1] || a[0].length - b[0].length || (a[0] < b[0] ? -1 : 1))
-      .slice(0, 5)
-      .map(([n]) => n);
+    return guessNames(v.g, v.index, name);
   }
 
   /** A declaration by its full name, or the answer that there is none (with what was meant). A
@@ -587,28 +558,10 @@ export class AgentApi {
     return fail(404, `There is no declaration ${name} in the graph.`, guesses.length ? `Did you mean ${guesses[0]}? Names are full, as the search gives them.` : "Search for it: GET /api/agent/search?q=<words>.", { didYouMean: guesses });
   }
 
-  /** The declaration a name the graph has no node for is folded into: a declaration Lean generated
-   *  from a command (ViewNode.also), or a constructor, recursor, field, equation lemma… of a
-   *  declaration or of one so generated, which is a name one component below it. A name one
-   *  component below a declaration that is a typo or two away from a declaration beside it is
-   *  taken for that typo, not for something folded, unless its last component is one Lean
-   *  generates. */
+  /** The declaration a name the graph has no node for is folded into (shared/declfind.ts,
+   *  `foldedAt`). */
   private foldedAt(v: View, name: string): number | undefined {
-    const g = v.g;
-    const direct = g.foldedInto.get(name);
-    if (direct !== undefined) return direct;
-    const dot = name.lastIndexOf(".");
-    if (dot <= 0) return undefined;
-    const head = name.slice(0, dot), last = name.slice(dot + 1);
-    const at = g.byName.get(head) ?? g.foldedInto.get(head);
-    if (at === undefined || !last) return undefined;
-    if (!GENERATED_LAST.test(last)) {
-      const most = last.length < 5 ? 1 : 2;
-      const near = (n: string) => n.length > head.length + 1 && n.startsWith(head + ".") && !n.includes(".", head.length + 1) && editDistance(n.slice(head.length + 1).toLowerCase(), last.toLowerCase(), most) <= most;
-      for (const n of g.nodes) if (near(n.name)) return undefined;
-      for (const n of g.foldedInto.keys()) if (near(n)) return undefined;
-    }
-    return at;
+    return foldedAt(v.g, name);
   }
 
   /** What an answer about `asked` says when that name is folded into declaration `i`. */
@@ -3292,22 +3245,6 @@ export function whoOf(c: Caller): AgentWho {
   return { name: c.name ?? "", ...(c.token ? { token: c.token.id } : {}) };
 }
 
-/** The edit distance between two short strings, or `most + 1` once it is more than `most`. */
-function editDistance(a: string, b: string, most: number): number {
-  if (Math.abs(a.length - b.length) > most) return most + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const row = [i];
-    let best = i;
-    for (let j = 1; j <= b.length; j++) {
-      row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-      best = Math.min(best, row[j]);
-    }
-    if (best > most) return most + 1;
-    prev = row;
-  }
-  return Math.min(prev[b.length], most + 1);
-}
 
 /** An integer parameter within bounds, `dflt` when absent or not a number. */
 function clampInt(s: string | null, dflt: number, lo: number, hi: number): number {

@@ -12,16 +12,18 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { gunzipSync } from "node:zlib";
+import { createDeflate, crc32, gunzipSync } from "node:zlib";
 import { readRecipe, resolveRecipe } from "../shared/artrecipe.ts";
 import type { ArtRecipe, RecipeMode } from "../shared/artrecipe.ts";
 import { textMeasurer } from "../shared/artfonts.ts";
 import type { ArtFontMetrics } from "../shared/artfonts.ts";
 import { boardSet, lightUp, wholeLayout } from "../shared/board.ts";
+import { declAt, guessNames } from "../shared/declfind.ts";
 import type { ViewMeta } from "../shared/graph.ts";
 import { litKeyEdges } from "../shared/keys.ts";
 import { emptyReview } from "../shared/review.ts";
 import type { ReviewData } from "../shared/review.ts";
+import { SearchIndex } from "../shared/search.ts";
 import { Graph } from "../shared/viewgraph.ts";
 import { PROJECT } from "../shared/views.ts";
 import type { ViewData } from "../shared/views.ts";
@@ -89,12 +91,12 @@ export function facesOf(css: string): string {
   return out.join("");
 }
 
-/** The Project view as a site keeps it (its pins, folds, hidden levels and clustering), or as a new
- *  site has it. */
-export function projectView(views: { get(id: string): ViewData | undefined } | null): ViewData {
+/** The Project view as a site keeps it (its pins, folds, hidden levels and clustering: server/views.ts,
+ *  readProjectView), or as a new site has it. */
+export function projectView(kept: ViewData | null): ViewData {
   const empty = () => ({ namespace: [] as string[], module: [] as string[] });
   return (
-    views?.get(PROJECT) ?? {
+    kept ?? {
       id: PROJECT,
       name: null,
       scope: { op: "all" },
@@ -130,8 +132,14 @@ export function makeArtwork(prep: Prepared, review: ReviewData | null, project: 
   const problems: string[] = [];
   let sel: { name: string; mode: RecipeMode } | null = null;
   if (r.selection) {
-    if (!onGraph(r.selection.name)) problems.push(`no declaration ${r.selection.name} in the graph`);
-    else sel = { name: r.selection.name, mode: r.selection.mode ?? "tcb" };
+    // as the agents' API finds a declaration (shared/declfind.ts): a name it folds is the declaration
+    // it is folded into; none, what was likely meant
+    const i = declAt(g, r.selection.name);
+    if (i !== undefined) sel = { name: g.nodes[i].name, mode: r.selection.mode ?? "tcb" };
+    else {
+      const meant = guessNames(g, new SearchIndex(meta.nodes, meta.projectCount), r.selection.name.trim());
+      problems.push(`no declaration ${r.selection.name} in the graph${meant.length ? ` (did you mean ${meant[0]}?)` : ""}`);
+    }
   }
   const res = resolveRecipe(r, {
     clusters: L.clusters,
@@ -182,7 +190,8 @@ export function makeArtwork(prep: Prepared, review: ReviewData | null, project: 
   else C.setActivation(edgeMode(picks), sel ? [g.byName.get(sel.name)!] : [], lit?.set ?? null, [], keyEdges);
   // the frame, placed and fitted as the mode places and fits it (web/src/artframe.ts, place, open)
   const rect = frameRect(ask.screen, s);
-  const own = titleOf(meta.project.name, meta.projectCount, Object.keys(data.targets).length);
+  // the title's line counts the targets marked: the review's, or the recipe's where there is no site
+  const own = titleOf(meta.project.name, meta.projectCount, review ? Object.keys(data.targets).length : targets.length);
   const below = titleRoom(rect.h, s, own);
   const cam = C.fitCam({ x: rect.x, y: rect.y + below, w: rect.w, h: rect.h - below });
   if (cam) C.jumpTo(cam);
@@ -228,9 +237,9 @@ export function makeArtwork(prep: Prepared, review: ReviewData | null, project: 
 let wasmReady: Promise<void> | null = null;
 let ttfs: Uint8Array[] | null = null;
 
-/** An SVG drawn as a PNG at the size its root says, by resvg with the package's TrueType faces and
- *  none of the system's (decision 21: the PNG agrees with the SVG, and is the same on every machine). */
-export async function pngOf(svg: string): Promise<Uint8Array> {
+/** resvg's WebAssembly build, ready, with the package's TrueType faces and none of the system's
+ *  (decision 21: the PNG agrees with the SVG, and is the same on every machine) */
+async function renderer() {
   const { initWasm, Resvg } = await import("@resvg/resvg-wasm");
   wasmReady ??= initWasm(readFileSync(createRequire(import.meta.url).resolve("@resvg/resvg-wasm/index_bg.wasm")));
   await wasmReady;
@@ -238,10 +247,110 @@ export async function pngOf(svg: string): Promise<Uint8Array> {
     .filter((f) => f.endsWith(".ttf"))
     .sort()
     .map((f) => new Uint8Array(readFileSync(join(TTF, f))));
-  const r = new Resvg(svg, { font: { fontBuffers: ttfs, loadSystemFonts: false, defaultFontFamily: "Source Sans 3" } });
-  const image = r.render();
-  const png = image.asPng();
-  image.free();
-  r.free();
-  return png;
+  const opts = { font: { fontBuffers: ttfs, loadSystemFonts: false, defaultFontFamily: "Source Sans 3" } };
+  return (svg: string) => new Resvg(svg, opts);
+}
+
+/** The most pixels a PNG is drawn in at once. resvg holds a picture four times over and more (its
+ *  clipped groups' layers and their masks: 17 bytes a pixel) in WebAssembly's memory, which is at
+ *  most 4 GiB: a picture of 80 million pixels takes 1.9 GB, the largest (16384 × 16384) more than
+ *  there is. A larger one is drawn in bands of BAND_PIXELS (the largest: 2.0 GB). */
+export const PNG_PIXELS = 80_000_000;
+/** A band's pixels: resvg's layers reach up to twice the band's height beyond it, so that a band
+ *  costs 35 bytes a pixel, 0.7 GB, and the picture is drawn about three times as long. */
+const BAND_PIXELS = 20_000_000;
+
+/** An artwork's SVG (artSvg's: its root's viewBox the frame, its width and height the picture's) as
+ *  it draws rows `y0` to `y0 + rows` of the picture: its viewBox moved down, the background's
+ *  rectangle (its `100%`, which a moved viewBox would not move) in the frame's units, and the frame's
+ *  clip left out, as the band is within the frame. The border's clip is kept, and given a rectangle
+ *  as large as the frame that draws nothing: resvg 2.6 fails (WebAssembly's `unreachable`) on a
+ *  clipped group whose contents lie more than twice the band's height away from it. */
+export function bandSvg(svg: string, y0: number, rows: number): string {
+  const root = /^<svg ([^>]*?)viewBox="0 0 ([\d.]+) ([\d.]+)" width="(\d+)" height="(\d+)"/.exec(svg);
+  const board = /<g clip-path="url\(#frame\)"><g transform="translate\(([-\d.]+) ([-\d.]+)\)">/.exec(svg);
+  if (!root || !board) throw new Error("not an artwork's SVG");
+  const [W, H, PH] = [Number(root[2]), Number(root[3]), Number(root[5])];
+  const f = H / PH;
+  return svg
+    .replace(root[0], `<svg ${root[1]}viewBox="0 ${y0 * f} ${W} ${rows * f}" width="${root[4]}" height="${rows}"`)
+    .replace(`<rect width="100%" height="100%"`, `<rect width="${W}" height="${H}"`)
+    .replace(board[0], `<g><g transform="translate(${board[1]} ${board[2]})">`)
+    .replace(`<g clip-path="url(#inside)">`, `<g clip-path="url(#inside)"><rect x="${-Number(board[1])}" y="${-Number(board[2])}" width="${W}" height="${H}" fill="#000" fill-opacity="0"/>`);
+}
+
+/** An SVG drawn as a PNG at the size its root says, by resvg. A picture of more than `most` pixels
+ *  is drawn in bands of about `band` pixels (bandSvg) and written as one PNG, row by row: the same
+ *  picture, its pixels a few levels apart where translucent shapes overlap (resvg's layers round
+ *  otherwise than one drawing). */
+export async function pngOf(svg: string, most = PNG_PIXELS, band = BAND_PIXELS): Promise<Uint8Array> {
+  const render = await renderer();
+  const m = /^<svg [^>]*?width="(\d+)" height="(\d+)"/.exec(svg);
+  const [w, h] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
+  const failed = (e: unknown) => new Error(`the PNG${m ? `, ${w} × ${h},` : ""} could not be drawn (${e instanceof Error ? e.message : String(e)})`);
+  if (!m || w * h <= most) {
+    const r = render(svg);
+    let png: Uint8Array;
+    try {
+      const image = r.render();
+      png = image.asPng();
+      image.free();
+    } catch (e) {
+      // resvg is not called again once it has failed: the command ends
+      throw failed(e);
+    }
+    r.free();
+    return png;
+  }
+  // the rows, each its filter byte (none) and its pixels, demultiplied as resvg's own PNG has them
+  // (tiny-skia's `demultiply`)
+  const deflate = createDeflate({ level: 6 });
+  const out: Buffer[] = [];
+  deflate.on("data", (b: Buffer) => out.push(b));
+  const done = new Promise<void>((ok, fail) => {
+    deflate.on("end", ok);
+    deflate.on("error", fail);
+  });
+  // bands of even heights, so that none is a sliver
+  const count = Math.ceil(h / Math.max(1, Math.floor(band / w)));
+  const rows = Math.ceil(h / count);
+  for (let y = 0; y < h; y += rows) {
+    const n = Math.min(rows, h - y);
+    const r = render(bandSvg(svg, y, n));
+    let px: Uint8Array;
+    try {
+      const image = r.render();
+      px = image.pixels;
+      image.free();
+    } catch (e) {
+      throw failed(e);
+    }
+    r.free();
+    const lines = Buffer.alloc(n * (w * 4 + 1));
+    for (let row = 0; row < n; row++) {
+      const o = row * (w * 4 + 1) + 1, from = row * w * 4;
+      for (let x = 0; x < w * 4; x += 4) {
+        const a = px[from + x + 3];
+        lines[o + x + 3] = a;
+        if (a === 255) for (let c = 0; c < 3; c++) lines[o + x + c] = px[from + x + c];
+        else if (a > 0) for (let c = 0; c < 3; c++) lines[o + x + c] = Math.min(255, Math.floor(px[from + x + c] / (a / 255) + 0.5));
+      }
+    }
+    if (!deflate.write(lines)) await new Promise((ok) => deflate.once("drain", ok));
+  }
+  deflate.end();
+  await done;
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(8);
+    head.writeUInt32BE(data.length, 0);
+    head.write(type, 4, "latin1");
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0);
+    return Buffer.concat([head, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  return new Uint8Array(Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", Buffer.concat(out)), chunk("IEND", Buffer.alloc(0))]));
 }

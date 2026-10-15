@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { gzipSync } from "node:zlib";
+import { gzipSync, inflateSync } from "node:zlib";
 import { makeArtwork, pngOf, projectView } from "../src/server/artcmd.ts";
 import type { Prepared } from "../src/server/pipeline.ts";
 import type { ClusterMode, Layout, RawGraph, ViewMeta, ViewNode } from "../src/shared/graph.ts";
@@ -65,6 +65,27 @@ test("a renderer given no canvas keeps its layers' instances, which an artwork r
   assert.deepEqual([...drawn[0].data.subarray(0, 4)], [1, 2, 3, 0]);
 });
 
+/** An 8-bit RGBA PNG's pixels, row after row, its filters undone. */
+function pixelsOf(png: Uint8Array): Buffer {
+  const b = Buffer.from(png);
+  const w = b.readUInt32BE(16), h = b.readUInt32BE(20);
+  assert.deepEqual([...b.subarray(24, 29)], [8, 6, 0, 0, 0], "8-bit RGBA, not interlaced");
+  const idat: Buffer[] = [];
+  for (let at = 8; at < b.length; at += 12 + b.readUInt32BE(at)) if (b.toString("latin1", at + 4, at + 8) === "IDAT") idat.push(b.subarray(at + 8, at + 8 + b.readUInt32BE(at)));
+  const raw = inflateSync(Buffer.concat(idat));
+  const line = 4 * w, out = Buffer.alloc(line * h);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (line + 1)], from = y * (line + 1) + 1, to = y * line;
+    for (let x = 0; x < line; x++) {
+      const l = x >= 4 ? out[to + x - 4] : 0, u = y ? out[to - line + x] : 0, ul = x >= 4 && y ? out[to - line + x - 4] : 0;
+      const p = l + u - ul, pl = Math.abs(p - l), pu = Math.abs(p - u), pul = Math.abs(p - ul);
+      const pred = [0, l, u, (l + u) >> 1, pl <= pu && pl <= pul ? l : pu <= pul ? u : ul][f];
+      out[to + x] = (raw[from + x] + pred) & 255;
+    }
+  }
+  return out;
+}
+
 /** A small project's build as the pipeline prepares it: N.a, N.b using it, N.t (a theorem) using
  *  N.b, all in namespace N, and Nat outside. */
 function prepared(dir: string): Prepared {
@@ -111,6 +132,25 @@ test("the board drawn without a browser: its circles, points and edges as vector
     const png = await pngOf(a.svg);
     assert.deepEqual([...png.subarray(1, 4)], [0x50, 0x4e, 0x47]);
     assert.deepEqual([Buffer.from(png).readUInt32BE(16), Buffer.from(png).readUInt32BE(20)], [400, 300]);
+    // a picture of more pixels than drawn at once, drawn in bands of rows (here 43 of 7, which resvg
+    // alone fails on): the same picture, its pixels a few levels apart where its layers round; on a
+    // ground or on none
+    const clear = makeArtwork(prepared(dir), null, projectView(null), { ...ask, recipe: { ...RECIPE, transparent: true } });
+    assert.ok("svg" in clear);
+    for (const svg of [a.svg, clear.svg]) {
+      const [one, banded] = [await pngOf(svg), await pngOf(svg, 400 * 7, 400 * 7)];
+      assert.ok(!Buffer.from(banded).equals(Buffer.from(one)), "written by the command, not by resvg");
+      // compared as they are drawn, their colours by their alpha (a colour all but transparent is any)
+      const [whole, bands] = [pixelsOf(one), pixelsOf(banded)];
+      let apart = 0, most = 0;
+      for (let i = 0; i < whole.length; i++) {
+        const k = i - (i % 4) + 3;
+        const d = i === k ? Math.abs(whole[i] - bands[i]) : Math.round(Math.abs(whole[i] * whole[k] - bands[i] * bands[k]) / 255);
+        if (d) apart++;
+        most = Math.max(most, d);
+      }
+      assert.ok(apart < whole.length / 50 && most <= 16, `${apart} of ${whole.length} bytes apart, by ${most} at most`);
+    }
     // what the recipe names that the board has not
     const bad = makeArtwork(prepared(dir), null, projectView(null), { ...ask, recipe: { selection: { name: "N.gone" } } });
     assert.deepEqual(bad.problems, ["no declaration N.gone in the graph"]);
@@ -121,51 +161,114 @@ test("the board drawn without a browser: its circles, points and edges as vector
   }
 });
 
+/** The small project as the command is given it — its folder, its graph saved by an extraction —
+ *  in `dir`, and a run of the command on it with a recipe: `recipe.json`, a file the run writes. */
+function cliProject(dir: string) {
+  const project = join(dir, "proj");
+  mkdirSync(project);
+  writeFileSync(join(project, "lean-toolchain"), "leanprover/lean4:v4.33.1\n");
+  writeFileSync(join(project, "M.lean"), "namespace N\ndef a : Nat := 0\ndef b : Nat := a\ntheorem t : b = b := rfl\nend N\n");
+  const raw: RawGraph = {
+    schema: 1,
+    roots: ["M"],
+    modules: [{ name: "M", imports: [] }],
+    nodes: [
+      { name: "N.a", kind: "def", module: "M", type: "Nat", ax: 0, hash: "ha" },
+      { name: "N.b", kind: "def", module: "M", type: "Nat", ax: 0, hash: "hb" },
+      { name: "N.t", kind: "theorem", module: "M", type: "N.b = N.b", ax: 0, hash: "ht" },
+    ],
+    externals: [{ name: "Nat", kind: "inductive", module: "Init.Prelude", ax: 0 }],
+    edges: [[1, 0, SITE_STMT], [2, 1, SITE_STMT], [0, 3, SITE_STMT]],
+    axioms: [],
+    axiomSets: [[]],
+    stats: { folded: 0, metaDropped: 0, ms: 1 },
+  };
+  writeFileSync(join(dir, "graph.json"), JSON.stringify(raw));
+  const home = join(dir, "home");
+  const run = (recipe: unknown, out: string, more: string[] = []) => {
+    writeFileSync(join(dir, "recipe.json"), JSON.stringify(recipe));
+    return spawnSync(process.execPath, [join(ROOT, "src", "server", "main.ts"), "artwork", project, "--root", "M", "--graph", join(dir, "graph.json"), "--recipe", join(dir, "recipe.json"), "-o", join(dir, out), "--cache", join(dir, "cache"), "--screen", "1280x800", ...more], {
+      encoding: "utf8",
+      env: { ...process.env, XDG_DATA_HOME: home, XDG_CACHE_HOME: join(dir, "cachehome") },
+    });
+  };
+  return { home, run };
+}
+
+/** Every file under `dir` and its bytes, by path. */
+function filesOf(dir: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of readdirSync(dir, { recursive: true, withFileTypes: true }))
+    if (f.isFile()) out.set(join(f.parentPath, f.name), readFileSync(join(f.parentPath, f.name)).toString("base64"));
+  return out;
+}
+
 test("visualproof artwork: a saved graph and a recipe to an SVG and a PNG, the same bytes twice; no site read or made; problems said, status 1", () => {
   const dir = mkdtempSync(join(tmpdir(), "vp-artcmd-cli-"));
   try {
-    const project = join(dir, "proj");
-    mkdirSync(project);
-    writeFileSync(join(project, "lean-toolchain"), "leanprover/lean4:v4.33.1\n");
-    writeFileSync(join(project, "M.lean"), "namespace N\ndef a : Nat := 0\ndef b : Nat := a\ntheorem t : b = b := rfl\nend N\n");
-    const raw: RawGraph = {
-      schema: 1,
-      roots: ["M"],
-      modules: [{ name: "M", imports: [] }],
-      nodes: [
-        { name: "N.a", kind: "def", module: "M", type: "Nat", ax: 0, hash: "ha" },
-        { name: "N.b", kind: "def", module: "M", type: "Nat", ax: 0, hash: "hb" },
-        { name: "N.t", kind: "theorem", module: "M", type: "N.b = N.b", ax: 0, hash: "ht" },
-      ],
-      externals: [{ name: "Nat", kind: "inductive", module: "Init.Prelude", ax: 0 }],
-      edges: [[1, 0, SITE_STMT], [2, 1, SITE_STMT], [0, 3, SITE_STMT]],
-      axioms: [],
-      axiomSets: [[]],
-      stats: { folded: 0, metaDropped: 0, ms: 1 },
-    };
-    writeFileSync(join(dir, "graph.json"), JSON.stringify(raw));
-    writeFileSync(join(dir, "recipe.json"), JSON.stringify(RECIPE));
-    writeFileSync(join(dir, "bad.json"), JSON.stringify({ ...RECIPE, selection: { name: "N.gone" } }));
-    const home = join(dir, "home");
-    const run = (recipe: string, out: string) =>
-      spawnSync(process.execPath, [join(ROOT, "src", "server", "main.ts"), "artwork", project, "--root", "M", "--graph", join(dir, "graph.json"), "--recipe", join(dir, recipe), "-o", join(dir, out), "--cache", join(dir, "cache"), "--screen", "1280x800"], {
-        encoding: "utf8",
-        env: { ...process.env, XDG_DATA_HOME: home, XDG_CACHE_HOME: join(dir, "cachehome") },
-      });
-    const one = run("recipe.json", "One");
+    const { home, run } = cliProject(dir);
+    const one = run(RECIPE, "One");
     assert.equal(one.status, 0, one.stderr);
     assert.match(one.stdout, /names written: .*N\.t/);
     assert.match(one.stdout, /selection: tcb of N\.t/);
     assert.match(one.stdout, /wrote .*One\.svg/);
     assert.match(one.stdout, /wrote .*One\.png \([\d.]+ MB, 400 × 300\)/);
-    const two = run("recipe.json", "Two.png");
+    const two = run(RECIPE, "Two.png");
     assert.equal(two.status, 0, two.stderr);
     for (const ext of ["svg", "png"]) assert.ok(readFileSync(join(dir, `One.${ext}`)).equals(readFileSync(join(dir, `Two.${ext}`))), `the same ${ext}`);
     assert.ok(!existsSync(home) || readdirSync(home).length === 0, "no site made where none was given");
-    const bad = run("bad.json", "Bad");
+    // nothing kept in the cache that a server would take for its site's view
+    assert.ok(!existsSync(join(dir, "cache", "view")), "no view written to the cache");
+    const bad = run({ ...RECIPE, selection: { name: "N.gone" } }, "Bad");
     assert.equal(bad.status, 1);
     assert.match(bad.stderr, /visualproof artwork: no declaration N\.gone in the graph/);
     assert.ok(!existsSync(join(dir, "Bad.svg")));
+    // a name its graph folds is the declaration it is folded into; a name in another case, guessed
+    const folded = run({ ...RECIPE, selection: { name: "N.t.eq_1" } }, "Folded");
+    assert.equal(folded.status, 0, folded.stderr);
+    assert.match(folded.stdout, /selection: tcb of N\.t\n/);
+    const cased = run({ ...RECIPE, selection: { name: "N.T" } }, "Cased");
+    assert.equal(cased.status, 1);
+    assert.match(cased.stderr, /no declaration N\.T in the graph \(did you mean N\.t\?\)/);
+    // a folder that is not there, said before anything is drawn; whatever fails, status 1
+    const nowhere = run(RECIPE, join("nowhere", "Pic"));
+    assert.equal(nowhere.status, 1);
+    assert.match(nowhere.stderr, /there is no folder .*nowhere to write the files in/);
+    const broken = spawnSync(process.execPath, [join(ROOT, "src", "server", "main.ts"), "artwork", join(dir, "proj"), "--root", "M", "--graph", join(dir, "nograph.json"), "--recipe", join(dir, "recipe.json"), "-o", join(dir, "X"), "--cache", join(dir, "cache")], { encoding: "utf8", env: { ...process.env, XDG_DATA_HOME: home } });
+    assert.equal(broken.status, 1, broken.stdout + broken.stderr);
+    assert.match(broken.stderr, /^visualproof artwork: /m);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("visualproof artwork with a site: its folds read and drawn under a selection; nothing in the site written, nor a view in the cache; views it cannot read said, and left as they are", () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-artcmd-site-"));
+  try {
+    const { run } = cliProject(dir);
+    const site = join(dir, "site");
+    mkdirSync(site);
+    // the Project view folding N, the cluster of every declaration; a selection lights one of them
+    const view = { id: "project", name: null, scope: { op: "all" }, clustering: "namespace", pins: { namespace: { clusters: {}, nodes: {} }, module: { clusters: {}, nodes: {} } }, folds: { namespace: ["N"], module: [] }, hidden: { namespace: [], module: [] }, by: null, at: new Date(0).toISOString(), kept: true };
+    writeFileSync(join(site, "views.json"), JSON.stringify({ layoutVersion: LAYOUT_VERSION, views: [view] }));
+    const before = filesOf(site);
+    const lit = run({ ...RECIPE, targets: "all" }, "Folded", ["--site", site]);
+    assert.equal(lit.status, 0, lit.stderr);
+    assert.match(lit.stdout, /selection: tcb of N\.t/);
+    assert.ok(readFileSync(join(dir, "Folded.png")).length > 0);
+    const unfolded = run({ ...RECIPE, targets: "all" }, "Unfolded");
+    assert.equal(unfolded.status, 0, unfolded.stderr);
+    assert.notEqual(readFileSync(join(dir, "Folded.svg"), "utf8"), readFileSync(join(dir, "Unfolded.svg"), "utf8"), "the fold drawn");
+    assert.deepEqual(filesOf(site), before, "the site as it was");
+    assert.ok(!existsSync(join(dir, "cache", "view")), "no view written to the cache");
+    // views that cannot be read: said, the Project view as a new site has it, the file left in place
+    writeFileSync(join(site, "views.json"), "{ not json");
+    const broken = filesOf(site);
+    const anyway = run({ ...RECIPE, targets: "all" }, "Anyway", ["--site", site]);
+    assert.equal(anyway.status, 0, anyway.stderr);
+    assert.match(anyway.stderr, /the site's views cannot be read .*: the Project view as a new site has it/);
+    assert.deepEqual(filesOf(site), broken, "the unreadable views left as they are");
+    assert.equal(readFileSync(join(dir, "Anyway.svg"), "utf8"), readFileSync(join(dir, "Unfolded.svg"), "utf8"), "drawn as with no site");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
