@@ -358,7 +358,37 @@ Numbers missing below are withdrawn decisions.
     - **A batch**: `scripts/artwork-batch.mjs` (a tool of the repository, not of the package) takes
       a list of servers, keys, recipes and names, and saves each picture with a headless browser.
     - **An installed command** (`visualproof artwork`), making a picture without a full browser, is
-      wanted (the owner's decision of 2026-10-15); its design is pending.
+      wanted (the owner's decision of 2026-10-15): decision 21.
+21. **The artwork command** (the owner's decisions of 2026-10-15: an installed command for those who
+    only want the pictures, without a browser; the PNG as the page's PNG looks; the design below
+    approved as drafted that evening).
+    - **What**: `visualproof artwork <lean-project> --recipe <file> [-o <name>] [--png] [--svg]
+      [--site <dir>] [--cache <dir>] [--jobs <n>] [--screen <w>x<h>]`, both files where neither is
+      named. The recipe is decision 20's, resolved as the page resolves it; `-o` names the files,
+      else the recipe's title, else the project, made safe as the page's files are (`artName`).
+    - **The build as `visualproof export` reads it**: never built, nothing written into the project;
+      the cache as the server's (`--cache`). With `--site`, what the site keeps: the layouts' memory
+      (the board as its readers see it), the review's targets (a recipe's `targets: "all"`), the
+      views and their notes; without it, the board as a new site would lay it out, and the targets the
+      recipe names.
+    - **The same picture as the page**: the board's own drawing code (web/src/canvas.ts) runs without
+      a browser — the renderer kept to its data (what the SVG reads already, `artShapes`), the names
+      measured from the fonts the package ships — on a screen of `--screen` (1920 × 1200 by default,
+      the batch's), so that names are as large in the picture as a reader's would be. The SVG is
+      written as the page writes it; the PNG is that SVG drawn by resvg (its WebAssembly build, no
+      native code, MPL-2.0) with the same fonts, so that the two agree; the page's own Save PNG stays
+      its renderer's, whose look the SVG matches (2026-10-15).
+    - **Fonts**: beside the page's WOFF2, each face the picture uses as a TTF (Source Sans 3, Source
+      Serif 4, Jost, at the weights the picture draws), and their advance widths precomputed into a
+      small table (`assets/webfonts/metrics.json`, made by a script in `scripts/`), so that measuring
+      needs no font library when the command runs.
+    - **Deterministic**: the same build, site and recipe make the same bytes (no clock, no random
+      draw; the starfield's dust is seeded already).
+    - **What it says**: as the API's answer (decision 20) — the names written, those a rule skipped,
+      the targets, the selection — then the files and their sizes; problems (an unknown name, no
+      build) as the API refuses them, exit status 1.
+    - **Not in the first version**: a note's image or PDF page (their glyphs are drawn, as the SVG
+      draws them).
 
 ## Implementation notes
 
