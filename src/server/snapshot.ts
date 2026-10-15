@@ -19,6 +19,14 @@ function scriptSafe(s: string): string {
   return s.replace(/<\/script/gi, "<\\/script");
 }
 
+/** A snapshot's graph: the view's, with the project's git source and commit as the snapshot is
+ *  taken, since a snapshot has no server to ask (GET /api/git); as it was where the project is no
+ *  git repository. */
+export function withGit(root: string, meta: ViewMeta, metaGz: Buffer): Buffer {
+  const git = gitSource(root);
+  return git ? gzipSync(JSON.stringify({ ...meta, project: { ...meta.project, git } })) : metaGz;
+}
+
 export function writeSnapshot(project: Project, prep: Prepared, out: string, label: string, review: ReviewData, views: ViewBook): number {
   const meta: ViewMeta = JSON.parse(gunzipSync(prep.metaGz).toString("utf8"));
   // the sources a card can show: every project module's file, with the usage pass's contexts where
@@ -36,9 +44,7 @@ export function writeSnapshot(project: Project, prep: Prepared, out: string, lab
     }
   }
   const b64 = (buf: Buffer) => buf.toString("base64");
-  // the git source and commit as the snapshot is taken: a snapshot has no server to ask (GET /api/git)
-  const git = gitSource(project.root);
-  const metaGz = git ? gzipSync(JSON.stringify({ ...meta, project: { ...meta.project, git } })) : prep.metaGz;
+  const metaGz = withGit(project.root, meta, prep.metaGz);
   // the artwork's fonts within the page, which has no server to ask for them
   const css = readFileSync(join(WEB, "style.css"), "utf8").replace(/url\("\/fonts\/([a-z0-9-]+\.woff2)"\)/g, (_, f: string) => `url("data:font/woff2;base64,${b64(readFileSync(join(WEBFONTS, f)))}")`);
   const js = readFileSync(join(bundleDir(), "app.js"), "utf8").replace(/\n\/\/# sourceMappingURL=.*$/m, "");

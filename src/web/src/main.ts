@@ -1039,9 +1039,12 @@ async function boot(): Promise<void> {
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
   /** the artwork's settings the board is drawn with: null where its mode is off */
   let artLook: ArtSettings | null = null;
-  /** the project's git source and commit as git says them, asked whenever the artwork comes (its
-   *  foot; GET /api/git): a commit made after the build is told */
+  /** the project's git source and commit as git says them, asked when the page opens and again
+   *  whenever the artwork comes (its foot; GET /api/git): a commit made after the build is told */
   let gitNow: GitSource | null = null;
+  void data.git().then((git) => {
+    gitNow ??= git;
+  });
   const art = new ArtFrame($("#art"), $("#art-panel"), $("#art-sky") as HTMLCanvasElement, canvas, {
     title: () => views.title(nav.board.id),
     saved: () => S.artwork as Partial<ArtSettings> | undefined,

@@ -211,7 +211,8 @@ export interface ArtworkLook {
   keys: boolean;
   /** the selection and what is lit drawn as the reader sees them */
   selection: boolean;
-  /** the project's git source and the commit it was read from, at the bottom right */
+  /** the project's git source and the commit checked out when the mode came (on a past build's
+   *  board, that build's), at the bottom right */
   source: boolean;
   /** how it is drawn (the owner's decisions of 2026-10-15): as the board; as cells, each namespace a
    *  glowing territory on a dark ground; as a starfield, each declaration a star and each cluster a
