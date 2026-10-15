@@ -584,7 +584,11 @@ Numbers missing below are withdrawn decisions.
   outside the frame clipped away. What the renderer draws is read from its layers (renderer `drawn`,
   canvas `artShapes`), each instance that reaches the frame a shape: a circle or point with its ring
   (dashed where the renderer dashes it), a segment, a bundled edge as the shader's spline
-  (`bundlePoints`, 48 pieces) with a gradient from its end that uses to its end used. What the board
+  (`bundlePoints`, 48 steps) coloured along its own path as the shader mixes it, from its end that
+  uses to its end used: in up to 12 pieces, each of the colour at its middle, the more the farther
+  apart its two colours (one path where they are one). A gradient of SVG runs straight between two
+  points and left most of a bent edge one end's colour, the picture brighter than the PNG; the owner
+  prefers the PNG's look (2026-10-15). What the board
   writes over it — names, stars, keys, rings, the key graph's edges — is recorded as it is written
   (`SvgContext`, a 2D context's methods writing SVG; canvas `drawMarks`); then the notes, their
   glyphs as SVG. Named after the view's title, stripped of what Windows refuses (`artName`).
