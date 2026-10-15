@@ -5,6 +5,13 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.3.0
+
+- Add the `visualproof artwork` command: make an artwork's PNG and SVG from a recipe, without a browser.
+- Add artwork recipes for agents and a batch export script.
+- Add recording an opinion for another reviewer at the same screen (**Speaking for**).
+- Refine artwork export.
+
 ## 0.2.0
 
 - Add artwork export mode. 

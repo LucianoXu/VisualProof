@@ -7,22 +7,20 @@
   <a href="https://github.com/openai/NavierStokesAndEuler"><img src="docs/images/artwork-navier-stokes.webp" width="19%" alt="Navier–Stokes"></a>
   <a href="https://github.com/cedar-policy/cedar-spec"><img src="docs/images/artwork-cedar.webp" width="19%" alt="Cedar"></a>
 </p>
-<p align="center"><sub>Five Lean codebases, drawn by <code>visualproof artwork</code>: each theorem's TCB lit, its edges from what uses (orange) to what is used (blue).</sub></p>
+<p align="center"><sub>Five Lean codebases, drawn by <code>visualproof artwork</code>.</sub></p>
 
 ## Try it
 
+Prompt to your coding agent in your Lean codebase:
+```text
+Set up VisualProof (https://github.com/LucianoXu/VisualProof) for this Lean project, and give me the address to open.
+```
+
+Set up manually:
 ```bash
 npm install --global visualproof
 cd my-lean-project && lake build
 visualproof serve .
-```
-
-Or tell your coding agent:
-
-```text
-Set up VisualProof (https://github.com/LucianoXu/VisualProof) for this Lean project: install it
-with `npm install --global visualproof`, build the project, run `visualproof doctor .` and fix what
-it reports, then start `visualproof serve .` and give me the address to open.
 ```
 
 It needs Node, elan and Poppler ([Requirements](#requirements)).
@@ -37,7 +35,7 @@ keep a record of the review.
 ![VisualProof on flt-regular: the TCB of flt_regular — IsRegularPrime, IsRegularNumber and the Mathlib definitions they use — with the theorem's review panel](docs/images/board.webp)
 
 On [flt-regular](https://github.com/leanprover-community/flt-regular), Fermat's Last Theorem for
-regular primes: choose *Rests on* (`2`), find `flt_regular` (`/`), and click it. Of the project's
+regular primes. Of the project's
 297 declarations, two light up besides the theorem, `IsRegularPrime` and `IsRegularNumber`: with
 the Mathlib definitions they use, they are what you need to read to believe what it says.
 
