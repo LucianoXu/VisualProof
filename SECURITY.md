@@ -26,12 +26,14 @@ into the latest release only.
   library's files — and nothing else. The server refuses every other request from them (403)
   whatever the page sends, never lets them reach the agents' API, and bounds what they cost:
   Lean's answers at 60 a minute per address and 300 in all (429 beyond), kept per build; one
-  printed document typeset at a time for all of them; 400 event streams of their own. A link lasts
+  printed document typeset at a time for all of them; 400 event streams of their own; git, for the
+  project's commit, run at most once every 3 seconds whoever asks. A link lasts
   until revoked, which ends its pages at once. With `--public` the address alone makes a read-only
   reader of whoever comes without the key or a link: it puts the whole project, its review and its
   library online, so give it only to a project meant to be public.
 - **The project's git remote.** Where the project is a git repository, the page is told its remote's
-  address and the commit it was read from (an artwork's foot shows them): the host and path alone,
+  address and the commit checked out, read when a page asks (`GET /api/git`; an artwork's foot shows
+  them): the host and path alone,
   never a user name, password or token written into the remote's URL, and nothing for a remote that
   is a path on the machine. Git is only asked, never written to.
 - **Plain HTTP.** The server speaks HTTP only: the key and the cookies cross the network in the

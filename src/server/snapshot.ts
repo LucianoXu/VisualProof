@@ -11,11 +11,20 @@ import { WEB, WEBFONTS, bundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
 import type { ViewBook } from "../shared/views.ts";
 import type { Project } from "./project.ts";
+import { gitSource } from "./history.ts";
 import { lakeTextHash } from "./status.ts";
 
 /** Text that sits inside a <script> element must not close it. */
 function scriptSafe(s: string): string {
   return s.replace(/<\/script/gi, "<\\/script");
+}
+
+/** A snapshot's graph: the view's, with the project's git source and commit as the snapshot is
+ *  taken, since a snapshot has no server to ask (GET /api/git); as it was where the project is no
+ *  git repository. */
+export function withGit(root: string, meta: ViewMeta, metaGz: Buffer): Buffer {
+  const git = gitSource(root);
+  return git ? gzipSync(JSON.stringify({ ...meta, project: { ...meta.project, git } })) : metaGz;
 }
 
 export function writeSnapshot(project: Project, prep: Prepared, out: string, label: string, review: ReviewData, views: ViewBook): number {
@@ -35,6 +44,7 @@ export function writeSnapshot(project: Project, prep: Prepared, out: string, lab
     }
   }
   const b64 = (buf: Buffer) => buf.toString("base64");
+  const metaGz = withGit(project.root, meta, prep.metaGz);
   // the artwork's fonts within the page, which has no server to ask for them
   const css = readFileSync(join(WEB, "style.css"), "utf8").replace(/url\("\/fonts\/([a-z0-9-]+\.woff2)"\)/g, (_, f: string) => `url("data:font/woff2;base64,${b64(readFileSync(join(WEBFONTS, f)))}")`);
   const js = readFileSync(join(bundleDir(), "app.js"), "utf8").replace(/\n\/\/# sourceMappingURL=.*$/m, "");
@@ -45,7 +55,7 @@ export function writeSnapshot(project: Project, prep: Prepared, out: string, lab
       `<script type="module" src="/app.js"></script>`,
       () =>
         `<script id="vp-static" type="application/json">${scriptSafe(JSON.stringify(info))}</script>\n` +
-        `<script id="vp-meta" type="application/octet-stream">${b64(prep.metaGz)}</script>\n` +
+        `<script id="vp-meta" type="application/octet-stream">${b64(metaGz)}</script>\n` +
         `<script id="vp-edges" type="application/octet-stream">${b64(prep.edgesGz)}</script>\n` +
         `<script id="vp-sources" type="application/octet-stream">${b64(gzipSync(JSON.stringify(sources)))}</script>\n` +
         // the review as it stood: shown, not changed (ReviewSpec decision 7)

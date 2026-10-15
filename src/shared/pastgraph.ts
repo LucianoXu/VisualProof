@@ -84,11 +84,11 @@ export interface PastGraph {
   kept: ReadonlyMap<string, "lake" | "places">;
 }
 
-/** The git source of a past build: the project's source, the build's own commit; none where the
- *  build's commit is not known, or only guessed. */
-function gitThen(now: GitSource | undefined, commit: Snapshot["commit"]): { git?: GitSource } {
+/** The git commit of a past build; none where it is not known, or only guessed. Its source is the
+ *  project's, which the page has now (web/src/main.ts, GET /api/git). */
+function gitThen(commit: Snapshot["commit"]): { git?: GitSource } {
   if (!commit || commit.guessed) return { git: undefined };
-  return { git: { source: now?.source ?? null, commit: commit.hash, branch: commit.branch, ...(commit.dirty ? { dirty: true as const } : {}) } };
+  return { git: { source: null, commit: commit.hash, branch: commit.branch, ...(commit.dirty ? { dirty: true as const } : {}) } };
 }
 
 /** The past graph of snapshot `snap` (its declarations and its edges, as /graph's parts give them),
@@ -103,8 +103,8 @@ export function pastGraph(snap: SnapshotNodes, edges: Int32Array, now: Graph, di
   const meta: ViewMeta = {
     schema: 1,
     layoutVersion: now.meta.layoutVersion,
-    // the commit of that build, where it is known; the source is the project's now
-    project: { ...now.meta.project, extractedAt: snap.snapshot.at, ...gitThen(now.meta.project.git, snap.snapshot.commit) },
+    // the commit of that build, where it is known
+    project: { ...now.meta.project, extractedAt: snap.snapshot.at, ...gitThen(snap.snapshot.commit) },
     modules: snap.modules.map((m) => ({ name: m.name, file: null, imports: m.imports })),
     nodes,
     projectCount: P,

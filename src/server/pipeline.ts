@@ -51,8 +51,9 @@ export function bundleDir(): string {
  *  views from an older server are rebuilt rather than served. 7: a notation unit's statement is
  *  its command's text. 8: notation units carry their Lean constant, display form, what they
  *  interpret and their rules. 9: a node's hash is its version, beside the kernel's
- *  (server/versions.ts). 10: the project's git source and commit (server/history.ts, gitSource). */
-const VIEW_VERSION = 10;
+ *  (server/versions.ts). 10: the project's git source and commit (server/history.ts, gitSource). 11:
+ *  not them any more: they are asked when wanted (GET /api/git), not kept with the view. */
+const VIEW_VERSION = 11;
 
 export interface Prepared {
   fingerprint: string;

@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { get, request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gunzipSync } from "node:zlib";
@@ -432,5 +433,57 @@ test("export: people and agents typeset the document of a view and fetch it; an 
     assert.deepEqual([model.json?.head.title, model.json?.head.author], ["Project", "Alice"], "its head as computed");
   } finally {
     await S.close();
+  }
+});
+
+test("the project's git source and commit are read when asked, not kept with the graph: a commit made after the build is told", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const S = await site();
+  try {
+    const dir = S.live.project.root;
+    const git = (...a: string[]) => spawnSync("git", ["-C", dir, ...a], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "T", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "T", GIT_COMMITTER_EMAIL: "t@t" } });
+    assert.deepEqual((await S.ask("GET", "/api/git")).json, { git: null }, "no repository");
+    if (git("init", "-q", "-b", "main").status !== 0) return;
+    // a read is kept a moment, whoever asks: git runs at most once in it (CollabSpec decision 11)
+    git("add", "M.lean");
+    git("commit", "-q", "-m", "zero");
+    assert.deepEqual((await S.ask("GET", "/api/git")).json, { git: null }, "the read of a moment ago");
+    S.app.gitFreshMs = 0;
+    git("remote", "add", "origin", "git@github.com:A/B.git");
+    git("add", "M.lean");
+    git("commit", "-q", "-m", "one");
+    const one = git("rev-parse", "HEAD").stdout.trim();
+    assert.deepEqual((await S.ask("GET", "/api/git")).json, { git: { source: "github.com/A/B", commit: one, branch: "main" } });
+    // edited, then committed, the build on show the same all along
+    writeFileSync(join(dir, "M.lean"), SOURCE + "-- more\n");
+    assert.equal((await S.ask("GET", "/api/git")).json!.git.dirty, true, "a .lean file differs from the commit");
+    git("commit", "-q", "-am", "two");
+    const two = git("rev-parse", "HEAD").stdout.trim();
+    assert.deepEqual((await S.ask("GET", "/api/git")).json, { git: { source: "github.com/A/B", commit: two, branch: "main" } }, "the new commit, clean");
+  } finally {
+    await S.close();
+  }
+});
+
+test("a snapshot of the page carries the project's git source and commit as it is taken, having no server to ask", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { mkdtempSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { gzipSync } = await import("node:zlib");
+  const { withGit } = await import("../src/server/snapshot.ts");
+  const dir = mkdtempSync(join(tmpdir(), "vp-snapgit-"));
+  try {
+    const meta = { schema: 1, project: { name: "p", root: dir } } as never;
+    const gz = gzipSync(JSON.stringify(meta));
+    assert.equal(withGit(dir, meta, gz), gz, "no repository: the graph as it was");
+    const git = (...a: string[]) => spawnSync("git", ["-C", dir, ...a], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "T", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "T", GIT_COMMITTER_EMAIL: "t@t" } });
+    if (git("init", "-q", "-b", "main").status !== 0) return;
+    writeFileSync(join(dir, "A.lean"), "def a := 1\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "a");
+    const hash = git("rev-parse", "HEAD").stdout.trim();
+    assert.deepEqual(JSON.parse(gunzipSync(withGit(dir, meta, gz)).toString()).project.git, { source: null, commit: hash, branch: "main" });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
