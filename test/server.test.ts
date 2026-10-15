@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 import { get, request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gunzipSync } from "node:zlib";
@@ -430,6 +431,30 @@ test("export: people and agents typeset the document of a view and fetch it; an 
     const sections = (model.json?.items as Json[]).filter((x) => x.t === "section").map((x) => x.section);
     assert.deepEqual(sections.map((x: Json) => [x.title, x.items.map((e: Json) => e.decl.name).sort()]), [["N", ["N.a", "N.b"]]]);
     assert.deepEqual([model.json?.head.title, model.json?.head.author], ["Project", "Alice"], "its head as computed");
+  } finally {
+    await S.close();
+  }
+});
+
+test("the project's git source and commit are read when asked, not kept with the graph: a commit made after the build is told", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const S = await site();
+  try {
+    const dir = S.live.project.root;
+    const git = (...a: string[]) => spawnSync("git", ["-C", dir, ...a], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "T", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "T", GIT_COMMITTER_EMAIL: "t@t" } });
+    assert.deepEqual((await S.ask("GET", "/api/git")).json, { git: null }, "no repository");
+    if (git("init", "-q", "-b", "main").status !== 0) return;
+    git("remote", "add", "origin", "git@github.com:A/B.git");
+    git("add", "M.lean");
+    git("commit", "-q", "-m", "one");
+    const one = git("rev-parse", "HEAD").stdout.trim();
+    assert.deepEqual((await S.ask("GET", "/api/git")).json, { git: { source: "github.com/A/B", commit: one, branch: "main" } });
+    // edited, then committed, the build on show the same all along
+    writeFileSync(join(dir, "M.lean"), SOURCE + "-- more\n");
+    assert.equal((await S.ask("GET", "/api/git")).json!.git.dirty, true, "a .lean file differs from the commit");
+    git("commit", "-q", "-am", "two");
+    const two = git("rev-parse", "HEAD").stdout.trim();
+    assert.deepEqual((await S.ask("GET", "/api/git")).json, { git: { source: "github.com/A/B", commit: two, branch: "main" } }, "the new commit, clean");
   } finally {
     await S.close();
   }

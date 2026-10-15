@@ -3,6 +3,7 @@
 // visualproof export <path>  — the same page, frozen into one HTML file
 
 import { historyAnswer } from "./historyapi.ts";
+import { gitSource } from "./history.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
@@ -892,6 +893,9 @@ export class App {
         const a = this.agents.undo(me, agent, (r.body as { id?: unknown } | null)?.id);
         return sendJson(res, a.body, a.status);
       }
+      // the project's git source and commit as git says them now, not as the build was read (an
+      // artwork's foot, ExportSpec decision 19; the owner's decision of 2026-10-15)
+      if (path === "/api/git") return sendJson(res, { git: gitSource(live.project.root) });
       if (path === "/api/meta" || path === "/api/edges") {
         const g = live.graph;
         if (!g) return sendJson(res, { error: "not ready" }, 503);

@@ -78,7 +78,7 @@ test("a read-only reader reads what a guest reads, and is refused everything tha
     const { cookie } = await enter(S, link);
     const as = { cookie, "x-visualproof-name": "Mallory" };
     const before = JSON.stringify(S.live.review.whole());
-    for (const p of ["/api/status", "/api/meta", "/api/edges", "/api/review", "/api/activity", "/api/views", "/api/history", "/api/library", "/api/source?module=M"]) {
+    for (const p of ["/api/status", "/api/meta", "/api/edges", "/api/git", "/api/review", "/api/activity", "/api/views", "/api/history", "/api/library", "/api/source?module=M"]) {
       const r = await S.ask("GET", p, undefined, as);
       assert.ok(r.status === 200, `${p}: ${r.status}`);
     }
@@ -182,7 +182,7 @@ test("no read-only links where everyone is in already, or behind a sign-in", asy
 });
 
 test("what a read-only reader may ask, by method and path", () => {
-  for (const p of ["/", "/style.css", "/app.js", "/pdfjs/x", "/fonts/source-sans-3-latin-wght-normal.woff2", "/fonts/jost-latin-wght-normal.woff2", "/api/meta", "/api/views/view", "/api/history/graph", "/api/library/text", "/api/export/job", "/api/hover/describe", "/api/share", "/api/events"]) assert.ok(readOnlyAllows("GET", p), p);
+  for (const p of ["/", "/style.css", "/app.js", "/pdfjs/x", "/fonts/source-sans-3-latin-wght-normal.woff2", "/fonts/jost-latin-wght-normal.woff2", "/api/meta", "/api/git", "/api/views/view", "/api/history/graph", "/api/library/text", "/api/export/job", "/api/hover/describe", "/api/share", "/api/events"]) assert.ok(readOnlyAllows("GET", p), p);
   for (const p of ["/api/hover/open", "/api/hover/names", "/api/export"]) assert.ok(readOnlyAllows("POST", p), p);
   assert.ok(!readOnlyAllows("HEAD", "/api/events"));
   for (const p of ["/api/review", "/api/views/open", "/api/presence", "/api/identity", "/api/library/upload", "/api/share/readonly", "/api/agent/opinion"]) assert.ok(!readOnlyAllows("POST", p), p);

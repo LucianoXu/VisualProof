@@ -286,7 +286,9 @@ Implementation notes:
   the view. **What is drawn follows the zoom continuously**, never time: edges grow in and bundles
   dissolve in proportion to the zoom, reversibly. No edge only a proof or grammar holds is drawn
   there: proof edges, once asked for by a switch, are no more (the owner's decision of 2026-10-15).
-- **A selection**: the lit edges bundled on top, the rest faded. Under Keys (ViewSpec decision 20),
+- **A selection**: the lit edges bundled on top, the rest faded to 30% of their opacity, still seen
+  (overview `DIM`; on the board and in an artwork alike, the owner's decision of 2026-10-15; 12%
+  before). Under Keys (ViewSpec decision 20),
   the key graph's edges instead: dashed ("rests on, through non-key declarations") and slightly bowed.
 - Colour runs from the user (orange) to the used (blue), a key-graph edge from the end that rests on
   to the end rested on; in a selection, proof-only edges are fainter. The legend shows the gradient.

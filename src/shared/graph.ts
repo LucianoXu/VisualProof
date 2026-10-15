@@ -199,7 +199,10 @@ export interface ViewMeta {
     extractMs: number;
     /** where the project is a git repository (server/history.ts, gitSource): its source — the
      *  remote's host and path, no user name or password; null where it has none on the network — and
-     *  the commit it was read from. An artwork's foot says them (ExportSpec decision 19). */
+     *  the commit. An artwork's foot says them (ExportSpec decision 19). Not kept with the view, so
+     *  that a commit made after the build is told (the owner's decision of 2026-10-15): the server
+     *  gives them when asked (GET /api/git); a past build's graph has that build's commit
+     *  (shared/pastgraph.ts), a snapshot of the page the commit as it was taken. */
     git?: GitSource;
   };
   /** `compiled`: the Lake hash of the text the module's declarations were read from (its build's

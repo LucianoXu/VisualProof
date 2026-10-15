@@ -353,8 +353,9 @@ export class OverviewModel {
   }
 }
 
-/** How much a selection dims the overview, so that its own edges read. */
-export const DIM = 0.12;
+/** How much a selection dims the overview, so that its own edges read, the rest still seen faintly:
+ *  on the board and in an artwork alike (the owner's decision of 2026-10-15; 0.12 before). */
+export const DIM = 0.3;
 
 // ------------------------------------------------------------------ the worker's protocol
 

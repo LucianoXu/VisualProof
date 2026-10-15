@@ -12,7 +12,7 @@ export function readOnlyAllows(method: string, path: string): boolean {
     // the graph, its sources and Lean's answers, the review, what happened, the views, the history,
     // the library, the printed document's state and files, who the reader is and the link they
     // came by, and the event stream every change comes by
-    if (["/api/status", "/api/meta", "/api/edges", "/api/source", "/api/review", "/api/activity", "/api/identity", "/api/share"].includes(path)) return true;
+    if (["/api/status", "/api/meta", "/api/edges", "/api/git", "/api/source", "/api/review", "/api/activity", "/api/identity", "/api/share"].includes(path)) return true;
     // a stream is opened by GET alone: a HEAD would take one of their places for nothing
     if (path === "/api/events") return method === "GET";
     if (path === "/api/hover" || path === "/api/hover/describe" || path === "/api/hover/print") return true;

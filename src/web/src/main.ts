@@ -22,7 +22,7 @@
 import type { BuildStatus } from "../../shared/build.ts";
 import type { ChatMessage, Invited, PresenceView, PrivateCount } from "../../shared/collab.ts";
 import { artNameId } from "../../shared/collab.ts";
-import type { ClusterMode, Layout, ViewMeta } from "../../shared/graph.ts";
+import type { ClusterMode, GitSource, Layout, ViewMeta } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
@@ -1039,6 +1039,9 @@ async function boot(): Promise<void> {
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
   /** the artwork's settings the board is drawn with: null where its mode is off */
   let artLook: ArtSettings | null = null;
+  /** the project's git source and commit as git says them, asked whenever the artwork comes (its
+   *  foot; GET /api/git): a commit made after the build is told */
+  let gitNow: GitSource | null = null;
   const art = new ArtFrame($("#art"), $("#art-panel"), $("#art-sky") as HTMLCanvasElement, canvas, {
     title: () => views.title(nav.board.id),
     saved: () => S.artwork as Partial<ArtSettings> | undefined,
@@ -1048,13 +1051,21 @@ async function boot(): Promise<void> {
     },
     now: () => ({ scheme: canvas.scheme, theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
     look: (s) => {
+      const coming = !artLook && !!s;
       artLook = s && { ...s };
       drawLook();
+      if (coming)
+        void data.git().then((git) => {
+          gitNow = git;
+          art.refresh();
+        });
     },
     changed: () => people.report(),
     notes: () => stickies.asDrawn(),
+    // the commit checked out now; on a past build's board, that build's, with the project's source
     source: () => {
-      const git = vg().meta.project.git;
+      const then = vg().meta.project.git;
+      const git = pastShown() ? then && { ...then, source: then.source ?? gitNow?.source ?? null } : gitNow;
       return git ? sourceLine(git) : null;
     },
     // the targets a picture can mark: every one of the review's, by the name the board writes

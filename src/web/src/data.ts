@@ -4,7 +4,7 @@
 import type { Outline } from "../../shared/doc/outline.ts";
 import type { BoardMemory } from "../../shared/board.ts";
 import type { AgentTalk, AgentTokenInfo, ChatMessage, PersonInvite, PresenceView, ReadOnlyLink } from "../../shared/collab.ts";
-import type { ClusterMode, ViewMeta } from "../../shared/graph.ts";
+import type { ClusterMode, GitSource, ViewMeta } from "../../shared/graph.ts";
 import { CLUSTER_MODES } from "../../shared/places.ts";
 import { cleanQuery, printQuery } from "../../shared/query.ts";
 import { invalidViewOps, summary, ViewBook } from "../../shared/views.ts";
@@ -114,6 +114,9 @@ export interface DataSource {
   status(): Promise<Status>;
   /** `version`: the graph version the page was told about; an older one is refused */
   meta(version?: number): Promise<ViewMeta>;
+  /** the project's git source and commit as git says them now (an artwork's foot); a snapshot's, as
+   *  it was taken; null where it is no git repository, or they cannot be read */
+  git(): Promise<GitSource | null>;
   edges(version?: number): Promise<ArrayBuffer>;
   source(module: string): Promise<Source | null>;
   /** forget fetched sources: a new graph means the files may have changed */
@@ -403,6 +406,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     status: async () => ({ state: "ready", log: [] }),
     forget: () => {},
     meta: () => json<ViewMeta>("vp-meta"),
+    git: () => json<ViewMeta>("vp-meta").then((m) => m.project.git ?? null),
     edges: () => inflate("vp-edges"),
     // a snapshot shows the review as it was when taken
     review: () => json<ReviewData>("vp-review").then((data) => ({ epoch: "snapshot", rev: 0, data: reviewFromJson(data), problems: [], error: null })),
@@ -498,6 +502,11 @@ function serverSource(): DataSource {
     status: () => fetch("/api/status").then((r) => r.json()),
     forget: () => cache.clear(),
     meta: (v) => fetch(`/api/meta${v ? `?v=${v}` : ""}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`)))),
+    git: () =>
+      fetch("/api/git")
+        .then((r) => (r.ok ? (r.json() as Promise<{ git?: GitSource | null }>) : null))
+        .then((b) => b?.git ?? null)
+        .catch(() => null),
     // packed for the way (shared/edgecodec.ts): a quarter of the bytes
     edges: (v) =>
       fetch(`/api/edges?pack=2${v ? `&v=${v}` : ""}`)

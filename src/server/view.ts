@@ -3,10 +3,9 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ClusterMode, GitSource, Layout, RawGraph, ViewMeta, ViewNode } from "../shared/graph.ts";
+import type { ClusterMode, Layout, RawGraph, ViewMeta, ViewNode } from "../shared/graph.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import type { Extraction } from "./extract.ts";
-import { gitSource } from "./history.ts";
 import type { LayoutMemory } from "../shared/layout.ts";
 import { layOutHere, layOutOffThread } from "./layoutthread.ts";
 import type { Project } from "./project.ts";
@@ -93,12 +92,6 @@ function viewParts(p: Project, ex: Extraction): { nodes: ViewNode[]; edges: Int3
   return { nodes, edges };
 }
 
-/** The project's git source and commit as it is read, where it is a git repository. */
-function gitOf(root: string): { git?: GitSource } {
-  const git = gitSource(root);
-  return git ? { git } : {};
-}
-
 function assemble(p: Project, ex: Extraction, nodes: ViewNode[], edges: Int32Array, layouts: Record<ClusterMode, Layout>): View {
   const g: RawGraph = ex.graph;
   const meta: ViewMeta = {
@@ -112,7 +105,6 @@ function assemble(p: Project, ex: Extraction, nodes: ViewNode[], edges: Int32Arr
       toolchain: p.toolchain,
       extractedAt: ex.at,
       extractMs: g.stats.ms,
-      ...gitOf(p.root),
     },
     modules: g.modules.map((m) => {
       const file = p.files.get(m.name) ?? null;
