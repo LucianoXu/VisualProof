@@ -400,9 +400,9 @@ export class GraphCanvas {
   private previewing = false;
   /** the camera the highlight was last picked under */
   private hoverCam = { x: 0, y: 0, k: 1 };
-  /** edges with nothing selected: on by default, proofs off (CanvasSpec "Edges") */
+  /** edges with nothing selected: on by default; statements' and bodies', never proofs' (CanvasSpec
+   *  "Edges") */
   showEdges = true;
-  proofEdges = false;
   /** the artwork's look while its mode is on (ExportSpec decision 19): the board is the picture */
   art: ArtLook | null = null;
   /** the cells' hues of the layout's clusters (hueOf), and the use of the declaration used most
@@ -1382,9 +1382,8 @@ export class GraphCanvas {
     this.request();
   }
 
-  setEdges(show: boolean, proofs: boolean): void {
+  setEdges(show: boolean): void {
     this.showEdges = show;
-    this.proofEdges = proofs;
     this.request();
   }
 
@@ -1519,9 +1518,10 @@ export class GraphCanvas {
     this.moveTo((x0 + x1) / 2, (y0 + y1) / 2, Math.min(k, 4), animate);
   }
 
-  /** Frame the whole board in a rectangle of the screen (an artwork's frame, web/src/artframe.ts):
-   *  its top-level circles and declarations, at once. */
-  fitRect(rect: { x: number; y: number; w: number; h: number }): void {
+  /** The camera that holds the whole board — its top-level circles and declarations — in the
+   *  screen's rectangle `rect` (an artwork's frame, web/src/artframe.ts); null for a board with
+   *  nothing on it. */
+  fitCam(rect: { x: number; y: number; w: number; h: number }): { x: number; y: number; k: number } | null {
     const S = this.scene;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const c of S.rootC) {
@@ -1530,10 +1530,16 @@ export class GraphCanvas {
       [x0, y0, x1, y1] = [Math.min(x0, S.cwx[c] - r), Math.min(y0, S.cwy[c] - r), Math.max(x1, S.cwx[c] + r), Math.max(y1, S.cwy[c] + r)];
     }
     for (const i of S.rootN) [x0, y0, x1, y1] = [Math.min(x0, this.px[i] - 8), Math.min(y0, this.py[i] - 8), Math.max(x1, this.px[i] + 8), Math.max(y1, this.py[i] + 8)];
-    if (!isFinite(x0)) return;
+    if (!isFinite(x0)) return null;
     const k = Math.min(ZOOM_MOST, Math.min(rect.w / (x1 - x0), rect.h / (y1 - y0)) * 0.94);
     // the board's middle at the rectangle's
-    this.jumpTo({ x: (x0 + x1) / 2 - (rect.x + rect.w / 2 - this.w / 2) / k, y: (y0 + y1) / 2 - (rect.y + rect.h / 2 - this.h / 2) / k, k });
+    return { x: (x0 + x1) / 2 - (rect.x + rect.w / 2 - this.w / 2) / k, y: (y0 + y1) / 2 - (rect.y + rect.h / 2 - this.h / 2) / k, k };
+  }
+
+  /** Bring the camera to `cam` over `dur` ms, easing in and out (an artwork's frame closing in on the
+   *  board, and opening out again: ExportSpec decision 19). */
+  glideTo(cam: { x: number; y: number; k: number }, dur: number): void {
+    this.animate(cam, dur);
   }
 
   /** Put the camera at `cam` at once, ending any motion in progress, which would carry it off: a
@@ -1588,6 +1594,13 @@ export class GraphCanvas {
       this.request();
       return;
     }
+    this.animate({ x, y, k }, dur);
+  }
+
+  /** The camera carried to `goal` over `dur` ms, easing in and out. */
+  private animate(goal: { x: number; y: number; k: number }, dur: number): void {
+    if (this.anim) cancelAnimationFrame(this.anim);
+    const { x, y, k } = goal;
     this.camGoal = { x, y, k };
     const from = { ...this.cam };
     const t0 = performance.now();
@@ -2393,13 +2406,13 @@ export class GraphCanvas {
       Q.setGraph(this.g);
       this.overviewBase = "";
     }
-    const base = `${this.sceneSerial}|${S.repVersion}|${this.showExternals}|${this.proofEdges}`;
+    const base = `${this.sceneSerial}|${S.repVersion}|${this.showExternals}`;
     if (base !== this.overviewBase) {
       // what was drawn stays until the new points come (after a fold, a toggle), unless it is of
       // another scene, whose clusters it names
       if (!this.overviewBase.startsWith(`${this.sceneSerial}|`)) L.clear();
       this.overviewBase = base;
-      Q.setBase(S, { externals: this.showExternals, proofs: this.proofEdges });
+      Q.setBase(S, { externals: this.showExternals });
       this.drawnW = null;
       this.overviewDrawn = "";
     }

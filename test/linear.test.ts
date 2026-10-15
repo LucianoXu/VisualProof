@@ -79,7 +79,7 @@ function setup(
       selectDecl: (i) => calls.push(["select", i]),
       selectSection: (c) => calls.push(["section", c]),
       frozen: () => frozen,
-      edges: () => ({ show: false, proofs: false }),
+      edges: () => false,
       moveNote: (id, key, w, detach) => (calls.push(detach ? ["note", id, key, w, "detach"] : ["note", id, key, w]), true),
       noteText: (id) => opts.texts?.[id] ?? null,
       noteOpen: (id) => !!opts.open?.includes(id),
@@ -257,7 +257,7 @@ test("the edges of a folded section's members end at its row, once per pair of r
         : () => {},
     set: () => true,
   });
-  f.arcs(c, (r: { cy: number }) => [0, r.cy], false, 1, (v: string) => v);
+  f.arcs(c, (r: { cy: number }) => [0, r.cy], 1, (v: string) => v);
   assert.equal(drawn.length, 1, "top to A, once");
   const [T, A] = [f.rows[1], f.rows[2]];
   assert.deepEqual(drawn[0].grad, [0, T.cy, 0, A.cy], "from top, which uses, to A");
@@ -397,7 +397,7 @@ test("what the pointer is on is the row whose point and name it is over, lit: wh
   assert.deepEqual([f.press.row, f.press.moves], [a1, true], "taken along by a drag");
 });
 
-test("an arc is lit as the board lights its edge: between two lit declarations, of what the mode follows — not one that only ends at the lit, nor a proof's under TCB; under Keys, the key graph's links, dashed", async () => {
+test("an arc is lit as the board lights its edge: between two lit declarations, of what the mode follows — not one that only ends at the lit; none of a proof's (proof edges are no more); under Keys, the key graph's links, dashed", async () => {
   const { outline, names } = many(3);
   const top = names.length - 1;
   // top uses a0 in its statement and a1 in its proof; a0 uses a1; a2 uses a0
@@ -408,8 +408,8 @@ test("an arc is lit as the board lights its edge: between two lit declarations, 
   await f.show("reader");
   const pairs = (keys?: number[]) => {
     f.hooks.keyLinks = () => keys ?? null;
-    return f.arcPairs(true).map((p: { a: { name: string }; b: { name: string }; lit: boolean; key?: true }) => `${p.a.name}→${p.b.name}${p.lit ? " lit" : ""}${p.key ? " key" : ""}`).sort();
+    return f.arcPairs().map((p: { a: { name: string }; b: { name: string }; lit: boolean; key?: true }) => `${p.a.name}→${p.b.name}${p.lit ? " lit" : ""}${p.key ? " key" : ""}`).sort();
   };
-  assert.deepEqual(pairs(), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1"]);
-  assert.deepEqual(pairs([top, 1]), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1", "top→A.a1 lit key"]);
+  assert.deepEqual(pairs(), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit"]);
+  assert.deepEqual(pairs([top, 1]), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1 lit key"]);
 });

@@ -209,9 +209,15 @@ Numbers missing below are withdrawn decisions.
     panel in sections, the title's controls and the source's switch set in the shade beside the
     frame where they act; a thin border round the picture, as a choice; then, after a page of title
     faces on the board: the title in spaced capitals of Jost, the same in every style, and the
-    top-level clusters' names in it too).
+    top-level clusters' names in it too; then, proof edges no more, in the artwork as on the board;
+    the mode coming and going as smoothly as the linear form; a title too wide for the picture made
+    smaller until it fits).
     - **Where**: the Export window's second tab, *Artwork*, beside *Document*. Choosing it closes the
-      window into the artwork mode; Esc or Done leaves it, the board drawn as before. While it is on,
+      window into the artwork mode; Esc or Done leaves it, the board drawn as before. Both ease over
+      480 ms, as the linear form does: coming, the frame closes in from the whole screen as the shade
+      round it deepens, the board glides into it, the panel slides in and the other panels fade, the
+      board takes the artwork's look in a short dip to its ground, and the title and the strips
+      beside the frame appear once it is still; leaving, the same backwards. While it is on,
       of the bar only Share and Search can be used; the rest is greyed and out of reach, by the pointer
       and the keyboard, and of the page's keys only those that act on the board are heard (Search,
       the tool, the zoom, the outside world, the levels, the lock).
@@ -243,7 +249,9 @@ Numbers missing below are withdrawn decisions.
       its halo of the style's ground.
     - **The title**: at the top left, the project's name over a line of what it holds ("7,851
       declarations · 4 targets"), both the reader's to change (empty for none) or to have the
-      project's own again; its size from 3 to 16 hundredths of the picture's height. In every style
+      project's own again; its size from 3 to 16 hundredths of the picture's height, and smaller
+      where it would not fit across the picture within its margins — the line under it as much
+      smaller with it, and smaller alone where it is the one too wide. In every style
       the title is set the same: spaced capitals of Jost, a display face beside Source Sans 3, as the
       top-level clusters' names are; the line under it in the style's own face. The styles differ in
       colour and weight alone: the board's in the theme's ink, the cells' in a pale light, the
@@ -253,7 +261,7 @@ Numbers missing below are withdrawn decisions.
       light, dark, or transparent in the light or the dark theme's colours (for a light page or a dark
       one; a dark style's own ground or transparent); the colour scheme (Kind or Status); names (as the board shows them — a lit declaration's
       where the board would give it a card, which an artwork has not —, the clusters' and the
-      targets' only, none, or by selection); edges (all, the selection's, none) and proof edges;
+      targets' only, none, or by selection); edges (all, the selection's, none);
       notes shown or not; targets — their star and name marked, drawn as any declaration, alone with
       the rest faded, or by selection; the key declarations' diamonds (*Key marks*), on or off. The
       selection and what is lit count as the reader sees them, or not at all.
@@ -467,8 +475,17 @@ Numbers missing below are withdrawn decisions.
 - **The mode** (web/src/artframe.ts): `#art`, the frame, with a shadow of the screen's size round it
   for the shade, the pointer passing through it to the board; `#art-panel` at the right, 300 pixels
   wide. The frame is the size's shape, as large as the room the panel leaves allows; opening fits the
-  board in it (canvas `fitRect`), and Done or Esc takes the camera back. A snapshot's Export button
+  board in it (canvas `fitCam`), and Done or Esc takes the camera back. A snapshot's Export button
   opens the mode at once.
+- **Coming and going** (artframe `start`, `end`): 480 ms, the linear form's pace. `body.art-moving`
+  holds the transitions while it lasts: the frame's position and size (from the whole screen in, to
+  it out) and its shade (`#art.art-away` clears it), the panel's slide (`.art-away`), the put-away
+  panels' fade; the camera glides with the frame, on its easing (canvas `glideTo`, `--art-ease`).
+  `body.art-dip` fades the board, its labels, cards, notes and the style's ground for 180 ms, the look
+  changing under it (`drawLook`); the title, the foot and the strips beside the frame are hidden
+  while it moves. Each step has a turn: a newer one (leaving before the mode has come, a followed
+  reader's arriving) cancels the older's waits. A frame that changes its shape — the size, the
+  orientation, the window — eases the same way, the camera keeping what it held.
 - **The board drawn with the settings** (web/src/main.ts, `drawLook`): `body.framing` puts the panels
   and the legend away; the theme is set on `<html>` (`applyTheme` restores the reader's); the colouring
   and the edges are the canvas's (`setScheme`, `setEdges`), the reader's own kept under them;

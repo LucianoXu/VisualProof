@@ -181,12 +181,6 @@ export const FOLLOWED = [
     keys: ["g"],
   },
   {
-    part: "proofEdges",
-    what: "proof edges drawn, or not",
-    fields: ["proofEdges"],
-    changes: "#proofs-btn",
-  },
-  {
     part: "linear",
     what: "the linear form: the board drawn as its document's outline, or not",
     fields: ["linear"],

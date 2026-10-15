@@ -26,6 +26,8 @@
 [hidden] { display: none !important; }
 
 :root {
+  /* the camera's easing (web/src/canvas.ts, animate), for what moves with it */
+  --art-ease: cubic-bezier(0.65, 0, 0.35, 1);
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, sans-serif;
   --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 
@@ -227,6 +229,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .art-ink { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
 #art-sky { position: fixed; display: block; pointer-events: none; }
 #art-sky[hidden] { display: none; }
+/* the mode coming and going (web/src/artframe.ts, start and end; ExportSpec decision 19): as the linear
+   form, over 480 ms — the frame closing in from the whole screen as its shade comes, or opening out as
+   it goes; the panel sliding in or away; the board dipping to its ground while its look changes; the
+   title, the foot and the strips beside the frame once it is still */
+body.art-moving .art-frame { transition: left 480ms var(--art-ease), top 480ms var(--art-ease), width 480ms var(--art-ease), height 480ms var(--art-ease), box-shadow 480ms ease, outline-color 480ms ease; }
+#art.art-away .art-frame { box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0); outline-color: transparent; }
+.art-ink, .art-head, .art-tail { transition: opacity 200ms ease; }
+body.art-moving .art-ink, body.art-moving .art-head, body.art-moving .art-tail, #art.art-away .art-head, #art.art-away .art-tail { opacity: 0; }
+#art-panel { transition: opacity 480ms var(--art-ease), transform 480ms var(--art-ease); }
+#art-panel.art-away { opacity: 0; transform: translateX(24px); }
+body.art-moving { transition: background-color 180ms ease; }
+body.art-moving #canvas, body.art-moving #labels, body.art-moving #cards, body.art-moving #stickies { transition: opacity 180ms ease; }
+body.art-moving #art-sky { transition: opacity 180ms ease, left 480ms var(--art-ease), top 480ms var(--art-ease), width 480ms var(--art-ease), height 480ms var(--art-ease); }
+body.art-dip #canvas, body.art-dip #labels, body.art-dip #cards, body.art-dip #stickies, body.art-dip #art-sky { opacity: 0; }
 body[data-art-style]:not([data-art-bg]) { background: #06080e; }
 .art-size output { margin-left: 6px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .art-size input[type="range"] { width: 100%; }
@@ -271,9 +287,12 @@ body.art-nonotes #stickies { display: none; }
 .ex-tabs { margin: 2px 0 4px; }
 /* in the artwork mode, the panels are put away: the frame has the room */
 body.framing #side, body.framing #panel, body.framing #selbar, body.framing #lensbar, body.framing #tm-kept,
-body.framing #viewbar, body.framing #foot, body.framing #zoom, body.framing #tabs, body.framing #legend { visibility: hidden; }
+body.framing #viewbar, body.framing #foot, body.framing #zoom, body.framing #tabs, body.framing #legend { visibility: hidden; opacity: 0; }
 /* of the bar, Share and Search alone: the rest out of reach (web/src/main.ts, drawLook) */
 body.framing #bar [inert] { opacity: 0.32; }
+/* both fading as the mode comes and goes */
+body.art-moving :is(#side, #panel, #selbar, #lensbar, #tm-kept, #viewbar, #foot, #zoom, #tabs, #legend) { transition: opacity 240ms ease, visibility 240ms; }
+body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap) { transition: opacity 240ms ease; }
 
 .glass {
   background: var(--surface);

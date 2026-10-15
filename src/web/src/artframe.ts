@@ -57,6 +57,10 @@ const MARGIN = 32;
 const GAP = 12;
 const HEAD_ROOM = 60;
 const TAIL_ROOM = 34;
+/** how long the mode takes to come and to go, as the linear form (web/src/linear.ts); and how long
+ *  the board dips to its ground while its look changes */
+const EASE_MS = 480;
+const DIP_MS = 180;
 /** the most pixels a band of a PNG is drawn in at once: what every browser's canvas allows */
 const BAND_PIXELS = 4096 * 4096;
 
@@ -79,6 +83,10 @@ export class ArtFrame {
   private tail: HTMLElement;
   /** those following are told of the title once it has been still a moment */
   private titleWait = 0;
+  /** the mode's coming and going: each newer step's turn, which an older one's waits give way to; and
+   *  whether it is going */
+  private turn = 0;
+  private leaving = false;
   private panel: HTMLElement;
   private canvas: GraphCanvas;
   private hooks: ArtHooks;
@@ -155,7 +163,7 @@ export class ArtFrame {
       else if (t.closest("[data-art-save]")) void this.saveFile(t.closest<HTMLElement>("[data-art-save]")!.dataset.artSave as "png" | "svg");
       else if (t.closest("[data-art-pick]")) this.pick(t.closest<HTMLElement>("[data-art-pick]")!.dataset.artPick!);
     });
-    window.addEventListener("resize", () => this.isOpen && this.place(true));
+    window.addEventListener("resize", () => this.isOpen && this.s && this.place(true));
   }
 
   get isOpen(): boolean {
@@ -200,19 +208,21 @@ export class ArtFrame {
 
   /** The mode, from the Export window: the reader's last settings, the whole board in the frame. */
   open(): void {
-    if (this.isOpen) return;
-    this.start(cleanSettings(this.hooks.saved(), this.hooks.now()));
+    if (this.isOpen && !this.leaving) return;
+    const s = cleanSettings(this.hooks.saved(), this.hooks.now());
     // the whole board in the frame, below the title where there is one
-    const s = this.s!, r = this.rect, own = this.hooks.titles();
-    const titled = !!(s.title ?? own.title) || !!(s.subtitle ?? own.subtitle);
-    const below = titled ? Math.min(r.h * 0.4, ((s.titleSize * 1.7) / 100) * r.h + Math.max(14, r.h * 0.035)) : 0;
-    this.canvas.fitRect({ x: r.x, y: r.y + below, w: r.w, h: r.h - below });
+    this.start(s, (r) => {
+      const own = this.hooks.titles();
+      const titled = !!(s.title ?? own.title) || !!(s.subtitle ?? own.subtitle);
+      const below = titled ? Math.min(r.h * 0.4, ((s.titleSize * 1.7) / 100) * r.h + Math.max(14, r.h * 0.035)) : 0;
+      return this.canvas.fitCam({ x: r.x, y: r.y + below, w: r.w, h: r.h - below });
+    });
     this.hooks.changed();
   }
 
   /** The reader leaves: the board drawn as before, the camera where it was. */
   close(): void {
-    if (!this.isOpen) return;
+    if (!this.isOpen || this.leaving) return;
     this.end(true);
     this.hooks.changed();
   }
@@ -231,47 +241,102 @@ export class ArtFrame {
   follow(v: ArtworkView | null): void {
     if (!v) return this.end(false);
     const { region, ...s } = v;
-    if (!this.isOpen) this.start(s);
-    else if (!sameLook(this.s!, s)) {
+    if (!this.isOpen || this.leaving) return this.start(s, (r) => this.camHolding(region, r));
+    if (!sameLook(this.s!, s)) {
       this.s = s;
       this.hooks.look(s);
       this.place(false);
       this.renderPanel();
     }
-    this.hold(region);
+    const cam = this.camHolding(region, this.rect);
+    if (cam) this.canvas.jumpTo(cam);
   }
 
-  private start(s: ArtSettings): void {
+  /** The mode comes (ExportSpec decision 19, the owner's decision of 2026-10-15: as smoothly as the
+   *  linear form, web/src/linear.ts): the frame closes in from the whole screen as its shade comes,
+   *  the camera glides to where `aim` puts it in the frame, the panel slides in; the board dips to
+   *  its ground a moment, takes the artwork's look and comes back; the title and the foot come last. */
+  private start(s: ArtSettings, aim: (rect: { x: number; y: number; w: number; h: number }) => { x: number; y: number; k: number } | null): void {
+    const turn = ++this.turn;
+    const body = document.body;
     this.s = s;
-    this.root.hidden = false;
-    this.panel.hidden = false;
+    if (!this.leaving || !this.before) this.before = { ...this.canvas.cam };
+    this.leaving = false;
     document.addEventListener("keydown", this.onKey, true);
-    this.before = { ...this.canvas.cam };
-    this.hooks.look(s);
+    body.classList.add("art-moving", "art-dip", "framing");
+    if (this.root.hidden) {
+      // from the whole screen, unshaded, the panel away
+      this.root.hidden = false;
+      this.panel.hidden = false;
+      this.root.classList.add("art-away");
+      this.panel.classList.add("art-away");
+      // the style's ground with it
+      this.rect = { x: 0, y: 0, w: innerWidth, h: innerHeight };
+      this.renderSky();
+      for (const el of [this.frameEl, this.sky]) Object.assign(el.style, { left: "0px", top: "0px", width: `${innerWidth}px`, height: `${innerHeight}px` });
+      void this.root.offsetWidth;
+    }
     this.place(false);
+    requestAnimationFrame(() => {
+      if (turn !== this.turn) return;
+      this.root.classList.remove("art-away");
+      this.panel.classList.remove("art-away");
+    });
+    const cam = aim(this.rect);
+    if (cam) this.canvas.glideTo(cam, EASE_MS);
     this.renderPanel();
+    setTimeout(() => {
+      if (turn !== this.turn) return;
+      this.hooks.look(s);
+      body.classList.remove("art-dip");
+      this.renderSky();
+      this.renderInk();
+    }, DIP_MS);
+    setTimeout(() => turn === this.turn && body.classList.remove("art-moving"), EASE_MS);
   }
 
+  /** The mode goes, as it came: the frame opens out to the whole screen as its shade goes, the
+   *  panel slides away, the camera glides back where it was (`back`); the board dips, takes its own
+   *  look again, and comes back. A follower's goes with the other's, its camera theirs. */
   private end(back: boolean): void {
-    if (!this.isOpen) return;
-    this.rect = { x: 0, y: 0, w: 0, h: 0 };
-    this.root.hidden = true;
-    this.sky.hidden = true;
-    this.panel.hidden = true;
-    document.removeEventListener("keydown", this.onKey, true);
+    if (!this.isOpen || this.leaving) return;
+    const turn = ++this.turn;
+    const body = document.body;
+    this.leaving = true;
     this.s = null;
-    this.hooks.look(null);
-    if (back && this.before) this.canvas.jumpTo(this.before);
+    document.removeEventListener("keydown", this.onKey, true);
+    body.classList.add("art-moving", "art-dip");
+    body.classList.remove("framing");
+    this.root.classList.add("art-away");
+    this.panel.classList.add("art-away");
+    Object.assign(this.frameEl.style, { left: "0px", top: "0px", width: `${innerWidth}px`, height: `${innerHeight}px` });
+    if (back && this.before) this.canvas.glideTo(this.before, EASE_MS);
     this.before = null;
+    setTimeout(() => {
+      if (turn !== this.turn) return;
+      this.hooks.look(null);
+      this.renderSky();
+      body.classList.remove("art-dip");
+    }, DIP_MS);
+    setTimeout(() => {
+      if (turn !== this.turn) return;
+      this.leaving = false;
+      this.rect = { x: 0, y: 0, w: 0, h: 0 };
+      this.root.hidden = true;
+      this.panel.hidden = true;
+      this.sky.hidden = true;
+      this.root.classList.remove("art-away");
+      this.panel.classList.remove("art-away");
+      body.classList.remove("art-moving");
+    }, EASE_MS);
   }
 
-  /** The frame holding `region` of the board's world: its middle at the frame's, its width the
-   *  frame's. */
-  private hold(region: [number, number, number, number]): void {
-    const r = this.rect, C = this.canvas;
+  /** The camera that holds `region` of the board's world in the frame `r`: its middle at the frame's,
+   *  its width the frame's. */
+  private camHolding(region: [number, number, number, number], r: { x: number; y: number; w: number; h: number }): { x: number; y: number; k: number } {
     const k = Math.min(ZOOM_MOST, Math.max(ZOOM_LEAST, r.w / region[2]));
-    const { w: sw, h: sh } = C.screen;
-    C.jumpTo({ x: region[0] - (r.x + r.w / 2 - sw / 2) / k, y: region[1] - (r.y + r.h / 2 - sh / 2) / k, k });
+    const { w: sw, h: sh } = this.canvas.screen;
+    return { x: region[0] - (r.x + r.w / 2 - sw / 2) / k, y: region[1] - (r.y + r.h / 2 - sh / 2) / k, k };
   }
 
   /** The frame in the middle of the room the panel leaves, of the size's shape. `keep`: the frame
@@ -289,7 +354,11 @@ export class ArtFrame {
       const [cx, cy] = C.toWorld(was.x + was.w / 2, was.y + was.h / 2);
       const k = C.cam.k * Math.sqrt((w * h) / (was.w * was.h));
       const { w: sw, h: sh } = C.screen;
-      C.jumpTo({ x: cx - (x + w / 2 - sw / 2) / k, y: cy - (y + h / 2 - sh / 2) / k, k });
+      // the frame and the camera ease to their new shape together, the title and the foot waiting
+      const turn = this.turn;
+      document.body.classList.add("art-moving");
+      C.glideTo({ x: cx - (x + w / 2 - sw / 2) / k, y: cy - (y + h / 2 - sh / 2) / k, k }, EASE_MS);
+      setTimeout(() => turn === this.turn && !this.leaving && document.body.classList.remove("art-moving"), EASE_MS);
     }
     this.rect = { x, y, w, h };
     Object.assign(this.frameEl.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
@@ -413,7 +482,7 @@ export class ArtFrame {
       const [theme, clear] = t.value.split("-");
       s.theme = theme === "dark" ? "dark" : "light";
       s.background = clear ? "transparent" : "theme";
-    } else if (k === "proofs" || k === "notes" || k === "selection" || k === "source" || k === "keys" || k === "border") s[k] = t.checked;
+    } else if (k === "notes" || k === "selection" || k === "source" || k === "keys" || k === "border") s[k] = t.checked;
     else {
       (s as unknown as Record<string, string>)[k] = t.value;
       // by selection, from what was drawn: As shown, nothing hidden or added; every target
@@ -567,7 +636,7 @@ export class ArtFrame {
     const sel = (k: keyof ArtSettings, label: string, opts: [string, string][]) =>
       `<label class="ex-field"><span>${label}</span><select data-art="${k}">${opts.map(([v, l]) => opt(v, l, String(s[k]))).join("")}</select></label>`;
     const wide = (html: string) => html.replace(`<label class="ex-field">`, `<label class="ex-field ex-wide">`);
-    const check = (k: "proofs" | "notes" | "selection" | "source" | "keys" | "border", label: string, title = "", off = false) =>
+    const check = (k: "notes" | "selection" | "source" | "keys" | "border", label: string, title = "", off = false) =>
       `<label class="ex-check${off ? " muted" : ""}"${title ? ` title="${escapeHtml(title)}"` : ""}><input type="checkbox" data-art="${k}"${s[k] && !off ? " checked" : ""}${off ? " disabled" : ""}> ${label}</label>`;
     const preset = presetOf(s.w, s.h);
     const mp = ((s.w * s.h) / 1e6).toFixed(1);
@@ -613,7 +682,7 @@ export class ArtFrame {
           (s.targets === "chosen" ? this.targetsHtml() : "") +
           `<div class="ex-checks">${check("keys", "Key marks", "The key declarations' diamonds; with the targets by selection, those of the targets ticked")}</div>`,
       ) +
-      section("Edges and the rest", wide(sel("edges", "Edges", [["all", "All"], ["selection", "The selection's"], ["none", "None"]])) + `<div class="ex-checks">${check("proofs", "Proof edges")}${check("notes", "Notes")}${check("selection", "The selection, as you see it")}</div>`) +
+      section("Edges and the rest", wide(sel("edges", "Edges", [["all", "All"], ["selection", "The selection's"], ["none", "None"]])) + `<div class="ex-checks">${check("notes", "Notes")}${check("selection", "The selection, as you see it")}</div>`) +
       `</div>` +
       `<div class="modal-actions art-save"><button class="rv-btn" data-art-done>Done</button><button class="rv-btn" data-art-save="svg"${this.busy ? " disabled" : ""}>Save SVG</button><button class="rv-btn primary" data-art-save="png"${this.busy ? " disabled" : ""}>${this.busy ? "Saving…" : "Save PNG"}</button></div>`;
     // beside the frame, in its shade: the title above its top left, the source below its bottom right

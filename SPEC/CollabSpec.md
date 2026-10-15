@@ -159,7 +159,6 @@ step; the rest each on its own once the place is reached.
 | lostFound | the lost-and-found open or closed | `lostFound` (`open`) | |
 | colouring | the legend's Kind or Status | `scheme` | `c` |
 | edges | edges drawn | `edges` | `g` |
-| proofEdges | proof edges drawn | `proofEdges` | |
 | linear | the board drawn as its document's outline, the linear form (ExportSpec decision 18) | `linear` | `o` |
 | artwork | the artwork mode: on or off, its settings (the board drawn with them) and its frame (ExportSpec decision 19, the owner's decision of 2026-10-14) | `artwork` | |
 

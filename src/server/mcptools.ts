@@ -195,7 +195,7 @@ export const TOOLS: ToolDef[] = [
     default: "move",
     actions: {
       move: { method: "POST", path: "/api/agent/view", says: "go to a view, a target's view, a declaration, its source; fields left out keep their value", args: ["view", "review", "sel", "selection", "mode", "source", "paper", "focus", "leave"] },
-      link: { method: "POST", path: "/api/agent/view/link", says: "a link that opens exactly what you look at, or a place you describe, to hand people in a reply", args: ["view", "review", "sel", "selection", "mode", "source", "paper", "focus", "sourceCollapsed", "pinned", "history", "region", "activity", "lostFound", "scheme", "edges", "proofEdges", "exact"] },
+      link: { method: "POST", path: "/api/agent/view/link", says: "a link that opens exactly what you look at, or a place you describe, to hand people in a reply", args: ["view", "review", "sel", "selection", "mode", "source", "paper", "focus", "sourceCollapsed", "pinned", "history", "region", "activity", "lostFound", "scheme", "edges", "exact"] },
       ask_follow: { method: "POST", path: "/api/agent/ask-follow", says: "ask the people on the page to follow you first", args: ["who", "wait"] },
     },
     args: {
@@ -216,7 +216,6 @@ export const TOOLS: ToolDef[] = [
       lostFound: bool("link: the lost-and-found open"),
       scheme: str("link: the colouring", ["kind", "status"]),
       edges: bool("link: edges drawn"),
-      proofEdges: bool("link: proof edges drawn"),
       exact: bool("link: false for the view's address alone"),
       who: str("ask_follow: a person's name; left out, everyone"),
       wait: bool("ask_follow: false answers at once (default: wait for them, at most 30 s)"),

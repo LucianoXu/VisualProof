@@ -33,7 +33,7 @@ export class EdgeWorkerCore {
         this.base = m.base;
         this.model.setTree(
           { nc: m.nc, n: m.n, parent: m.parent, nodeCluster: m.nodeCluster, rep: m.rep },
-          { externals: m.externals, proofs: m.proofs },
+          { externals: m.externals },
         );
         this.prune(post);
         break;

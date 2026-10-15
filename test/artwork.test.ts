@@ -368,7 +368,27 @@ test("the title at the top left, the same in every style: spaced capitals of Jos
   // none: nothing
   const none = new SvgContext(measure, FAMILY);
   drawTitle(ctxOf(none), frame, "", "", 7, "board", { ink: "#111", quiet: "#666", halo: "#fff" });
-  assert.equal(none.body.length, 0);
+  assert.equal(none.body.length, 0);  // too wide for the frame: smaller until it fits within the margins, the line under it as much
+  // smaller; a line longer than the frame alone smaller too
+  const sized = (text: string, font: string) => text.length * 0.6 * Number(/([\d.]+)px/.exec(font)![1]);
+  const narrow = { x: 0, y: 0, w: 400, h: 700 };
+  const fitted = (title: string, line: string) => {
+    const pen = new SvgContext(sized, FAMILY);
+    drawTitle(ctxOf(pen), narrow, title, line, 10, "board", { ink: "#111", quiet: "#666", halo: "#fff" });
+    const t = pen.body.filter((x) => x.startsWith("<text") && !x.includes('fill="none"'));
+    const px = (x: string) => Number(/font-size="([\d.]+)"/.exec(x)![1]);
+    return { title: px(t[0]), line: px(t.find((x) => x.includes(`>${line}<`))!), last: t.filter((x) => px(x) === px(t[0])).at(-1)! };
+  };
+  const room = 400 - 2 * 14;
+  const f = fitted("Sphere Packing", "7,851 declarations");
+  assert.ok(f.title < 56, `smaller than 10 % of the height's 56: ${f.title}`);
+  // the last capital's right edge at the margin: 14 capitals, 13 spaces between them
+  const end = Number(/x="([\d.]+)"/.exec(f.last)![1]) + 0.6 * f.title;
+  assert.ok(Math.abs(end - (14 + room)) < 0.5, `the last letter ends at the margin: ${end}`);
+  assert.ok(Math.abs(f.line / f.title - 0.36 / 0.8) < 2e-3, `the line under it as much smaller: ${f.line} under ${f.title}`);
+  const short = fitted("SP", "a line under the title far too long to stand across the frame");
+  assert.equal(short.title, 56, "a short title as it was");
+  assert.ok(Math.abs(short.line * 0.6 * 61 - room) < 0.5, `the long line alone smaller: ${short.line}`);
 });
 
 test("names along an arc, letter by letter, each turned to its circle; the recorder turns and moves as the canvas does", () => {

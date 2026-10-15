@@ -169,9 +169,8 @@ export interface PresenceView {
   lostFound?: { open: boolean };
   /** the colouring the board is drawn in: the legend's Kind or Status (CanvasSpec, "Colour schemes") */
   scheme?: ColourScheme;
-  /** the edges drawn, and the proof edges (CanvasSpec, "Edges") */
+  /** the edges drawn (CanvasSpec, "Edges"); proof edges, said until 2026-10-15, are no more */
   edges?: boolean;
-  proofEdges?: boolean;
   /** the board drawn as its document's outline (ExportSpec decision 18, web/src/linear.ts) */
   linear?: boolean;
   /** the artwork mode (ExportSpec decision 19): its settings, the board drawn with them, and what its
@@ -201,7 +200,6 @@ export interface ArtworkLook {
   hiddenNames: string[];
   shownNames: string[];
   edges: "all" | "selection" | "none";
-  proofs: boolean;
   notes: boolean;
   /** a target's star and name marked; drawn as any declaration; it alone, the rest faded; or those
    *  chosen (`shownTargets`) marked, the others drawn as any declaration */
@@ -312,7 +310,8 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   const background = one(["theme", "transparent"] as const, o.background), labels = one(["board", "clusters", "none", "chosen"] as const, o.labels);
   const edges = one(["all", "selection", "none"] as const, o.edges), targets = one(["marked", "plain", "highlight", "chosen"] as const, o.targets);
   if (!r || r[2] <= 0 || r[3] <= 0 || !w || !h || !scheme || !theme || !background || !labels || !edges || !targets) return null;
-  if (typeof o.proofs !== "boolean" || typeof o.notes !== "boolean" || typeof o.selection !== "boolean") return null;
+  // (a proof edges' switch, said until 2026-10-15, is no more: an artwork draws none)
+  if (typeof o.notes !== "boolean" || typeof o.selection !== "boolean") return null;
   // the source, said since 2026-10-15: off where a page does not say it. The names and targets chosen
   // and the key marks' switch, said since the evening of that day: none chosen where a page does not
   // say them, and the key marks as the targets drew them before (with their stars, unless As any)
@@ -322,7 +321,7 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   const keys = typeof o.keys === "boolean" ? o.keys : targets !== "plain";
   // the style and the title, said since that night: as the board, the project's own
   const style = one(ART_STYLES, o.style) ?? "board";
-  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, proofs: o.proofs, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), border: o.border === true, region: [...r] };
+  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), border: o.border === true, region: [...r] };
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */
@@ -518,7 +517,6 @@ export function cleanView(v: unknown): PresenceView | null {
     ...(typeof lost === "boolean" ? { lostFound: { open: lost } } : {}),
     ...(scheme ? { scheme } : {}),
     ...(typeof o.edges === "boolean" ? { edges: o.edges } : {}),
-    ...(typeof o.proofEdges === "boolean" ? { proofEdges: o.proofEdges } : {}),
     ...(typeof o.linear === "boolean" ? { linear: o.linear } : {}),
     ...(o.artwork === null ? { artwork: null } : cleanArtwork(o.artwork) ? { artwork: cleanArtwork(o.artwork) } : {}),
   };

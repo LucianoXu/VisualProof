@@ -41,7 +41,7 @@
 // order follows, and the outline is asked for again.
 
 import type { Outline, OutlineDecl, OutlineItem, OutlineNote, OutlineSection } from "../../shared/doc/outline.ts";
-import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../../shared/graph.ts";
+import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { boardOrder } from "../../shared/doc/order.ts";
@@ -66,8 +66,8 @@ export interface LinearHooks {
   /** why nothing on the board can be moved now (a snapshot, a read-only page, a past build's
    *  preview), or null */
   frozen(): string | null;
-  /** the edges the board draws, and its proof edges */
-  edges(): { show: boolean; proofs: boolean };
+  /** whether the board draws its edges */
+  edges(): boolean;
   /** put a note at a spot of the board in its cluster (null: none), as a drag would; `detach`: no
    *  longer attached to its declaration */
   moveNote(id: string, key: string | null, world: [number, number], detach?: boolean): boolean;
@@ -687,8 +687,7 @@ export class LinearForm {
     const held = new Set(lifted);
     const still = held.size ? this.rows.filter((r) => !held.has(r)) : this.rows;
     circles(still);
-    const e = this.hooks.edges();
-    if (e.show && p > 0.6) this.arcs(c, (r) => [v.x + ox(r), sy(r.cy + oy(r))], e.proofs, (p - 0.6) / 0.4, css);
+    if (this.hooks.edges() && p > 0.6) this.arcs(c, (r) => [v.x + ox(r), sy(r.cy + oy(r))], (p - 0.6) / 0.4, css);
     // the row the pointer is on: its point and its name, lit
     const on = this.hover && !this.drag ? this.rows.find((r) => keyOf(r) === this.hover) : undefined;
     if (on && p >= 1) {
@@ -723,12 +722,12 @@ export class LinearForm {
    *  the board lights it (canvas.edgeLit: between two lit declarations, of the sites the mode
    *  follows), so that the line and the board say the same. Under the Keys step, the board's key
    *  graph instead lights its own links, dashed (`key`). */
-  private arcPairs(proofs: boolean): { a: Row; b: Row; lit: boolean; key?: true }[] {
+  private arcPairs(): { a: Row; b: Row; lit: boolean; key?: true }[] {
     const g = this.hooks.graph();
     const rowOf = new Map<number, Row>();
     for (const r of this.rows) if (r.kind === "decl" && r.k >= 0) rowOf.set(r.k, r);
     for (const [i, r] of this.under) rowOf.set(i, r);
-    const sites = SITE_STMT | SITE_BODY | (proofs ? SITE_PROOF : 0);
+    const sites = SITE_STMT | SITE_BODY;
     const pairs = new Map<string, { a: Row; b: Row; lit: boolean; key?: true }>();
     for (const [u, ru] of rowOf) {
       for (let e = g.outStart[u]; e < g.outStart[u + 1]; e++) {
@@ -759,8 +758,8 @@ export class LinearForm {
 
   /** The arcs on the left of the line, orange at the end that uses and blue at the end used, as on
    *  the board; the lit drawn bolder, a key link dashed. Past ARCS_MOST, only the lit. */
-  private arcs(c: CanvasRenderingContext2D, pos: (r: Row) => [number, number], proofs: boolean, alpha: number, css: (v: string) => string): void {
-    const pairs = this.arcPairs(proofs);
+  private arcs(c: CanvasRenderingContext2D, pos: (r: Row) => [number, number], alpha: number, css: (v: string) => string): void {
+    const pairs = this.arcPairs();
     const few = pairs.length <= ARCS_MOST;
     const { h } = this.canvas.screen;
     const from = css("--edge-from") || "rgba(240,110,20,0.85)";

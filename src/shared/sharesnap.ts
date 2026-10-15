@@ -143,7 +143,6 @@ export const SNAPSHOT_FORMS = {
   lostFound: same("lostFound"),
   colouring: same("scheme"),
   edges: same("edges"),
-  proofEdges: same("proofEdges"),
   linear: same("linear"),
   artwork: same("artwork"),
 } as const satisfies Record<string, SnapForm>;

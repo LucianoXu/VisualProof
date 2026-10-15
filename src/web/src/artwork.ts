@@ -16,7 +16,7 @@ import type { ArtStyle, ArtworkLook } from "../../shared/collab.ts";
 import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_STYLES, ART_TARGETS_BYTES, cleanNames, cleanTitle, cleanTitleSize, isArtNameId, TITLE_SIZE } from "../../shared/collab.ts";
 import type { GitSource } from "../../shared/graph.ts";
 import type { ArtShape } from "./canvas.ts";
-import { ART_DISPLAY, ART_SANS, ART_SERIF, writeNames } from "./halo.ts";
+import { ART_DISPLAY, ART_SANS, ART_SERIF, spacedWidth, writeNames } from "./halo.ts";
 import type { Written } from "./halo.ts";
 
 export type ArtSettings = ArtworkLook;
@@ -53,7 +53,6 @@ const DEFAULTS: ArtSettings = {
   hiddenNames: [],
   shownNames: [],
   edges: "all",
-  proofs: false,
   notes: true,
   targets: "marked",
   shownTargets: [],
@@ -85,7 +84,6 @@ export function cleanSettings(s: Partial<ArtSettings> | undefined, now: { scheme
     hiddenNames: cleanNames(o.hiddenNames, ART_NAMES_BYTES, isArtNameId),
     shownNames: cleanNames(o.shownNames, ART_NAMES_BYTES, isArtNameId),
     edges: one(o.edges, ["all", "selection", "none"], DEFAULTS.edges),
-    proofs: typeof o.proofs === "boolean" ? o.proofs : DEFAULTS.proofs,
     notes: typeof o.notes === "boolean" ? o.notes : DEFAULTS.notes,
     targets,
     shownTargets: cleanNames(o.shownTargets, ART_TARGETS_BYTES),
@@ -403,25 +401,44 @@ export function drawBackdrop(ctx: CanvasRenderingContext2D, style: ArtStyle, rec
  *  strong and quiet text, for the board's style. */
 export function drawTitle(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, title: string, subtitle: string, size: number, style: ArtStyle, colours: { ink: string; quiet: string; halo: string }): void {
   if (!title && !subtitle) return;
-  const t = (size / 100) * rect.h * 0.8, sub = Math.max(7, (size / 100) * rect.h * 0.36);
-  const x = rect.x + Math.max(14, rect.w * 0.035), top = rect.y + Math.max(14, rect.h * 0.035);
+  let t = (size / 100) * rect.h * 0.8, sub = Math.max(7, (size / 100) * rect.h * 0.36);
+  const margin = Math.max(14, rect.w * 0.035), x = rect.x + margin, top = rect.y + Math.max(14, rect.h * 0.035);
+  const caps = title.toUpperCase();
+  const titleFont = (px: number) => `${style === "stars" ? 400 : 500} ${px}px ${ART_DISPLAY}`;
+  const lineFont = (px: number) => (style === "stars" ? `italic 400 ${px * 1.05}px ${ART_SERIF}` : `400 ${px}px ${ART_SANS}`);
+  ctx.save();
+  // what does not fit across the frame within its margins is drawn smaller until it does (the owner's
+  // decision of 2026-10-15): the title with its line under it, the line alone where it is the longer
+  const room = rect.w - 2 * margin;
+  const across = (font: string, text: string, spacing: number) => {
+    ctx.font = font;
+    return spacedWidth(ctx, text, spacing);
+  };
+  if (title) {
+    const w = across(titleFont(t), caps, 0.18 * t);
+    if (w > room) [t, sub] = [(t * room) / w, (sub * room) / w];
+  }
+  if (subtitle) {
+    const w = across(lineFont(sub), subtitle, 0);
+    if (w > room) sub = (sub * room) / w;
+  }
   // the capitals' top at the margin, the line under them
   const ty = top + t * 0.72, sy = title ? ty + sub * 1.9 : top + sub;
   const items: Written[] = [];
-  ctx.save();
-  const caps = (weight: number, fill: string | CanvasGradient): Written => ({ text: title.toUpperCase(), x, y: ty, font: `${weight} ${t}px ${ART_DISPLAY}`, align: "left", fill, spacing: 0.18 * t });
+  const capitals = (fill: string | CanvasGradient): Written => ({ text: caps, x, y: ty, font: titleFont(t), align: "left", fill, spacing: 0.18 * t });
+  const line = (fill: string): Written => ({ text: subtitle, x, y: sy, font: lineFont(sub), align: "left", fill });
   if (style === "cells") {
     const fill = ctx.createLinearGradient(x, 0, x + t * 9, 0);
     fill.addColorStop(0, "#dfe7ff");
     fill.addColorStop(1, "#9fb6ff");
-    if (title) items.push(caps(500, fill));
-    if (subtitle) items.push({ text: subtitle, x, y: sy, font: `400 ${sub}px ${ART_SANS}`, align: "left", fill: "rgba(200, 208, 224, 0.78)" });
+    if (title) items.push(capitals(fill));
+    if (subtitle) items.push(line("rgba(200, 208, 224, 0.78)"));
   } else if (style === "stars") {
-    if (title) items.push(caps(400, "#f1e6c8"));
-    if (subtitle) items.push({ text: subtitle, x, y: sy, font: `italic 400 ${sub * 1.05}px ${ART_SERIF}`, align: "left", fill: "rgba(200, 212, 236, 0.8)" });
+    if (title) items.push(capitals("#f1e6c8"));
+    if (subtitle) items.push(line("rgba(200, 212, 236, 0.8)"));
   } else {
-    if (title) items.push(caps(500, colours.ink));
-    if (subtitle) items.push({ text: subtitle, x, y: sy, font: `400 ${sub}px ${ART_SANS}`, align: "left", fill: colours.quiet });
+    if (title) items.push(capitals(colours.ink));
+    if (subtitle) items.push(line(colours.quiet));
   }
   writeNames(ctx, items, colours.halo);
   ctx.restore();

@@ -242,8 +242,8 @@ async function boot(): Promise<void> {
   let offline = false;
   /** the depth stepper's label (defined with the side panel below) */
   let showLevel = () => {};
-  /** draw the edges, and the proof edges, or not (defined with the eyes below) */
-  let setEdges = (_edges: boolean, _proofs: boolean): void => {};
+  /** draw the edges, or not (defined with the eyes below) */
+  let setEdges = (_edges: boolean): void => {};
   /** the review (ReviewSpec.md), as the server last told it: the whole once, then each change */
   let review: ReviewState = await reviewing;
   /** The review as the board on show reads it, by its declarations' names: on a past graph, what was
@@ -1004,7 +1004,7 @@ async function boot(): Promise<void> {
     selectDecl: (i, shift) => void clickOn(pickDecl(vg().nodes[i].name), shift),
     selectSection: (c, shift) => void clickOn(pickCluster(c), shift),
     frozen: () => (frozen() ? frozenWhy() : null),
-    edges: () => ({ show: S.showEdges, proofs: S.proofEdges }),
+    edges: () => S.showEdges,
     moveNote: (id, key, world, detach) => stickies.moveInto(id, key, world, detach),
     noteText: (id) => noteOf(id)?.note.text ?? null,
     noteOpen: (id) => !!noteOf(id)?.note.open,
@@ -1415,7 +1415,6 @@ async function boot(): Promise<void> {
       // the reader's own, under an artwork's, which the artwork's part carries
       colouring: () => ({ scheme: ownScheme() }),
       edges: () => ({ edges: S.showEdges }),
-      proofEdges: () => ({ proofEdges: S.proofEdges }),
       linear: () => ({ linear: linear.shown }),
       artwork: () => ({ artwork: art.view() }),
     },
@@ -1427,8 +1426,7 @@ async function boot(): Promise<void> {
       colouring: (v) => {
         if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
       },
-      edges: (v) => setEdges(v.edges!, S.proofEdges),
-      proofEdges: (v) => setEdges(S.showEdges, v.proofEdges!),
+      edges: (v) => setEdges(v.edges!),
       linear: (v) => (v.linear ? void linear.show("reader") : linear.hide("reader")),
       artwork: (v) => art.follow(v.artwork ?? null),
     },
@@ -2990,28 +2988,24 @@ async function boot(): Promise<void> {
   themeChoices($("#theme-seg"));
   // the lock, the edges and the theme, behind the eyes' ⋯ (decided 2026-10-08); their keys stay
   const eyesPop = new Popover($("#eyes-btn"), $("#eyes-pop"));
-  // the reader's eyes, at the bottom right: edges drawn, proof edges
+  // the reader's eyes, at the bottom right: edges drawn (proof edges are no more: the owner's
+  // decision of 2026-10-15)
   const edgesBtn = $("#edges-btn");
-  const proofsBtn = $("#proofs-btn");
   const syncEdges = () => {
     edgesBtn.classList.toggle("on", S.showEdges);
-    proofsBtn.classList.toggle("on", S.proofEdges);
     edgesBtn.setAttribute("aria-pressed", String(S.showEdges));
-    proofsBtn.setAttribute("aria-pressed", String(S.proofEdges));
     // an artwork's, while its mode is on (drawLook)
-    canvas.setEdges(artLook ? artLook.edges !== "none" : S.showEdges, artLook ? artLook.proofs : S.proofEdges);
+    canvas.setEdges(artLook ? artLook.edges !== "none" : S.showEdges);
   };
   // what the board draws, which those following this reader see too (CollabSpec decision 4)
-  setEdges = (edges, proofs) => {
-    if (edges === S.showEdges && proofs === S.proofEdges) return;
+  setEdges = (edges) => {
+    if (edges === S.showEdges) return;
     S.showEdges = edges;
-    S.proofEdges = proofs;
     store.save();
     syncEdges();
     people.report();
   };
-  edgesBtn.addEventListener("click", () => setEdges(!S.showEdges, S.proofEdges));
-  proofsBtn.addEventListener("click", () => setEdges(S.showEdges, !S.proofEdges));
+  edgesBtn.addEventListener("click", () => setEdges(!S.showEdges));
   syncEdges();
   // the layout locked, also the reader's own and kept in this browser (web/src/drag.ts): a drag pans
   // the view, never moves a thing, unless the reader lets the lock go (decided 2026-10-09: panning
