@@ -198,9 +198,9 @@ export const FOLLOWED = [
     what: "the artwork mode (ExportSpec decision 19): on or off, its settings — the board drawn with them, the names and targets ticked — and what its frame holds",
     fields: ["artwork"],
     // the panel's controls — a switch's or a list's line by its words too, its lists' All and None —
-    // but not the filter over its names, which is the reader's own; a name shown or hidden from the
-    // board's menu is the menu's (#ctxmenu)
-    changes: "#art-panel select, #art-panel input:not([data-art-filter]), #art-panel .ex-check, #art-panel .art-row, #art-panel [data-art-pick], #art-panel [data-art-done], #export-modal [data-ex-art]",
+    // but not the filter over its names, which is the reader's own; those set beside the frame (the
+    // title's, the source's); a name shown or hidden from the board's menu is the menu's (#ctxmenu)
+    changes: "#art-panel select, #art-panel input:not([data-art-filter]), #art-panel .ex-check, #art-panel .art-row, #art-panel [data-art-pick], #art-panel [data-art-done], #art [data-art-side] input, #art [data-art-side] .ex-check, #art [data-art-side] [data-art-pick], #export-modal [data-ex-art]",
     reads: "#art-panel",
   },
 ] as const satisfies readonly Followed[];

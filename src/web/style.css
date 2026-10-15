@@ -228,7 +228,21 @@ body[data-art-style]:not([data-art-bg]) { background: #06080e; }
 /* the artwork's background on the board: none is shown as a checkerboard; its notes hidden */
 body[data-art-bg="transparent"] { background: repeating-conic-gradient(rgba(128, 128, 128, 0.2) 0 25%, transparent 0 50%) 0 0 / 16px 16px, var(--canvas); }
 body.art-nonotes #stickies { display: none; }
-#art-panel { position: fixed; top: 76px; right: 16px; z-index: 41; width: 300px; max-height: calc(100vh - 100px); overflow: auto; }
+#art-panel { position: fixed; top: 76px; right: 16px; z-index: 41; width: 300px; max-height: calc(100vh - 100px); overflow: auto; padding-bottom: 0; }
+/* the panel's sections, each under a small heading; its buttons kept in view at its foot */
+.art-secs { display: grid; gap: 14px; margin-top: 10px; }
+.art-sec { border-top: 1px solid var(--line); padding-top: 10px; }
+.art-sec-h { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); }
+.art-save { position: sticky; bottom: 0; margin: 4px -18px 0; padding: 12px 18px 14px; background: var(--surface-solid); border-top: 1px solid var(--line); }
+/* in the shade beside the frame: the title's strip above its top left, the source's switch below its
+   bottom right (web/src/artframe.ts) */
+.art-head, .art-tail { position: absolute; pointer-events: auto; border-radius: 10px; font-size: 12px; }
+.art-head { transform: translateY(-100%); display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 10px; padding: 7px 10px; }
+.art-head-field input[type="text"] { width: var(--w, 10em); max-width: 100%; }
+.art-head .art-size input[type="range"] { width: 9em; padding: 0; border: 0; background: none; }
+.art-head [data-art-own][hidden] { display: none; }
+.art-tail { padding: 4px 10px; }
+.art-tail .ex-check { margin: 0; }
 #art-panel[hidden] { display: none; }
 .art-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }
 .art-grid .ex-wide, .art-grid .art-note, .art-grid .ex-checks { grid-column: 1 / -1; }
@@ -253,6 +267,8 @@ body.art-nonotes #stickies { display: none; }
 /* in the artwork mode, the panels are put away: the frame has the room */
 body.framing #side, body.framing #panel, body.framing #selbar, body.framing #lensbar, body.framing #tm-kept,
 body.framing #viewbar, body.framing #foot, body.framing #zoom, body.framing #tabs, body.framing #legend { visibility: hidden; }
+/* of the bar, Share and Search alone: the rest out of reach (web/src/main.ts, drawLook) */
+body.framing #bar [inert] { opacity: 0.32; }
 
 .glass {
   background: var(--surface);

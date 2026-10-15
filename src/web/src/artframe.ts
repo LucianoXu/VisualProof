@@ -20,7 +20,7 @@ import type { ArtworkView } from "../../shared/collab.ts";
 import { ART_NAMES_BYTES, ART_TARGETS_BYTES } from "../../shared/collab.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { ArtSettings, NameRow, NotePicture } from "./artwork.ts";
-import { artName, artSvg, cleanSettings, drawBackdrop, drawFoot, drawNotes, drawTitle, encodePng, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
+import { artName, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { ART_SANS, ART_SERIF } from "./halo.ts";
 import { TITLE_SIZE } from "../../shared/collab.ts";
@@ -50,9 +50,13 @@ export interface ArtHooks {
   say(text: string): void;
 }
 
-/** the panel's width, and the room kept around the frame */
+/** the panel's width, and the room kept around the frame: at its sides, and above and below it for
+ *  the strips set there (the title's, the source's) */
 const PANEL_W = 300;
 const MARGIN = 32;
+const GAP = 12;
+const HEAD_ROOM = 60;
+const TAIL_ROOM = 34;
 /** the most pixels a band of a PNG is drawn in at once: what every browser's canvas allows */
 const BAND_PIXELS = 4096 * 4096;
 
@@ -71,6 +75,8 @@ export class ArtFrame {
   private frameEl: HTMLElement;
   private sky: HTMLCanvasElement;
   private ink: HTMLCanvasElement;
+  private head: HTMLElement;
+  private tail: HTMLElement;
   /** those following are told of the title once it has been still a moment */
   private titleWait = 0;
   private panel: HTMLElement;
@@ -103,7 +109,7 @@ export class ArtFrame {
       t.value = this.filter = "";
       return this.renderRows();
     }
-    if (t && !this.panel.contains(t) && t.closest?.("input, textarea, [contenteditable], [role=menu], [role=dialog], #modal")) return;
+    if (t && !this.panel.contains(t) && !this.root.contains(t) && t.closest?.("input, textarea, [contenteditable], [role=menu], [role=dialog], #modal")) return;
     if (document.querySelector("#ctxmenu:not([hidden])")) return;
     e.preventDefault();
     e.stopPropagation();
@@ -118,18 +124,29 @@ export class ArtFrame {
     this.hooks = hooks;
     // over the board within the frame, the title and the foot as the files have them (`ink`); under
     // it, the style's ground (`sky`)
-    root.innerHTML = `<div class="art-frame"><canvas class="art-ink"></canvas></div>`;
+    // in the shade beside the frame, where they act: the title's controls above its top left
+    // (`head`), the source's switch below its bottom right (`tail`)
+    root.innerHTML = `<div class="art-frame"><canvas class="art-ink"></canvas></div><div class="art-head glass" data-art-side></div><div class="art-tail glass" data-art-side></div>`;
     this.frameEl = root.querySelector(".art-frame")!;
     this.ink = root.querySelector(".art-ink")!;
-    panel.addEventListener("change", (e) => this.changed(e.target as HTMLInputElement));
-    panel.addEventListener("input", (e) => {
-      const t = e.target as HTMLInputElement;
-      // the title and its size, as they are typed and slid
-      if (t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize") return this.titled(t);
-      if (t.dataset.artFilter === undefined) return;
-      this.filter = t.value;
-      this.renderRows();
-    });
+    this.head = root.querySelector(".art-head")!;
+    this.tail = root.querySelector(".art-tail")!;
+    for (const host of [panel, this.head, this.tail]) {
+      host.addEventListener("change", (e) => this.changed(e.target as HTMLInputElement));
+      host.addEventListener("input", (e) => {
+        const t = e.target as HTMLInputElement;
+        // the title and its size, as they are typed and slid
+        if (t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize") return this.titled(t);
+        if (t.dataset.artFilter === undefined) return;
+        this.filter = t.value;
+        this.renderRows();
+      });
+    }
+    for (const host of [this.head, this.tail])
+      host.addEventListener("click", (e) => {
+        const t = e.target as HTMLElement;
+        if (t.closest("[data-art-pick]")) this.pick(t.closest<HTMLElement>("[data-art-pick]")!.dataset.artPick!);
+      });
     // the fonts arrive after the first drawing: drawn again with them
     document.fonts?.addEventListener?.("loadingdone", () => this.isOpen && this.renderInk());
     panel.addEventListener("click", (e) => {
@@ -261,10 +278,11 @@ export class ArtFrame {
    *  there keeps what it showed — the same middle, as much of the board. */
   private place(keep: boolean): void {
     const s = this.s!;
-    const roomW = innerWidth - PANEL_W - 3 * MARGIN, roomH = innerHeight - 2 * MARGIN - 60;
+    // the bar above, the panel at the right; the title's strip over the frame and the source's under it
+    const roomW = innerWidth - PANEL_W - 3 * MARGIN, roomH = innerHeight - 60 - HEAD_ROOM - TAIL_ROOM - 2 * GAP;
     const scale = Math.min(roomW / s.w, roomH / s.h);
     const w = Math.max(40, s.w * scale), h = Math.max(40, s.h * scale);
-    const x = MARGIN + (roomW - w) / 2, y = 60 + MARGIN + (roomH - h) / 2;
+    const x = MARGIN + (roomW - w) / 2, y = 60 + GAP + HEAD_ROOM + (roomH - h) / 2;
     const was = this.rect;
     if (keep && was.w > 0) {
       const C = this.canvas;
@@ -276,6 +294,8 @@ export class ArtFrame {
     this.rect = { x, y, w, h };
     Object.assign(this.frameEl.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
     Object.assign(this.sky.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
+    Object.assign(this.head.style, { left: `${x}px`, top: `${y - 8}px`, maxWidth: `${innerWidth - PANEL_W - MARGIN - x - 16}px` });
+    Object.assign(this.tail.style, { right: `${innerWidth - x - w}px`, top: `${y + h + 8}px` });
     this.renderSky();
     this.renderInk();
   }
@@ -304,15 +324,34 @@ export class ArtFrame {
     const ctx = this.ink.getContext("2d");
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    this.writeOver(ctx, s, { x: 0, y: 0, w: r.w, h: r.h });
+    const rect = { x: 0, y: 0, w: r.w, h: r.h };
+    // outside the border, the ground alone: over the board here, as the files leave it out
+    if (s.border) {
+      ctx.save();
+      borderBand(ctx, rect);
+      ctx.clip("evenodd");
+      if (s.background === "transparent") {
+        // nothing: shown as the board shows it, a checkerboard
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue("--canvas").trim();
+        ctx.fillRect(0, 0, r.w, r.h);
+        ctx.fillStyle = "rgba(128, 128, 128, 0.2)";
+        for (let y = 0; y < r.h; y += 8) for (let x = (y / 8) % 2 ? 8 : 0; x < r.w; x += 16) ctx.fillRect(x, y, 8, 8);
+      } else if (s.style === "board") {
+        ctx.fillStyle = themeBackground();
+        ctx.fillRect(0, 0, r.w, r.h);
+      } else drawBackdrop(ctx, s.style, rect);
+      ctx.restore();
+    }
+    this.writeOver(ctx, s, rect);
   }
 
-  /** What an artwork writes over the board within `rect`: its title and its foot. */
+  /** What an artwork writes over the board within `rect`: its border, its title and its foot. */
   private writeOver(ctx: CanvasRenderingContext2D, s: ArtSettings, rect: { x: number; y: number; w: number; h: number }): void {
     const own = this.hooks.titles();
     const cs = getComputedStyle(document.body);
     const v = (name: string) => cs.getPropertyValue(name).trim();
     const halo = s.style === "cells" ? "#0f1520" : s.style === "stars" ? "#090d1a" : v("--canvas");
+    if (s.border) drawBorder(ctx, rect, s.style === "cells" ? "rgba(200, 212, 236, 0.55)" : s.style === "stars" ? "rgba(241, 230, 200, 0.55)" : v("--text-2"));
     drawTitle(ctx, rect, s.title ?? own.title, s.subtitle ?? own.subtitle, s.titleSize, s.style, { ink: v("--text"), quiet: v("--text-2"), halo });
     const quiet = s.style === "board" ? v("--text-2") : "rgba(200, 208, 224, 0.7)";
     drawFoot(ctx, rect, s.source ? this.hooks.source() : null, { text: quiet, halo }, ART_SANS);
@@ -325,11 +364,11 @@ export class ArtFrame {
     if (!s || this.busy) return;
     if (t.dataset.art === "titleSize") {
       s.titleSize = Math.min(TITLE_SIZE.most, Math.max(TITLE_SIZE.least, Number(t.value) || TITLE_SIZE.first));
-      const out = this.panel.querySelector("[data-art-size]");
+      const out = this.head.querySelector("[data-art-size]");
       if (out) out.textContent = `${s.titleSize}%`;
     } else {
       s[t.dataset.art as "title" | "subtitle"] = t.value.slice(0, 120);
-      const own = this.panel.querySelector<HTMLElement>("[data-art-own]");
+      const own = this.head.querySelector<HTMLElement>("[data-art-own]");
       if (own) own.hidden = false;
     }
     this.hooks.save(s);
@@ -374,7 +413,7 @@ export class ArtFrame {
       const [theme, clear] = t.value.split("-");
       s.theme = theme === "dark" ? "dark" : "light";
       s.background = clear ? "transparent" : "theme";
-    } else if (k === "proofs" || k === "notes" || k === "selection" || k === "source" || k === "keys") s[k] = t.checked;
+    } else if (k === "proofs" || k === "notes" || k === "selection" || k === "source" || k === "keys" || k === "border") s[k] = t.checked;
     else {
       (s as unknown as Record<string, string>)[k] = t.value;
       // by selection, from what was drawn: As shown, nothing hidden or added; every target
@@ -527,48 +566,59 @@ export class ArtFrame {
     const opt = (v: string, label: string, cur: string) => `<option value="${v}"${v === cur ? " selected" : ""}>${label}</option>`;
     const sel = (k: keyof ArtSettings, label: string, opts: [string, string][]) =>
       `<label class="ex-field"><span>${label}</span><select data-art="${k}">${opts.map(([v, l]) => opt(v, l, String(s[k]))).join("")}</select></label>`;
-    const check = (k: "proofs" | "notes" | "selection" | "source" | "keys", label: string, title = "", off = false) =>
+    const wide = (html: string) => html.replace(`<label class="ex-field">`, `<label class="ex-field ex-wide">`);
+    const check = (k: "proofs" | "notes" | "selection" | "source" | "keys" | "border", label: string, title = "", off = false) =>
       `<label class="ex-check${off ? " muted" : ""}"${title ? ` title="${escapeHtml(title)}"` : ""}><input type="checkbox" data-art="${k}"${s[k] && !off ? " checked" : ""}${off ? " disabled" : ""}> ${label}</label>`;
     const preset = presetOf(s.w, s.h);
     const mp = ((s.w * s.h) / 1e6).toFixed(1);
     const look = `${s.theme}${s.background === "transparent" ? "-clear" : ""}`;
     const source = this.hooks.source();
+    const section = (title: string, body: string) => `<section class="art-sec"><h3 class="art-sec-h">${title}</h3><div class="art-grid">${body}</div></section>`;
     this.panel.innerHTML =
       `<div class="ex-head"><div class="modal-title">Artwork</div><button class="icon" data-art-done title="Done (Esc)">✕</button></div>` +
-      `<div class="modal-text">The board is the picture: pan, zoom, select and drag as ever. What the frame holds is saved.</div>` +
-      `<div class="art-grid">` +
-      `<label class="ex-field"><span>Size</span><select data-art="preset"><option value="-1"${preset < 0 ? " selected" : ""}>Custom</option>${PRESETS.map((p, i) => `<option value="${i}"${i === preset ? " selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}</select></label>` +
-      `<label class="ex-field"><span>Orientation</span><select data-art="orient"${s.w === s.h ? " disabled" : ""}>${opt("landscape", "Landscape", s.h > s.w ? "" : "landscape")}${opt("portrait", "Portrait", s.h > s.w ? "portrait" : "")}</select></label>` +
-      `<label class="ex-field"><span>Width</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="w" value="${s.w}"></label>` +
-      `<label class="ex-field"><span>Height</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="h" value="${s.h}"></label>` +
-      `<div class="art-note muted">${mp} megapixels · names ${Math.round((11 * s.w) / Math.max(this.rect.w, 1))} px high</div>` +
-      sel("style", "Style", [["board", "As the board"], ["cells", "Cells"], ["stars", "Starfield"]]) +
-      `<label class="ex-field"><span>Theme</span><select data-art="look">${(s.style === "board"
-        ? [
-            ["light", "Light"],
-            ["dark", "Dark"],
-            ["light-clear", "Transparent, for a light page"],
-            ["dark-clear", "Transparent, for a dark page"],
-          ]
-        : [
-            ["dark", s.style === "stars" ? "Night sky" : "Dark field"],
-            ["dark-clear", "Transparent, for a dark page"],
-          ]
-      )
-        .map(([v, l]) => opt(v, l, look))
-        .join("")}</select></label>` +
-      this.titleHtml() +
-      sel("scheme", "Colouring", [["kind", "Kind"], ["status", "Status"]]) +
-      sel("labels", "Names", [["board", "As shown"], ["clusters", "Clusters only"], ["none", "None"], ["chosen", "By selection"]]) +
-      (s.labels === "chosen" ? this.namesHtml() : "") +
-      sel("edges", "Edges", [["all", "All"], ["selection", "The selection's"], ["none", "None"]]) +
-      sel("targets", "Targets", [["marked", "Star and name"], ["plain", "As any"], ["highlight", "Alone, the rest faded"], ["chosen", "By selection"]]) +
-      (s.targets === "chosen" ? this.targetsHtml() : "") +
-      `<div class="ex-checks">${check("keys", "Key marks", "The key declarations' diamonds; with the targets by selection, those of the targets ticked")}${check("proofs", "Proof edges")}${check("notes", "Notes")}${check("selection", "The selection, as you see it")}` +
-      check("source", "Source and commit, at the bottom right", source ?? "This project is not a git repository", !source) +
+      `<div class="modal-text">The board is the picture: pan, zoom, select and drag as ever. What the frame holds is saved; its title and its foot are set beside it.</div>` +
+      `<div class="art-secs">` +
+      section(
+        "Picture",
+        `<label class="ex-field"><span>Size</span><select data-art="preset"><option value="-1"${preset < 0 ? " selected" : ""}>Custom</option>${PRESETS.map((p, i) => `<option value="${i}"${i === preset ? " selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}</select></label>` +
+          `<label class="ex-field"><span>Orientation</span><select data-art="orient"${s.w === s.h ? " disabled" : ""}>${opt("landscape", "Landscape", s.h > s.w ? "" : "landscape")}${opt("portrait", "Portrait", s.h > s.w ? "portrait" : "")}</select></label>` +
+          `<label class="ex-field"><span>Width</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="w" value="${s.w}"></label>` +
+          `<label class="ex-field"><span>Height</span><input type="number" min="16" max="${MAX_SIDE}" step="1" data-art="h" value="${s.h}"></label>` +
+          `<div class="art-note muted">${mp} megapixels · names ${Math.round((11 * s.w) / Math.max(this.rect.w, 1))} px high</div>` +
+          `<div class="ex-checks">${check("border", "A thin border round the picture")}</div>`,
+      ) +
+      section(
+        "Look",
+        sel("style", "Style", [["board", "As the board"], ["cells", "Cells"], ["stars", "Starfield"]]) +
+          `<label class="ex-field"><span>Theme</span><select data-art="look">${(s.style === "board"
+            ? [
+                ["light", "Light"],
+                ["dark", "Dark"],
+                ["light-clear", "Transparent, for a light page"],
+                ["dark-clear", "Transparent, for a dark page"],
+              ]
+            : [
+                ["dark", s.style === "stars" ? "Night sky" : "Dark field"],
+                ["dark-clear", "Transparent, for a dark page"],
+              ]
+          )
+            .map(([v, l]) => opt(v, l, look))
+            .join("")}</select></label>` +
+          sel("scheme", "Colouring", [["kind", "Kind"], ["status", "Status"]]),
+      ) +
+      section("Names", wide(sel("labels", "Names", [["board", "As shown"], ["clusters", "Clusters only"], ["none", "None"], ["chosen", "By selection"]])) + (s.labels === "chosen" ? this.namesHtml() : "")) +
+      section(
+        "Targets and keys",
+        wide(sel("targets", "Targets", [["marked", "Star and name"], ["plain", "As any"], ["highlight", "Alone, the rest faded"], ["chosen", "By selection"]])) +
+          (s.targets === "chosen" ? this.targetsHtml() : "") +
+          `<div class="ex-checks">${check("keys", "Key marks", "The key declarations' diamonds; with the targets by selection, those of the targets ticked")}</div>`,
+      ) +
+      section("Edges and the rest", wide(sel("edges", "Edges", [["all", "All"], ["selection", "The selection's"], ["none", "None"]])) + `<div class="ex-checks">${check("proofs", "Proof edges")}${check("notes", "Notes")}${check("selection", "The selection, as you see it")}</div>`) +
       `</div>` +
-      `</div>` +
-      `<div class="modal-actions"><button class="rv-btn" data-art-done>Done</button><button class="rv-btn" data-art-save="svg"${this.busy ? " disabled" : ""}>Save SVG</button><button class="rv-btn primary" data-art-save="png"${this.busy ? " disabled" : ""}>${this.busy ? "Saving…" : "Save PNG"}</button></div>`;
+      `<div class="modal-actions art-save"><button class="rv-btn" data-art-done>Done</button><button class="rv-btn" data-art-save="svg"${this.busy ? " disabled" : ""}>Save SVG</button><button class="rv-btn primary" data-art-save="png"${this.busy ? " disabled" : ""}>${this.busy ? "Saving…" : "Save PNG"}</button></div>`;
+    // beside the frame, in its shade: the title above its top left, the source below its bottom right
+    this.head.innerHTML = this.titleHtml();
+    this.tail.innerHTML = check("source", "Source and commit", source ?? "This project is not a git repository", !source);
     for (const [k, top] of scrolls) {
       const el = this.panel.querySelector<HTMLElement>(`[data-art-rows="${k}"]`);
       if (el) el.scrollTop = top;
@@ -581,17 +631,17 @@ export class ArtFrame {
     }
   }
 
-  /** The title, its line and its size; the project's own again. */
+  /** The title, its line and its size, above the frame's top left; the project's own again. */
   private titleHtml(): string {
     const s = this.s!;
     const own = this.hooks.titles();
-    const field = (k: "title" | "subtitle", label: string) =>
-      `<label class="ex-field ex-wide"><span>${label}</span><input type="text" data-art="${k}" maxlength="120" spellcheck="false" value="${escapeHtml(s[k] ?? own[k])}" placeholder="None"></label>`;
+    const field = (k: "title" | "subtitle", label: string, wide: string) =>
+      `<label class="ex-field art-head-field" style="--w:${wide}"><span>${label}</span><input type="text" data-art="${k}" maxlength="120" spellcheck="false" value="${escapeHtml(s[k] ?? own[k])}" placeholder="None"></label>`;
     return (
-      field("title", "Title") +
-      field("subtitle", "Under it") +
-      `<label class="ex-field ex-wide art-size"><span>Title size <output data-art-size>${s.titleSize}%</output></span><input type="range" data-art="titleSize" min="${TITLE_SIZE.least}" max="${TITLE_SIZE.most}" step="0.5" value="${s.titleSize}" aria-label="The title's size, in hundredths of the picture's height"></label>` +
-      `<div class="art-note"${s.title !== null || s.subtitle !== null ? "" : " hidden"} data-art-own><button class="rv-btn" data-art-pick="title-own" title="The project's name, and what it holds">The project's own</button></div>`
+      field("title", "Title", "11em") +
+      field("subtitle", "Under it", "15em") +
+      `<label class="ex-field art-head-field art-size"><span>Size <output data-art-size>${s.titleSize}%</output></span><input type="range" data-art="titleSize" min="${TITLE_SIZE.least}" max="${TITLE_SIZE.most}" step="0.5" value="${s.titleSize}" aria-label="The title's size, in hundredths of the picture's height"></label>` +
+      `<button class="rv-btn" data-art-pick="title-own" title="The project's name, and what it holds"${s.title !== null || s.subtitle !== null ? "" : " hidden"} data-art-own>The project's own</button>`
     );
   }
 
@@ -645,10 +695,17 @@ export class ArtFrame {
       const svg = artSvg(rect, s, bg, ART_SANS, this.measure, (pen) => {
         const ctx = pen as unknown as CanvasRenderingContext2D;
         if (ground) drawBackdrop(ctx, s.style, rect);
+        // within the border, where there is one: outside it, the ground alone
+        if (s.border) {
+          const i = borderInset(rect);
+          pen.clipRect("inside", rect.x + i, rect.y + i, rect.w - 2 * i, rect.h - 2 * i);
+          pen.raw(`<g clip-path="url(#inside)">`);
+        }
         for (const sh of C.artShapes(rect)) pen.shape(sh);
         C.drawMarks(ctx);
         // a note's glyph is SVG already
         drawNotes(ctx, notes, ART_SANS, (n) => pen.raw(`<g transform="translate(${n.x - n.glyphPx / 2} ${n.y - n.glyphPx / 2}) scale(${n.glyphPx / 16})" color="${n.colour}">${n.glyph}</g>`));
+        if (s.border) pen.raw(`</g>`);
         this.writeOver(ctx, s, rect);
       }, await faces());
       return download(new Blob([svg], { type: "image/svg+xml" }), name);
@@ -695,6 +752,22 @@ export class ArtFrame {
             const img = glyphs.get(n.colour + n.glyph);
             if (img?.complete && img.naturalWidth) ctx!.drawImage(img, n.x - n.glyphPx / 2, n.y - n.glyphPx / 2, n.glyphPx, n.glyphPx);
           });
+          // outside the border, the ground alone (the owner's decision of 2026-10-15)
+          if (s.border) {
+            ctx!.save();
+            borderBand(ctx!, rect);
+            if (bg) {
+              ctx!.fillStyle = bg;
+              ctx!.fill("evenodd");
+            } else if (ground) {
+              ctx!.clip("evenodd");
+              drawBackdrop(ctx!, s.style, rect);
+            } else {
+              ctx!.globalCompositeOperation = "destination-out";
+              ctx!.fill("evenodd");
+            }
+            ctx!.restore();
+          }
           write(ctx!);
           yield ctx!.getImageData(0, 0, s.w, n).data;
         }

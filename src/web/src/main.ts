@@ -1031,6 +1031,10 @@ async function boot(): Promise<void> {
   });
   linearBtn.addEventListener("click", () => linear.toggle());
 
+  /** In the artwork mode (ExportSpec decision 19, the owner's decision of 2026-10-15): of the bar,
+   *  what is out of reach — all but Share and Search; and the keys that still act. */
+  const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
+  const ART_KEYS = new Set(["/", "1", "2", "3", "f", "+", "=", "-", "_", "e", "[", "]", "l"]);
   // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
   /** the artwork's settings the board is drawn with: null where its mode is off */
@@ -1081,6 +1085,9 @@ async function boot(): Promise<void> {
     // the cells and the starfield are dark, on a dark ground round the frame
     if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
     else delete document.body.dataset.artStyle;
+    // of the bar, Share and Search alone (the owner's decision of 2026-10-15): the rest is out of
+    // reach until the mode is left, by the pointer and by the keyboard
+    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!a;
     if (a) {
       linear.hide("reader");
       document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
@@ -3819,6 +3826,9 @@ async function boot(): Promise<void> {
       menuOnSelection();
       return;
     }
+    // in the artwork mode, the keys that act on the board alone: Search, the tool, the zoom, the
+    // outside world, the levels, the lock — not those that open what the mode puts away
+    if (artLook && !ART_KEYS.has(e.key)) return;
     // with Ctrl or ⌘ a letter is the browser's (Ctrl L, Ctrl F, …), and the drag key held is the lock's
     if ((e.ctrlKey || e.metaKey) && e.key.length === 1) return;
     const route = routeKey(e.key, win !== null, !!(e.target as Element | null)?.closest?.("button, a[href], summary, select"));

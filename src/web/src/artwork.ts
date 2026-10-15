@@ -64,6 +64,7 @@ const DEFAULTS: ArtSettings = {
   title: null,
   subtitle: null,
   titleSize: TITLE_SIZE.first,
+  border: false,
 };
 
 const one = <T extends string>(v: unknown, of: readonly T[], d: T): T => (of.includes(v as T) ? (v as T) : d);
@@ -96,6 +97,7 @@ export function cleanSettings(s: Partial<ArtSettings> | undefined, now: { scheme
     title: cleanTitle(o.title),
     subtitle: cleanTitle(o.subtitle),
     titleSize: cleanTitleSize(o.titleSize),
+    border: typeof o.border === "boolean" ? o.border : DEFAULTS.border,
   };
 }
 
@@ -422,6 +424,34 @@ export function drawTitle(ctx: CanvasRenderingContext2D, rect: { x: number; y: n
   ctx.restore();
 }
 
+/** A thin line round the whole of the frame `rect` (the screen's pixels), a little within its edge,
+ *  in `colour` (the owner's decision of 2026-10-15): its inset and its width a part of the frame's
+ *  shorter side, so that the picture's are the frame's, more pixels. */
+export function drawBorder(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, colour: string): void {
+  const inset = borderInset(rect), width = Math.max(0.6, Math.min(rect.w, rect.h) * 0.0012);
+  ctx.save();
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.rect(rect.x + inset, rect.y + inset, rect.w - 2 * inset, rect.h - 2 * inset);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** How far within the frame `rect` its border runs: what lies outside it is the ground alone. */
+export function borderInset(rect: { w: number; h: number }): number {
+  return Math.max(3, Math.min(rect.w, rect.h) * 0.006);
+}
+
+/** The band between the frame `rect` and its border, as a path to fill or clip by the even-odd rule:
+ *  what an artwork with a border keeps to its ground (the owner's decision of 2026-10-15). */
+export function borderBand(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }): void {
+  const i = borderInset(rect);
+  ctx.beginPath();
+  ctx.rect(rect.x, rect.y, rect.w, rect.h);
+  ctx.rect(rect.x + i, rect.y + i, rect.w - 2 * i, rect.h - 2 * i);
+}
+
 /** The title an artwork has where the reader gave none: the project's name; and its line: how many
  *  declarations the project holds and how many targets its review has. */
 export function titleOf(project: string, declarations: number, targets: number): { title: string; subtitle: string } {
@@ -668,6 +698,12 @@ export class SvgContext {
   }
   strokeText(text: string, x: number, y: number): void {
     this.body.push(`<text ${this.textAt(x, y)} fill="none"${this.style("stroke")}${this.lines()}>${esc(text)}</text>`);
+  }
+
+  /** A rectangle (the context's pixels) to clip to, by its id: an artwork's inside its border. */
+  clipRect(id: string, x: number, y: number, w: number, h: number): void {
+    const [x0, y0] = this.at(x, y), k = this.scale();
+    this.defs.push(`<clipPath id="${id}"><rect x="${n2(x0)}" y="${n2(y0)}" width="${n2(w * k)}" height="${n2(h * k)}"/></clipPath>`);
   }
 
   /** SVG's own markup, written as it is: a note's glyph. */

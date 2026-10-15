@@ -7,7 +7,7 @@ import { test } from "node:test";
 import type { ArtShape } from "../src/web/src/canvas.ts";
 import type { NotePicture } from "../src/web/src/artwork.ts";
 import type { NameRow } from "../src/web/src/artwork.ts";
-import { artName, artSvg, bundlePoints, cleanSettings, drawBackdrop, drawFoot, drawNotes, drawTitle, MAX_SIDE, NAME_ROWS, nameRows, oriented, presetOf, PRESETS, sourceLine, svgColour, SvgContext, titleOf, withChosen, wrapText } from "../src/web/src/artwork.ts";
+import { artName, artSvg, borderBand, borderInset, bundlePoints, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, MAX_SIDE, NAME_ROWS, nameRows, oriented, presetOf, PRESETS, sourceLine, svgColour, SvgContext, titleOf, withChosen, wrapText } from "../src/web/src/artwork.ts";
 import { ART_NAMES_BYTES } from "../src/shared/collab.ts";
 import { arcHalf, HALO, writeNames } from "../src/web/src/halo.ts";
 
@@ -398,4 +398,27 @@ test("a style's circles in the SVG as the renderer draws them: a glow, a fill fr
   // the halo: a ring of light 26 wide round the rim, fading both ways
   assert.equal(pen.body[4], `<circle cx="50" cy="50" r="53" fill="url(#h2)"/>`);
   assert.match(pen.defs[2], /<stop offset="0.5094" stop-color="rgb\(0,0,255\)" stop-opacity="0"\/>.*<stop offset="0.7547" stop-color="rgb\(0,0,255\)" stop-opacity="0.3"\/>/);
+});
+
+test("a thin border round the picture (the owner's decision of 2026-10-15): off at first; a little within the edge, as wide as a part of the shorter side", () => {
+  const now = { scheme: "kind" as const, theme: "light" as const };
+  assert.equal(cleanSettings(undefined, now).border, false);
+  assert.equal(cleanSettings({ border: true }, now).border, true);
+  assert.equal(cleanSettings({ border: "yes" as never }, now).border, false);
+  const pen = new SvgContext(measure, FAMILY);
+  drawBorder(ctxOf(pen), { x: 10, y: 20, w: 1000, h: 500 }, "#666");
+  assert.deepEqual(pen.body, [`<path d="M13,23L1007,23L1007,517L13,517Z" fill="none" stroke="rgb(102,102,102)" stroke-width="0.6"/>`]);
+  const big = new SvgContext(measure, FAMILY);
+  drawBorder(ctxOf(big), { x: 0, y: 0, w: 4000, h: 2000 }, "#666");
+  assert.match(big.body[0], /^<path d="M12,12L3988,12L3988,1988L12,1988Z" .*stroke-width="2.4"\/>$/);
+  // outside it, the ground alone: the band between the edge and the border, and the SVG's drawing
+  // clipped within it
+  assert.equal(borderInset({ w: 1000, h: 500 }), 3);
+  assert.equal(borderInset({ w: 4000, h: 2000 }), 12);
+  const band = new SvgContext(measure, FAMILY);
+  borderBand(ctxOf(band), { x: 10, y: 20, w: 1000, h: 500 });
+  band.fill();
+  assert.deepEqual(band.body, [`<path d="M10,20L1010,20L1010,520L10,520ZM13,23L1007,23L1007,517L13,517Z" fill="rgb(0,0,0)"/>`]);
+  band.clipRect("inside", 13, 23, 994, 494);
+  assert.equal(band.defs.at(-1), `<clipPath id="inside"><rect x="13" y="23" width="994" height="494"/></clipPath>`);
 });

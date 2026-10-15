@@ -225,6 +225,8 @@ export interface ArtworkLook {
   title: string | null;
   subtitle: string | null;
   titleSize: number;
+  /** a thin line round the whole picture, a little within its edge */
+  border: boolean;
 }
 
 /** An artwork's ways of being drawn (ArtworkLook `style`). */
@@ -320,7 +322,7 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   const keys = typeof o.keys === "boolean" ? o.keys : targets !== "plain";
   // the style and the title, said since that night: as the board, the project's own
   const style = one(ART_STYLES, o.style) ?? "board";
-  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, proofs: o.proofs, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), region: [...r] };
+  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, proofs: o.proofs, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), border: o.border === true, region: [...r] };
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */

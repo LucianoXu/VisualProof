@@ -50,7 +50,7 @@ function heavy(): PresenceView {
     edges: false,
     proofEdges: true,
     linear: false,
-    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", namesFrom: "board", hiddenNames: [], shownNames: [], edges: "selection", proofs: false, notes: true, targets: "highlight", shownTargets: [], keys: true, selection: true, source: true, style: "stars", title: "Sphere Packing", subtitle: null, titleSize: 9.5, region: [1201.25, -950.5, 1480.3, 1046.7] },
+    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", namesFrom: "board", hiddenNames: [], shownNames: [], edges: "selection", proofs: false, notes: true, targets: "highlight", shownTargets: [], keys: true, selection: true, source: true, style: "stars", title: "Sphere Packing", subtitle: null, titleSize: 9.5, border: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
     tabs: ["project", "v7f3a9c2e41"],
   };
 }
