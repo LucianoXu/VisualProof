@@ -21,6 +21,7 @@
 
 import type { BuildStatus } from "../../shared/build.ts";
 import type { ChatMessage, Invited, PresenceView, PrivateCount } from "../../shared/collab.ts";
+import { artNameId } from "../../shared/collab.ts";
 import type { ClusterMode, Layout, ViewMeta } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
@@ -1052,6 +1053,11 @@ async function boot(): Promise<void> {
       const git = vg().meta.project.git;
       return git ? sourceLine(git) : null;
     },
+    // the targets a picture can mark: every one of the review's, by the name the board writes
+    targets: () =>
+      Object.keys(review.data.targets)
+        .map((name) => ({ name, label: name.split(".").pop() ?? name }))
+        .sort((a, b) => a.label.localeCompare(b.label) || a.name.localeCompare(b.name)),
     say: (text) => say(text),
   });
   /** The board drawn with the artwork's settings while its mode is on, or as the reader's own again
@@ -1068,12 +1074,16 @@ async function boot(): Promise<void> {
       linear.hide("reader");
       document.documentElement.dataset.theme = a.theme;
     } else applyTheme();
-    canvas.setArt(a && { labels: a.labels, edges: a.edges, targets: a.targets });
+    canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys });
     applyScheme();
     syncEdges();
     apply();
   };
-  canvas.onFrame = () => stickies.frame();
+  canvas.onFrame = () => {
+    stickies.frame();
+    // the artwork's list of names follows what its frame holds
+    art.frame();
+  };
   // the notes the outline holds are those the board shows
   stickies.onRender = () => linear.refresh();
   /** the board the notes were last drawn for */
@@ -1298,13 +1308,24 @@ async function boot(): Promise<void> {
     canvas.setStatus(statusCodes(boardReview(), G, pastShown() ? new Map() : fileIndex));
     canvas.setTargets(Object.keys(review.data.targets).map((n) => G.byName.get(n)).filter((j): j is number => j !== undefined));
     // key declarations carry a diamond: where the review has a focus its target's, elsewhere every
-    // target's (ExportSpec decision 4)
+    // target's (ExportSpec decision 4); each with the targets it is key for, so that an artwork whose
+    // targets are chosen draws their keys alone (decision 19)
     const r = reviewRoot();
     const roots = r !== null ? [r] : Object.keys(review.data.targets).map((n) => g.byName.get(n)).filter((j): j is number => j !== undefined);
-    const keys = new Set<number>();
-    for (const t of roots) for (const k of flow.keys(t).keys) if (k !== t) keys.add(k);
-    canvas.setKeys([...keys].map((k) => G.byName.get(g.nodes[k].name)).filter((j): j is number => j !== undefined));
+    const keys = new Map<number, number[]>();
+    for (const t of roots) for (const k of flow.keys(t).keys) if (k !== t) keys.set(k, [...(keys.get(k) ?? []), t]);
+    const onBoard = (k: number) => G.byName.get(g.nodes[k].name);
+    const drawn = [...keys].flatMap(([k, ts]) => {
+      const j = onBoard(k);
+      return j === undefined ? [] : [{ j, of: ts.map(onBoard).filter((t): t is number => t !== undefined) }];
+    });
+    canvas.setKeys(
+      drawn.map((d) => d.j),
+      drawn.map((d) => d.of),
+    );
     legend.render();
+    // an artwork's targets by selection list them
+    art.refresh();
   };
 
   // ---------------------------------------------------------------- the colour scheme
@@ -3053,7 +3074,7 @@ async function boot(): Promise<void> {
 
   /** What the menu is open on: the target, its declaration in the whole graph's numbering or its
    *  cluster on the board, the part of a scope it is (decl(X), or the cluster's set), and where. */
-  let menuOn: { t: MenuTarget; i?: number; c?: number; note?: string; part: Query | null; world: [number, number]; at: { x: number; y: number }; linear?: boolean } | null = null;
+  let menuOn: { t: MenuTarget; i?: number; c?: number; note?: string; part: Query | null; world: [number, number]; at: { x: number; y: number }; linear?: boolean; artName?: string } | null = null;
   const ctxMenu = new ContextMenu($("#ctxmenu"), {
     chose: (act, name) => void menuAct(act, name),
     // what it was open on was lit for it: no longer
@@ -3128,6 +3149,9 @@ async function boot(): Promise<void> {
       if (i === undefined) return;
       const name = g.nodes[i].name;
       const r = reviewRoot();
+      // an artwork's names by selection: its name shown in the picture, or not (ExportSpec decision 19)
+      const artName = t.kind === "node" ? artNameId("decl", canvas.g.nodes[t.i].name) : undefined;
+      const inArt = artName ? art.nameChosen(artName) : undefined;
       const mt: MenuTarget = {
         kind: "decl",
         name,
@@ -3136,16 +3160,26 @@ async function boot(): Promise<void> {
         target: Object.hasOwn(boardReview().targets, name),
         ns: g.isExt(i) ? null : trustOf(name.split(".").slice(0, -1).join(".") || null),
         ...(visitor ? { visitor: true } : {}),
+        ...(inArt !== undefined ? { art: inArt } : {}),
       };
       // a scope is written in the names of now, as a move keeps it (a past graph's renamed one)
-      menuOn = { t: mt, i, part: { op: "decl", names: [declNow(i)] }, world, at: { x, y } };
+      menuOn = { t: mt, i, part: { op: "decl", names: [declNow(i)] }, world, at: { x, y }, ...(artName ? { artName } : {}) };
       if (t.kind === "node") canvas.preview(t.i);
       ctxMenu.show(menuItems(mt, menuContext(menuOn.part), title), x, y, name, keys);
     } else if (t?.kind === "cluster") {
       const cl = canvas.layout.clusters[t.c];
       const st = trust.state(cl, cm());
-      const mt: MenuTarget = { kind: "cluster", key: cl.key, folded: folded ?? canvas.folded.has(t.c), folder: cm() === "module", trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null };
-      menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y } };
+      const artName = artNameId("cluster", cl.key);
+      const inArt = art.nameChosen(artName);
+      const mt: MenuTarget = {
+        kind: "cluster",
+        key: cl.key,
+        folded: folded ?? canvas.folded.has(t.c),
+        folder: cm() === "module",
+        trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null,
+        ...(inArt !== undefined ? { art: inArt } : {}),
+      };
+      menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y }, artName };
       canvas.previewCluster(t.c);
       ctxMenu.show(menuItems(mt, menuContext(menuOn.part), title), x, y, cl.key.replace("⟨external⟩", "External"), keys);
     } else {
@@ -3631,6 +3665,9 @@ async function boot(): Promise<void> {
     if (act.startsWith("detach:")) return on.note ? void detach(on.note, Number(act.slice(7))) : undefined;
     if (act.startsWith("item:")) return on.note ? void itemTo(on.note, act.slice(5)) : undefined;
     switch (act) {
+      case "art-name":
+        if (on.artName && (t.kind === "decl" || t.kind === "cluster")) art.showName(on.artName, !t.art);
+        return;
       case "source":
         if (i !== undefined) sources.show(i);
         return;

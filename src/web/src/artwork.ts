@@ -13,7 +13,7 @@
 // frame. Nothing is asked of the server, so a read-only page and a snapshot can make one too.
 
 import type { ArtworkLook } from "../../shared/collab.ts";
-import { ART_MAX_SIDE } from "../../shared/collab.ts";
+import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_TARGETS_BYTES, cleanNames, isArtNameId } from "../../shared/collab.ts";
 import type { GitSource } from "../../shared/graph.ts";
 import type { ArtShape } from "./canvas.ts";
 import { writeNames } from "./halo.ts";
@@ -48,10 +48,15 @@ const DEFAULTS: ArtSettings = {
   theme: "light",
   background: "theme",
   labels: "board",
+  namesFrom: "board",
+  hiddenNames: [],
+  shownNames: [],
   edges: "all",
   proofs: false,
   notes: true,
   targets: "marked",
+  shownTargets: [],
+  keys: true,
   selection: true,
   source: false,
 };
@@ -62,20 +67,64 @@ const side = (v: unknown, d: number) => (typeof v === "number" && Number.isFinit
 /** Settings as a browser kept them, each checked, over the defaults. */
 export function cleanSettings(s: Partial<ArtSettings> | undefined, now: { scheme: ArtSettings["scheme"]; theme: ArtSettings["theme"] }): ArtSettings {
   const o = (s ?? {}) as Record<string, unknown>;
+  const targets = one(o.targets, ["marked", "plain", "highlight", "chosen"], DEFAULTS.targets);
   return {
     w: side(o.w, DEFAULTS.w),
     h: side(o.h, DEFAULTS.h),
     scheme: one(o.scheme, ["kind", "status"], now.scheme),
     theme: one(o.theme, ["light", "dark"], now.theme),
     background: one(o.background, ["theme", "transparent"], DEFAULTS.background),
-    labels: one(o.labels, ["board", "clusters", "none"], DEFAULTS.labels),
+    labels: one(o.labels, ["board", "clusters", "none", "chosen"], DEFAULTS.labels),
+    namesFrom: o.namesFrom === "none" ? "none" : "board",
+    hiddenNames: cleanNames(o.hiddenNames, ART_NAMES_BYTES, isArtNameId),
+    shownNames: cleanNames(o.shownNames, ART_NAMES_BYTES, isArtNameId),
     edges: one(o.edges, ["all", "selection", "none"], DEFAULTS.edges),
     proofs: typeof o.proofs === "boolean" ? o.proofs : DEFAULTS.proofs,
     notes: typeof o.notes === "boolean" ? o.notes : DEFAULTS.notes,
-    targets: one(o.targets, ["marked", "plain", "highlight"], DEFAULTS.targets),
+    targets,
+    shownTargets: cleanNames(o.shownTargets, ART_TARGETS_BYTES),
+    // kept before the key marks had a switch of their own: as the targets drew them
+    keys: typeof o.keys === "boolean" ? o.keys : targets !== "plain",
     selection: typeof o.selection === "boolean" ? o.selection : DEFAULTS.selection,
     source: typeof o.source === "boolean" ? o.source : DEFAULTS.source,
   };
+}
+
+// ---------------------------------------------------------------- names and targets chosen
+
+/** A name the artwork's list of names offers (web/src/artframe.ts; the owner's decision of
+ *  2026-10-15): what it names (shared/collab.ts, artNameId), the name the board writes, and the full
+ *  name or key it stands for; a cluster's, or a declaration's. */
+export interface NameRow {
+  id: string;
+  label: string;
+  full: string;
+  cluster: boolean;
+}
+
+/** the most rows the list of names shows at once: the rest are narrowed to by its filter */
+export const NAME_ROWS = 2000;
+
+/** The rows of the list of names whose name or full name holds `filter`, whatever the case, in the
+ *  order given (the clusters' first), at most `cap` of them; and how many more hold it. */
+export function nameRows(all: readonly NameRow[], filter: string, cap = NAME_ROWS): { rows: NameRow[]; more: number } {
+  const f = filter.trim().toLowerCase();
+  const rows: NameRow[] = [];
+  let more = 0;
+  for (const r of all) {
+    if (f && !r.label.toLowerCase().includes(f) && !r.full.toLowerCase().includes(f)) continue;
+    if (rows.length < cap) rows.push(r);
+    else more++;
+  }
+  return { rows, more };
+}
+
+/** `list` with `add` after it, as many of them as fit in `budget` bytes of what presence carries
+ *  (shared/collab.ts, cleanNames), in their order; and how many of them did not fit. */
+export function withChosen(list: readonly string[], add: readonly string[], budget: number): { list: string[]; left: number } {
+  const out = cleanNames([...list, ...add], budget);
+  const had = new Set(list), kept = new Set(out);
+  return { list: out, left: new Set(add.filter((x) => !had.has(x) && !kept.has(x))).size };
 }
 
 /** The picture's background, the theme's: read while the artwork mode is on, it is its theme's. */

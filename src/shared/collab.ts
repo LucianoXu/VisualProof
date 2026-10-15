@@ -190,18 +190,69 @@ export interface ArtworkLook {
   theme: "light" | "dark";
   background: "theme" | "transparent";
   /** names as the board writes them (a lit declaration's where the board would give it a card); the
-   *  clusters' and the targets' alone; none */
-  labels: "board" | "clusters" | "none";
+   *  clusters' and the targets' alone; none; or by selection: from As shown or from none
+   *  (`namesFrom`), those the reader hid left out and those they showed written, each wherever it
+   *  falls (the owner's decision of 2026-10-15) */
+  labels: "board" | "clusters" | "none" | "chosen";
+  namesFrom: "board" | "none";
+  /** by selection, the names hidden and the names shown besides, each by what it names (artNameId): a
+   *  cluster by its key, a declaration by its full name; each list within what presence carries
+   *  (ART_NAMES_BYTES) */
+  hiddenNames: string[];
+  shownNames: string[];
   edges: "all" | "selection" | "none";
   proofs: boolean;
   notes: boolean;
-  /** a target's star and name marked; drawn as any declaration; or it alone, the rest faded */
-  targets: "marked" | "plain" | "highlight";
+  /** a target's star and name marked; drawn as any declaration; it alone, the rest faded; or those
+   *  chosen (`shownTargets`) marked, the others drawn as any declaration */
+  targets: "marked" | "plain" | "highlight" | "chosen";
+  /** the targets chosen, by full name; within what presence carries (ART_TARGETS_BYTES) */
+  shownTargets: string[];
+  /** the key declarations' diamonds, a switch of their own (the owner's decision of 2026-10-15); with
+   *  the targets chosen, those of the targets chosen */
+  keys: boolean;
   /** the selection and what is lit drawn as the reader sees them */
   selection: boolean;
   /** the project's git source and the commit it was read from, at the bottom right */
   source: boolean;
 }
+
+/** What a name of an artwork's names (ArtworkLook `names`) names: a cluster, by its key, or a
+ *  declaration, by its full name. */
+export function artNameId(kind: "cluster" | "decl", s: string): string {
+  return `${kind === "cluster" ? "c" : "d"}:${s}`;
+}
+
+/** The most an artwork's names hidden, its names shown, and its targets chosen each take in what
+ *  presence carries, in bytes of their JSON: a heartbeat is at most 16 KB (server/main.ts), and the
+ *  rest of where a reader is has room beside them. Names by selection are kept as what differs from
+ *  As shown, so that a few names hidden or added are a few names carried. */
+export const ART_NAMES_BYTES = 4500;
+export const ART_TARGETS_BYTES = 2500;
+
+/** What `x` adds to a list's JSON: itself, quoted, and a comma. */
+const jsonBytes = (x: string) => new TextEncoder().encode(JSON.stringify(x)).length + 1;
+
+/** A list of names as given, checked: strings, each once, none empty or longer than a name is (1,000
+ *  characters), each as `ok` says; kept in their order while their JSON stays within `budget` bytes,
+ *  the rest left out. */
+export function cleanNames(v: unknown, budget: number, ok: (s: string) => boolean = () => true): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let used = 2;
+  for (const x of Array.isArray(v) ? v : []) {
+    if (typeof x !== "string" || !x || x.length > 1000 || seen.has(x) || !ok(x)) continue;
+    const b = jsonBytes(x);
+    if (used + b > budget) break;
+    used += b;
+    seen.add(x);
+    out.push(x);
+  }
+  return out;
+}
+
+/** a name of an artwork's names: a cluster's or a declaration's (artNameId) */
+export const isArtNameId = (s: string) => /^[cd]:./.test(s);
 
 /** The artwork mode as presence carries it: its settings, and the rectangle of the board's world its
  *  frame holds (its middle, its width and height), which a follower's frame holds too. */
@@ -227,12 +278,18 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   const side = (x: unknown) => (Number.isInteger(x) && (x as number) >= 16 && (x as number) <= ART_MAX_SIDE ? (x as number) : null);
   const r = Array.isArray(o.region) && o.region.length === 4 && o.region.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1e9) ? (o.region as [number, number, number, number]) : null;
   const w = side(o.w), h = side(o.h), scheme = one(SCHEMES, o.scheme), theme = one(["light", "dark"] as const, o.theme);
-  const background = one(["theme", "transparent"] as const, o.background), labels = one(["board", "clusters", "none"] as const, o.labels);
-  const edges = one(["all", "selection", "none"] as const, o.edges), targets = one(["marked", "plain", "highlight"] as const, o.targets);
+  const background = one(["theme", "transparent"] as const, o.background), labels = one(["board", "clusters", "none", "chosen"] as const, o.labels);
+  const edges = one(["all", "selection", "none"] as const, o.edges), targets = one(["marked", "plain", "highlight", "chosen"] as const, o.targets);
   if (!r || r[2] <= 0 || r[3] <= 0 || !w || !h || !scheme || !theme || !background || !labels || !edges || !targets) return null;
   if (typeof o.proofs !== "boolean" || typeof o.notes !== "boolean" || typeof o.selection !== "boolean") return null;
-  // the source, said since 2026-10-15: off where a page does not say it
-  return { w, h, scheme, theme, background, labels, edges, proofs: o.proofs, notes: o.notes, targets, selection: o.selection, source: o.source === true, region: [...r] };
+  // the source, said since 2026-10-15: off where a page does not say it. The names and targets chosen
+  // and the key marks' switch, said since the evening of that day: none chosen where a page does not
+  // say them, and the key marks as the targets drew them before (with their stars, unless As any)
+  const namesFrom = o.namesFrom === "none" ? "none" : "board";
+  const hiddenNames = cleanNames(o.hiddenNames, ART_NAMES_BYTES, isArtNameId), shownNames = cleanNames(o.shownNames, ART_NAMES_BYTES, isArtNameId);
+  const shownTargets = cleanNames(o.shownTargets, ART_TARGETS_BYTES);
+  const keys = typeof o.keys === "boolean" ? o.keys : targets !== "plain";
+  return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, edges, proofs: o.proofs, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, region: [...r] };
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */

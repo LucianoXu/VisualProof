@@ -171,10 +171,10 @@ part without a form does not typecheck.
 outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme; the layout lock (`l`);
 zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
-(`b`); the search box (`/`); the name, its menu and window; the others' initials and a person's menu;
-the request banner; the follower's own conversation window and its pin, and the following strip;
-hover cards; the pointer's highlight; the frame meter (`p`). A control inside one that changes a
-followed part is that part's.
+(`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
+others' initials and a person's menu; the request banner; the follower's own conversation window and
+its pin, and the following strip; hover cards; the pointer's highlight; the frame meter (`p`). A
+control inside one that changes a followed part is that part's.
 
 **No surface**: the frames (bars, footer, windows' layer), whose blank parts count as the canvas;
 words, tooltips and hints, the notes of others' changes, the loader.

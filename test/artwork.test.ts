@@ -6,7 +6,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ArtShape } from "../src/web/src/canvas.ts";
 import type { NotePicture } from "../src/web/src/artwork.ts";
-import { artName, artSvg, bundlePoints, cleanSettings, drawFoot, drawNotes, MAX_SIDE, oriented, PRESETS, presetOf, sourceLine, SvgContext, svgColour, wrapText } from "../src/web/src/artwork.ts";
+import type { NameRow } from "../src/web/src/artwork.ts";
+import { artName, artSvg, bundlePoints, cleanSettings, drawFoot, drawNotes, MAX_SIDE, NAME_ROWS, nameRows, oriented, PRESETS, presetOf, sourceLine, SvgContext, svgColour, withChosen, wrapText } from "../src/web/src/artwork.ts";
+import { ART_NAMES_BYTES } from "../src/shared/collab.ts";
 import { HALO, writeNames } from "../src/web/src/halo.ts";
 
 const FAMILY = `"Inter", sans-serif`;
@@ -195,6 +197,40 @@ test("settings kept in a browser are read with care; a file's name is what no fi
   assert.equal(artName("TCB of ns CaseI @ Oct 9 22:27", "png"), "TCB of ns CaseI @ Oct 9 22 27.png");
   assert.equal(artName("a/b\\\\c|d?.", "svg"), "a b c d.svg");
   assert.equal(artName("  ", "png"), "VisualProof.png");
+});
+
+test("names and targets by selection (the owner's decision of 2026-10-15): kept as given, checked; the list of names filtered and cut short; what is ticked within what the artwork carries", () => {
+  const now = { scheme: "kind" as const, theme: "light" as const };
+  const fresh = cleanSettings(undefined, now);
+  assert.deepEqual([fresh.namesFrom, fresh.hiddenNames, fresh.shownNames, fresh.shownTargets, fresh.keys], ["board", [], [], [], true], "from As shown, nothing hidden or added; the key marks on");
+  const kept = cleanSettings({ labels: "chosen", namesFrom: "none", hiddenNames: ["c:A", "nope", 3], shownNames: ["d:A.b", "d:A.b", ""], targets: "chosen", shownTargets: ["A.t", "A.t", ""], keys: false } as never, now);
+  assert.deepEqual([kept.labels, kept.namesFrom, kept.hiddenNames, kept.shownNames, kept.targets, kept.shownTargets, kept.keys], ["chosen", "none", ["c:A"], ["d:A.b"], "chosen", ["A.t"], false]);
+  assert.equal(cleanSettings({ namesFrom: "all" } as never, now).namesFrom, "board");
+  // kept before the key marks had a switch of their own: as the targets drew them, with their stars
+  assert.equal(cleanSettings({ targets: "plain" }, now).keys, false);
+  assert.equal(cleanSettings({ targets: "highlight" }, now).keys, true);
+  // the list: by the name written or the full name, whatever the case, in the order given (the
+  // clusters' first); at most so many lines, and how many more the filter holds
+  const rows: NameRow[] = [
+    { id: "c:A.Sub", label: "Sub", full: "A.Sub", cluster: true },
+    { id: "d:A.Sub.lemma", label: "lemma", full: "A.Sub.lemma", cluster: false },
+    { id: "d:B.main", label: "main", full: "B.main", cluster: false },
+  ];
+  assert.deepEqual(nameRows(rows, ""), { rows, more: 0 });
+  assert.deepEqual(nameRows(rows, " SUB ").rows.map((r) => r.id), ["c:A.Sub", "d:A.Sub.lemma"]);
+  assert.deepEqual(nameRows(rows, "b.ma"), { rows: [rows[2]], more: 0 });
+  assert.deepEqual(nameRows(rows, "", 1), { rows: [rows[0]], more: 2 });
+  assert.equal(NAME_ROWS, 2000);
+  // ticked: added after what is chosen, each once, while they fit in what the artwork carries to those
+  // following; what does not fit is counted, to be said
+  assert.deepEqual(withChosen(["d:A.b"], ["d:A.b", "d:A.c"], ART_NAMES_BYTES), { list: ["d:A.b", "d:A.c"], left: 0 });
+  const many = Array.from({ length: 500 }, (_, i) => `d:FltRegular.CaseII.InductionStep.Proof.lemma_${i}`);
+  const r = withChosen([], many, ART_NAMES_BYTES);
+  assert.ok(r.list.length > 50 && r.list.length < many.length, `${r.list.length} names`);
+  assert.deepEqual(r.list, many.slice(0, r.list.length), "the first ones, in their order");
+  assert.equal(r.left, many.length - r.list.length);
+  assert.ok(Buffer.byteLength(JSON.stringify(r.list)) <= ART_NAMES_BYTES);
+  assert.deepEqual(withChosen(r.list, [many[r.list.length]], ART_NAMES_BYTES), { list: r.list, left: 1 }, "full: the next one is said, not added");
 });
 
 test("a size in either orientation: each preset across or down, the square alike; a size is its preset either way", () => {

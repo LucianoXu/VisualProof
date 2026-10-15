@@ -25,6 +25,8 @@ import type { Graph, Mode } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
 import { writeNames } from "./halo.ts";
 import type { Written } from "./halo.ts";
+import type { NameRow } from "./artwork.ts";
+import { artNameId } from "../../shared/collab.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
 import { ST_APPROVED, ST_BUILDING, ST_COMMENTED, ST_FAILED, ST_SORRY, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
@@ -56,16 +58,26 @@ export interface PinMove {
 
 export type OrderBody = { kind: "node" | "cluster"; k: number } | { kind: "spot"; x: number; y: number };
 
-/** The board drawn as an artwork (ExportSpec decision 19, the owner's decisions of 2026-10-14): what
- *  the picture holds of what the board draws besides the colouring, the theme and the edges on or
- *  off, which are the board's own. Names: as the board writes them, a lit declaration's where the
- *  board would give it a card (an artwork has none); the clusters' (and the targets'); none. Edges: all, or only the selection's, or none. Targets: their
- *  stars, keys' diamonds and names marked, or nothing of them. While it is set, nothing of the
- *  reader's own is drawn over the picture: no cards, no hover, no visitors, no one else's initials. */
+/** The board drawn as an artwork (ExportSpec decision 19, the owner's decisions of 2026-10-14 and
+ *  2026-10-15): what the picture holds of what the board draws besides the colouring, the theme and
+ *  the edges on or off, which are the board's own. Names: as the board writes them, a lit
+ *  declaration's where the board would give it a card (an artwork has none); the clusters' (and the
+ *  targets'); none; or by selection: As shown, or none (`namesFrom`), without the names `hidden` and
+ *  with the names `shown` (each by what it names: shared/collab.ts, artNameId), wherever they fall.
+ *  Edges: all, or only the selection's, or none. Targets: their stars
+ *  and names marked, or nothing of them, or of those chosen only (`shownTargets`, by full name). Keys:
+ *  the key declarations' diamonds, or none; with the targets chosen, those of the targets chosen.
+ *  While it is set, nothing of the reader's own is drawn over the picture: no cards, no hover, no
+ *  visitors, no one else's initials. */
 export interface ArtLook {
-  labels: "board" | "clusters" | "none";
+  labels: "board" | "clusters" | "none" | "chosen";
+  namesFrom: "board" | "none";
+  hidden: ReadonlySet<string>;
+  shown: ReadonlySet<string>;
   edges: "all" | "selection" | "none";
-  targets: "marked" | "plain" | "highlight";
+  targets: "marked" | "plain" | "highlight" | "chosen";
+  shownTargets: ReadonlySet<string>;
+  keys: boolean;
 }
 
 /** What the board's renderer draws, as an artwork's SVG writes it (ExportSpec decision 19), in the
@@ -342,6 +354,9 @@ export class GraphCanvas {
   private targetList: number[] = [];
   /** key declarations, marked with a small diamond (ExportSpec decision 4) */
   private keyList: number[] = [];
+  /** of each of them, the targets it is key for (setKeys): an artwork's targets chosen keep their
+   *  own keys' diamonds */
+  private keyOf: readonly (readonly number[])[] = [];
   /** what other readers have selected (CollabSpec "On the canvas"): per node, their colours and
    *  initials */
   private peerMarks = new Map<number, { colors: string[]; labels: string[] }>();
@@ -361,6 +376,12 @@ export class GraphCanvas {
   proofEdges = false;
   /** the artwork's look while its mode is on (ExportSpec decision 19): the board is the picture */
   art: ArtLook | null = null;
+  /** of its names shown by selection, the clusters' keys and the declarations' full names */
+  private artClusters = new Set<string>();
+  private artDecls: string[] = [];
+  /** what the names the last frame wrote name (artNameId), on an artwork: what its list of names
+   *  shows ticked */
+  private namesWritten = new Set<string>();
   /** where the names and marks are drawn other than on the screen (an artwork's file): the transform
    *  from the screen's CSS pixels to that context's */
   private labelBase: [number, number, number, number, number, number] | null = null;
@@ -581,10 +602,13 @@ export class GraphCanvas {
     this.invalidate();
   }
 
-  /** Which nodes are key declarations: each carries a small diamond beside its point. */
-  setKeys(keys: number[]): void {
-    if (keys.length === this.keyList.length && keys.every((k, j) => k === this.keyList[j])) return;
+  /** Which nodes are key declarations: each carries a small diamond beside its point. `of`: the
+   *  targets each is key for, in the same order. */
+  setKeys(keys: number[], of: readonly (readonly number[])[] = []): void {
+    const same = (a: readonly number[], b: readonly number[] | undefined) => !!b && a.length === b.length && a.every((k, j) => k === b[j]);
+    if (same(keys, this.keyList) && of.length === this.keyOf.length && of.every((ts, j) => same(ts, this.keyOf[j]))) return;
     this.keyList = keys;
+    this.keyOf = of;
     this.clearCards();
     this.invalidate();
   }
@@ -1229,9 +1253,90 @@ export class GraphCanvas {
     return out;
   }
 
+  /** What the names the board wrote in its last frame name (shared/collab.ts, artNameId), on an
+   *  artwork: those its names by selection hold now (ExportSpec decision 19). */
+  writtenNames(): ReadonlySet<string> {
+    return this.namesWritten;
+  }
+
+  /** The names an artwork's frame `rect` (the screen's) can hold, for its list of names (ExportSpec
+   *  decision 19): the clusters' the board would write where their names fall in it, and those chosen
+   *  already, in the board's order; then the declarations' whose points are in it, nearest its middle
+   *  first. */
+  artNames(rect: { x: number; y: number; w: number; h: number }): NameRow[] {
+    const S = this.scene;
+    if (!S) return [];
+    const inside = (x: number, y: number) => x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+    const out: NameRow[] = [];
+    for (let c = 0; c < S.nc; c++) {
+      const spot = this.chosenSpot(c);
+      const cl = this.layout.clusters[c];
+      if (!spot || !inside(spot.x, spot.y) || (!spot.board && !this.artClusters.has(cl.key))) continue;
+      out.push({ id: artNameId("cluster", cl.key), label: cl.label, full: cl.key.replace("⟨external⟩", "External"), cluster: true });
+    }
+    const mx = rect.x + rect.w / 2, my = rect.y + rect.h / 2;
+    const decls: number[] = [];
+    const dist = new Map<number, number>();
+    for (let i = 0; i < this.g.n; i++) {
+      if (!this.visibleNode(i)) continue;
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      if (!inside(sx, sy)) continue;
+      decls.push(i);
+      dist.set(i, (sx - mx) ** 2 + (sy - my) ** 2);
+    }
+    decls.sort((a, b) => dist.get(a)! - dist.get(b)!);
+    for (const i of decls) out.push({ id: artNameId("decl", this.g.nodes[i].name), label: this.g.short(i), full: this.g.nodes[i].name, cluster: false });
+    return out;
+  }
+
+  /** Where cluster `c`'s name is written when an artwork's names are chosen: as the board writes it,
+   *  under a folded cluster's disc or inside the top of an open one's circle, and above a circle too
+   *  small to hold it; whether the board would write it at all (`board`: the circle large enough);
+   *  null where the cluster is not drawn. */
+  private chosenSpot(c: number): { x: number; y: number; size: number; font: string; board: boolean } | null {
+    const S = this.scene;
+    const rep = S.rep[c];
+    if ((rep >= 0 && rep !== c) || !this.clusterVisible(c)) return null;
+    const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
+    if (rep === c) {
+      const r = Math.max(6, S.drawnR[c] * this.cam.k);
+      return { x: sx, y: sy + r + 13, size: 11, font: `500 11px ${FONT}`, board: r > 10 };
+    }
+    const sr = S.drawnR[c] * this.cam.k;
+    const size = Math.max(10, Math.min(20, 9 + sr / 40));
+    const font = `${this.layout.clusters[c].depth === 0 ? 600 : 500} ${size}px ${FONT}`;
+    return sr > 38 ? { x: sx, y: sy - sr + size + 6, size, font, board: true } : { x: sx, y: sy - sr - 4, size, font, board: false };
+  }
+
+  /** The targets an artwork chose, by their nodes. */
+  private chosenTargets(): Set<number> {
+    const on = new Set<number>();
+    for (const n of this.art?.shownTargets ?? []) {
+      const i = this.g.byName.get(n);
+      if (i !== undefined) on.add(i);
+    }
+    return on;
+  }
+
+  /** The targets marked, their stars drawn and their names in bold: every one, but where an artwork
+   *  marks none (As any) or only those it chose (By selection). */
+  private markedTargets(): number[] {
+    const t = this.art?.targets;
+    if (t === "plain") return [];
+    if (t !== "chosen") return this.targetList;
+    const on = this.chosenTargets();
+    return this.targetList.filter((i) => on.has(i));
+  }
+
   /** Draw the board as an artwork (null: as ever). */
   setArt(look: ArtLook | null): void {
     this.art = look;
+    this.artClusters = new Set();
+    this.artDecls = [];
+    for (const id of look?.shown ?? []) {
+      if (id.startsWith("c:")) this.artClusters.add(id.slice(2));
+      else if (id.startsWith("d:")) this.artDecls.push(id.slice(2));
+    }
     this.overviewBase = "";
     this.setHover(null, 0, 0);
     this.invalidate();
@@ -2339,21 +2444,79 @@ export class GraphCanvas {
     const labels: number[] = [];
     const named = new Map<number, number>();
     const art = this.art;
-    // the names, written last, over every mark (writeNames)
+    // an artwork's names by selection (the owner's decision of 2026-10-15): those shown written first,
+    // wherever they fall; then As shown, or nothing, without those hidden — whose room stays empty,
+    // so that hiding a name brings no other in its place
+    const chosen = art?.labels === "chosen";
+    const asShown = !art || art.labels === "board" || (chosen && art.namesFrom === "board");
+    const hidden = (id: string) => chosen && art!.hidden.has(id);
+    const extra = (id: string) => chosen && art!.shown.has(id);
+    // the names, written last, over every mark (writeNames); and, on an artwork, what each names
     const written: Written[] = [];
-    const write = (text: string, x: number, y: number) => written.push({ text, x, y, font: ctx.font, align: ctx.textAlign, fill: String(ctx.fillStyle) });
-    const place = (text: string, cx: number, baseline: number, size: number): boolean => {
+    const wrote = new Set<string>();
+    const write = (text: string, x: number, y: number, id: string) => {
+      written.push({ text, x, y, font: ctx.font, align: ctx.textAlign, fill: String(ctx.fillStyle) });
+      if (id) wrote.add(id);
+    };
+    /** a name centred on `cx`, where it covers no other; `id`, what it names; `force`, written all
+     *  the same; hidden, its room kept and nothing written */
+    const place = (text: string, cx: number, baseline: number, size: number, id = "", force = false): boolean => {
       const w = ctx.measureText(text).width / 2 + 3;
       const x0 = cx - w, x1 = cx + w, y0 = baseline - size, y1 = baseline + size * 0.3;
-      if (!free(x0, y0, x1, y1)) return false;
+      if (!force && !free(x0, y0, x1, y1)) return false;
       take(x0, y0, x1, y1);
-      write(text, cx, baseline);
+      if (hidden(id)) return true;
+      write(text, cx, baseline, id);
       labels.push(...this.toWorld(x0, y0), ...this.toWorld(x1, y1));
       return true;
     };
+    // a declaration's name beside its point, where it covers no other name (`force`: all the same);
+    // hidden, its room kept
+    const nameAt = (i: number, text: string, w: number, force = false): boolean => {
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
+      if (!force && !free(x0, y0, x1, y1)) return false;
+      take(x0, y0, x1, y1);
+      const id = art ? artNameId("decl", this.g.nodes[i].name) : "";
+      if (hidden(id)) return false;
+      write(text, sx + dotR + 3, sy + 3.5, id);
+      return true;
+    };
+    const shown = (i: number) => {
+      if (!this.visibleNode(i)) return false;
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      return onScreen(sx, sy, 8);
+    };
+    const targets = art ? this.markedTargets() : [];
     ctx.fillStyle = th.label;
+    // the clusters' shown, where the board writes them
+    if (chosen)
+      for (let c = 0; c < S.nc; c++) {
+        const cl = this.layout.clusters[c];
+        if (!this.artClusters.has(cl.key)) continue;
+        const spot = this.chosenSpot(c);
+        if (!spot || !onScreen(spot.x, spot.y, 400)) continue;
+        ctx.font = spot.font;
+        place(cl.label, spot.x, spot.y, spot.size, artNameId("cluster", cl.key), true);
+        if (S.rep[c] < 0) named.set(c, labels.length - 4);
+      }
+    // the declarations' shown, beside their points: a target marked in bold
+    if (chosen) {
+      const bold = new Set(targets);
+      ctx.textAlign = "left";
+      for (const name of this.artDecls) {
+        const i = this.g.byName.get(name);
+        if (i === undefined || !shown(i)) continue;
+        ctx.font = bold.has(i) ? `600 11px ${FONT}` : `11px ${FONT}`;
+        ctx.fillStyle = bold.has(i) ? th.label : th.text;
+        nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width, true);
+      }
+      ctx.textAlign = "center";
+      ctx.fillStyle = th.label;
+    }
     for (let c = 0; c < S.nc; c++) {
-      if (art?.labels === "none") break;
+      if (art?.labels === "none" || (chosen && !asShown)) break;
+      if (chosen && this.artClusters.has(this.layout.clusters[c].key)) continue;
       const rep = S.rep[c];
       if (!this.clusterVisible(c)) continue;
       const cl = this.layout.clusters[c];
@@ -2362,7 +2525,7 @@ export class GraphCanvas {
         const r = Math.max(6, S.drawnR[c] * k);
         if (r > 10 && onScreen(sx, sy, r) && !(act && this.clusterHasActive(c))) {
           ctx.font = `500 11px ${FONT}`;
-          place(cl.label, sx, sy + r + 13, 11);
+          place(cl.label, sx, sy + r + 13, 11, art ? artNameId("cluster", cl.key) : "");
         }
         continue;
       }
@@ -2372,7 +2535,8 @@ export class GraphCanvas {
       const size = Math.max(10, Math.min(20, 9 + sr / 40));
       ctx.font = `${cl.depth === 0 ? 600 : 500} ${size}px ${FONT}`;
       // covered at the top: one line lower, still inside its own circle
-      if (place(cl.label, sx, sy - sr + size + 6, size) || (sr > 4 * size && place(cl.label, sx, sy - sr + 2 * size + 10, size))) named.set(c, labels.length - 4);
+      const id = art ? artNameId("cluster", cl.key) : "";
+      if (place(cl.label, sx, sy - sr + size + 6, size, id) || (sr > 4 * size && place(cl.label, sx, sy - sr + 2 * size + 10, size, id))) named.set(c, labels.length - 4);
     }
     // what is the reader's own is not drawn over an artwork: visitors and their clusters, others
     if (!art) this.tempLabels(place, onScreen);
@@ -2380,39 +2544,28 @@ export class GraphCanvas {
     this.labelOfC = named;
     this.drawProgress(onScreen);
     this.drawLeaders();
-    if (art?.targets !== "plain") {
-      this.drawKeys(onScreen, dotR);
-      this.drawStars(onScreen, dotR);
-    }
+    // an artwork's key marks have a switch of their own (the owner's decision of 2026-10-15)
+    if (!art || art.keys) this.drawKeys(onScreen, dotR);
+    this.drawStars(onScreen, dotR);
     if (!art) {
       this.drawVisitors(onScreen);
       this.drawPeers(onScreen, dotR);
     }
     this.drawSelection(dotR);
-    // a declaration's name beside its point, where it covers no other name
-    const nameAt = (i: number, text: string, w: number): boolean => {
-      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
-      const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
-      if (!free(x0, y0, x1, y1)) return false;
-      take(x0, y0, x1, y1);
-      write(text, sx + dotR + 3, sy + 3.5);
-      return true;
-    };
-    const shown = (i: number) => {
-      if (!this.visibleNode(i)) return false;
-      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
-      return onScreen(sx, sy, 8);
-    };
     // an artwork's (ExportSpec decision 19): its targets' names, marked, before any other; and where
     // something is lit, the lit declarations' names where the board would give them cards, nearest
     // the middle first
-    const marked = art && art.labels !== "none" && art.targets !== "plain" ? this.targetList.filter(shown) : [];
+    const marked = art && art.labels !== "none" && asShown ? targets.filter((i) => shown(i) && !extra(artNameId("decl", this.g.nodes[i].name))) : [];
     ctx.textAlign = "left";
     ctx.font = `600 11px ${FONT}`;
     ctx.fillStyle = th.label;
     for (const i of marked) nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width);
     const seen = new Set(marked);
-    if (art?.labels === "board" && act) {
+    if (chosen) for (const name of this.artDecls) {
+      const i = this.g.byName.get(name);
+      if (i !== undefined) seen.add(i);
+    }
+    if (art && asShown && act) {
       ctx.font = `11px ${FONT}`;
       ctx.fillStyle = th.text;
       const cx = this.w / 2, cy = this.h / 2;
@@ -2428,7 +2581,7 @@ export class GraphCanvas {
         if (nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width)) budget--;
       }
     }
-    if ((!art || art.labels === "board") && k > 1.1 && !act) {
+    if (asShown && k > 1.1 && !act) {
       ctx.font = `11px ${FONT}`;
       ctx.textAlign = "left";
       ctx.fillStyle = th.text;
@@ -2456,6 +2609,7 @@ export class GraphCanvas {
       }
     }
     this.writeNames(written);
+    this.namesWritten = wrote;
   }
 
   /** The names, over everything else written on the board, each on its halo of the background
@@ -2508,7 +2662,8 @@ export class GraphCanvas {
   /** A gold five-pointed star on every target: on its point, or on the edge of the folded cluster
    *  hiding it. Never smaller than can be seen. */
   private drawStars(onScreen: (sx: number, sy: number, pad: number) => boolean, dotR: number): void {
-    if (!this.targetList.length) return;
+    const targets = this.markedTargets();
+    if (!targets.length) return;
     const ctx = this.ctx;
     const S = this.scene;
     const star = (x: number, y: number, R: number) => {
@@ -2530,7 +2685,7 @@ export class GraphCanvas {
     ctx.lineWidth = 1.2;
     ctx.lineJoin = "round";
     const seen = new Set<number>();
-    for (const i of this.targetList) {
+    for (const i of targets) {
       if (this.visibleNode(i)) {
         const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
         if (onScreen(sx, sy, 20)) star(sx, sy, Math.max(9, dotR * 2.2));
@@ -2549,9 +2704,11 @@ export class GraphCanvas {
 
   /** A small diamond on every key declaration, at the top left of its point — the point's colour
    *  still shows, and its name, written to the right, stays clear; hidden in a folded cluster, one
-   *  on the edge of its disc, opposite the star's place. Never smaller than can be seen. */
+   *  on the edge of its disc, opposite the star's place. Never smaller than can be seen. An artwork
+   *  whose targets are chosen draws only the keys of those it chose. */
   private drawKeys(onScreen: (sx: number, sy: number, pad: number) => boolean, dotR: number): void {
     if (!this.keyList.length) return;
+    const on = this.art?.targets === "chosen" ? this.chosenTargets() : null;
     const ctx = this.ctx;
     const S = this.scene;
     const diamond = (x: number, y: number, R: number) => {
@@ -2571,7 +2728,9 @@ export class GraphCanvas {
     ctx.lineJoin = "round";
     const seen = new Set<number>();
     const R = Math.max(4.5, dotR * 1.1);
-    for (const i of this.keyList) {
+    for (let j = 0; j < this.keyList.length; j++) {
+      const i = this.keyList[j];
+      if (on && !this.keyOf[j]?.some((t) => on.has(t))) continue;
       if (this.visibleNode(i)) {
         const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
         if (onScreen(sx, sy, 12)) diamond(sx - dotR - R * 0.4, sy - dotR - R * 0.3, R);

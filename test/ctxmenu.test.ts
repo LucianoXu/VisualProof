@@ -84,6 +84,20 @@ test("on a cluster: fold, hide its level, the view, trust, a note; on the empty 
   assert.deepEqual(menuItems({ kind: "note", open: true, view: false }, ctx({ arrange: false })), []);
 });
 
+test("in the artwork mode with its names by selection (ExportSpec decision 19): first, the name shown in the picture or hidden, on a declaration or a cluster; elsewhere nothing of it", () => {
+  const d = menuItems(decl({ art: false }), ctx());
+  assert.deepEqual([d[0].act, d[0].label], ["art-name", "Show its name in the artwork"]);
+  assert.equal(d[1].act, "source");
+  assert.equal(d[1].sep, true, "set apart from the rest");
+  assert.equal(menuItems(decl({ art: true }), ctx())[0].label, "Hide its name in the artwork");
+  // a reader who can change nothing else can choose the names of their own picture
+  const c = menuItems({ kind: "cluster", key: "A.B", folded: false, folder: false, trust: null, art: true }, ctx({ arrange: false, write: false }));
+  assert.deepEqual(c.map((it) => [it.act, it.label, !!it.sep]), [["art-name", "Hide its name in the artwork", false], ["fold", "Fold", true]]);
+  assert.ok(!acts(menuItems(decl(), ctx())).includes("art-name"));
+  assert.equal(menuItems(decl(), ctx())[0].sep, undefined);
+  assert.ok(!acts(menuItems({ kind: "canvas" }, ctx())).includes("art-name"));
+});
+
 const q = (text: string) => parseQuery(text);
 const p = (x: Query) => printQuery(x);
 

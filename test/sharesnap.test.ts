@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { cleanArtwork, cleanView } from "../src/shared/collab.ts";
 import type { PresenceView } from "../src/shared/collab.ts";
 import { addressOf, camOf, goneNames, missingLine, readSnapshot, regionOf, SNAPSHOT_FORMS, SNAPSHOT_MAX, snapshotIn, sortOut, withSnapshot, writeSnapshot } from "../src/shared/sharesnap.ts";
 import type { Region, Screen } from "../src/shared/sharesnap.ts";
@@ -49,7 +50,7 @@ function heavy(): PresenceView {
     edges: false,
     proofEdges: true,
     linear: false,
-    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", edges: "selection", proofs: false, notes: true, targets: "highlight", selection: true, source: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
+    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", namesFrom: "board", hiddenNames: [], shownNames: [], edges: "selection", proofs: false, notes: true, targets: "highlight", shownTargets: [], keys: true, selection: true, source: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
     tabs: ["project", "v7f3a9c2e41"],
   };
 }
@@ -130,6 +131,20 @@ test("a heavy snapshot stays small: several windows, filters, visitors, a long s
   const small = await writeSnapshot({ edges: true }, null);
   assert.match(small, /^j/);
   assert.deepEqual((await readSnapshot(small, null))!.view, { edges: true });
+});
+
+test("an artwork with as many names and targets chosen as it carries, of names the longer in bytes, fits in a heartbeat the server takes (16 KB) and in a link", async () => {
+  const many = Array.from({ length: 2000 }, (_, i) => N(`«term_∘_∣_»_lemma_${i}`));
+  const v = heavy();
+  const art = cleanArtwork({ ...v.artwork, labels: "chosen", targets: "chosen", hiddenNames: many.map((n) => `d:${n}`), shownNames: many.map((n) => `c:${n}`), shownTargets: many })!;
+  assert.ok(art.hiddenNames.length > 30 && art.shownNames.length > 30 && art.shownTargets.length > 20, `${art.hiddenNames.length} + ${art.shownNames.length} names, ${art.shownTargets.length} targets`);
+  const view = cleanView({ ...v, artwork: art })!;
+  const beat = JSON.stringify({ token: "t".repeat(64), view, idle: false });
+  assert.ok(Buffer.byteLength(beat) < 16384, `${Buffer.byteLength(beat)} bytes`);
+  const snap = await writeSnapshot(view, WIDE);
+  assert.ok(snap.length < SNAPSHOT_MAX, `${snap.length} characters`);
+  const back = (await readSnapshot(snap, WIDE))!.view.artwork!;
+  assert.deepEqual([back.hiddenNames, back.shownNames, back.shownTargets], [art.hiddenNames, art.shownNames, art.shownTargets], "read back as written");
 });
 
 test("a snapshot is anyone's to write: what is not one is not read, and what of it is wrong is left out", async () => {

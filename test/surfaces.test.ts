@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { cleanView, withoutArtwork } from "../src/shared/collab.ts";
+import { ART_NAMES_BYTES, ART_TARGETS_BYTES, cleanView, withoutArtwork } from "../src/shared/collab.ts";
 import type { ActivityView, ArtworkView, PresenceView } from "../src/shared/collab.ts";
 import { Activity } from "../src/web/src/activity.ts";
 import type { ActivityHooks } from "../src/web/src/activity.ts";
@@ -123,7 +123,26 @@ function reading(): PageParts["read"] {
 }
 
 /** an artwork's settings and the rectangle of the board its frame holds (ExportSpec decision 19) */
-const ART: ArtworkView = { w: 1920, h: 1080, scheme: "status", theme: "dark", background: "transparent", labels: "clusters", edges: "selection", proofs: true, notes: false, targets: "highlight", selection: false, source: true, region: [10, -20, 640, 360] };
+const ART: ArtworkView = {
+  w: 1920,
+  h: 1080,
+  scheme: "status",
+  theme: "dark",
+  background: "transparent",
+  labels: "chosen",
+  namesFrom: "board",
+  hiddenNames: ["c:FltRegular.CaseI"],
+  shownNames: ["d:FltRegular.CaseI.Statement.caseI", "d:FltRegular.«term_∣_»"],
+  edges: "selection",
+  proofs: true,
+  notes: false,
+  targets: "chosen",
+  shownTargets: ["FltRegular.flt_regular"],
+  keys: false,
+  selection: false,
+  source: true,
+  region: [10, -20, 640, 360],
+};
 
 test("presence carries exactly the followed parts, and the views a page holds open; the server keeps every one of them", () => {
   const v = presenceOf(reading(), ["v1", "v2"]);
@@ -146,6 +165,26 @@ test("presence carries exactly the followed parts, and the views a page holds op
   // a page from before the source was said: none
   const { source: _source, ...older } = ART;
   assert.equal(cleanView({ ...v, artwork: older })!.artwork!.source, false);
+  // the names and targets chosen (the owner's decision of 2026-10-15): names each once, a cluster's or
+  // a declaration's, and targets' names; a page from before them chose none, its key marks as its
+  // targets drew them
+  for (const bad of [{ ...ART, labels: "picked" }, { ...ART, targets: "some" }]) assert.equal(cleanView({ ...v, artwork: bad })!.artwork, undefined, JSON.stringify(bad));
+  const odd2 = cleanView({ ...v, artwork: { ...ART, namesFrom: "all", hiddenNames: ["x:A", 5, "", "d:A.b", "d:A.b", "c:", "c:A", "d:" + "x".repeat(1001)], shownNames: "c:B", shownTargets: "A.t", keys: "no" } })!.artwork!;
+  assert.deepEqual([odd2.namesFrom, odd2.hiddenNames, odd2.shownNames, odd2.shownTargets, odd2.keys], ["board", ["d:A.b", "c:A"], [], [], true], "a switch that is none: as the targets drew them");
+  const { namesFrom: _from, hiddenNames: _hidden, shownNames: _shownNames, shownTargets: _shown, keys: _keys, ...before } = ART;
+  for (const [targets, keys] of [["plain", false], ["marked", true], ["highlight", true]] as const)
+    assert.deepEqual(
+      (({ namesFrom, hiddenNames, shownNames, shownTargets, keys }) => ({ namesFrom, hiddenNames, shownNames, shownTargets, keys }))(cleanView({ ...v, artwork: { ...before, labels: "board", targets } })!.artwork!),
+      { namesFrom: "board", hiddenNames: [], shownNames: [], shownTargets: [], keys },
+      targets,
+    );
+  // a long list is cut, in its order, within what a heartbeat has room for
+  const many = Array.from({ length: 1000 }, (_, i) => `FltRegular.CaseII.InductionStep.Proof.lemma_${i}`);
+  const cut = cleanView({ ...v, artwork: { ...ART, hiddenNames: many.map((n) => `d:${n}`), shownNames: many.map((n) => `c:${n}`), shownTargets: many } })!.artwork!;
+  assert.ok(cut.hiddenNames.length > 60 && cut.hiddenNames.length < 120, `${cut.hiddenNames.length} names`);
+  assert.deepEqual(cut.hiddenNames, many.slice(0, cut.hiddenNames.length).map((n) => `d:${n}`));
+  for (const list of [cut.hiddenNames, cut.shownNames]) assert.ok(Buffer.byteLength(JSON.stringify(list)) <= ART_NAMES_BYTES);
+  assert.ok(Buffer.byteLength(JSON.stringify(cut.shownTargets)) <= ART_TARGETS_BYTES);
   // an agent's presence carries none: agents have no artwork
   const { artwork: _artwork, ...rest } = cleanView(v)!;
   assert.deepEqual(withoutArtwork(cleanView(v)), rest);
@@ -214,6 +253,19 @@ test("following ends on every change to a followed part, wherever its control is
   // outside every surface — a bar's blank part — a press, and an undeclared key, act as before
   assert.equal(pressActs(at("#bar")), true);
   assert.equal(keyActs(key("Tab"), at(), false), true);
+});
+
+test("the artwork's names and targets by selection (ExportSpec decision 19): a line ticked, by its box or its words, All and None, a name shown from the board's menu end following; the filter over the names does not", () => {
+  const panel = (...inner: string[]) => at("#art-panel", ...inner);
+  assert.equal(pressActs(panel(".art-rows", "#art-panel input:not([data-art-filter])")), true, "a line's box");
+  assert.equal(pressActs(panel(".art-rows", "#art-panel .art-row", "span")), true, "a line's words");
+  assert.equal(pressActs(panel(".ex-checks", "#art-panel .ex-check")), true, "a switch's words: Key marks");
+  assert.equal(pressActs(panel(".art-pick-head", "#art-panel [data-art-pick]")), true, "All, None");
+  assert.equal(pressActs(at("#ctxmenu", "button")), true, "Show its name in the artwork");
+  // the filter is the reader's own: pressed, typed in; the list scrolled is read
+  assert.equal(pressActs(panel(".art-pick-head", "#art-panel [data-art-filter]")), false, "the filter pressed");
+  assert.equal(keyActs(key("a"), panel(".art-pick-head", "#art-panel [data-art-filter]"), true), false, "typed in");
+  assert.equal(pressActs(panel(".art-rows")), false, "the list scrolled");
 });
 
 test("nothing of the reader's own ends following, nor does reading", () => {

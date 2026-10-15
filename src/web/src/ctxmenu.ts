@@ -35,6 +35,9 @@ export type MenuTarget =
       /** a visitor (ViewSpec decision 27): the board does not hold it; Add to this view makes it a
        *  member, and there is nothing to remove */
       visitor?: boolean;
+      /** in the artwork mode with its names by selection (ExportSpec decision 19): whether its name
+       *  is shown in the picture; absent elsewhere */
+      art?: boolean;
     }
   | {
       kind: "cluster";
@@ -44,6 +47,8 @@ export type MenuTarget =
       folder: boolean;
       /** what trusting it is, as for a declaration's namespace */
       trust: TrustTo | null;
+      /** as a declaration's: its name shown in the artwork, or not; absent outside it */
+      art?: boolean;
     }
   | { kind: "canvas" }
   /** a note on the board: `open`, its own state; `view`, a view's own note (shared/sticky.ts), else
@@ -159,6 +164,10 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
     ];
   }
   const trustItem = (to: TrustTo | null, label: string): MenuItem[] => (ctx.write && to ? [{ act: "trust", label: to.on ? `Stop trusting ${label}` : `Trust ${label}` }] : []);
+  // in the artwork mode with its names by selection, first: its name shown in the picture, or hidden
+  // (ExportSpec decision 19, the owner's decision of 2026-10-15)
+  if ((t.kind === "decl" || t.kind === "cluster") && t.art !== undefined) out.push({ act: "art-name", label: t.art ? "Hide its name in the artwork" : "Show its name in the artwork" });
+  const first = out.length;
   if (t.kind === "decl") {
     out.push({ act: "source", label: "Open source" }, ...(ctx.noPin ? [] : [{ act: "pin", label: "Open in a pinned window" }]));
     out.push({ act: "tcb", label: "Select its TCB", sep: true }, { act: "deps", label: "Select what it uses" }, { act: "apps", label: "Select what uses it" }, { act: "copy", label: "Copy full name" });
@@ -186,6 +195,7 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
     out.push({ act: "fit", label: "Fit to screen", key: "f", sep: ctx.arrange });
     if (ctx.arrange) out.push({ act: "relayout", label: "Re-layout…" });
   }
+  if (first && out[first]) out[first].sep = true;
   return out;
 }
 

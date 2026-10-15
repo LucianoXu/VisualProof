@@ -195,9 +195,12 @@ export const FOLLOWED = [
   },
   {
     part: "artwork",
-    what: "the artwork mode (ExportSpec decision 19): on or off, its settings — the board drawn with them — and what its frame holds",
+    what: "the artwork mode (ExportSpec decision 19): on or off, its settings — the board drawn with them, the names and targets ticked — and what its frame holds",
     fields: ["artwork"],
-    changes: "#art-panel select, #art-panel input, #art-panel [data-art-done], #export-modal [data-ex-art]",
+    // the panel's controls — a switch's or a list's line by its words too, its lists' All and None —
+    // but not the filter over its names, which is the reader's own; a name shown or hidden from the
+    // board's menu is the menu's (#ctxmenu)
+    changes: "#art-panel select, #art-panel input:not([data-art-filter]), #art-panel .ex-check, #art-panel .art-row, #art-panel [data-art-pick], #art-panel [data-art-done], #export-modal [data-ex-art]",
     reads: "#art-panel",
   },
 ] as const satisfies readonly Followed[];
@@ -228,6 +231,9 @@ export const YOURS = [
   { id: "focusMenu", what: "the focus menu, opened", where: "#focus-btn, #focus-menu" },
   { id: "build", what: "the build status and its popover", where: "#build, #build-pop", keys: ["b"] },
   { id: "search", what: "the search box and its results", where: "#search, #results", keys: ["/"] },
+  // the artwork's names by selection (ExportSpec decision 19): what the list shows of them, not what
+  // is ticked
+  { id: "artFilter", what: "the filter over the artwork's list of names", where: "#art-panel [data-art-filter]" },
   { id: "name", what: "the name, its menu and its window", where: "#who, #who-menu, #modal", whole: true },
   { id: "people", what: "the others' initials and the menu a person's opens — following them, or no longer, and asking them to follow you —, a Shift-click on a pinned agent's that opens its conversation without following, and what your request to follow came to", where: "#peers, #peer-menu, #ask-line", whole: true },
   // a request to follow (CollabSpec decision 10, the owner's decision of 2026-10-12): answering it ends
