@@ -23,7 +23,7 @@ import type { ArtSettings, NameRow, NotePicture } from "./artwork.ts";
 import { artName, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { ART_DISPLAY, ART_SANS, ART_SERIF } from "./halo.ts";
-import { TITLE_SIZE } from "../../shared/collab.ts";
+import { FOOT_SIZE, TITLE_SIZE } from "../../shared/collab.ts";
 import { escapeHtml } from "./highlight.ts";
 
 export interface ArtHooks {
@@ -144,7 +144,7 @@ export class ArtFrame {
       host.addEventListener("input", (e) => {
         const t = e.target as HTMLInputElement;
         // the title and its size, as they are typed and slid
-        if (t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize") return this.titled(t);
+        if (t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize" || t.dataset.art === "footSize") return this.titled(t);
         if (t.dataset.artFilter === undefined) return;
         this.filter = t.value;
         this.renderRows();
@@ -423,11 +423,11 @@ export class ArtFrame {
     if (s.border) drawBorder(ctx, rect, s.style === "cells" ? "rgba(200, 212, 236, 0.55)" : s.style === "stars" ? "rgba(241, 230, 200, 0.55)" : v("--text-2"));
     drawTitle(ctx, rect, s.title ?? own.title, s.subtitle ?? own.subtitle, s.titleSize, s.style, { ink: v("--text"), quiet: v("--text-2"), halo });
     const quiet = s.style === "board" ? v("--text-2") : "rgba(200, 208, 224, 0.7)";
-    drawFoot(ctx, rect, s.source ? this.hooks.source() : null, { text: quiet, halo }, ART_SANS);
+    drawFoot(ctx, rect, s.source ? this.hooks.source() : null, { text: quiet, halo }, ART_SANS, s.footSize);
   }
 
-  /** The title, its line or its size changed in the panel: kept, drawn over the board at once, and
-   *  said to those following once it has been still a moment. */
+  /** The title, its line or its size changed beside the frame, or the foot's size: kept, drawn over
+   *  the board at once, and said to those following once it has been still a moment. */
   private titled(t: HTMLInputElement): void {
     const s = this.s;
     if (!s || this.busy) return;
@@ -435,6 +435,10 @@ export class ArtFrame {
       s.titleSize = Math.min(TITLE_SIZE.most, Math.max(TITLE_SIZE.least, Number(t.value) || TITLE_SIZE.first));
       const out = this.head.querySelector("[data-art-size]");
       if (out) out.textContent = `${s.titleSize}%`;
+    } else if (t.dataset.art === "footSize") {
+      s.footSize = Math.min(FOOT_SIZE.most, Math.max(FOOT_SIZE.least, Number(t.value) || FOOT_SIZE.first));
+      const out = this.tail.querySelector("[data-art-foot-size]");
+      if (out) out.textContent = `${s.footSize}%`;
     } else {
       s[t.dataset.art as "title" | "subtitle"] = t.value.slice(0, 120);
       const own = this.head.querySelector<HTMLElement>("[data-art-own]");
@@ -459,7 +463,7 @@ export class ArtFrame {
     const s = this.s;
     // the filter over the names is the reader's own (the panel's `input`); the title is taken as it is
     // typed (titled)
-    if (t.dataset.artFilter !== undefined || t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize") return;
+    if (t.dataset.artFilter !== undefined || t.dataset.art === "title" || t.dataset.art === "subtitle" || t.dataset.art === "titleSize" || t.dataset.art === "footSize") return;
     if (t.dataset.artName !== undefined) return this.chooseNames([t.dataset.artName], t.checked);
     if (t.dataset.artTarget !== undefined) return this.choose("targets", [t.dataset.artTarget], t.checked);
     const k = t.dataset.art;
@@ -687,7 +691,10 @@ export class ArtFrame {
       `<div class="modal-actions art-save"><button class="rv-btn" data-art-done>Done</button><button class="rv-btn" data-art-save="svg"${this.busy ? " disabled" : ""}>Save SVG</button><button class="rv-btn primary" data-art-save="png"${this.busy ? " disabled" : ""}>${this.busy ? "Saving…" : "Save PNG"}</button></div>`;
     // beside the frame, in its shade: the title above its top left, the source below its bottom right
     this.head.innerHTML = this.titleHtml();
-    this.tail.innerHTML = check("source", "Source and commit", source ?? "This project is not a git repository", !source);
+    // and the foot's size, both its lines
+    this.tail.innerHTML =
+      check("source", "Source and commit", source ?? "This project is not a git repository", !source) +
+      `<label class="ex-field art-size"><span>Size <output data-art-foot-size>${s.footSize}%</output></span><input type="range" data-art="footSize" min="${FOOT_SIZE.least}" max="${FOOT_SIZE.most}" step="0.1" value="${s.footSize}" aria-label="The foot's size, in hundredths of the picture's height"></label>`;
     for (const [k, top] of scrolls) {
       const el = this.panel.querySelector<HTMLElement>(`[data-art-rows="${k}"]`);
       if (el) el.scrollTop = top;

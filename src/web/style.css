@@ -260,9 +260,10 @@ body.art-nonotes #stickies { display: none; }
 .art-head, .art-tail { position: absolute; pointer-events: auto; border-radius: 10px; font-size: 12px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 .art-head { transform: translateY(-100%); display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 10px; padding: 7px 10px; }
 .art-head-field input[type="text"] { width: var(--w, 10em); max-width: 100%; }
-.art-head .art-size input[type="range"] { width: 9em; padding: 0; border: 0; background: none; }
+.art-head .art-size input[type="range"], .art-tail .art-size input[type="range"] { width: 9em; padding: 0; border: 0; background: none; }
 .art-head [data-art-own][hidden] { display: none; }
-.art-tail { padding: 4px 10px; }
+.art-tail { display: flex; align-items: center; gap: 14px; padding: 4px 10px; }
+.art-tail .art-size { flex-direction: row; align-items: center; gap: 8px; }
 .art-tail .ex-check { margin: 0; }
 #art-panel[hidden] { display: none; }
 .art-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; }

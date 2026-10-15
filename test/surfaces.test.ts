@@ -143,6 +143,7 @@ const ART: ArtworkView = {
   title: "",
   subtitle: "Fermat's Last Theorem for regular primes",
   titleSize: 7,
+  footSize: 2.2,
   border: true,
   region: [10, -20, 640, 360],
 };
@@ -171,6 +172,10 @@ test("presence carries exactly the followed parts, and the views a page holds op
   const styled = cleanView({ ...v, artwork: { ...ART, style: "neon", title: 5, subtitle: "x".repeat(300), titleSize: 0 } })!.artwork!;
   assert.deepEqual([styled.style, styled.title, styled.subtitle!.length, styled.titleSize], ["board", null, 120, 3]);
   assert.equal(cleanView({ ...v, artwork: { ...ART, border: "thin" } })!.artwork!.border, false, "a border said otherwise is none");
+  // the foot's size (said since later that night): within its bounds, to a tenth; the first where none
+  assert.deepEqual([99, 0.123, 2.26, "big"].map((footSize) => cleanView({ ...v, artwork: { ...ART, footSize } })!.artwork!.footSize), [4, 0.8, 2.3, 1.6]);
+  const { footSize: _foot, ...unsized } = ART;
+  assert.equal(cleanView({ ...v, artwork: unsized })!.artwork!.footSize, 1.6, "a page from before it: the first");
   // a page from before the source was said: none
   const { source: _source, ...older } = ART;
   assert.equal(cleanView({ ...v, artwork: older })!.artwork!.source, false);
