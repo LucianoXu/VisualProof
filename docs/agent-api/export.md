@@ -151,7 +151,9 @@ Every field is optional; left out, as a new artwork has it.
 - `selection`: `{name, mode}` (`mode` as `POST view`'s; default `tcb`), lit while `lit` (default
   true). `view`: a view's id; left out, the Project.
 
-Answer: `{ok, link, length, size, names: {clusters, decls, ruled}, targets, selection, note}`.
-Saving both files, the page says the browser may ask to allow several downloads.
-400: a field unknown or wrong; 404: a name, target, cluster or view the board has not (`problems`).
+Answer: `{ok, link, length, size, names: {clusters, decls, ruled}, targets, selection, left, note}`;
+`left`: names or targets beyond what an artwork carries, left out. Saving both files, the page says
+the browser may ask to allow several downloads. 400: a field unknown or wrong; 404: a name, target,
+cluster or view the recipe names that the board has not (`problems`; a target of the review the
+graph no longer has is left out unsaid).
 

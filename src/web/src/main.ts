@@ -106,7 +106,7 @@ import { LinearForm } from "./linear.ts";
 import { isPhone, Phone } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
-import { sourceLine, titleOf } from "./artwork.ts";
+import { sourceLine, titleOf, untilStill } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
@@ -1040,11 +1040,13 @@ async function boot(): Promise<void> {
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
   /** the artwork's settings the board is drawn with: null where its mode is off */
   let artLook: ArtSettings | null = null;
-  /** the project's git source and commit as git says them, asked whenever the artwork comes (its
-   *  foot; GET /api/git): a commit made after the build is told */
+  /** the project's git source and commit as git says them, asked when the page opens and again
+   *  whenever the artwork comes (its foot; GET /api/git): a commit made after the build is told */
   let gitNow: GitSource | null = null;
   /** the last asking of it, which a link's recipe waits for before it saves (openRecipe) */
-  let gitAsked: Promise<void> = Promise.resolve();
+  let gitAsked: Promise<void> = data.git().then((git) => {
+    gitNow ??= git;
+  });
   const art = new ArtFrame($("#art"), $("#art-panel"), $("#art-sky") as HTMLCanvasElement, canvas, {
     title: () => views.title(nav.board.id),
     saved: () => S.artwork as Partial<ArtSettings> | undefined,
@@ -1670,7 +1672,7 @@ async function boot(): Promise<void> {
     const read = readRecipe(decodeRecipe(link.text));
     if ("error" in read) return say(`This link's artwork could not be read: ${read.error}`);
     const L = canvas.layout;
-    const { look, problems } = resolveRecipe(read.recipe, {
+    const { look, problems, left } = resolveRecipe(read.recipe, {
       clusters: L.clusters,
       clusterOf: (name) => {
         const i = g.byName.get(name);
@@ -1680,23 +1682,23 @@ async function boot(): Promise<void> {
       targets: Object.keys(review.data.targets),
       projectCount: g.projectCount,
     });
-    if (art.isOpen) {
-      art.close();
-      await new Promise((ok) => setTimeout(ok, 600));
-    }
-    art.open(look);
-    if (problems.length) say(`This link's artwork: ${problems.join("; ")}.`);
+    if (problems.length || left) say(`This link's artwork: ${[...problems, ...(left ? [`${left} names left out, more than an artwork carries`] : [])].join("; ")}.`);
+    if (art.isOpen) await art.close();
+    // come: the board drawn with the look, which asked for the git commit as it came (gitAsked)
+    await art.open(look);
     if (!link.save.length) return;
+    const since = performance.now();
     await gitAsked;
     await document.fonts?.ready;
-    // still: no frame drawn for 800 ms (the overview's edges come from a worker), at most 20 s
-    const t0 = performance.now();
-    while (performance.now() - drawnAt < 800 && performance.now() - t0 < 20_000) await new Promise((ok) => setTimeout(ok, 100));
+    // drawn since the mode came, then still for 800 ms (the overview's edges come from a worker), at
+    // most 20 s
+    canvas.request();
+    await untilStill({ now: () => performance.now(), drawnAt: () => drawnAt, sleep: (ms) => new Promise((ok) => setTimeout(ok, ms)) }, since);
     // a browser asks before a site saves several files at once (the owner's decision of 2026-10-15:
     // the reader is told)
     if (link.save.length > 1) say(`Saving the picture as ${link.save.map((k) => k.toUpperCase()).join(" and ")}: your browser may ask to allow this site to download several files.`);
     const made = await art.save(link.save);
-    document.documentElement.dataset.artworkSaved = made ? link.save.join(",") : "none";
+    document.documentElement.dataset.artworkSaved = made.length ? made.join(",") : "none";
   };
   // a layout's memory is handed over under a name, or by a private reader, as the server takes it
   handsOver = () => !reader && (!!data.snapshot || !!people.name || !!data.privateSession);
@@ -2750,7 +2752,12 @@ async function boot(): Promise<void> {
     const recipe = recipeIn(location.hash);
     void (st ? restore(st, cam, typeof tmAt === "number" ? tmAt : undefined) : Promise.resolve())
       .then(() => (snap ? openSnapshot(snap).then(() => writeAddress(false)) : undefined))
-      .then(() => (recipe ? openRecipe(recipe).then(() => writeAddress(false)) : undefined))
+      .then(() => {
+        // the recipe is read: the address goes back to the board's at once, as at the first load
+        if (!recipe) return;
+        void openRecipe(recipe);
+        writeAddress(false);
+      })
       .then(() => {
         renderNav();
         people.report();

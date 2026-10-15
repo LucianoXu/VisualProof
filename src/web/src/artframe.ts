@@ -20,7 +20,7 @@ import type { ArtworkView } from "../../shared/collab.ts";
 import { ART_NAMES_BYTES, ART_TARGETS_BYTES } from "../../shared/collab.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { ArtSettings, NameRow, NotePicture } from "./artwork.ts";
-import { artName, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, footMost, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
+import { artName, chooseIn, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, footMost, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { ART_DISPLAY, ART_SANS, ART_SERIF } from "./halo.ts";
 import { FOOT_SIZE, TITLE_SIZE } from "../../shared/collab.ts";
@@ -40,8 +40,8 @@ export interface ArtHooks {
   changed(): void;
   /** the notes as the board shows them now, on the screen */
   notes(): NotePicture[];
-  /** the foot's line for the project's git source and the commit of the build on show; null where
-   *  the project is no git repository */
+  /** the foot's line for the project's git source and the commit checked out when the mode came
+   *  (on a past build's board, that build's); null where the project is no git repository */
   source(): string | null;
   /** every target of the review, by full name, with the name the board writes */
   targets(): { name: string; label: string }[];
@@ -208,25 +208,29 @@ export class ArtFrame {
 
   /** The mode, from the Export window: the reader's last settings, the whole board in the frame; or,
    *  from a link's recipe (ExportSpec decision 20, shared/artrecipe.ts), the settings it gives — not
-   *  kept as the reader's until they change one. */
-  open(given?: Partial<ArtSettings>): void {
-    if (this.isOpen && !this.leaving) return;
+   *  kept as the reader's until they change one. Resolves once the mode has come: the board drawn
+   *  with its look, the camera where it goes. */
+  open(given?: Partial<ArtSettings>): Promise<void> {
+    if (this.isOpen && !this.leaving) return Promise.resolve();
     const s = cleanSettings(given ?? this.hooks.saved(), this.hooks.now());
     // the whole board in the frame, below the title where there is one
-    this.start(s, (r) => {
+    const came = this.start(s, (r) => {
       const own = this.hooks.titles();
       const titled = !!(s.title ?? own.title) || !!(s.subtitle ?? own.subtitle);
       const below = titled ? Math.min(r.h * 0.4, ((s.titleSize * 1.7) / 100) * r.h + Math.max(14, r.h * 0.035)) : 0;
       return this.canvas.fitCam({ x: r.x, y: r.y + below, w: r.w, h: r.h - below });
     });
     this.hooks.changed();
+    return came;
   }
 
-  /** The reader leaves: the board drawn as before, the camera where it was. */
-  close(): void {
-    if (!this.isOpen || this.leaving) return;
-    this.end(true);
+  /** The reader leaves: the board drawn as before, the camera where it was. Resolves once the mode
+   *  has gone. */
+  close(): Promise<void> {
+    if (!this.isOpen || this.leaving) return Promise.resolve();
+    const gone = this.end(true);
     this.hooks.changed();
+    return gone;
   }
 
   /** The mode as presence carries it: its settings, and the rectangle of the board's world the frame
@@ -241,9 +245,15 @@ export class ArtFrame {
   /** A followed reader's artwork, or a link's: on with their settings — not kept as this reader's —
    *  the frame holding what theirs holds; off where theirs is. */
   follow(v: ArtworkView | null): void {
-    if (!v) return this.end(false);
+    if (!v) {
+      void this.end(false);
+      return;
+    }
     const { region, ...s } = v;
-    if (!this.isOpen || this.leaving) return this.start(s, (r) => this.camHolding(region, r));
+    if (!this.isOpen || this.leaving) {
+      void this.start(s, (r) => this.camHolding(region, r));
+      return;
+    }
     if (!sameLook(this.s!, s)) {
       this.s = s;
       this.hooks.look(s);
@@ -257,8 +267,9 @@ export class ArtFrame {
   /** The mode comes (ExportSpec decision 19, the owner's decision of 2026-10-15: as smoothly as the
    *  linear form, web/src/linear.ts): the frame closes in from the whole screen as its shade comes,
    *  the camera glides to where `aim` puts it in the frame, the panel slides in; the board dips to
-   *  its ground a moment, takes the artwork's look and comes back; the title and the foot come last. */
-  private start(s: ArtSettings, aim: (rect: { x: number; y: number; w: number; h: number }) => { x: number; y: number; k: number } | null): void {
+   *  its ground a moment, takes the artwork's look and comes back; the title and the foot come last.
+   *  Resolves when it has come (or a newer step took its place). */
+  private start(s: ArtSettings, aim: (rect: { x: number; y: number; w: number; h: number }) => { x: number; y: number; k: number } | null): Promise<void> {
     const turn = ++this.turn;
     const body = document.body;
     this.s = s;
@@ -294,14 +305,20 @@ export class ArtFrame {
       this.renderSky();
       this.renderInk();
     }, DIP_MS);
-    setTimeout(() => turn === this.turn && body.classList.remove("art-moving"), EASE_MS);
+    return new Promise((done) =>
+      setTimeout(() => {
+        if (turn === this.turn) body.classList.remove("art-moving");
+        done();
+      }, EASE_MS),
+    );
   }
 
   /** The mode goes, as it came: the frame opens out to the whole screen as its shade goes, the
    *  panel slides away, the camera glides back where it was (`back`); the board dips, takes its own
-   *  look again, and comes back. A follower's goes with the other's, its camera theirs. */
-  private end(back: boolean): void {
-    if (!this.isOpen || this.leaving) return;
+   *  look again, and comes back. A follower's goes with the other's, its camera theirs. Resolves when
+   *  it has gone (or a newer step took its place). */
+  private end(back: boolean): Promise<void> {
+    if (!this.isOpen || this.leaving) return Promise.resolve();
     const turn = ++this.turn;
     const body = document.body;
     this.leaving = true;
@@ -320,17 +337,20 @@ export class ArtFrame {
       this.renderSky();
       body.classList.remove("art-dip");
     }, DIP_MS);
-    setTimeout(() => {
-      if (turn !== this.turn) return;
-      this.leaving = false;
-      this.rect = { x: 0, y: 0, w: 0, h: 0 };
-      this.root.hidden = true;
-      this.panel.hidden = true;
-      this.sky.hidden = true;
-      this.root.classList.remove("art-away");
-      this.panel.classList.remove("art-away");
-      body.classList.remove("art-moving");
-    }, EASE_MS);
+    return new Promise((done) =>
+      setTimeout(() => {
+        done();
+        if (turn !== this.turn) return;
+        this.leaving = false;
+        this.rect = { x: 0, y: 0, w: 0, h: 0 };
+        this.root.hidden = true;
+        this.panel.hidden = true;
+        this.sky.hidden = true;
+        this.root.classList.remove("art-away");
+        this.panel.classList.remove("art-away");
+        body.classList.remove("art-moving");
+      }, EASE_MS),
+    );
   }
 
   /** The camera that holds `region` of the board's world in the frame `r`: its middle at the frame's,
@@ -542,26 +562,15 @@ export class ArtFrame {
    *  name unticked is no longer shown besides, and is hidden where the board would write it all the
    *  same. What does not fit in what the artwork carries is left out, and said. A name a recipe's
    *  rule chose (ExportSpec decision 20) is the reader's once ticked — written wherever it falls, as
-   *  one ticked by hand — and no longer the rule's once unticked. */
+   *  one ticked by hand — and no longer the rule's once unticked, hidden where the board would write
+   *  it (artwork chooseIn). */
   private chooseNames(ids: readonly string[], on: boolean): void {
     const s = this.s;
     if (!s || this.busy) return this.renderPanel();
     const now = this.canvas.writtenNames();
-    const hidden = new Set(s.hiddenNames), shown = new Set(s.shownNames), ruled = new Set(s.ruledNames);
-    const add: string[] = [], hide: string[] = [];
-    for (const id of ids) {
-      if (on) {
-        hidden.delete(id);
-        if (!now.has(id) && !shown.has(id)) {
-          add.push(id);
-          ruled.delete(id);
-        }
-      } else if (shown.has(id)) shown.delete(id);
-      else if (ruled.has(id)) ruled.delete(id);
-      else if (s.namesFrom === "board" && now.has(id)) hide.push(id);
-    }
-    s.ruledNames = [...ruled];
-    const a = withChosen([...shown], add, ART_NAMES_BYTES), h = withChosen([...hidden], hide, ART_NAMES_BYTES);
+    const { hidden, shown, ruled, add, hide } = chooseIn(s, now, ids, on);
+    s.ruledNames = ruled;
+    const a = withChosen(shown, add, ART_NAMES_BYTES), h = withChosen(hidden, hide, ART_NAMES_BYTES);
     [s.shownNames, s.hiddenNames] = [a.list, h.list];
     if (a.left + h.left) this.hooks.say(NO_ROOM(a.left + h.left, "name"));
     // ticked as chosen until the board has drawn it
@@ -779,18 +788,19 @@ export class ArtFrame {
     );
   }
 
-  /** Make the file, at the full size, from the board as it is drawn now, and hand it to the browser
-   *  to save. */
   /** The files a link's recipe asks for (ExportSpec decision 20), one after the other, as Save SVG
-   *  and Save PNG make them; whether the mode was on to make them. */
-  async save(kinds: readonly ("png" | "svg")[]): Promise<boolean> {
-    if (!this.isOpen || !this.s) return false;
-    for (const k of kinds) await this.saveFile(k);
-    return true;
+   *  and Save PNG make them; those made. */
+  async save(kinds: readonly ("png" | "svg")[]): Promise<("png" | "svg")[]> {
+    const made: ("png" | "svg")[] = [];
+    if (!this.isOpen || !this.s) return made;
+    for (const k of kinds) if (await this.saveFile(k)) made.push(k);
+    return made;
   }
 
-  private async saveFile(kind: "png" | "svg"): Promise<void> {
-    if (this.busy || !this.s) return;
+  /** Make the file, at the full size, from the board as it is drawn now, and hand it to the browser
+   *  to save; whether it was made. */
+  private async saveFile(kind: "png" | "svg"): Promise<boolean> {
+    if (this.busy || !this.s) return false;
     const s = { ...this.s };
     const C = this.canvas;
     const rect = { ...this.rect }, cam = { ...C.cam };
@@ -818,7 +828,8 @@ export class ArtFrame {
         if (s.border) pen.raw(`</g>`);
         this.writeOver(ctx, s, rect);
       }, await faces());
-      return download(new Blob([svg], { type: "image/svg+xml" }), name);
+      download(new Blob([svg], { type: "image/svg+xml" }), name);
+      return true;
     }
     this.busy = true;
     this.renderPanel();
@@ -883,8 +894,10 @@ export class ArtFrame {
         }
       }
       download(await encodePng(s.w, s.h, bands()), name);
+      return true;
     } catch {
       this.hooks.say(`This browser could not draw a picture of ${s.w} × ${s.h} pixels: choose a smaller size, or save the SVG.`);
+      return false;
     } finally {
       this.busy = false;
       this.renderPanel();

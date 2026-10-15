@@ -19,6 +19,7 @@ import { ReviewStore } from "./review.ts";
 import { isDeclName, LeanHover } from "./hover.ts";
 import { Identities, layoutAuthor } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
+import type { GitSource } from "../shared/graph.ts";
 import { MAX_MEMORY_BYTES, Views } from "./views.ts";
 import { cleanView, defaultAgentName, validSession, withoutArtwork } from "../shared/collab.ts";
 import { writeSnapshot } from "./snapshot.ts";
@@ -246,6 +247,11 @@ export class App {
   live: Live;
   hover: LeanHover;
   ids: Identities;
+  /** how long a read of the project's git (GET /api/git) is kept, whoever asks: git is run at most
+   *  once in that time, so what readers cost the server is bounded (CollabSpec decision 11); 0 in
+   *  the tests */
+  gitFreshMs = 3000;
+  private gitRead: { at: number; git: GitSource | null } | null = null;
   /** the agents' API (server/agent.ts), and what agents may change */
   agents: AgentApi;
   /** who may come in at all (server/access.ts); null: anyone who reaches the port */
@@ -895,7 +901,10 @@ export class App {
       }
       // the project's git source and commit as git says them now, not as the build was read (an
       // artwork's foot, ExportSpec decision 19; the owner's decision of 2026-10-15)
-      if (path === "/api/git") return sendJson(res, { git: gitSource(live.project.root) });
+      if (path === "/api/git") {
+        if (!this.gitRead || Date.now() - this.gitRead.at >= this.gitFreshMs) this.gitRead = { git: gitSource(live.project.root), at: Date.now() };
+        return sendJson(res, { git: this.gitRead.git });
+      }
       if (path === "/api/meta" || path === "/api/edges") {
         const g = live.graph;
         if (!g) return sendJson(res, { error: "not ready" }, 503);

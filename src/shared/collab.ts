@@ -215,7 +215,8 @@ export interface ArtworkLook {
   keys: boolean;
   /** the selection and what is lit drawn as the reader sees them */
   selection: boolean;
-  /** the project's git source and the commit it was read from, at the bottom right */
+  /** the project's git source and the commit checked out when the mode came (on a past build's
+   *  board, that build's), at the bottom right */
   source: boolean;
   /** how it is drawn (the owner's decisions of 2026-10-15): as the board; as cells, each namespace a
    *  glowing territory on a dark ground; as a starfield, each declaration a star and each cluster a
@@ -270,10 +271,11 @@ export function artNameId(kind: "cluster" | "decl", s: string): string {
  *  presence carries, in bytes of their JSON: a heartbeat is at most 16 KB (server/main.ts), and the
  *  rest of where a reader is has room beside them. Names by selection are kept as what differs from
  *  As shown, so that a few names hidden or added are a few names carried. */
-export const ART_NAMES_BYTES = 4500;
+export const ART_NAMES_BYTES = 4000;
 export const ART_TARGETS_BYTES = 2500;
-/** the names a recipe's rule chose (ArtworkLook `ruledNames`): a rule names a few clusters */
-export const ART_RULED_BYTES = 1500;
+/** the names a recipe's rule chose (ArtworkLook `ruledNames`): a rule names a few clusters. The four
+ *  lists full, with the longest title and line, leave a heartbeat room (test/sharesnap.test.ts) */
+export const ART_RULED_BYTES = 1000;
 
 /** What `x` adds to a list's JSON: itself, quoted, and a comma. */
 const jsonBytes = (x: string) => new TextEncoder().encode(JSON.stringify(x)).length + 1;

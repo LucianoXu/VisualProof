@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { decodeRecipe, encodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../src/shared/artrecipe.ts";
 import type { ArtRecipe, RecipeBoard } from "../src/shared/artrecipe.ts";
+import { chooseIn, untilStill } from "../src/web/src/artwork.ts";
 import { site } from "./site.ts";
 
 const agent = { "x-visualproof-name": "Claude", "x-visualproof-kind": "agent" };
@@ -97,11 +98,56 @@ test("names by a rule: the outside world's own, and the project's down to the de
   assert.equal(resolveRecipe({ names: "clusters" }, BOARD).look.labels, "clusters");
 });
 
-test("what a recipe names that the board has not is said, not drawn", () => {
+test("what a recipe names that the board has not is said, not drawn; a target of the review the board has not is left out unsaid; what does not fit is counted", () => {
   const r = resolveRecipe({ names: { clusters: ["Lib", "Nope"], decls: ["Lib.gone"] }, targets: ["Lib.A.X.main", "Not.a.target"] }, BOARD);
   assert.deepEqual(r.problems, ["not targets of the review: Not.a.target", "no cluster Nope on the board", "no declaration Lib.gone on the board"]);
   assert.deepEqual(r.look.shownTargets, ["Lib.A.X.main"]);
   assert.deepEqual(r.named.clusters, ["Lib"]);
+  // a target renamed or removed since it was marked stays in the review: left out where the recipe
+  // does not name it, said where it does
+  const stale: RecipeBoard = { ...BOARD, targets: [...BOARD.targets, "Lib.renamedAway"] };
+  const all = resolveRecipe({ names: { clusters: 0 } }, stale);
+  assert.deepEqual([all.problems, all.named.decls], [[], ["Lib.A.X.main", "Lib.C.side"]]);
+  assert.deepEqual(resolveRecipe({ targets: ["Lib.renamedAway"] }, stale).problems, ["targets not on the board: Lib.renamedAway"]);
+  // more than the artwork carries: what fits, in its order, and how many were left out — no problem
+  const big: RecipeBoard = { ...BOARD, clusterOf: () => 0 };
+  const decls = Array.from({ length: 400 }, (_, i) => `Lib.a_rather_long_declaration_name_${i}`);
+  const cut = resolveRecipe({ names: { decls, targets: false } }, big);
+  assert.deepEqual(cut.problems, []);
+  assert.ok(cut.left > 200 && cut.named.decls.length + cut.left === 400, `${cut.named.decls.length} kept, ${cut.left} left`);
+  assert.deepEqual(cut.look.shownNames, cut.named.decls.map((d) => `d:${d}`));
+});
+
+test("the list of names: a rule's name ticked is the reader's, unticked is no longer the rule's — and hidden where the board would write it", () => {
+  const s = { namesFrom: "none" as const, hiddenNames: [], shownNames: ["d:A.t"], ruledNames: ["c:A", "c:B"] };
+  // B was left out (it would cover another name): ticked, it is written wherever it falls
+  assert.deepEqual(chooseIn(s, new Set(["c:A", "d:A.t"]), ["c:B"], true), { hidden: [], shown: ["d:A.t"], ruled: ["c:A"], add: ["c:B"], hide: [] });
+  // A, written by the rule, unticked: from none, simply no longer written
+  assert.deepEqual(chooseIn(s, new Set(["c:A", "d:A.t"]), ["c:A"], false), { hidden: [], shown: ["d:A.t"], ruled: ["c:B"], add: [], hide: [] });
+  // from As shown, the board would write it all the same: hidden
+  assert.deepEqual(chooseIn({ ...s, namesFrom: "board" }, new Set(["c:A"]), ["c:A"], false).hide, ["c:A"]);
+  // a name shown besides, unticked; one the board writes, unticked, from As shown
+  assert.deepEqual(chooseIn(s, new Set(["d:A.t"]), ["d:A.t"], false).shown, []);
+  assert.deepEqual(chooseIn({ ...s, namesFrom: "board" }, new Set(["d:A.x"]), ["d:A.x"], false).hide, ["d:A.x"]);
+});
+
+test("a link's files are saved once the board has been drawn since the mode came and then still, never on a frame from before", async () => {
+  let t = 0;
+  let drawn = 50;
+  const o = { now: () => t, drawnAt: () => drawn, sleep: async (ms: number) => void (t += ms) };
+  // a frame from before the mode came (since 1000), long ago: not still enough to save
+  assert.equal(await untilStill(o, 1000, 800, 5000), false, "no frame since the mode came");
+  // drawn at 6,500 (after since), then nothing: still 800 ms later
+  t = 6000;
+  drawn = 6500;
+  let at = -1;
+  const sleep = async (ms: number) => {
+    t += ms;
+    if (t === 6700) drawn = 6700;
+  };
+  assert.equal(await untilStill({ ...o, sleep, now: () => t }, 6000), true);
+  at = t;
+  assert.ok(at >= 6700 + 800, `saved at ${at}, after the last frame and 800 ms`);
 });
 
 test("a link carries the recipe after #, any text it holds; and the files to save", () => {
@@ -139,6 +185,11 @@ test("POST /api/agent/artwork: the recipe checked against the board, a link with
     assert.deepEqual([nt.status, nt.json!.problems], [404, ["not targets of the review: N.a"]]);
     assert.equal((await ask({ recipe: {}, save: "gif" })).status, 400);
     assert.equal((await ask({ recipe: { view: "nope" } })).status, 404);
+    // a target of the review the graph no longer has: left out unsaid, unless the recipe names it
+    S.live.review.append({ name: "Alice", agent: false }, { op: "target", name: "N.renamedAway", by: "Alice", on: true }, "tc");
+    assert.equal((await ask({ recipe: { names: { clusters: 0 } } })).status, 200);
+    const named = await ask({ recipe: { targets: ["N.renamedAway"] } });
+    assert.deepEqual([named.status, named.json!.problems], [404, ["targets not on the board: N.renamedAway"]]);
     // an agent says it is one
     assert.equal((await S.ask("POST", "/api/agent/artwork", { recipe: {} })).status, 400);
   } finally {

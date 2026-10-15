@@ -347,8 +347,11 @@ Numbers missing below are withdrawn decisions.
       opens the page in the artwork mode as the recipe says, fitted to the whole board; asked, the
       page saves the PNG and the SVG once the board is still, its fonts and the git commit there.
       The page resolves the recipe against the board it opens on; the server resolves it first
-      against the Project's, and refuses what that board has not (a declaration, a target, a
-      cluster, a view) rather than make a picture unlike the one meant. The link holds no key, as
+      against the Project's, and refuses what the recipe names that the board has not (a
+      declaration, a target, a cluster, a view) rather than make a picture unlike the one meant; a
+      target of the review the graph no longer has (renamed or removed since it was marked) is left
+      out unsaid where the recipe does not name it, and what is beyond what an artwork carries is
+      counted (`left`), not refused. The link holds no key, as
       Share's do. The settings it opens with are not kept as the reader's until they change one (as
       drafted, not yet answered). Saving both files, the page says first that the browser may ask
       to allow the site to download several files (the owner's decision of 2026-10-15).
@@ -560,7 +563,7 @@ Numbers missing below are withdrawn decisions.
   where As shown writes it. The list (canvas `artNames`; artwork `nameRows`, at most 2,000 lines, the
   rest narrowed to by the filter) is read again when the board has been still 300 ms, at least every
   second while it moves. The lists are kept within what a heartbeat carries (collab
-  `ART_NAMES_BYTES`, 4,500 bytes of JSON each list of names, `ART_TARGETS_BYTES`, 2,500: a heartbeat
+  `ART_NAMES_BYTES`, 4,000 bytes of JSON each list of names, `ART_TARGETS_BYTES`, 2,500: a heartbeat
   is at most 16 KB), checked by `cleanNames` wherever they are read; what does not fit is left out
   and said. A
   page from before them chose none, and its key marks are as its targets drew them. The filter is the
@@ -630,7 +633,8 @@ Numbers missing below are withdrawn decisions.
   `PRESETS`). Names by a rule are `labels: "chosen"` from none: the clusters by key, the
   declarations and the targets' names in `shownNames`, each written wherever it falls (decision
   19); the clusters a depth names in `ruledNames` (shared/collab.ts, at most `ART_RULED_BYTES`,
-  1,500 bytes; carried to those following and in Share's links like the rest).
+  1,000 bytes, the four lists sharing a heartbeat's room with the longest title and line;
+  carried to those following and in Share's links like the rest).
 - **Never one over another** (web/src/canvas.ts, drawLabels): after the clusters and declarations
   shown, the rule's clusters, in the layout's order (a parent before its children), each where the
   board writes it (an arc over a circle large enough, else straight above it) and only where its
@@ -644,13 +648,18 @@ Numbers missing below are withdrawn decisions.
   sees a rule's outcome before anyone opens the link.
 - **The page** (web/src/main.ts `openRecipe`): after the board its address opened (and a snapshot,
   where the link has one), the recipe is resolved against the board on show (`canvas.layout`) and
-  the mode opened with it (artframe `open(given)`). Saving waits for the git commit asked as the
-  mode comes, the fonts, and the board still for 800 ms (the overview's edges come from a worker; at
-  most 20 s), then saves as Save SVG and Save PNG do (artframe `save`); `data-artwork-saved` on the
-  page's root says what was saved, or `none`. Saving both, a line says first that the browser may
+  the mode opened with it (artframe `open(given)`, which resolves once the mode has come: its look
+  applied, so the git commit asked for as it came, `gitAsked`, is this mode's); the address goes
+  back to the board's at once. Saving waits for that commit, the fonts, a frame drawn after the mode
+  came and then 800 ms without one (artwork `untilStill`: the overview's edges come from a worker;
+  at most 20 s), then saves as Save SVG and Save PNG do (artframe `save`, which says the files
+  made); `data-artwork-saved` on the page's root names them, or `none`. Saving both, a line says first that the browser may
   ask to allow the site to download several files.
 - **The batch** (scripts/artwork-batch.mjs, Playwright): per job, the API asked with the server's
-  key as a Bearer (and the script's name, as an agent), a fresh browser context let in by `/k/<key>`
-  at the batch's viewport (1920 × 1200 unless said: the frame's size on screen sets the names' size
-  in the picture), the link opened, the downloads saved as `<name>.png` and `.svg`, the name made
-  safe for every file system.
+  key as a Bearer (and the script's name, as an agent), a fresh browser context whose requests to
+  that server alone carry the key as a Bearer (server/access.ts takes one on every path; the key is
+  never printed), the link's fragment opened on the batch's server (the link may name the server's
+  public address) at the batch's viewport (1920 × 1200 unless said: the frame's size on screen sets the names' size
+  in the picture), the downloads saved as `<name>.png` and `.svg`, the name made safe for every
+  file system (no reserved device name, with an extension or none) and no two jobs' the same in any
+  case.

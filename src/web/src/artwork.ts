@@ -973,3 +973,43 @@ export async function encodePng(w: number, h: number, bands: AsyncIterable<Uint8
   const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
   return new Blob([sig, ...chunk("IHDR", ihdr), ...chunk("IDAT", idat), ...chunk("IEND", new Uint8Array(0))] as BlobPart[], { type: "image/png" });
 }
+
+/** Names ticked (`on`) or unticked in the artwork's list (By selection; web/src/artframe.ts,
+ *  chooseNames), `written` those the board writes now: a name ticked is no longer hidden, and is
+ *  shown besides where the board does not write it now — a name a recipe's rule chose becomes the
+ *  reader's so, written wherever it falls; a name unticked is no longer shown besides, nor the
+ *  rule's, and is hidden where the board would write it all the same (from As shown). The lists as
+ *  they become, and what is to be added to those shown and to those hidden (each within what the
+ *  artwork carries: withChosen). */
+export function chooseIn(s: Pick<ArtSettings, "namesFrom" | "hiddenNames" | "shownNames" | "ruledNames">, written: ReadonlySet<string>, ids: readonly string[], on: boolean): { hidden: string[]; shown: string[]; ruled: string[]; add: string[]; hide: string[] } {
+  const hidden = new Set(s.hiddenNames), shown = new Set(s.shownNames), ruled = new Set(s.ruledNames);
+  const add: string[] = [], hide: string[] = [];
+  for (const id of ids) {
+    if (on) {
+      hidden.delete(id);
+      if (!written.has(id) && !shown.has(id)) {
+        add.push(id);
+        ruled.delete(id);
+      }
+    } else if (shown.has(id)) shown.delete(id);
+    else if (ruled.has(id)) {
+      ruled.delete(id);
+      if (s.namesFrom === "board") hide.push(id);
+    } else if (s.namesFrom === "board" && written.has(id)) hide.push(id);
+  }
+  return { hidden: [...hidden], shown: [...shown], ruled: [...ruled], add, hide };
+}
+
+/** Wait until the board has been drawn after `since` and then not again for `quiet` ms — still,
+ *  with what came after `since` on it — at most `most` ms (a link's recipe saves then, ExportSpec
+ *  decision 20); whether it was still before that. A frame drawn before `since` (before the mode
+ *  came) never counts. */
+export async function untilStill(o: { now(): number; drawnAt(): number; sleep(ms: number): Promise<void> }, since: number, quiet = 800, most = 20_000): Promise<boolean> {
+  const t0 = o.now();
+  for (;;) {
+    const t = o.now();
+    if (o.drawnAt() >= since && t - o.drawnAt() >= quiet) return true;
+    if (t - t0 >= most) return false;
+    await o.sleep(100);
+  }
+}

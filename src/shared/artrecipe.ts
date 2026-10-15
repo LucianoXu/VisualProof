@@ -200,6 +200,8 @@ export interface RecipeBoard {
 export interface Resolved {
   look: ArtworkLook;
   named: { clusters: string[]; ruled: string[]; decls: string[] };
+  /** names and targets left out: more than the artwork carries (a warning, not a problem) */
+  left: number;
   problems: string[];
 }
 
@@ -221,17 +223,25 @@ export function resolveRecipe(r: ArtRecipe, b: RecipeBoard): Resolved {
   const portrait = r.orientation ? r.orientation === "portrait" : given.h > given.w;
   const [long, short] = given.w >= given.h ? [given.w, given.h] : [given.h, given.w];
   const { w, h } = portrait ? { w: short, h: long } : { w: long, h: short };
-  // the targets marked, and those named
+  // what the recipe names that the board has not is said (`problems`); what is left out for room,
+  // counted (`left`); a target of the review the board has not — a target outlives its declaration's
+  // rename or removal — is left out unsaid, as the board leaves it
+  let left = 0;
   const targetSet = new Set(b.targets);
+  const held = (n: string) => b.clusterOf(n) !== undefined;
   let targets: ArtworkLook["targets"] = "marked";
   let shownTargets: string[] = [];
-  let marked: string[] = [...b.targets];
+  let marked: string[] = b.targets.filter(held);
   if (r.targets === "none") [targets, marked] = ["plain", []];
   else if (r.targets === "faded") targets = "highlight";
   else if (Array.isArray(r.targets)) {
     const unknown = r.targets.filter((t) => !targetSet.has(t));
     if (unknown.length) problems.push(`not targets of the review: ${unknown.join(", ")}`);
-    shownTargets = cleanNames(r.targets.filter((t) => targetSet.has(t)), ART_TARGETS_BYTES);
+    const off = r.targets.filter((t) => targetSet.has(t) && !held(t));
+    if (off.length) problems.push(`targets not on the board: ${off.join(", ")}`);
+    const on = r.targets.filter((t) => targetSet.has(t) && held(t));
+    shownTargets = cleanNames(on, ART_TARGETS_BYTES);
+    left += new Set(on).size - shownTargets.length;
     targets = "chosen";
     marked = shownTargets;
   }
@@ -261,20 +271,23 @@ export function resolveRecipe(r: ArtRecipe, b: RecipeBoard): Resolved {
         else if (!omit.has(key) && !named.clusters.includes(key)) named.clusters.push(key);
       }
     }
-    // the targets' names, and the declarations named
+    // the targets' names (all on the board), and the declarations named
     const decls = n.targets === false ? [] : [...marked];
-    for (const t of decls)
-      if (b.clusterOf(t) === undefined) problems.push(`the target ${t} is not on the board`);
     for (const d of n.decls ?? []) {
-      if (b.clusterOf(d) === undefined) problems.push(`no declaration ${d} on the board`);
+      if (!held(d)) problems.push(`no declaration ${d} on the board`);
       else decls.push(d);
     }
-    for (const d of decls) if (b.clusterOf(d) !== undefined && !omit.has(d) && !named.decls.includes(d)) named.decls.push(d);
+    for (const d of decls) if (!omit.has(d) && !named.decls.includes(d)) named.decls.push(d);
     const ids = [...named.clusters.map((k) => artNameId("cluster", k)), ...named.decls.map((d) => artNameId("decl", d))];
     shown = cleanNames(ids, ART_NAMES_BYTES);
     const ruled = named.ruled.map((k) => artNameId("cluster", k));
     ruledIds = cleanNames(ruled, ART_RULED_BYTES);
-    if (shown.length + ruledIds.length < ids.length + ruled.length) problems.push(`${ids.length + ruled.length - shown.length - ruledIds.length} names left out: more than the artwork carries`);
+    left += ids.length + ruled.length - shown.length - ruledIds.length;
+    // what is named is what the artwork carries
+    const kept = new Set([...shown, ...ruledIds]);
+    named.clusters = named.clusters.filter((k) => kept.has(artNameId("cluster", k)));
+    named.ruled = named.ruled.filter((k) => kept.has(artNameId("cluster", k)));
+    named.decls = named.decls.filter((d) => kept.has(artNameId("decl", d)));
     // from the board, what to leave out is said as hidden
     if (namesFrom === "board") hidden = cleanNames([...omit].map((k) => (byKey.has(k) ? artNameId("cluster", k) : artNameId("decl", k))), ART_NAMES_BYTES);
   }
@@ -303,7 +316,7 @@ export function resolveRecipe(r: ArtRecipe, b: RecipeBoard): Resolved {
     footSize: r.footSize ?? FOOT_SIZE.first,
     border: r.border ?? false,
   };
-  return { look, named, problems };
+  return { look, named, left, problems };
 }
 
 /** A recipe as the link carries it after `#`: its JSON, base64url. */
