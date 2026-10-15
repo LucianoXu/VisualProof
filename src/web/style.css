@@ -438,6 +438,12 @@ body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn,
 }
 .sw-review .rv-text { min-height: calc(5 * 1.45em + 12px); }
 .rv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* whom the opinion is for (ReviewSpec decision 8): a name beside the buttons; while it is another
+   person's, a coloured line over the box says so */
+.rv-for { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+.rv-for-in { width: 9em; font: 12px var(--font); color: var(--text); background: var(--surface-solid); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.rv-for-on { margin: 0 0 6px; padding: 5px 9px; border-radius: 7px; font-size: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.rv-for-on[hidden] { display: none; }
 .rv-btn {
   border: 1px solid var(--line); background: var(--surface-solid); color: var(--text); font: 12px var(--font);
   padding: 4px 10px; border-radius: 7px; cursor: pointer;

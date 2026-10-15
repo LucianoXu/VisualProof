@@ -918,6 +918,13 @@ export class Live {
     return made;
   }
 
+  /** The holder of a personal link in force who goes by `name` (CollabSpec decision 9): whom an
+   *  opinion recorded for that name is for (ReviewSpec decision 8). */
+  invited(name: string): { id: string; name: string } | undefined {
+    const r = this.invites.holder(name);
+    return r ? { id: r.id, name: r.name } : undefined;
+  }
+
   /** The usage pass's contexts of a module (shared/context.ts), when the graph on show has them. */
   contextsOf(module: string): ModuleContexts | null {
     return this.graph?.prep.usage?.contexts[module] ?? null;

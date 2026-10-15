@@ -303,7 +303,10 @@ export class ReviewStore {
     this.refresh();
     const file = logFileName(name, false, person);
     const now = Object.hasOwn(this.data.people, person) ? this.data.people[person].name : null;
-    if (!this.files.has(file) || now === name.trim()) return { change: null, unchanged: true };
+    // one who has no log yet, but whom opinions were recorded for (ReviewSpec decision 8), is
+    // given one by the rename, so that those follow it
+    const spokenFor = Object.values(this.data.opinions).some((ops) => ops.some((o) => o.person === person && o.recordedBy));
+    if ((!this.files.has(file) && !spokenFor) || now === name.trim()) return { change: null, unchanged: true };
     return this.write(file, () => nameEvent(person, name, this.nextTime()));
   }
 

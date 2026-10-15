@@ -250,8 +250,10 @@ test("the comment box, in the panel and the source window alike: Approve and Com
   // the buttons: Approve, solid green, and Comment, solid blue, never a warning colour (the owner's
   // decision of 2026-10-12)
   const html = box.html(G, false);
-  assert.match(html, /<button class="rv-btn approve" data-rv="approve"[^>]*>Approve<\/button>/);
-  assert.match(html, /<button class="rv-btn comment" data-rv="comment" title="Comment \(m\)[^"]*">Comment<\/button>/);
+  // whom it is for, said on the buttons where it is someone else (ReviewSpec decision 8): no one here
+  assert.match(html, /<button class="rv-btn approve" data-rv="approve"[^>]*>Approve<span data-rv-for-who><\/span><\/button>/);
+  assert.match(html, /<button class="rv-btn comment" data-rv="comment" title="Comment \(m\)[^"]*">Comment<span data-rv-for-who><\/span><\/button>/);
+  assert.match(html, /Speaking for <input class="rv-for-in" data-rv-for list="rv-people" value=""/);
   assert.doesNotMatch(html, /disput/i);
   // Comment with nothing written sends nothing, and goes to the box
   box.give("comment", G, root);

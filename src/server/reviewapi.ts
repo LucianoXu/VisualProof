@@ -18,6 +18,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { MAX_NAME, sameName, validName } from "../shared/collab.ts";
 import { exactContext, judgedText } from "../shared/context.ts";
 import type { ModuleContexts } from "../shared/context.ts";
 import type { ViewMeta } from "../shared/graph.ts";
@@ -44,6 +45,8 @@ export interface ReviewWorld {
   timeline: { add(e: NewEvent): StoredEvent };
   /** the usage pass's contexts of a module of the graph on show (server/usage.ts), if it has them */
   contextsOf?(module: string): ModuleContexts | null;
+  /** the holder of a personal link in force who goes by `name` (CollabSpec decision 9) */
+  invited?(name: string): { id: string; name: string } | undefined;
 }
 
 /** An answer, as server/agent.ts shapes them: an HTTP status and a JSON body. */
@@ -148,12 +151,14 @@ export class ReviewApi {
         const comment = typeof b.comment === "string" ? b.comment.trim() : "";
         if (comment.length > 10000) return answer(refuse(400, "The comment is longer than 10,000 characters.", "Say it shorter."));
         if (b.verdict === "comment" && !comment) return answer(refuse(400, "A comment needs text.", "Write it in the box, then Comment."));
+        const voice = this.voice(b.for, who);
+        if ("status" in voice) return answer(voice);
         const v = this.graph();
         if ("status" in v) return answer(v);
         const x = this.bind(v, b.name);
         if ("status" in x) return answer(x);
         // an agent's opinion is advice, whatever its level (AgentSpec decision 2)
-        return this.record({ op: "opinion", name: x.name, by, verdict: b.verdict, ...(comment ? { comment } : {}), ...(x.hash ? { hash: x.hash } : {}), ...(x.text !== undefined ? { text: x.text } : x.statement !== undefined ? { statement: x.statement } : {}), ...agent }, who);
+        return this.record({ op: "opinion", name: x.name, by, verdict: b.verdict, ...(comment ? { comment } : {}), ...(x.hash ? { hash: x.hash } : {}), ...(x.text !== undefined ? { text: x.text } : x.statement !== undefined ? { statement: x.statement } : {}), ...voice, ...agent }, who);
       }
       case "target": {
         if (typeof b.on !== "boolean") return answer(refuse(400, "on is true or false.", "Send {op: \"target\", name, on}."));
@@ -206,8 +211,34 @@ export class ReviewApi {
     }
   }
 
+  /** Whose an opinion is to be (ReviewSpec decision 8): the asker's own where `asked` is absent or
+   *  names them; else another person's, recorded for them — by their link's id where `asked` is an
+   *  invited person's name, a guest's as the logs write it — and never an agent's, nor by an agent. */
+  private voice(asked: unknown, who: Writer): { for?: string; forPerson?: string } | Refusal {
+    if (asked === undefined) return {};
+    if (who.agent) return refuse(403, "An agent records no opinion for anyone else.", "Leave out for: your opinion is your own, and advice.");
+    if (typeof asked !== "string" || !validName(asked.trim())) return refuse(400, `for is the name of the person the opinion is recorded for: 1–${MAX_NAME} characters, no line breaks.`, "Send {op: \"opinion\", name, verdict, for: \"<their name>\"}.");
+    const name = asked.trim();
+    const held = this.world.invited?.(name);
+    // one's own name, or one's own link: one's own opinion
+    if (held ? held.id === who.person : sameName(name, who.name.trim())) return {};
+    // the writers the logs name, people's and agents', in any case
+    const d = this.world.review.data;
+    const writers = [
+      ...Object.values(d.opinions).flatMap((ops) => ops.map((o) => ({ by: o.by, agent: !!o.agent, person: !!o.person }))),
+      ...Object.values(d.targets).map((t) => ({ by: t.by, agent: !!t.agent, person: !!t.person })),
+      ...Object.values(d.keys).flatMap((marks) => Object.values(marks).map((m) => ({ by: m.by, agent: !!m.agent, person: !!m.person }))),
+    ];
+    if (writers.some((w) => w.agent && sameName(w.by, name))) return refuse(400, `${name} is an agent: nobody records an opinion for an agent.`, "Record it for a person, or as your own.");
+    if (held) return { for: held.name, forPerson: held.id };
+    // a guest already in the logs, as they write their name: "bob" is Bob
+    const guest = writers.find((w) => !w.agent && !w.person && sameName(w.by, name));
+    return { for: guest?.by ?? name };
+  }
+
   /** Append a writer's event to their log; the answer carries the change, which the page applies
    *  at once, and the event as written. */
+
   private record(op: ReviewOp, who: Writer): ReviewAnswer {
     return appended(this.world.review.append(who, op, this.world.project.toolchain));
   }

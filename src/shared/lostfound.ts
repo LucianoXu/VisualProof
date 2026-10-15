@@ -45,6 +45,8 @@ export interface LostEntry {
   person?: string;
   /** empty where it is not known: a pin dropped before the server kept who dropped each */
   at: string;
+  /** an opinion recorded for `by` by someone else at one screen (ReviewSpec decision 8): who typed it */
+  recordedBy?: { by: string; person?: string };
   /** an opinion's verdict and comment */
   verdict?: Verdict;
   comment?: string;
@@ -127,6 +129,7 @@ export function lostEntries(
         kind: "opinion",
         name,
         ...who(o),
+        ...(o.recordedBy ? { recordedBy: o.recordedBy } : {}),
         verdict: o.verdict,
         ...(o.comment ? { comment: o.comment } : {}),
         ...(was.length ? { aliases: was.map((n) => lostKey.opinion(name, n, o.at)) } : {}),

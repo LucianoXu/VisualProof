@@ -808,7 +808,11 @@ export class SourceWindow implements SourcePane {
     const scroll = this.el.querySelector<HTMLElement>(".sw-scroll");
     const keep = !fresh && scroll ? scroll.scrollTop : null;
     const typed = document.activeElement;
-    const hadFocus = typed instanceof HTMLTextAreaElement && this.el.contains(typed) && typed.matches("[data-rv-comment]") ? { from: typed.selectionStart, to: typed.selectionEnd } : null;
+    // the comment box or whom one speaks for (ReviewSpec decision 8), being typed into
+    const hadFocus =
+      (typed instanceof HTMLTextAreaElement || typed instanceof HTMLInputElement) && this.el.contains(typed) && typed.matches("[data-rv-comment], [data-rv-for]")
+        ? { sel: typed.matches("[data-rv-for]") ? "[data-rv-for]" : "[data-rv-comment]", from: typed.selectionStart, to: typed.selectionEnd }
+        : null;
     const short = escapeHtml(v.display ?? parts[parts.length - 1]);
     const pinned = this.pinned;
     // the page's history, read when drawn, not now: it moves on while the source is fetched. A
@@ -852,9 +856,9 @@ export class SourceWindow implements SourcePane {
       const scrolled = this.el.querySelector<HTMLElement>(".sw-scroll");
       if (scrolled && keep !== null) scrolled.scrollTop = keep;
       if (hadFocus) {
-        const box = this.el.querySelector<HTMLTextAreaElement>("[data-rv-comment]");
+        const box = this.el.querySelector<HTMLInputElement | HTMLTextAreaElement>(hadFocus.sel);
         box?.focus();
-        box?.setSelectionRange(hadFocus.from, hadFocus.to);
+        if (hadFocus.from !== null && hadFocus.to !== null) box?.setSelectionRange(hadFocus.from, hadFocus.to);
       }
       this.box.reveal(this.el);
       this.flashLines();

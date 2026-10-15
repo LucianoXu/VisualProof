@@ -162,6 +162,9 @@ export interface World {
   graph: { version: number; fingerprint?: string; prep: { metaGz: Buffer; edgesGz: Buffer } } | null;
   /** the review's logs (server/review.ts): an append is told to every page by the store itself */
   review: Pick<ReviewStore, "data" | "append">;
+  /** the holder of a personal link in force who goes by `name` (an opinion recorded for them,
+   *  ReviewSpec decision 8) */
+  invited?(name: string): { id: string; name: string } | undefined;
   timeline: { events: StoredEvent[]; add(e: NewEvent): StoredEvent };
   /** the Project view's pins (ViewSpec decision 5): what `place`, `pins` and `undo` are about */
   places: { data: PlacesData; apply(ops: PlaceOp[], who?: { by: string | null; agent?: boolean }): boolean; authorOf(mode: ClusterMode, kind: "node" | "cluster", key: string): PinAuthor | null };
@@ -673,8 +676,10 @@ export class AgentApi {
     return {
       by: o.by,
       agent: !!o.agent,
-      // someone invited by a personal link: the name is theirs (CollabSpec decision 9)
-      ...(o.person ? { verified: true } : {}),
+      // someone invited by a personal link: the name is theirs (CollabSpec decision 9), unless
+      // someone else recorded it for them at the same screen, who is named (ReviewSpec decision 8)
+      ...(o.person && !o.recordedBy ? { verified: true } : {}),
+      ...(o.recordedBy ? { recordedBy: o.recordedBy.by } : {}),
       verdict: o.verdict,
       ...(o.comment ? { comment: o.comment } : {}),
       at: o.at,
@@ -2115,7 +2120,7 @@ export class AgentApi {
     const out: Record<string, unknown>[] = [];
     // what the review's logs record, as the page reads it
     for (const [name, ops] of Object.entries(d.opinions))
-      for (const o of ops) out.push({ at: o.at, kind: "opinion", by: o.by, agent: !!o.agent, name, verdict: o.verdict, ...(o.comment ? { comment: o.comment } : {}) });
+      for (const o of ops) out.push({ at: o.at, kind: "opinion", by: o.by, ...(o.recordedBy ? { recordedBy: o.recordedBy.by } : {}), agent: !!o.agent, name, verdict: o.verdict, ...(o.comment ? { comment: o.comment } : {}) });
     // what an agent did at level full is marked as an agent's, as its advice is
     for (const [name, t] of Object.entries(d.targets)) out.push({ at: t.at, kind: "target", by: t.by, agent: !!t.agent, name });
     for (const [target, marks] of Object.entries(d.keys)) for (const [name, m] of Object.entries(marks)) out.push({ at: m.at, kind: "key", by: m.by, agent: !!m.agent, target, name });
@@ -2283,6 +2288,9 @@ export class AgentApi {
       unit = v.g.nodes[i].name;
     }
     const verdict = b.verdict;
+    // an agent's advice is its own: people record for one another at one screen, agents never
+    // (ReviewSpec decision 8)
+    if (b.for !== undefined) return fail(403, "An agent records no opinion for anyone else.", "Leave out for: your advice is your own.");
     // "dispute" was the old name of a comment (renamed 2026-10-09): refused, with the new name
     if (verdict === "dispute") return fail(400, "verdict is approve or comment: \"dispute\" is now \"comment\".", "Use comment: send {name, verdict: \"comment\", comment}.");
     if (verdict !== "approve" && verdict !== "comment") return fail(400, "verdict is approve or comment.", "Send {name, verdict, comment}.");
