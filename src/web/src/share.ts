@@ -64,8 +64,8 @@ export interface ShareHooks {
 }
 
 /** what a link carries, as the switch below the link says it */
-const EXACT_ON = "It opens on what you see now, once — the view and the region of it you frame, the selection, the windows, the panels and the colouring; then it is theirs.";
-const EXACT_OFF = "Only the view: the board, the tool and the selection, framed on their screen.";
+const EXACT_ON = "Opens once on exactly what you see now; then it is theirs.";
+const EXACT_OFF = "Opens on the view and its selection.";
 
 const LEVEL_HINT: Record<string, string> = {
   read: "read — it only reads",
@@ -325,7 +325,7 @@ export class Share {
         `<input class="sh-url" readonly value="${escapeHtml(url)}" aria-label="The link" spellcheck="false">` +
         this.exactRow() +
         `<div class="sh-note muted">${copied ? "Copied. " : ""}` +
-        (keyed ? "Public and reusable: whoever has it comes in as a guest, under any name." : "This server lets in anyone who can reach it.") +
+        (keyed ? "Anyone with it comes in as a guest." : "This server lets in anyone who can reach it.") +
         `</div>` +
         `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-copy>${copied ? "Copy again" : "Copy"}</button></div>`;
     } else body = this.tab === "readonly" ? this.readOnlyBody() : this.tab === "invite" ? this.inviteBody() : this.agentBody();
@@ -355,7 +355,7 @@ export class Share {
       );
     }
     return (
-      `<div class="sh-note muted">A link to show the project: whoever has it sees what a guest sees, changes nothing and is not seen, until it is revoked. Anyone they pass it to comes in the same way.</div>` +
+      `<div class="sh-note muted">Anyone with it can look, unseen, and change nothing, until you revoke it.</div>` +
       this.exactRow() +
       (r.error ? `<div class="modal-err">${escapeHtml(r.error)}</div>` : "") +
       `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-ro-create${this.busy ? " disabled" : ""}>Create link</button></div>`
@@ -443,7 +443,7 @@ export class Share {
     if (this.people === null) return `<div class="sh-note muted">This server makes no personal links now (behind a sign-in, names are the sign-in's).</div>`;
     return (
       `<div class="sh-form"><label class="sh-field"><span>Name</span><input data-f="invite" maxlength="60" spellcheck="false" value="${escapeHtml(this.inviteName)}" placeholder="The person's name"></label></div>` +
-      `<div class="sh-note muted">A verified identity for one person: their name carries a ✓, and nobody else can take it.</div>` +
+      `<div class="sh-note muted">For one person: their name gets a ✓ nobody else can take.</div>` +
       this.exactRow() +
       (i.error ? `<div class="modal-err">${escapeHtml(i.error)}</div>` : "") +
       `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-invite-create${this.busy ? " disabled" : ""}>Create link</button></div>`
@@ -506,7 +506,7 @@ export class Share {
     if (this.agent.kind === "prompt") {
       const a = this.agent;
       const how = a.made
-        ? `Paste it into the agent, and tell it what you want done. <b>It holds the agent's token</b>: give it to that agent only. It can be shown again below while the token is in force; revoke it there when the work is done.`
+        ? `Paste it into the agent. <b>It holds the agent's token</b>: give it to that agent only, and revoke it below when done.`
         : `<b>It holds the agent's token</b>: give it to that agent only.`;
       return (
         `<div class="sh-title">The prompt for ${escapeHtml(a.name)}</div>` +
@@ -527,7 +527,7 @@ export class Share {
       `<label class="sh-field"><span>May</span><select data-f="level">${s.levels.map((l) => option(l, LEVEL_HINT[l] ?? l, l === f.level)).join("")}</select></label>` +
       `<label class="sh-field"><span>For</span><select data-f="days">${s.days.map((d) => option(d, d === 1 ? "1 day" : `${d} days`, d === f.days)).join("")}</select></label>` +
       `</div>` +
-      `<div class="sh-note muted">The agent gets a token of its own, made under your name: it reaches the agents' API only, acts as <i data-as>${escapeHtml(this.actsAs(name))}</i>, and can be revoked below.${s.levels.length < 3 ? ` This server lets agents do at most ${escapeHtml(s.level)}.` : ""}</div>` +
+      `<div class="sh-note muted">Its own token, under your name: it acts as <i data-as>${escapeHtml(this.actsAs(name))}</i>.${s.levels.length < 3 ? ` This server lets agents do at most ${escapeHtml(s.level)}.` : ""}</div>` +
       (this.agent.error ? `<div class="modal-err">${escapeHtml(this.agent.error)}</div>` : "") +
       `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-create${this.busy ? " disabled" : ""}>Create</button></div>`
     );

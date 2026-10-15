@@ -246,6 +246,8 @@ function said(q: Query, N: TitleNames): string {
       return `TCB of ${roots(q.of, N)}`;
     case "uses":
       return `what ${roots(q.of, N)} uses`;
+    case "refs":
+      return `what ${roots(q.of, N)} uses directly`;
     case "usedBy":
       return `what uses ${roots(q.of, N)}`;
     case "ns":

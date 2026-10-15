@@ -636,7 +636,11 @@ function serverSource(): DataSource {
         .catch(() => ({ error: "the server could not be reached" })),
     presence: (token, beat) => {
       const r = heartbeatRequest(token, beat, headers());
-      void fetch("/api/presence", { method: "POST", headers: r.headers, body: r.body, keepalive: true }).catch(() => {});
+      // its answer let go: the browser holds the requests kept alive, 64 KB between them, until their
+      // answers are read, and a heartbeat carrying an artwork's names chosen is some kilobytes
+      void fetch("/api/presence", { method: "POST", headers: r.headers, body: r.body, keepalive: true })
+        .then((res) => res.body?.cancel())
+        .catch(() => {});
     },
     source: (module) => {
       let p = cache.get(module);

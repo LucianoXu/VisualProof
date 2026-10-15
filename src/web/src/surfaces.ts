@@ -181,17 +181,21 @@ export const FOLLOWED = [
     keys: ["g"],
   },
   {
-    part: "proofEdges",
-    what: "proof edges drawn, or not",
-    fields: ["proofEdges"],
-    changes: "#proofs-btn",
-  },
-  {
     part: "linear",
     what: "the linear form: the board drawn as its document's outline, or not",
     fields: ["linear"],
     changes: "#linear-btn",
     keys: ["o"],
+  },
+  {
+    part: "artwork",
+    what: "the artwork mode (ExportSpec decision 19): on or off, its settings — the board drawn with them, the names and targets ticked — and what its frame holds",
+    fields: ["artwork"],
+    // the panel's controls — a switch's or a list's line by its words too, its lists' All and None —
+    // but not the filter over its names, which is the reader's own; those set beside the frame (the
+    // title's, the source's); a name shown or hidden from the board's menu is the menu's (#ctxmenu)
+    changes: "#art-panel select, #art-panel input:not([data-art-filter]), #art-panel .ex-check, #art-panel .art-row, #art-panel [data-art-pick], #art-panel [data-art-done], #art [data-art-side] input, #art [data-art-side] .ex-check, #art [data-art-side] [data-art-pick], #export-modal [data-ex-art]",
+    reads: "#art-panel",
   },
 ] as const satisfies readonly Followed[];
 
@@ -205,7 +209,6 @@ export const YOURS = [
   { id: "whatChanged", what: "\"What changed\" opened: the Time Machine's counts and the lists they open", where: "#tmbar .tm-sum, [data-tm-list], #tm-list" },
   { id: "legend", what: "the legend folded or open", where: "#legend" },
   { id: "eyes", what: "the eyes' ⋯ popover, opened", where: "#eyes-btn, #eyes-pop" },
-  { id: "artwork", what: "framing an artwork (ExportSpec decision 19): its frame, its size and look, saving it", where: "#art, #art-panel", whole: true },
   { id: "phone", what: "a phone's ⋯ menu of the bar's buttons, and the button of the side panel's drawer (web/src/phone.ts)", where: "#more-btn, #more-pop, #side-btn" },
   { id: "theme", what: "the theme", where: "#theme-seg" },
   { id: "lock", what: "the layout lock", where: "#lock-btn", keys: ["l"] },
@@ -222,6 +225,9 @@ export const YOURS = [
   { id: "focusMenu", what: "the focus menu, opened", where: "#focus-btn, #focus-menu" },
   { id: "build", what: "the build status and its popover", where: "#build, #build-pop", keys: ["b"] },
   { id: "search", what: "the search box and its results", where: "#search, #results", keys: ["/"] },
+  // the artwork's names by selection (ExportSpec decision 19): what the list shows of them, not what
+  // is ticked
+  { id: "artFilter", what: "the filter over the artwork's list of names", where: "#art-panel [data-art-filter]" },
   { id: "name", what: "the name, its menu and its window", where: "#who, #who-menu, #modal", whole: true },
   { id: "people", what: "the others' initials and the menu a person's opens — following them, or no longer, and asking them to follow you —, a Shift-click on a pinned agent's that opens its conversation without following, and what your request to follow came to", where: "#peers, #peer-menu, #ask-line", whole: true },
   // a request to follow (CollabSpec decision 10, the owner's decision of 2026-10-12): answering it ends
@@ -244,8 +250,9 @@ export const BOOKKEEPING = ["tabs"] as const satisfies readonly (keyof PresenceV
  *  the reader, as on the canvas), and what is in them is declared each. */
 export const FRAMES = ["#bar", "#viewbar", "#foot", "#windows", "#zoom"] as const;
 /** Elements of the page's skeleton that are no surface: the bar's words, and what passes —
- *  tooltips, hints, notes of others' changes, the loader. */
-export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader"] as const;
+ *  tooltips, hints, notes of others' changes, the loader, the artwork's frame and its ground (the
+ *  pointer passes them to the board; its panel is the artwork part's). */
+export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art", "#art-sky"] as const;
 
 export type Part = (typeof FOLLOWED)[number]["part"];
 type Of<P extends Part> = Extract<(typeof FOLLOWED)[number], { part: P }>;

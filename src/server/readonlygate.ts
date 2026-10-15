@@ -8,7 +8,7 @@ export function readOnlyAllows(method: string, path: string): boolean {
   const read = method === "GET" || method === "HEAD";
   if (read) {
     // the page and its files
-    if (path === "/" || path === "/index.html" || path === "/style.css" || /^\/(app|layout|edges|pdfworker)\.js(\.map)?$/.test(path) || path.startsWith("/pdfjs/")) return true;
+    if (path === "/" || path === "/index.html" || path === "/style.css" || /^\/(app|layout|edges|pdfworker)\.js(\.map)?$/.test(path) || path.startsWith("/pdfjs/") || path.startsWith("/fonts/")) return true;
     // the graph, its sources and Lean's answers, the review, what happened, the views, the history,
     // the library, the printed document's state and files, who the reader is and the link they
     // came by, and the event stream every change comes by

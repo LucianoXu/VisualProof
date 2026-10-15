@@ -222,7 +222,8 @@ export function renameInQuery(q: Query, from: string, to: string): Query {
     }
     case "tcb":
     case "uses":
-    case "usedBy": {
+    case "usedBy":
+    case "refs": {
       if (q.of === "selection") return q;
       if (Array.isArray(q.of)) {
         const n = names(q.of);

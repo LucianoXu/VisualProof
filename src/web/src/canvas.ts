@@ -14,7 +14,7 @@ import type { ClusterMode, Layout } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { rgba } from "./gl/gl.ts";
 import type { RGBA } from "./gl/gl.ts";
-import { FLAG_DASHED, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle } from "./gl/renderer.ts";
+import { FLAG_DASHED, FLAG_GLOW, FLAG_HALO, FLAG_RADIAL, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle, segment } from "./gl/renderer.ts";
 import { joinChains, pathOf } from "./bundles.ts";
 import { EdgeQueue } from "./edgequeue.ts";
 import type { EdgeWorker } from "./edgequeue.ts";
@@ -23,6 +23,11 @@ import type { Weighted, Weights } from "./overview.ts";
 import { MODE_SITES } from "../../shared/viewgraph.ts";
 import type { Graph, Mode } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
+import { ART_DISPLAY, ART_SANS, ART_SERIF, spacedWidth, writeNames } from "./halo.ts";
+import type { Written } from "./halo.ts";
+import type { NameRow } from "./artwork.ts";
+import { artNameId } from "../../shared/collab.ts";
+import type { ArtStyle } from "../../shared/collab.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
 import { ST_APPROVED, ST_BUILDING, ST_COMMENTED, ST_FAILED, ST_SORRY, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
@@ -46,7 +51,73 @@ export const KINDS = [
 
 /** Something the board orders (shared/doc/order.ts): a declaration or a cluster, by its index; or a
  *  note's icon, where the board draws it at rest. */
+/** A declaration or a circle to pin at a spot of the board at rest (canvas.pinAtSpots). */
+export interface PinMove {
+  a: { kind: "node" | "cluster"; k: number; move?: number };
+  spot: [number, number];
+}
+
 export type OrderBody = { kind: "node" | "cluster"; k: number } | { kind: "spot"; x: number; y: number };
+
+/** The board drawn as an artwork (ExportSpec decision 19, the owner's decisions of 2026-10-14 and
+ *  2026-10-15): what the picture holds of what the board draws besides the colouring, the theme and
+ *  the edges on or off, which are the board's own. Names: as the board writes them, a lit
+ *  declaration's where the board would give it a card (an artwork has none); the clusters' (and the
+ *  targets'); none; or by selection: As shown, or none (`namesFrom`), without the names `hidden` and
+ *  with the names `shown` (each by what it names: shared/collab.ts, artNameId), wherever they fall.
+ *  Edges: all, or only the selection's, or none. Targets: their stars
+ *  and names marked, or nothing of them, or of those chosen only (`shownTargets`, by full name). Keys:
+ *  the key declarations' diamonds, or none; with the targets chosen, those of the targets chosen.
+ *  While it is set, nothing of the reader's own is drawn over the picture: no cards, no hover, no
+ *  visitors, no one else's initials. */
+export interface ArtLook {
+  labels: "board" | "clusters" | "none" | "chosen";
+  namesFrom: "board" | "none";
+  hidden: ReadonlySet<string>;
+  shown: ReadonlySet<string>;
+  edges: "all" | "selection" | "none";
+  targets: "marked" | "plain" | "highlight" | "chosen";
+  shownTargets: ReadonlySet<string>;
+  keys: boolean;
+  /** as the board; as cells; as a starfield (artStyle) */
+  style: ArtStyle;
+}
+
+/** the cells' territories' hues, a top-level namespace's each by its size, the outside world's apart */
+const CELL_HUES = ["#62a8ff", "#7fe0a6", "#ffc46b", "#ff7d92", "#62dada", "#b994ff", "#f0a982", "#cbdc66"];
+const CELL_OUTSIDE = "#8a93a6";
+/** the starfield's lines: its constellations' figures and its clusters' bounds */
+const STAR_LINE = "rgba(175, 198, 255, 1)";
+
+/** How an artwork writes its names, by its style (ExportSpec decision 19, the owner's decisions of
+ *  2026-10-15): a cluster's along the top of its circle where it fits, a top-level one in spaced
+ *  capitals of Jost — the title's face, in every style — the others in italics; in Source Sans 3,
+ *  or the starfield's in Source Serif 4. */
+function artText(style: ArtStyle, th: { label: string; text: string }) {
+  const serif = style === "stars";
+  const fam = serif ? ART_SERIF : ART_SANS;
+  return {
+    /** the halo's colour: the theme's ground, or the style's (artwork.ts, drawBackdrop) */
+    halo: style === "cells" ? "#0f1520" : style === "stars" ? "#090d1a" : null,
+    clusterFill: style === "board" ? th.label : style === "cells" ? "rgba(226, 232, 246, 0.85)" : "rgba(238, 228, 200, 0.88)",
+    declFill: style === "board" ? th.text : style === "cells" ? "rgba(205, 214, 232, 0.8)" : "rgba(206, 216, 236, 0.76)",
+    top: (size: number) => `${serif ? 400 : 500} ${size}px ${ART_DISPLAY}`,
+    sub: (size: number) => `italic 400 ${size}px ${fam}`,
+    decl: serif ? `italic 400 11.5px ${ART_SERIF}` : `400 11px ${ART_SANS}`,
+    target: serif ? `italic 600 12px ${ART_SERIF}` : `600 11px ${ART_SANS}`,
+    spacing: (top: boolean, size: number) => size * (top ? 0.2 : 0.03),
+  };
+}
+
+/** What the board's renderer draws, as an artwork's SVG writes it (ExportSpec decision 19), in the
+ *  screen's pixels and in the renderer's order: a circle or a point (its fill, and a ring of `ring`
+ *  pixels at radius `ringR`, dashed or not), a segment, a bundled edge (its control points, the
+ *  spline's straightening `beta`, its colours from the end that uses to the end used). Colours are
+ *  the renderer's, 0 to 1. */
+export type ArtShape =
+  | { kind: "circle"; x: number; y: number; r: number; fill: RGBA; stroke: RGBA | null; ring: number; ringR: number; dashed: boolean; look?: "glow" | "radial"; halo?: true }
+  | { kind: "line"; x0: number; y0: number; x1: number; y1: number; colour: RGBA; width: number }
+  | { kind: "bundle"; ctrl: number[]; beta: number; width: number; c0: RGBA; c1: RGBA };
 
 /** What the pointer is on: one declaration, one cluster (open or folded), or a visitor (by its index
  *  in the trail, setVisitors). */
@@ -178,7 +249,11 @@ function sameTarget(a: Target, b: Target): boolean {
 /** A colour at `k` of its opacity. */
 const fade = (c: RGBA, k: number): RGBA => [c[0], c[1], c[2], c[3] * k];
 
-const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif`;
+/** How many lit declarations the board gives a card at zoom `k`: a card's name is what an artwork
+ *  writes in its place (it has no cards). */
+const cardCap = (k: number) => (k < 0.12 ? 0 : k < 0.35 ? 40 : k < 0.8 ? 90 : CARD_CAP);
+
+export const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif`;
 const CELL = 24;
 const CARD_CAP = 180;
 /** position ids kept past the scene's for the visitors and their temporary clusters, whose edges are
@@ -308,6 +383,9 @@ export class GraphCanvas {
   private targetList: number[] = [];
   /** key declarations, marked with a small diamond (ExportSpec decision 4) */
   private keyList: number[] = [];
+  /** of each of them, the targets it is key for (setKeys): an artwork's targets chosen keep their
+   *  own keys' diamonds */
+  private keyOf: readonly (readonly number[])[] = [];
   /** what other readers have selected (CollabSpec "On the canvas"): per node, their colours and
    *  initials */
   private peerMarks = new Map<number, { colors: string[]; labels: string[] }>();
@@ -322,9 +400,24 @@ export class GraphCanvas {
   private previewing = false;
   /** the camera the highlight was last picked under */
   private hoverCam = { x: 0, y: 0, k: 1 };
-  /** edges with nothing selected: on by default, proofs off (CanvasSpec "Edges") */
+  /** edges with nothing selected: on by default; statements' and bodies', never proofs' (CanvasSpec
+   *  "Edges") */
   showEdges = true;
-  proofEdges = false;
+  /** the artwork's look while its mode is on (ExportSpec decision 19): the board is the picture */
+  art: ArtLook | null = null;
+  /** the cells' hues of the layout's clusters (hueOf), and the use of the declaration used most
+   *  (mostUsed) */
+  private hues: { layout: Layout; of: RGBA[] } | null = null;
+  private used: { g: Graph; most: number } | null = null;
+  /** of its names shown by selection, the clusters' keys and the declarations' full names */
+  private artClusters = new Set<string>();
+  private artDecls: string[] = [];
+  /** what the names the last frame wrote name (artNameId), on an artwork: what its list of names
+   *  shows ticked */
+  private namesWritten = new Set<string>();
+  /** where the names and marks are drawn other than on the screen (an artwork's file): the transform
+   *  from the screen's CSS pixels to that context's */
+  private labelBase: [number, number, number, number, number, number] | null = null;
   /** smoothed time between animation frames, ms; and the last draw's cost */
   frameMs = 16;
   drawMs = 0;
@@ -381,7 +474,8 @@ export class GraphCanvas {
     this.labels = labels;
     this.ctx = labels.getContext("2d")!;
     // layers draw in this order
-    for (const [name, kind] of [["discs", "circles"], ["overview", "bundles"], ["selection", "bundles"], ["dots", "points"],
+    // (an artwork's: the starfield's figures under the edges, a glow under the points)
+    for (const [name, kind] of [["discs", "circles"], ["figures", "lines"], ["overview", "bundles"], ["selection", "bundles"], ["glow", "points"], ["dots", "points"],
       ["rings", "points"], ["bubbles", "circles"], ["active", "points"], ["hoverC", "circles"], ["hoverP", "points"]] as const)
       this.gl.layer(name, kind);
     this.cardsEl = cardsEl;
@@ -542,10 +636,13 @@ export class GraphCanvas {
     this.invalidate();
   }
 
-  /** Which nodes are key declarations: each carries a small diamond beside its point. */
-  setKeys(keys: number[]): void {
-    if (keys.length === this.keyList.length && keys.every((k, j) => k === this.keyList[j])) return;
+  /** Which nodes are key declarations: each carries a small diamond beside its point. `of`: the
+   *  targets each is key for, in the same order. */
+  setKeys(keys: number[], of: readonly (readonly number[])[] = []): void {
+    const same = (a: readonly number[], b: readonly number[] | undefined) => !!b && a.length === b.length && a.every((k, j) => k === b[j]);
+    if (same(keys, this.keyList) && of.length === this.keyOf.length && of.every((ts, j) => same(ts, this.keyOf[j]))) return;
     this.keyList = keys;
+    this.keyOf = of;
     this.clearCards();
     this.invalidate();
   }
@@ -760,22 +857,6 @@ export class GraphCanvas {
     return i === undefined ? null : this.toScreen(...this.posOf(i));
   }
 
-  /** Whether declaration `i` is drawn as itself now (not folded away, not a hidden outside one):
-   *  what an artwork draws (web/src/artwork.ts). */
-  isNodeShown(i: number): boolean {
-    return this.visibleNode(i);
-  }
-
-  /** A declaration's point on the screen, in pixels, at the zoom now. */
-  get dotSize(): number {
-    return this.dotPx();
-  }
-
-  /** The graph the board is drawn from (its numbering). */
-  get graph(): Graph {
-    return this.g;
-  }
-
   /** Where cluster `key`'s circle is drawn on the screen: its centre and radius. */
   clusterDisc(key: string): [number, number, number] | null {
     const c = this.layout.clusters.findIndex((x) => x.key === key);
@@ -816,17 +897,52 @@ export class GraphCanvas {
     const R = this.atRest();
     const spot = this.orderSpot(a, prev, next, R);
     if (!spot) return false;
-    const m = a.kind === "cluster" ? (a.move ?? a.k) : a.k;
-    const [ax, ay] = a.kind === "node" ? [R.nx[a.k], R.ny[a.k]] : [R.cx[a.k], R.cy[a.k]];
-    const [mx, my] = a.kind === "node" ? [ax, ay] : [R.cx[m], R.cy[m]];
-    // in its parent's coordinates, which nothing folded scales at rest
-    const p = a.kind === "node" ? this.scene.nodeCluster[m] : this.scene.parent[m];
-    const [ox, oy] = p >= 0 ? [R.cx[p], R.cy[p]] : [0, 0];
-    this.scene.pinAt(a.kind, m, mx + spot[0] - ax - ox, my + spot[1] - ay - oy);
+    return this.pinAtSpots([{ a, spot }], R);
+  }
+
+  /** Pin each declaration or circle at a spot of the board at rest (`R`, read before any of them
+   *  moved), as a drop there would, for everyone on the board, in one change: the linear form
+   *  reorders a run of siblings so (ExportSpec decision 18). A circle is read where `k` is and
+   *  moved by `move`, as in pinInOrder. */
+  pinAtSpots(moves: PinMove[], R = this.atRest()): boolean {
+    for (const p of this.localPins(moves, R)) this.scene.pinAt(p.kind, p.m, p.lx, p.ly);
+    if (!moves.length) return false;
     this.posDirty = true;
     this.ev.pinsChanged();
     this.request();
     return true;
+  }
+
+  /** Each move as a pin: what is moved, and where, in its parent's coordinates (which nothing folded
+   *  scales at rest). */
+  private localPins(moves: PinMove[], R: ReturnType<GraphCanvas["atRest"]>): { kind: "node" | "cluster"; m: number; lx: number; ly: number }[] {
+    return moves.map(({ a, spot }) => {
+      const m = a.kind === "cluster" ? (a.move ?? a.k) : a.k;
+      const [ax, ay] = a.kind === "node" ? [R.nx[a.k], R.ny[a.k]] : [R.cx[a.k], R.cy[a.k]];
+      const [mx, my] = a.kind === "node" ? [ax, ay] : [R.cx[m], R.cy[m]];
+      const p = a.kind === "node" ? this.scene.nodeCluster[m] : this.scene.parent[m];
+      const [ox, oy] = p >= 0 ? [R.cx[p], R.cy[p]] : [0, 0];
+      return { kind: a.kind, m, lx: mx + spot[0] - ax - ox, ly: my + spot[1] - ay - oy };
+    });
+  }
+
+  /** Where the board would draw everything at rest were `moves` pinned too, the latest drops, as
+   *  the server would read it (atRest): what the linear form checks a reorder by before making
+   *  it — a drop is brought inside its parent and the rest make way, which can undo an order.
+   *  Nothing is pinned. */
+  atRestWith(moves: PinMove[], R = this.atRest()): ReturnType<GraphCanvas["atRest"]> {
+    const was = this.pinsRecord();
+    const pins: PinState = { nodes: { ...was.nodes }, clusters: { ...was.clusters } };
+    for (const p of this.localPins(moves, R)) {
+      const bag = p.kind === "cluster" ? pins.clusters : pins.nodes;
+      const key = p.kind === "cluster" ? this.layout.clusters[p.m].key : this.pinName(p.m);
+      // the latest drop: last in the record
+      delete bag[key];
+      bag[key] = [p.lx, p.ly];
+    }
+    const S = new Scene(this.layout);
+    S.restore(pins, [], (i) => this.pinName(i));
+    return { nx: S.nwx, ny: S.nwy, cx: S.cwx, cy: S.cwy, r: S.drawnR };
   }
 
   /** A spot of the board at rest (atRest) where the board draws it now: moved with its cluster
@@ -1069,9 +1185,205 @@ export class GraphCanvas {
     this.invalidate();
   }
 
-  setEdges(show: boolean, proofs: boolean): void {
+  /** The board's drawing of the screen's rectangle `rect` at `f` pixels for each of the screen's,
+   *  its rows `y0` to `y0 + rows`, onto `out` from its top left: an artwork's PNG, a band at a time
+   *  (ExportSpec decision 19). The renderer draws it a tile at a time on the board's own canvas —
+   *  through `cam`, the camera the picture was framed with, its soft rims as many pixels wide as the
+   *  screen's (Renderer.render, `aa`) — and the names and marks are written over it as the screen has
+   *  them; the screen is drawn again after. */
+  paintArtBand(out: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, f: number, y0: number, rows: number, cam: { x: number; y: number; k: number }): void {
+    const was = { cam: this.cam, ctx: this.ctx, w: this.canvas.width, h: this.canvas.height };
+    const W = out.canvas.width;
+    const tile = Math.min(2048, this.gl.maxSide());
+    this.cam = { ...cam };
+    try {
+      const dotR = this.dotPx();
+      for (let x0 = 0; x0 < W; x0 += tile) {
+        const tw = Math.min(tile, W - x0);
+        if (this.canvas.width !== tw || this.canvas.height !== rows) [this.canvas.width, this.canvas.height] = [tw, rows];
+        const cw = tw / f, ch = rows / f;
+        const [wx, wy] = this.toWorld(rect.x + x0 / f + cw / 2, rect.y + y0 / f + ch / 2);
+        this.gl.render({ x: wx, y: wy, k: cam.k }, cw, ch, f, dotR, (0.35 * this.dpr) / f);
+        out.drawImage(this.canvas, 0, 0, tw, rows, x0, 0, tw, rows);
+      }
+      // the names and the marks, on a canvas of their own laid over it
+      const lab = document.createElement("canvas");
+      [lab.width, lab.height] = [W, rows];
+      this.ctx = lab.getContext("2d")!;
+      this.labelBase = [f, 0, 0, f, -rect.x * f, -(rect.y * f + y0)];
+      this.drawLabels((sx, sy, pad) => sx > -pad && sy > -pad && sx < this.w + pad && sy < this.h + pad, dotR);
+      out.drawImage(lab, 0, 0);
+    } finally {
+      this.cam = was.cam;
+      this.ctx = was.ctx;
+      this.labelBase = null;
+      [this.canvas.width, this.canvas.height] = [was.w, was.h];
+      this.dirty = true;
+      this.draw();
+    }
+  }
+
+  /** The names and marks the board writes over its renderer's drawing, written with `ctx` (an
+   *  artwork's SVG, web/src/artwork.ts: it records what is drawn), in the screen's CSS pixels. */
+  drawMarks(ctx: CanvasRenderingContext2D): void {
+    const was = this.ctx;
+    this.ctx = ctx;
+    this.labelBase = [1, 0, 0, 1, 0, 0];
+    try {
+      this.drawLabels((sx, sy, pad) => sx > -pad && sy > -pad && sx < this.w + pad && sy < this.h + pad, this.dotPx());
+    } finally {
+      this.ctx = was;
+      this.labelBase = null;
+      this.dirty = true;
+      this.request();
+    }
+  }
+
+  /** What the renderer draws that reaches the screen's rectangle `rect`, as shapes in the screen's
+   *  pixels, in its order: what an artwork's SVG writes as vectors (ExportSpec decision 19). */
+  artShapes(rect: { x: number; y: number; w: number; h: number }): ArtShape[] {
+    const { x: cx, y: cy, k } = this.cam;
+    const sx = (x: number) => (x - cx) * k + this.w / 2, sy = (y: number) => (y - cy) * k + this.h / 2;
+    const dot = this.dotPx();
+    const meets = (x0: number, y0: number, x1: number, y1: number) => x1 >= rect.x && y1 >= rect.y && x0 <= rect.x + rect.w && y0 <= rect.y + rect.h;
+    const P = this.posData;
+    const out: ArtShape[] = [];
+    const four = (d: Float32Array, o: number): RGBA => [d[o], d[o + 1], d[o + 2], d[o + 3]];
+    for (const L of this.gl.drawn()) {
+      const d = L.data;
+      for (let n = 0; n < L.count; n++) {
+        const o = n * L.stride;
+        if (L.kind === "circles" || L.kind === "points") {
+          const unit = d[o + 3];
+          const r = Math.max(unit < 0.5 ? d[o + 2] * k : unit < 1.5 ? d[o + 2] : d[o + 2] * dot, d[o + 15]);
+          const x = sx(d[o]), y = sy(d[o + 1]);
+          const ring = d[o + 12], ringR = r + d[o + 14];
+          const ext = Math.max(r, ringR + ring / 2);
+          if (!meets(x - ext, y - ext, x + ext, y + ext)) continue;
+          const fill = four(d, o + 4), stroke = ring > 0 && d[o + 11] > 0 ? four(d, o + 8) : null;
+          if (fill[3] <= 0.002 && !stroke) continue;
+          const flags = Math.round(d[o + 13]);
+          out.push({
+            kind: "circle", x, y, r, fill, stroke, ring, ringR, dashed: (flags & FLAG_DASHED) !== 0,
+            ...(flags & FLAG_GLOW ? { look: "glow" as const } : flags & FLAG_RADIAL ? { look: "radial" as const } : {}),
+            ...(flags & FLAG_HALO ? { halo: true as const } : {}),
+          });
+        } else if (L.kind === "lines") {
+          const x0 = sx(d[o]), y0 = sy(d[o + 1]), x1 = sx(d[o + 2]), y1 = sy(d[o + 3]), w = d[o + 8];
+          if (!meets(Math.min(x0, x1) - w, Math.min(y0, y1) - w, Math.max(x0, x1) + w, Math.max(y0, y1) + w)) continue;
+          out.push({ kind: "line", x0, y0, x1, y1, colour: four(d, o + 4), width: w });
+        } else {
+          const len = Math.round(d[o + 8]);
+          const ctrl: number[] = [];
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (let j = 0; j < len; j++) {
+            const id = Math.round(d[o + j]);
+            const x = sx(P[2 * id]), y = sy(P[2 * id + 1]);
+            ctrl.push(x, y);
+            [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+          }
+          // a B-spline keeps within its control points: one whose box misses the frame misses it
+          const w = d[o + 10];
+          if (!meets(x0 - w, y0 - w, x1 + w, y1 + w)) continue;
+          out.push({ kind: "bundle", ctrl, beta: d[o + 9], width: w, c0: four(d, o + 12), c1: four(d, o + 16) });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** What the names the board wrote in its last frame name (shared/collab.ts, artNameId), on an
+   *  artwork: those its names by selection hold now (ExportSpec decision 19). */
+  writtenNames(): ReadonlySet<string> {
+    return this.namesWritten;
+  }
+
+  /** The names an artwork's frame `rect` (the screen's) can hold, for its list of names (ExportSpec
+   *  decision 19): the clusters' the board would write where their names fall in it, and those chosen
+   *  already, in the board's order; then the declarations' whose points are in it, nearest its middle
+   *  first. */
+  artNames(rect: { x: number; y: number; w: number; h: number }): NameRow[] {
+    const S = this.scene;
+    if (!S) return [];
+    const inside = (x: number, y: number) => x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+    const out: NameRow[] = [];
+    for (let c = 0; c < S.nc; c++) {
+      const spot = this.chosenSpot(c);
+      const cl = this.layout.clusters[c];
+      if (!spot || !inside(spot.x, spot.y) || (!spot.board && !this.artClusters.has(cl.key))) continue;
+      out.push({ id: artNameId("cluster", cl.key), label: cl.label, full: cl.key.replace("⟨external⟩", "External"), cluster: true });
+    }
+    const mx = rect.x + rect.w / 2, my = rect.y + rect.h / 2;
+    const decls: number[] = [];
+    const dist = new Map<number, number>();
+    for (let i = 0; i < this.g.n; i++) {
+      if (!this.visibleNode(i)) continue;
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      if (!inside(sx, sy)) continue;
+      decls.push(i);
+      dist.set(i, (sx - mx) ** 2 + (sy - my) ** 2);
+    }
+    decls.sort((a, b) => dist.get(a)! - dist.get(b)!);
+    for (const i of decls) out.push({ id: artNameId("decl", this.g.nodes[i].name), label: this.g.short(i), full: this.g.nodes[i].name, cluster: false });
+    return out;
+  }
+
+  /** Where cluster `c`'s name is written when an artwork's names are chosen: as the board writes it,
+   *  under a folded cluster's disc or inside the top of an open one's circle, and above a circle too
+   *  small to hold it; whether the board would write it at all (`board`: the circle large enough);
+   *  null where the cluster is not drawn. */
+  private chosenSpot(c: number): { x: number; y: number; size: number; font: string; board: boolean } | null {
+    const S = this.scene;
+    const rep = S.rep[c];
+    if ((rep >= 0 && rep !== c) || !this.clusterVisible(c)) return null;
+    const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
+    if (rep === c) {
+      const r = Math.max(6, S.drawnR[c] * this.cam.k);
+      return { x: sx, y: sy + r + 13, size: 11, font: `500 11px ${FONT}`, board: r > 10 };
+    }
+    const sr = S.drawnR[c] * this.cam.k;
+    const size = Math.max(10, Math.min(20, 9 + sr / 40));
+    const font = `${this.layout.clusters[c].depth === 0 ? 600 : 500} ${size}px ${FONT}`;
+    return sr > 38 ? { x: sx, y: sy - sr + size + 6, size, font, board: true } : { x: sx, y: sy - sr - 4, size, font, board: false };
+  }
+
+  /** The targets an artwork chose, by their nodes. */
+  private chosenTargets(): Set<number> {
+    const on = new Set<number>();
+    for (const n of this.art?.shownTargets ?? []) {
+      const i = this.g.byName.get(n);
+      if (i !== undefined) on.add(i);
+    }
+    return on;
+  }
+
+  /** The targets marked, their stars drawn and their names in bold: every one, but where an artwork
+   *  marks none (As any) or only those it chose (By selection). */
+  private markedTargets(): number[] {
+    const t = this.art?.targets;
+    if (t === "plain") return [];
+    if (t !== "chosen") return this.targetList;
+    const on = this.chosenTargets();
+    return this.targetList.filter((i) => on.has(i));
+  }
+
+  /** Draw the board as an artwork (null: as ever). */
+  setArt(look: ArtLook | null): void {
+    this.art = look;
+    this.artClusters = new Set();
+    this.artDecls = [];
+    for (const id of look?.shown ?? []) {
+      if (id.startsWith("c:")) this.artClusters.add(id.slice(2));
+      else if (id.startsWith("d:")) this.artDecls.push(id.slice(2));
+    }
+    this.overviewBase = "";
+    this.setHover(null, 0, 0);
+    this.invalidate();
+    this.request();
+  }
+
+  setEdges(show: boolean): void {
     this.showEdges = show;
-    this.proofEdges = proofs;
     this.request();
   }
 
@@ -1080,6 +1392,20 @@ export class GraphCanvas {
     this.countProgress();
     this.rebuildGrid();
     this.invalidate();
+  }
+
+  /** Whether the edge u → v (of sites `site`) is drawn lit, as the board draws it (recomputeEdges):
+   *  between two lit declarations, of the sites the mode follows; none while the key graph's edges
+   *  are drawn instead (keyLinks). The linear form's arcs follow it (web/src/linear.ts). */
+  edgeLit(u: number, v: number, site: number): boolean {
+    const act = this.active;
+    return !this.keyEdges && !!act && !!act[u] && !!act[v] && (site & MODE_SITES[this.mode]) !== 0;
+  }
+
+  /** The key graph's edges drawn under the Keys step of Rests on, as pairs of nodes (the one that
+   *  rests on, then the one it rests on); null where they are not drawn. */
+  get keyLinks(): readonly number[] | null {
+    return this.keyEdges;
   }
 
   /** Edges between active nodes that the mode follows, as triples (u, v, sites); none where the key
@@ -1192,9 +1518,10 @@ export class GraphCanvas {
     this.moveTo((x0 + x1) / 2, (y0 + y1) / 2, Math.min(k, 4), animate);
   }
 
-  /** Frame the whole board in a rectangle of the screen (an artwork's frame, web/src/artframe.ts):
-   *  its top-level circles and declarations, at once. */
-  fitRect(rect: { x: number; y: number; w: number; h: number }): void {
+  /** The camera that holds the whole board — its top-level circles and declarations — in the
+   *  screen's rectangle `rect` (an artwork's frame, web/src/artframe.ts); null for a board with
+   *  nothing on it. */
+  fitCam(rect: { x: number; y: number; w: number; h: number }): { x: number; y: number; k: number } | null {
     const S = this.scene;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const c of S.rootC) {
@@ -1203,10 +1530,16 @@ export class GraphCanvas {
       [x0, y0, x1, y1] = [Math.min(x0, S.cwx[c] - r), Math.min(y0, S.cwy[c] - r), Math.max(x1, S.cwx[c] + r), Math.max(y1, S.cwy[c] + r)];
     }
     for (const i of S.rootN) [x0, y0, x1, y1] = [Math.min(x0, this.px[i] - 8), Math.min(y0, this.py[i] - 8), Math.max(x1, this.px[i] + 8), Math.max(y1, this.py[i] + 8)];
-    if (!isFinite(x0)) return;
+    if (!isFinite(x0)) return null;
     const k = Math.min(ZOOM_MOST, Math.min(rect.w / (x1 - x0), rect.h / (y1 - y0)) * 0.94);
     // the board's middle at the rectangle's
-    this.jumpTo({ x: (x0 + x1) / 2 - (rect.x + rect.w / 2 - this.w / 2) / k, y: (y0 + y1) / 2 - (rect.y + rect.h / 2 - this.h / 2) / k, k });
+    return { x: (x0 + x1) / 2 - (rect.x + rect.w / 2 - this.w / 2) / k, y: (y0 + y1) / 2 - (rect.y + rect.h / 2 - this.h / 2) / k, k };
+  }
+
+  /** Bring the camera to `cam` over `dur` ms, easing in and out (an artwork's frame closing in on the
+   *  board, and opening out again: ExportSpec decision 19). */
+  glideTo(cam: { x: number; y: number; k: number }, dur: number): void {
+    this.animate(cam, dur);
   }
 
   /** Put the camera at `cam` at once, ending any motion in progress, which would carry it off: a
@@ -1261,6 +1594,13 @@ export class GraphCanvas {
       this.request();
       return;
     }
+    this.animate({ x, y, k }, dur);
+  }
+
+  /** The camera carried to `goal` over `dur` ms, easing in and out. */
+  private animate(goal: { x: number; y: number; k: number }, dur: number): void {
+    if (this.anim) cancelAnimationFrame(this.anim);
+    const { x, y, k } = goal;
     this.camGoal = { x, y, k };
     const from = { ...this.cam };
     const t0 = performance.now();
@@ -1751,25 +2091,50 @@ export class GraphCanvas {
     // outline in that state's colour, thin: its declarations say the rest. By kind, every circle is
     // plain (decided 2026-10-08: status is read by switching schemes, not from rings).
     const byStatus = this.scheme === "status";
+    // an artwork's style (ExportSpec decision 19): its clusters drawn as cells, each top-level
+    // namespace a territory of its own hue — a glow round the outermost, a fill fading from a light,
+    // the deeper ones only their rims; or as a starfield's, the outermost two levels' bounds dotted
+    const style = this.art?.style ?? "board";
+    const glow = g.layer("glow", "points"), figures = g.layer("figures", "lines");
+    glow.clear();
+    figures.clear();
     for (let c = 0; c < S.nc; c++) {
       if (S.rep[c] >= 0 || !this.clusterVisible(c)) continue;
+      const [x, y, r] = [S.cwx[c], S.cwy[c], S.drawnR[c]];
+      const depth = this.layout.clusters[c].depth;
+      if (style === "cells") {
+        const h = this.hueOf(c);
+        if (depth === 0) {
+          circle(discs, x, y, r, UNIT_WORLD, [0, 0, 0, 0], fade(h, 0.3), 26, FLAG_HALO);
+          circle(discs, x, y, r, UNIT_WORLD, fade(h, 0.2), fade(h, 0.6), 1.3, FLAG_RADIAL);
+        } else if (depth === 1) circle(discs, x, y, r, UNIT_WORLD, fade(h, 0.12), fade(h, 0.35), 0.9, FLAG_RADIAL);
+        else circle(discs, x, y, r, UNIT_WORLD, [0, 0, 0, 0], fade(h, 0.18), 0.6);
+        continue;
+      }
+      if (style === "stars") {
+        if (depth <= 1) circle(discs, x, y, r, UNIT_WORLD, [0, 0, 0, 0], rgba(STAR_LINE, depth === 0 ? 0.24 : 0.14), 1, FLAG_DASHED);
+        continue;
+      }
       const t = byStatus ? this.clusterTrouble[c] ?? -1 : -1;
-      if (t < 0) circle(discs, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, th.disc, th.discLine, 1);
-      else circle(discs, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, th.disc, th.status[t], 1.5);
+      if (t < 0) circle(discs, x, y, r, UNIT_WORLD, th.disc, th.discLine, 1);
+      else circle(discs, x, y, r, UNIT_WORLD, th.disc, th.status[t], 1.5);
     }
     for (let c = 0; c < S.nc; c++) {
       if (S.rep[c] !== c || !this.clusterVisible(c)) continue;
       const lit = act !== null && this.clusterHasActive(c);
-      const base = lit ? th.lit : th.discLine;
-      const fill: RGBA = [base[0], base[1], base[2], lit ? 1 : Math.min(1, base[3] * 3 + 0.15) * (act ? 0.5 : 1)];
-      circle(bubbles, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, fill, null, 0, FLAG_SHADED, 0, 6);
+      const base = lit ? th.lit : style === "cells" ? this.hueOf(c) : style === "stars" ? rgba(STAR_LINE) : th.discLine;
+      const a = lit ? 1 : style === "board" ? Math.min(1, base[3] * 3 + 0.15) * (act ? 0.5 : 1) : (act ? 0.2 : 0.4);
+      const fill: RGBA = [base[0], base[1], base[2], a];
+      // a folded cluster: a shaded body; in a starfield, a glow, as a far cluster of stars
+      if (style === "stars" && !lit) circle(bubbles, S.cwx[c], S.cwy[c], S.drawnR[c] * 1.4, UNIT_WORLD, fill, null, 0, FLAG_GLOW, 0, 8);
+      else circle(bubbles, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, fill, null, 0, FLAG_SHADED, 0, 6);
     }
-    this.tempDiscs(discs);
+    if (!this.art) this.tempDiscs(discs);
 
     // edges of the selection, bundled along the tree, on top of the overview
     const sel = g.layer("selection", "bundles");
     sel.clear();
-    if (act && this.edges.length) {
+    if (act && this.edges.length && this.art?.edges !== "none") {
       const count = this.edges.length / 3;
       const fade = count < 250 ? 1 : Math.max(0.25, Math.sqrt(250 / count));
       const width = count > 4000 ? 1 : 1.6;
@@ -1782,20 +2147,42 @@ export class GraphCanvas {
         // coloured from the end that uses to the end that is used; an edge that only occurs
         // inside a proof, or on grammar, is drawn fainter: no TCB follows it
         const f = (this.edges[e + 2] & (SITE_STMT | SITE_BODY) ? 1 : 0.33) * fade;
-        const c0: RGBA = [th.edgeFrom[0], th.edgeFrom[1], th.edgeFrom[2], th.edgeFrom[3] * f];
-        const c1: RGBA = [th.edgeTo[0], th.edgeTo[1], th.edgeTo[2], th.edgeTo[3] * f];
+        const [from, to] = this.edgeEnds(a, b, th);
+        const c0: RGBA = [from[0], from[1], from[2], from[3] * f];
+        const c1: RGBA = [to[0], to[1], to[2], to[3] * f];
         bundle(sel, pathOf(S, a, b), 0.85, width, c0, c1);
       }
     }
-    this.visitBundles(sel);
+    if (!this.art) this.visitBundles(sel);
 
     // points: dots for declarations, rings for the world outside the project, in the scheme's
-    // colours; what is lit is drawn over them in draw()
+    // colours; what is lit is drawn over them in draw(). An artwork's cells give each a glow; its
+    // starfield makes each a star, as bright as it is used, its colour the scheme's towards white, and
+    // each cluster a constellation
     const dim = act ? 0.22 : 0.9;
+    const most = style === "stars" ? this.mostUsed() : 1;
     for (let i = 0; i < this.g.n; i++) {
       if (!this.visibleNode(i) || (act && act[i])) continue;
+      if (style === "stars") {
+        const x = this.px[i], y = this.py[i];
+        if (this.g.isExt(i)) {
+          circle(dots, x, y, 0.6, UNIT_DOT, [0.72, 0.77, 0.88, 0.4 * dim]);
+          continue;
+        }
+        const c = this.colorOf(i);
+        const star: RGBA = [c[0] + (1 - c[0]) * 0.55, c[1] + (1 - c[1]) * 0.55, c[2] + (1 - c[2]) * 0.55, 0.95 * dim];
+        const k = 0.65 + 1.15 * (Math.log1p(this.g.inStart[i + 1] - this.g.inStart[i]) / Math.log1p(most));
+        circle(glow, x, y, k * 3.4, UNIT_DOT, fade(star, 0.2), null, 0, FLAG_GLOW);
+        circle(dots, x, y, k, UNIT_DOT, star);
+        continue;
+      }
+      if (style === "cells") {
+        const c = this.colorOf(i);
+        circle(glow, this.px[i], this.py[i], 2.8, UNIT_DOT, [c[0], c[1], c[2], 0.16 * dim], null, 0, FLAG_GLOW);
+      }
       this.point(dots, i, dim, false);
     }
+    if (style === "stars") this.constellations(figures, act);
     // a pinned point carries a thin ring: where it is was chosen by hand. Nothing else rings a
     // point but a past graph's marks; status is the Status scheme's (decided 2026-10-08)
     for (let i = 0; i < this.g.n; i++) {
@@ -1811,6 +2198,74 @@ export class GraphCanvas {
         // a rename is the lighter news: its ring is thinner and fainter than a change's
         if (M[i] & PAST_RENAMED) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], fade(th.tmRenamed, 0.7 * faded), 1.1, 0, M[i] & PAST_CHANGED ? 4.4 : 2.2);
       }
+  }
+
+  /** Of a cluster, its top-level namespace's hue among the cells' (CELL_HUES, by their size); the
+   *  outside world's apart. Read again for each layout. */
+  private hueOf(c: number): RGBA {
+    if (this.hues?.layout !== this.layout) {
+      const C = this.layout.clusters;
+      const top = C.map((_, j) => {
+        let t = j;
+        while (C[t].parent >= 0) t = C[t].parent;
+        return t;
+      });
+      const rank = new Map(C.map((cl, j) => [j, cl] as const).filter(([, cl]) => cl.depth === 0 && !cl.ext).sort((a, b) => b[1].count - a[1].count).map(([j], k) => [j, k]));
+      const hues = CELL_HUES.map((h) => rgba(h)), outside = rgba(CELL_OUTSIDE);
+      this.hues = { layout: this.layout, of: top.map((t) => (C[t].ext ? outside : hues[(rank.get(t) ?? 0) % hues.length])) };
+    }
+    return this.hues.of[c] ?? rgba(CELL_OUTSIDE);
+  }
+
+  /** The hue of what a bundled edge's end is (a cluster, or a declaration, past the clusters' ids). */
+  private hueOfId(id: number): RGBA {
+    const S = this.scene;
+    return this.hueOf(id < S.nc ? id : this.layout.cluster[id - S.nc]);
+  }
+
+  /** How often the declaration used most is used: what a star's size is measured against. */
+  private mostUsed(): number {
+    if (this.used?.g !== this.g) {
+      let m = 1;
+      for (let i = 0; i < this.g.n; i++) m = Math.max(m, this.g.inStart[i + 1] - this.g.inStart[i]);
+      this.used = { g: this.g, most: m };
+    }
+    return this.used.most;
+  }
+
+  /** The starfield's constellations (ExportSpec decision 19): in each open cluster, the stars it
+   *  holds itself — the seven used most — joined by the shortest lines that join them all. */
+  private constellations(L: ReturnType<Renderer["layer"]>, act: Uint8Array | null): void {
+    const S = this.scene;
+    const own = new Map<number, number[]>();
+    for (let i = 0; i < this.g.n; i++) {
+      if (!this.visibleNode(i) || this.g.isExt(i)) continue;
+      const c = this.layout.cluster[i];
+      if (c < 0 || S.rep[c] >= 0) continue;
+      let m = own.get(c);
+      if (!m) own.set(c, (m = []));
+      m.push(i);
+    }
+    const used = (i: number) => this.g.inStart[i + 1] - this.g.inStart[i];
+    const colour = rgba(STAR_LINE, act ? 0.16 : 0.38);
+    for (const members of own.values()) {
+      if (members.length < 2) continue;
+      const stars = members.sort((a, b) => used(b) - used(a) || a - b).slice(0, 7);
+      // Prim's: from the brightest, each time the nearest star not yet joined
+      const joined = [stars[0]];
+      const rest = stars.slice(1);
+      while (rest.length) {
+        let best = Infinity, from = -1, k = -1;
+        for (const a of joined)
+          for (let j = 0; j < rest.length; j++) {
+            const d = (this.px[a] - this.px[rest[j]]) ** 2 + (this.py[a] - this.py[rest[j]]) ** 2;
+            if (d < best) [best, from, k] = [d, a, j];
+          }
+        const b = rest.splice(k, 1)[0];
+        segment(L, this.px[from], this.py[from], this.px[b], this.py[b], colour, 0.9);
+        joined.push(b);
+      }
+    }
   }
 
   /** A node's colour in the scheme in force. */
@@ -1939,7 +2394,7 @@ export class GraphCanvas {
     const S = this.scene;
     const L = this.gl.layer("overview", "bundles");
     const Q = this.edgeQ;
-    if (!this.showEdges) {
+    if (!this.showEdges || (this.art && this.art.edges !== "all")) {
       L.clear();
       this.overviewBase = "";
       this.drawnW = null;
@@ -1951,13 +2406,13 @@ export class GraphCanvas {
       Q.setGraph(this.g);
       this.overviewBase = "";
     }
-    const base = `${this.sceneSerial}|${S.repVersion}|${this.showExternals}|${this.proofEdges}`;
+    const base = `${this.sceneSerial}|${S.repVersion}|${this.showExternals}`;
     if (base !== this.overviewBase) {
       // what was drawn stays until the new points come (after a fold, a toggle), unless it is of
       // another scene, whose clusters it names
       if (!this.overviewBase.startsWith(`${this.sceneSerial}|`)) L.clear();
       this.overviewBase = base;
-      Q.setBase(S, { externals: this.showExternals, proofs: this.proofEdges });
+      Q.setBase(S, { externals: this.showExternals });
       this.drawnW = null;
       this.overviewDrawn = "";
     }
@@ -2088,15 +2543,28 @@ export class GraphCanvas {
     const drawn = `${this.overviewStyle}|${dim}|${W.map((x) => `${Q.points.get(x.point)!.serial}:${x.w.toFixed(3)}`).join(",")}`;
     if (drawn === this.overviewDrawn) return;
     this.overviewDrawn = drawn;
-    const from = this.theme.edgeFrom, to = this.theme.edgeTo;
-    const c0: RGBA = [from[0], from[1], from[2], 0], c1: RGBA = [to[0], to[1], to[2], 0];
+    const c0: RGBA = [0, 0, 0, 0], c1: RGBA = [0, 0, 0, 0];
+    const styled = !!this.art && this.art.style !== "board";
     L.clear();
     blendPoints(sets, (P, j, beta, width, alpha) => {
       // from the part that uses to the part it uses
-      c0[3] = alpha;
-      c1[3] = alpha;
+      // the theme's colours at the overview's opacity; an artwork style's at theirs times it
+      const [from, to] = this.edgeEnds(P.path[8 * j], P.path[8 * j + P.len[j] - 1], this.theme);
+      [c0[0], c0[1], c0[2], c0[3]] = [from[0], from[1], from[2], (styled ? from[3] : 1) * alpha];
+      [c1[0], c1[1], c1[2], c1[3]] = [to[0], to[1], to[2], (styled ? to[3] : 1) * alpha];
       bundlePath(L, P.path, 8 * j, P.len[j], beta, width, c0, c1);
     });
+  }
+
+  /** The colours of a bundled edge from `a` to `b` (ids of the scene's clusters, and of its
+   *  declarations past them), from the end that uses: the theme's; an artwork's cells', from one
+   *  territory's hue to the other's; its starfield's, a faint starlight. Their opacity is the most
+   *  the edge has. */
+  private edgeEnds(a: number, b: number, th: { edgeFrom: RGBA; edgeTo: RGBA }): [RGBA, RGBA] {
+    const style = this.art?.style ?? "board";
+    if (style === "cells") return [fade(this.hueOfId(a), 0.7), fade(this.hueOfId(b), 0.7)];
+    if (style === "stars") return [rgba(STAR_LINE, 0.2), rgba(STAR_LINE, 0.2)];
+    return [th.edgeFrom, th.edgeTo];
   }
 
   /** The highlight of what the pointer is on: a cluster's circle lit, or a ring round a point. */
@@ -2108,7 +2576,7 @@ export class GraphCanvas {
     C.clear();
     P.clear();
     const t = this.hoverTarget;
-    if (!t || t.kind === "visitor") return;
+    if (!t || t.kind === "visitor" || this.art) return;
     const a = th.lit;
     if (t.kind === "cluster") {
       if (S.rep[t.c] >= 0 && S.rep[t.c] !== t.c) return;
@@ -2125,7 +2593,7 @@ export class GraphCanvas {
     const k = this.cam.k;
     const th = this.theme;
     const S = this.scene;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(...(this.labelBase ?? ([this.dpr, 0, 0, this.dpr, 0, 0] as const)));
     ctx.clearRect(0, 0, this.w, this.h);
     // under everything else written here: the names, marks and rings read over them
     this.drawKeyEdges(dotR);
@@ -2155,26 +2623,139 @@ export class GraphCanvas {
     // note's card keeps off its own cluster's name (`labelOf`)
     const labels: number[] = [];
     const named = new Map<number, number>();
-    const place = (text: string, cx: number, baseline: number, size: number): boolean => {
+    const art = this.art;
+    // an artwork's names by selection (the owner's decision of 2026-10-15): those shown written first,
+    // wherever they fall; then As shown, or nothing, without those hidden — whose room stays empty,
+    // so that hiding a name brings no other in its place
+    const chosen = art?.labels === "chosen";
+    const asShown = !art || art.labels === "board" || (chosen && art.namesFrom === "board");
+    const hidden = (id: string) => chosen && art!.hidden.has(id);
+    const extra = (id: string) => chosen && art!.shown.has(id);
+    // the names, written last, over every mark (writeNames); and, on an artwork, what each names
+    const written: Written[] = [];
+    const wrote = new Set<string>();
+    const write = (text: string, x: number, y: number, id: string) => {
+      written.push({ text, x, y, font: ctx.font, align: ctx.textAlign, fill: String(ctx.fillStyle) });
+      if (id) wrote.add(id);
+    };
+    /** a name centred on `cx`, where it covers no other; `id`, what it names; `force`, written all
+     *  the same; hidden, its room kept and nothing written */
+    const place = (text: string, cx: number, baseline: number, size: number, id = "", force = false): boolean => {
       const w = ctx.measureText(text).width / 2 + 3;
       const x0 = cx - w, x1 = cx + w, y0 = baseline - size, y1 = baseline + size * 0.3;
-      if (!free(x0, y0, x1, y1)) return false;
+      if (!force && !free(x0, y0, x1, y1)) return false;
       take(x0, y0, x1, y1);
-      ctx.fillText(text, cx, baseline);
+      if (hidden(id)) return true;
+      write(text, cx, baseline, id);
       labels.push(...this.toWorld(x0, y0), ...this.toWorld(x1, y1));
       return true;
     };
+    // a declaration's name beside its point, where it covers no other name (`force`: all the same);
+    // hidden, its room kept
+    const nameAt = (i: number, text: string, w: number, force = false): boolean => {
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
+      if (!force && !free(x0, y0, x1, y1)) return false;
+      take(x0, y0, x1, y1);
+      const id = art ? artNameId("decl", this.g.nodes[i].name) : "";
+      if (hidden(id)) return false;
+      write(text, sx + dotR + 3, sy + 3.5, id);
+      return true;
+    };
+    const shown = (i: number) => {
+      if (!this.visibleNode(i)) return false;
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      return onScreen(sx, sy, 8);
+    };
+    const targets = art ? this.markedTargets() : [];
+    // an artwork's names (the owner's decisions of 2026-10-15): in its fonts and its style's colours;
+    // a cluster's along the top of its circle where it fits there (arc labels), a top-level one in
+    // spaced capitals, the others in italics; under a folded one's disc, or inside the top of a
+    // circle too small for the arc, straight
+    const look = art ? artText(art.style, th) : null;
+    const artCluster = (c: number, force: boolean): boolean => {
+      const L = look!;
+      const cl = this.layout.clusters[c];
+      const id = artNameId("cluster", cl.key);
+      const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
+      ctx.fillStyle = L.clusterFill;
+      ctx.textAlign = "center";
+      if (S.rep[c] === c) {
+        const r = Math.max(6, S.drawnR[c] * k);
+        if (!force && (r <= 10 || !onScreen(sx, sy, r) || (act && this.clusterHasActive(c)))) return false;
+        ctx.font = L.sub(11);
+        return place(cl.label, sx, sy + r + 13, 11, id, force);
+      }
+      const sr = S.drawnR[c] * k;
+      if (!force && (sr <= 38 || !onScreen(sx, sy, sr))) return false;
+      const top = cl.depth === 0;
+      const size = Math.max(10, Math.min(top ? 22 : 16, 9 + sr / 40));
+      const text = top ? cl.label.toUpperCase() : cl.label;
+      const font = top ? L.top(size) : L.sub(size);
+      const sp = L.spacing(top, size);
+      ctx.font = font;
+      const len = spacedWidth(ctx, text, sp);
+      const R = sr - size * 0.35 - 6;
+      const half = len / Math.max(R, 1) / 2;
+      let box: [number, number, number, number];
+      let item: Written;
+      if (sr > 60 && half < Math.PI * 0.45) {
+        const reach = R * Math.sin(half) + 4;
+        box = [sx - reach, sy - sr, sx + reach, sy - R * Math.cos(half) + size * 0.4];
+        item = { text, x: sx, y: sy, font, align: "center", fill: L.clusterFill, spacing: sp, arc: { cx: sx, cy: sy, r: R } };
+      } else {
+        const by = sr > 38 ? sy - sr + size + 6 : sy - sr - 4;
+        box = [sx - len / 2 - 3, by - size, sx + len / 2 + 3, by + size * 0.3];
+        item = { text, x: sx, y: by, font, align: "center", fill: L.clusterFill, spacing: sp };
+      }
+      if (!force && !free(...box)) return false;
+      take(...box);
+      if (hidden(id)) return true;
+      written.push(item);
+      wrote.add(id);
+      labels.push(...this.toWorld(box[0], box[1]), ...this.toWorld(box[2], box[3]));
+      named.set(c, labels.length - 4);
+      return true;
+    };
     ctx.fillStyle = th.label;
+    // the clusters' shown, where the board writes them
+    if (chosen)
+      for (let c = 0; c < S.nc; c++) {
+        const cl = this.layout.clusters[c];
+        if (!this.artClusters.has(cl.key) || (S.rep[c] >= 0 && S.rep[c] !== c) || !this.clusterVisible(c)) continue;
+        const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
+        if (onScreen(sx, sy, 400)) artCluster(c, true);
+      }
+    // the declarations' shown, beside their points: a target marked in bold
+    if (chosen) {
+      const bold = new Set(targets);
+      ctx.textAlign = "left";
+      for (const name of this.artDecls) {
+        const i = this.g.byName.get(name);
+        if (i === undefined || !shown(i)) continue;
+        ctx.font = bold.has(i) ? look!.target : look!.decl;
+        ctx.fillStyle = bold.has(i) ? look!.clusterFill : look!.declFill;
+        nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width, true);
+      }
+      ctx.textAlign = "center";
+      ctx.fillStyle = th.label;
+    }
     for (let c = 0; c < S.nc; c++) {
+      if (art?.labels === "none" || (chosen && !asShown)) break;
+      if (chosen && this.artClusters.has(this.layout.clusters[c].key)) continue;
       const rep = S.rep[c];
       if (!this.clusterVisible(c)) continue;
+      if (art) {
+        if (rep < 0 || rep === c) artCluster(c, false);
+        continue;
+      }
       const cl = this.layout.clusters[c];
       const [sx, sy] = this.toScreen(S.cwx[c], S.cwy[c]);
       if (rep === c) {
         const r = Math.max(6, S.drawnR[c] * k);
         if (r > 10 && onScreen(sx, sy, r) && !(act && this.clusterHasActive(c))) {
           ctx.font = `500 11px ${FONT}`;
-          place(cl.label, sx, sy + r + 13, 11);
+          place(cl.label, sx, sy + r + 13, 11, art ? artNameId("cluster", cl.key) : "");
         }
         continue;
       }
@@ -2184,22 +2765,56 @@ export class GraphCanvas {
       const size = Math.max(10, Math.min(20, 9 + sr / 40));
       ctx.font = `${cl.depth === 0 ? 600 : 500} ${size}px ${FONT}`;
       // covered at the top: one line lower, still inside its own circle
-      if (place(cl.label, sx, sy - sr + size + 6, size) || (sr > 4 * size && place(cl.label, sx, sy - sr + 2 * size + 10, size))) named.set(c, labels.length - 4);
+      const id = art ? artNameId("cluster", cl.key) : "";
+      if (place(cl.label, sx, sy - sr + size + 6, size, id) || (sr > 4 * size && place(cl.label, sx, sy - sr + 2 * size + 10, size, id))) named.set(c, labels.length - 4);
     }
-    this.tempLabels(place, onScreen);
+    // what is the reader's own is not drawn over an artwork: visitors and their clusters, others
+    if (!art) this.tempLabels(place, onScreen);
     this.labelBoxes = labels;
     this.labelOfC = named;
     this.drawProgress(onScreen);
     this.drawLeaders();
-    this.drawKeys(onScreen, dotR);
+    // an artwork's key marks have a switch of their own (the owner's decision of 2026-10-15)
+    if (!art || art.keys) this.drawKeys(onScreen, dotR);
     this.drawStars(onScreen, dotR);
-    this.drawVisitors(onScreen);
-    this.drawPeers(onScreen, dotR);
+    if (!art) {
+      this.drawVisitors(onScreen);
+      this.drawPeers(onScreen, dotR);
+    }
     this.drawSelection(dotR);
-    if (k > 1.1 && !act) {
-      ctx.font = `11px ${FONT}`;
+    // an artwork's (ExportSpec decision 19): its targets' names, marked, before any other; and where
+    // something is lit, the lit declarations' names where the board would give them cards, nearest
+    // the middle first
+    const marked = art && art.labels !== "none" && asShown ? targets.filter((i) => shown(i) && !extra(artNameId("decl", this.g.nodes[i].name))) : [];
+    ctx.textAlign = "left";
+    ctx.font = look ? look.target : `600 11px ${FONT}`;
+    ctx.fillStyle = look ? look.clusterFill : th.label;
+    for (const i of marked) nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width);
+    const seen = new Set(marked);
+    if (chosen) for (const name of this.artDecls) {
+      const i = this.g.byName.get(name);
+      if (i !== undefined) seen.add(i);
+    }
+    if (art && asShown && act) {
+      ctx.font = look!.decl;
+      ctx.fillStyle = look!.declFill;
+      const cx = this.w / 2, cy = this.h / 2;
+      const lit = this.activeList.filter((i) => !seen.has(i) && shown(i));
+      const d = (i: number) => {
+        const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+        return (sx - cx) ** 2 + (sy - cy) ** 2;
+      };
+      lit.sort((a, b) => d(a) - d(b));
+      let budget = cardCap(k);
+      for (const i of lit) {
+        if (budget <= 0) break;
+        if (nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width)) budget--;
+      }
+    }
+    if (asShown && k > 1.1 && !act) {
+      ctx.font = look ? look.decl : `11px ${FONT}`;
       ctx.textAlign = "left";
-      ctx.fillStyle = th.text;
+      ctx.fillStyle = look ? look.declFill : th.text;
       // declaration names, nearest the middle of the screen first; one that would cover another
       // name (or a cluster's) is left out, so what is written can be read and the edges show
       const cx = this.w / 2, cy = this.h / 2;
@@ -2217,16 +2832,23 @@ export class GraphCanvas {
       let budget = 700;
       for (let t = 0; t < near.length && t < 4000 && budget > 0; t++) {
         const i = near[t];
-        const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+        if (seen.has(i)) continue;
         let w = this.nameW[i];
-        if (!(w >= 0)) w = this.nameW[i] = ctx.measureText(this.g.short(i)).width;
-        const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
-        if (!free(x0, y0, x1, y1)) continue;
-        take(x0, y0, x1, y1);
-        ctx.fillText(this.g.short(i), sx + dotR + 3, sy + 3.5);
-        budget--;
+        // (the widths kept are in the board's own font; an artwork writes in its own)
+        if (look) w = ctx.measureText(this.g.short(i)).width;
+        else if (!(w >= 0)) w = this.nameW[i] = ctx.measureText(this.g.short(i)).width;
+        if (nameAt(i, this.g.short(i), w)) budget--;
       }
     }
+    this.writeNames(written, look?.halo ?? null);
+    this.namesWritten = wrote;
+  }
+
+  /** The names, over everything else written on the board, each on its halo of the background
+   *  (web/src/halo.ts). */
+  private writeNames(names: readonly Written[], halo: string | null): void {
+    const bg = this.theme.bg;
+    writeNames(this.ctx, names, halo ?? `rgb(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)})`);
   }
 
   /** In the Status scheme, how far the review of each cluster on screen has come, on its outline: an
@@ -2272,7 +2894,8 @@ export class GraphCanvas {
   /** A gold five-pointed star on every target: on its point, or on the edge of the folded cluster
    *  hiding it. Never smaller than can be seen. */
   private drawStars(onScreen: (sx: number, sy: number, pad: number) => boolean, dotR: number): void {
-    if (!this.targetList.length) return;
+    const targets = this.markedTargets();
+    if (!targets.length) return;
     const ctx = this.ctx;
     const S = this.scene;
     const star = (x: number, y: number, R: number) => {
@@ -2294,7 +2917,7 @@ export class GraphCanvas {
     ctx.lineWidth = 1.2;
     ctx.lineJoin = "round";
     const seen = new Set<number>();
-    for (const i of this.targetList) {
+    for (const i of targets) {
       if (this.visibleNode(i)) {
         const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
         if (onScreen(sx, sy, 20)) star(sx, sy, Math.max(9, dotR * 2.2));
@@ -2313,9 +2936,11 @@ export class GraphCanvas {
 
   /** A small diamond on every key declaration, at the top left of its point — the point's colour
    *  still shows, and its name, written to the right, stays clear; hidden in a folded cluster, one
-   *  on the edge of its disc, opposite the star's place. Never smaller than can be seen. */
+   *  on the edge of its disc, opposite the star's place. Never smaller than can be seen. An artwork
+   *  whose targets are chosen draws only the keys of those it chose. */
   private drawKeys(onScreen: (sx: number, sy: number, pad: number) => boolean, dotR: number): void {
     if (!this.keyList.length) return;
+    const on = this.art?.targets === "chosen" ? this.chosenTargets() : null;
     const ctx = this.ctx;
     const S = this.scene;
     const diamond = (x: number, y: number, R: number) => {
@@ -2335,7 +2960,9 @@ export class GraphCanvas {
     ctx.lineJoin = "round";
     const seen = new Set<number>();
     const R = Math.max(4.5, dotR * 1.1);
-    for (const i of this.keyList) {
+    for (let j = 0; j < this.keyList.length; j++) {
+      const i = this.keyList[j];
+      if (on && !this.keyOf[j]?.some((t) => on.has(t))) continue;
       if (this.visibleNode(i)) {
         const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
         if (onScreen(sx, sy, 12)) diamond(sx - dotR - R * 0.4, sy - dotR - R * 0.3, R);
@@ -2741,7 +3368,8 @@ export class GraphCanvas {
       ctx.stroke();
     }
     for (const el of this.cards.values()) if (el.dataset.cluster !== undefined) el.classList.toggle("picked", carded.has(Number(el.dataset.cluster)));
-    const lead = this.lead && markOf(this.lead);
+    // none in an artwork, whose panels are put away (ExportSpec decision 19)
+    const lead = !this.art && this.lead && markOf(this.lead);
     if (!lead) return ctx.restore();
     const box = this.canvas.getBoundingClientRect();
     const at = this.leadEnd();
@@ -2809,7 +3437,7 @@ export class GraphCanvas {
     // which active nodes get a card: the nearest to the screen centre
     const cx = this.w / 2;
     const cy = this.h / 2;
-    const cap = k < 0.12 ? 0 : k < 0.35 ? 40 : k < 0.8 ? 90 : CARD_CAP;
+    const cap = this.art ? 0 : cardCap(k);
     const ranked = activeDots
       .filter((i) => !chosen.has(i))
       .map((i) => {

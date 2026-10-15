@@ -32,7 +32,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import type { Kind, RawGraph, RawNode } from "../shared/graph.ts";
+import type { GitSource, Kind, RawGraph, RawNode } from "../shared/graph.ts";
 import type { Project } from "./project.ts";
 import { SourceStore, summarize } from "./sourcestore.ts";
 import type { ModuleShape, SourceMap, SourceRef, SourcesSummary } from "./sourcestore.ts";
@@ -168,6 +168,42 @@ export function commitNow(root: string): SnapshotInfo["commit"] {
   const branch = git(root, "rev-parse", "--abbrev-ref", "HEAD");
   const status = git(root, "status", "--porcelain", "--untracked-files=no", "--", "*.lean");
   return { hash, branch: branch && branch !== "HEAD" ? branch : null, ...(status ? { dirty: true } : {}) };
+}
+
+/** The project's git source and the commit checked out, as a page may show them (an artwork's foot,
+ *  ExportSpec decision 19): the remote's address (`origin`, else the first) with no user name or
+ *  password (sourceAddress); null where the project is not a git repository. Read-only, as `git`. */
+export function gitSource(root: string): GitSource | null {
+  const c = commitNow(root);
+  if (!c) return null;
+  const remotes = (git(root, "remote") ?? "").split("\n").filter(Boolean);
+  const name = remotes.includes("origin") ? "origin" : remotes[0];
+  const url = name ? git(root, "remote", "get-url", name) : null;
+  return { source: url ? sourceAddress(url) : null, commit: c.hash, branch: c.branch, ...(c.dirty ? { dirty: true as const } : {}) };
+}
+
+/** A remote's address as a page shows it: its host and path, without the scheme, a user name, a
+ *  password, a port or `.git` — `git@github.com:A/B.git` and `https://user:token@github.com/A/B`
+ *  both read `github.com/A/B`. Null for a path on this machine, or what is no address. */
+export function sourceAddress(url: string): string | null {
+  const u = url.trim();
+  let host: string, path: string;
+  // scp-like, [user@]host:path, but not a Windows drive
+  const scp = /^(?:[^@/\s]+@)?([A-Za-z0-9.-]+):(?!\/\/)(\S+)$/.exec(u);
+  if (scp && !/^[A-Za-z]:[\\/]/.test(u)) [host, path] = [scp[1], scp[2]];
+  else {
+    let p: URL;
+    try {
+      p = new URL(u);
+    } catch {
+      return null;
+    }
+    if (!["https:", "http:", "ssh:", "git:"].includes(p.protocol) || !p.hostname) return null;
+    [host, path] = [p.hostname, decodeURIComponent(p.pathname)];
+  }
+  path = path.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
+  if (!/^[A-Za-z0-9.-]+$/.test(host) || !path || !/^[\w.~/-]+$/.test(path)) return null;
+  return `${host}/${path}`;
 }
 
 /** The last commit made before `at`: what an imported extraction was probably built from. */

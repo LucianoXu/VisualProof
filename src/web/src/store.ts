@@ -42,7 +42,6 @@ export interface Saved {
    *  any declaration */
   tcbOrder?: "review" | "kind" | "key";
   showEdges: boolean;
-  proofEdges: boolean;
   /** the views open as tabs, in order, and the one on show */
   tabs: Tab[];
   active?: string;
@@ -91,7 +90,6 @@ export interface Saved {
 const DEFAULTS: Saved = {
   mode: "tcb",
   showEdges: true,
-  proofEdges: false,
   tabs: [],
   seen: {},
 };

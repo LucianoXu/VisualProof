@@ -21,6 +21,7 @@
 
 import type { BuildStatus } from "../../shared/build.ts";
 import type { ChatMessage, Invited, PresenceView, PrivateCount } from "../../shared/collab.ts";
+import { artNameId } from "../../shared/collab.ts";
 import type { ClusterMode, Layout, ViewMeta } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
@@ -55,7 +56,7 @@ import type { ModuleContexts } from "../../shared/context.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
 import { Graph } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
-import { dragKeyHeld, dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
+import { dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
 import { Notes } from "./notes.ts";
 import { Stickies } from "./sticky.ts";
 import type { Dropped, NoteKind } from "./sticky.ts";
@@ -104,6 +105,7 @@ import { LinearForm } from "./linear.ts";
 import { isPhone, Phone } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
+import { sourceLine, titleOf } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
@@ -127,7 +129,7 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 
 /** The tools by name: the modes Selection and Used by, and the three steps of the mode Rests on
  *  (decided 2026-10-08, ViewSpec decision 20). */
-const MODE_NAME: Record<Tool, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", apps: "Used by" };
+const MODE_NAME: Record<Tool, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", refs: "Direct", apps: "Used by" };
 /** A tool as the others' list and the notes say it: a step with its mode. */
 const toolName = (t: Tool): string => (restsOn(t) ? `Rests on · ${MODE_NAME[t]}` : MODE_NAME[t]);
 
@@ -136,16 +138,18 @@ const toolName = (t: Tool): string => (restsOn(t) ? `Rests on · ${MODE_NAME[t]}
 const MODE_HINT: Record<Tool, string> = {
   plain: "A click selects just what you click; shift-click adds it or takes it out.",
   deps: "A click selects what you click and everything it uses, proofs included: the most it rests on.",
+  refs: "A click selects what you click and what it uses directly: in its statement, its body or its proof.",
   tcb: "A click selects the TCB of what you click: the definitions its statement rests on, proofs skipped.",
   keys:
     "A click selects what you click and the key declarations in its TCB: where the review has a focus, that target's; elsewhere every target's, or a target's own when you click a target. " +
     "Dashed edges are the key graph: from A to B when A rests on B through declarations that are not key.",
   apps: "A click selects what you click and everything that uses it.",
 };
-/** What Rests on is, while the pointer is on its button: the question its steps answer, at three
- *  granularities, everything used ⊇ the TCB ⊇ the key declarations in it. */
+/** What Rests on is, while the pointer is on its button: the question its steps answer, at the
+ *  granularities everything used ⊇ the TCB ⊇ the key declarations in it, and one step: what it uses
+ *  directly (ViewSpec decision 20). */
 const RESTS_HINT = "A click selects what you click rests on, as much of it as the step says:";
-const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything it uses, proofs included", tcb: "what its statement rests on, proofs skipped", keys: "the key declarations in its TCB" };
+const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything it uses, proofs included", refs: "what it uses directly, proofs included", tcb: "what its statement rests on, proofs skipped", keys: "the key declarations in its TCB" };
 /** What a tap selects with each tool, in a few words: under the tool's name in a phone's ⋯, where
  *  nothing is said while a pointer rests on a button (web/src/phone.ts). */
 const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap", apps: "everything that uses it" };
@@ -238,8 +242,8 @@ async function boot(): Promise<void> {
   let offline = false;
   /** the depth stepper's label (defined with the side panel below) */
   let showLevel = () => {};
-  /** draw the edges, and the proof edges, or not (defined with the eyes below) */
-  let setEdges = (_edges: boolean, _proofs: boolean): void => {};
+  /** draw the edges, or not (defined with the eyes below) */
+  let setEdges = (_edges: boolean): void => {};
   /** the review (ReviewSpec.md), as the server last told it: the whole once, then each change */
   let review: ReviewState = await reviewing;
   /** The review as the board on show reads it, by its declarations' names: on a past graph, what was
@@ -995,12 +999,27 @@ async function boot(): Promise<void> {
     graph: () => vg(),
     noteSpot: (id) => stickies.spotOf(id),
     lit: (i) => !!canvas.active?.[i],
+    edgeLit: (u, v, site) => canvas.edgeLit(u, v, site),
+    keyLinks: () => canvas.keyLinks,
     selectDecl: (i, shift) => void clickOn(pickDecl(vg().nodes[i].name), shift),
     selectSection: (c, shift) => void clickOn(pickCluster(c), shift),
     frozen: () => (frozen() ? frozenWhy() : null),
-    moves: (e) => dragMoves(locked, dragKeyHeld(e)),
-    edges: () => ({ show: S.showEdges, proofs: S.proofEdges }),
-    moveNote: (id, key, world) => stickies.moveInto(id, key, world),
+    edges: () => S.showEdges,
+    moveNote: (id, key, world, detach) => stickies.moveInto(id, key, world, detach),
+    noteText: (id) => noteOf(id)?.note.text ?? null,
+    noteOpen: (id) => !!noteOf(id)?.note.open,
+    toggleNote: (id) => {
+      const n = noteOf(id);
+      if (frozen()) return say(frozenWhy());
+      if (n?.kind === "project") void projectOps([{ op: "pnote-open", id: n.note.id, open: !n.note.open }]);
+      else if (n) noteOps([{ op: "note-open", id: n.note.id, open: !n.note.open }]);
+    },
+    // the board's menu on what a row is; Fold and Fit are the form's (menuAct)
+    menu: (on, x, y, spot) => {
+      if (on?.kind === "note") openNoteMenu(on.id, x, y);
+      else openMenu(on?.kind === "decl" ? { kind: "node", i: on.i } : on ? { kind: "cluster", c: on.c } : null, x, y, spot ?? canvas.toWorld(x, y), false, on?.kind === "cluster" ? on.folded : undefined);
+      if (menuOn) menuOn.linear = true;
+    },
     // the Export window, at the right, beside which the line is drawn
     beside: () => (exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
     say: (text) => say(text),
@@ -1012,9 +1031,15 @@ async function boot(): Promise<void> {
   });
   linearBtn.addEventListener("click", () => linear.toggle());
 
-  // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): framed under a frame fixed
-  // in the middle of the screen, drawn in the browser
-  const art = new ArtFrame($("#art"), $("#art-panel"), canvas, {
+  /** In the artwork mode (ExportSpec decision 19, the owner's decision of 2026-10-15): of the bar,
+   *  what is out of reach — all but Share and Search; and the keys that still act. */
+  const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
+  const ART_KEYS = new Set(["/", "1", "2", "3", "f", "+", "=", "-", "_", "e", "[", "]", "l"]);
+  // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
+  // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
+  /** the artwork's settings the board is drawn with: null where its mode is off */
+  let artLook: ArtSettings | null = null;
+  const art = new ArtFrame($("#art"), $("#art-panel"), $("#art-sky") as HTMLCanvasElement, canvas, {
     title: () => views.title(nav.board.id),
     saved: () => S.artwork as Partial<ArtSettings> | undefined,
     save: (s) => {
@@ -1022,17 +1047,59 @@ async function boot(): Promise<void> {
       store.save();
     },
     now: () => ({ scheme: canvas.scheme, theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
-    isTarget: (i) => canvas.isTarget(i),
-    notes: () => stickies.shownNotes(),
-    say: (text) => say(text),
-    framing: (on) => {
-      document.body.classList.toggle("framing", on);
-      if (on) linear.hide("reader");
+    look: (s) => {
+      artLook = s && { ...s };
+      drawLook();
     },
+    changed: () => people.report(),
+    notes: () => stickies.asDrawn(),
+    source: () => {
+      const git = vg().meta.project.git;
+      return git ? sourceLine(git) : null;
+    },
+    // the targets a picture can mark: every one of the review's, by the name the board writes
+    targets: () =>
+      Object.keys(review.data.targets)
+        .map((name) => ({ name, label: name.split(".").pop() ?? name }))
+        .sort((a, b) => a.label.localeCompare(b.label) || a.name.localeCompare(b.name)),
+    // the title where the reader gave none: the project's name, its declarations and its targets
+    titles: () => titleOf(meta.project.name, meta.projectCount, Object.keys(review.data.targets).length),
+    say: (text) => say(text),
   });
-  // the frame's picture waits for the board to be still
+  // the board's names are written in an artwork's fonts once they are there
+  document.fonts?.addEventListener?.("loadingdone", () => {
+    if (!artLook) return;
+    canvas.invalidate();
+    canvas.request();
+  });
+  /** The board drawn with the artwork's settings while its mode is on, or as the reader's own again
+   *  (ExportSpec decision 19): the colouring and the theme, the background, the notes, the edges, the
+   *  names, the targets and the selection; the panels put away for the frame. The reader's own
+   *  choices are kept as they are, under it. */
+  const drawLook = () => {
+    const a = artLook;
+    document.body.classList.toggle("framing", !!a);
+    document.body.classList.toggle("art-nonotes", !!a && !a.notes);
+    if (a && a.background !== "theme") document.body.dataset.artBg = a.background;
+    else delete document.body.dataset.artBg;
+    // the cells and the starfield are dark, on a dark ground round the frame
+    if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
+    else delete document.body.dataset.artStyle;
+    // of the bar, Share and Search alone (the owner's decision of 2026-10-15): the rest is out of
+    // reach until the mode is left, by the pointer and by the keyboard
+    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!a;
+    if (a) {
+      linear.hide("reader");
+      document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
+    } else applyTheme();
+    canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
+    applyScheme();
+    syncEdges();
+    apply();
+  };
   canvas.onFrame = () => {
     stickies.frame();
+    // the artwork's list of names follows what its frame holds
     art.frame();
   };
   // the notes the outline holds are those the board shows
@@ -1259,13 +1326,24 @@ async function boot(): Promise<void> {
     canvas.setStatus(statusCodes(boardReview(), G, pastShown() ? new Map() : fileIndex));
     canvas.setTargets(Object.keys(review.data.targets).map((n) => G.byName.get(n)).filter((j): j is number => j !== undefined));
     // key declarations carry a diamond: where the review has a focus its target's, elsewhere every
-    // target's (ExportSpec decision 4)
+    // target's (ExportSpec decision 4); each with the targets it is key for, so that an artwork whose
+    // targets are chosen draws their keys alone (decision 19)
     const r = reviewRoot();
     const roots = r !== null ? [r] : Object.keys(review.data.targets).map((n) => g.byName.get(n)).filter((j): j is number => j !== undefined);
-    const keys = new Set<number>();
-    for (const t of roots) for (const k of flow.keys(t).keys) if (k !== t) keys.add(k);
-    canvas.setKeys([...keys].map((k) => G.byName.get(g.nodes[k].name)).filter((j): j is number => j !== undefined));
+    const keys = new Map<number, number[]>();
+    for (const t of roots) for (const k of flow.keys(t).keys) if (k !== t) keys.set(k, [...(keys.get(k) ?? []), t]);
+    const onBoard = (k: number) => G.byName.get(g.nodes[k].name);
+    const drawn = [...keys].flatMap(([k, ts]) => {
+      const j = onBoard(k);
+      return j === undefined ? [] : [{ j, of: ts.map(onBoard).filter((t): t is number => t !== undefined) }];
+    });
+    canvas.setKeys(
+      drawn.map((d) => d.j),
+      drawn.map((d) => d.of),
+    );
     legend.render();
+    // an artwork's targets by selection list them
+    art.refresh();
   };
 
   // ---------------------------------------------------------------- the colour scheme
@@ -1277,8 +1355,10 @@ async function boot(): Promise<void> {
 
   /** The review has a focus on the board on show: where the review strip shows. */
   const onReview = () => reviewRoot() !== null;
+  /** the reader's own colouring here, under an artwork's (drawLook) */
+  const ownScheme = () => store.schemeFor(onReview());
   const applyScheme = () => {
-    canvas.setScheme(store.schemeFor(onReview()));
+    canvas.setScheme(artLook?.scheme ?? ownScheme());
     legend.render();
   };
   const chooseScheme = (s: Scheme) => {
@@ -1332,10 +1412,11 @@ async function boot(): Promise<void> {
       paper: () => (papers.state() ? { paper: papers.state()! } : {}),
       activity: () => ({ activity: activity.state() }),
       lostFound: () => ({ lostFound: { open: lostDrawer.open } }),
-      colouring: () => ({ scheme: canvas.scheme }),
+      // the reader's own, under an artwork's, which the artwork's part carries
+      colouring: () => ({ scheme: ownScheme() }),
       edges: () => ({ edges: S.showEdges }),
-      proofEdges: () => ({ proofEdges: S.proofEdges }),
       linear: () => ({ linear: linear.shown }),
+      artwork: () => ({ artwork: art.view() }),
     },
     // what this page shows is this reader's own once following ends, so it is kept as shown: the
     // colouring and the edges in this browser, as the reader's own choice is
@@ -1343,11 +1424,11 @@ async function boot(): Promise<void> {
       activity: (v) => activity.mirror(v.activity!),
       lostFound: (v) => lostDrawer.toggle(v.lostFound!.open),
       colouring: (v) => {
-        if (canvas.scheme !== v.scheme) chooseScheme(v.scheme!);
+        if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
       },
-      edges: (v) => setEdges(v.edges!, S.proofEdges),
-      proofEdges: (v) => setEdges(S.showEdges, v.proofEdges!),
+      edges: (v) => setEdges(v.edges!),
       linear: (v) => (v.linear ? void linear.show("reader") : linear.hide("reader")),
+      artwork: (v) => art.follow(v.artwork ?? null),
     },
   };
   /** Where this page is: what the others are told, and what Share tells an agent. */
@@ -1557,6 +1638,8 @@ async function boot(): Promise<void> {
       syncInsets();
       canvas.jumpTo(camOf(shot.region, canvas.screen));
     }
+    // an artwork's frame holds what the sharer's held
+    if (v.artwork) art.follow(v.artwork);
     const line = missingLine(gone);
     if (line) say(line);
   };
@@ -2016,7 +2099,14 @@ async function boot(): Promise<void> {
         if (c >= 0) clusters.push(c);
       }
     }
-    canvas.setActivation(edgeMode(picks), decls, lit?.set ?? null, clusters, keyEdges);
+    // an artwork's look (ExportSpec decision 19): its targets alone, the rest faded; or nothing of the
+    // selection, which stays the reader's
+    if (artLook?.targets === "highlight") {
+      const alone = new Uint8Array(G.n);
+      for (let i = 0; i < G.n; i++) if (canvas.isTarget(i)) alone[i] = 1;
+      canvas.setActivation(edgeMode(picks), [], alone, [], null);
+    } else if (artLook && !artLook.selection) canvas.setActivation(edgeMode(picks), [], null, [], null);
+    else canvas.setActivation(edgeMode(picks), decls, lit?.set ?? null, clusters, keyEdges);
     linear.request();
     drawVisitors();
     renderSelBar(q, lit);
@@ -2898,27 +2988,24 @@ async function boot(): Promise<void> {
   themeChoices($("#theme-seg"));
   // the lock, the edges and the theme, behind the eyes' ⋯ (decided 2026-10-08); their keys stay
   const eyesPop = new Popover($("#eyes-btn"), $("#eyes-pop"));
-  // the reader's eyes, at the bottom right: edges drawn, proof edges
+  // the reader's eyes, at the bottom right: edges drawn (proof edges are no more: the owner's
+  // decision of 2026-10-15)
   const edgesBtn = $("#edges-btn");
-  const proofsBtn = $("#proofs-btn");
   const syncEdges = () => {
     edgesBtn.classList.toggle("on", S.showEdges);
-    proofsBtn.classList.toggle("on", S.proofEdges);
     edgesBtn.setAttribute("aria-pressed", String(S.showEdges));
-    proofsBtn.setAttribute("aria-pressed", String(S.proofEdges));
-    canvas.setEdges(S.showEdges, S.proofEdges);
+    // an artwork's, while its mode is on (drawLook)
+    canvas.setEdges(artLook ? artLook.edges !== "none" : S.showEdges);
   };
   // what the board draws, which those following this reader see too (CollabSpec decision 4)
-  setEdges = (edges, proofs) => {
-    if (edges === S.showEdges && proofs === S.proofEdges) return;
+  setEdges = (edges) => {
+    if (edges === S.showEdges) return;
     S.showEdges = edges;
-    S.proofEdges = proofs;
     store.save();
     syncEdges();
     people.report();
   };
-  edgesBtn.addEventListener("click", () => setEdges(!S.showEdges, S.proofEdges));
-  proofsBtn.addEventListener("click", () => setEdges(S.showEdges, !S.proofEdges));
+  edgesBtn.addEventListener("click", () => setEdges(!S.showEdges));
   syncEdges();
   // the layout locked, also the reader's own and kept in this browser (web/src/drag.ts): a drag pans
   // the view, never moves a thing, unless the reader lets the lock go (decided 2026-10-09: panning
@@ -2999,7 +3086,7 @@ async function boot(): Promise<void> {
 
   /** What the menu is open on: the target, its declaration in the whole graph's numbering or its
    *  cluster on the board, the part of a scope it is (decl(X), or the cluster's set), and where. */
-  let menuOn: { t: MenuTarget; i?: number; c?: number; note?: string; part: Query | null; world: [number, number]; at: { x: number; y: number } } | null = null;
+  let menuOn: { t: MenuTarget; i?: number; c?: number; note?: string; part: Query | null; world: [number, number]; at: { x: number; y: number }; linear?: boolean; artName?: string } | null = null;
   const ctxMenu = new ContextMenu($("#ctxmenu"), {
     chose: (act, name) => void menuAct(act, name),
     // what it was open on was lit for it: no longer
@@ -3061,8 +3148,9 @@ async function boot(): Promise<void> {
     };
   };
   /** Open the menu on what is at a point of the window: a declaration or a cluster of the board,
-   *  or the empty canvas; `keys`: from the keyboard. What it is open on is lit while it is. */
-  const openMenu = (t: Target | null, x: number, y: number, world: [number, number], keys = false) => {
+   *  or the empty canvas; `keys`: from the keyboard; `folded`: a cluster folded where the menu is
+   *  open (the linear form's own folds). What it is open on is lit while it is. */
+  const openMenu = (t: Target | null, x: number, y: number, world: [number, number], keys = false, folded?: boolean) => {
     const title = views.title(nav.board.id);
     // the menu says what it is on: the pointer's tooltip goes
     $("#tip").hidden = true;
@@ -3073,6 +3161,9 @@ async function boot(): Promise<void> {
       if (i === undefined) return;
       const name = g.nodes[i].name;
       const r = reviewRoot();
+      // an artwork's names by selection: its name shown in the picture, or not (ExportSpec decision 19)
+      const artName = t.kind === "node" ? artNameId("decl", canvas.g.nodes[t.i].name) : undefined;
+      const inArt = artName ? art.nameChosen(artName) : undefined;
       const mt: MenuTarget = {
         kind: "decl",
         name,
@@ -3081,16 +3172,26 @@ async function boot(): Promise<void> {
         target: Object.hasOwn(boardReview().targets, name),
         ns: g.isExt(i) ? null : trustOf(name.split(".").slice(0, -1).join(".") || null),
         ...(visitor ? { visitor: true } : {}),
+        ...(inArt !== undefined ? { art: inArt } : {}),
       };
       // a scope is written in the names of now, as a move keeps it (a past graph's renamed one)
-      menuOn = { t: mt, i, part: { op: "decl", names: [declNow(i)] }, world, at: { x, y } };
+      menuOn = { t: mt, i, part: { op: "decl", names: [declNow(i)] }, world, at: { x, y }, ...(artName ? { artName } : {}) };
       if (t.kind === "node") canvas.preview(t.i);
       ctxMenu.show(menuItems(mt, menuContext(menuOn.part), title), x, y, name, keys);
     } else if (t?.kind === "cluster") {
       const cl = canvas.layout.clusters[t.c];
       const st = trust.state(cl, cm());
-      const mt: MenuTarget = { kind: "cluster", key: cl.key, folded: canvas.folded.has(t.c), folder: cm() === "module", trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null };
-      menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y } };
+      const artName = artNameId("cluster", cl.key);
+      const inArt = art.nameChosen(artName);
+      const mt: MenuTarget = {
+        kind: "cluster",
+        key: cl.key,
+        folded: folded ?? canvas.folded.has(t.c),
+        folder: cm() === "module",
+        trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null,
+        ...(inArt !== undefined ? { art: inArt } : {}),
+      };
+      menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y }, artName };
       canvas.previewCluster(t.c);
       ctxMenu.show(menuItems(mt, menuContext(menuOn.part), title), x, y, cl.key.replace("⟨external⟩", "External"), keys);
     } else {
@@ -3576,6 +3677,9 @@ async function boot(): Promise<void> {
     if (act.startsWith("detach:")) return on.note ? void detach(on.note, Number(act.slice(7))) : undefined;
     if (act.startsWith("item:")) return on.note ? void itemTo(on.note, act.slice(5)) : undefined;
     switch (act) {
+      case "art-name":
+        if (on.artName && (t.kind === "decl" || t.kind === "cluster")) art.showName(on.artName, !t.art);
+        return;
       case "source":
         if (i !== undefined) sources.show(i);
         return;
@@ -3631,13 +3735,15 @@ async function boot(): Promise<void> {
         return;
       }
       case "fold":
-        if (on.c !== undefined) canvas.toggleFold(on.c);
+        if (on.linear && t.kind === "cluster") linear.toggleFold(t.key);
+        else if (on.c !== undefined) canvas.toggleFold(on.c);
         return;
       case "hide":
         if (t.kind === "cluster") hideLevel(t.key);
         return;
       case "fit":
-        canvas.fit();
+        if (on.linear) linear.fit();
+        else canvas.fit();
         return;
       case "relayout":
         await relayout();
@@ -3714,6 +3820,9 @@ async function boot(): Promise<void> {
       menuOnSelection();
       return;
     }
+    // in the artwork mode, the keys that act on the board alone: Search, the tool, the zoom, the
+    // outside world, the levels, the lock — not those that open what the mode puts away
+    if (artLook && !ART_KEYS.has(e.key)) return;
     // with Ctrl or ⌘ a letter is the browser's (Ctrl L, Ctrl F, …), and the drag key held is the lock's
     if ((e.ctrlKey || e.metaKey) && e.key.length === 1) return;
     const route = routeKey(e.key, win !== null, !!(e.target as Element | null)?.closest?.("button, a[href], summary, select"));
@@ -3772,7 +3881,7 @@ async function boot(): Promise<void> {
     else if (e.key === "e") toggleOutside();
     else if (e.key === "g") edgesBtn.click();
     else if (e.key === "o") linear.toggle();
-    else if (e.key === "c") chooseScheme(canvas.scheme === "kind" ? "status" : "kind");
+    else if (e.key === "c") chooseScheme(ownScheme() === "kind" ? "status" : "kind");
     else if (e.key === "l") toggleLock();
     else if (e.key === "[") canvas.stepLevels(-1);
     else if (e.key === "]") canvas.stepLevels(1);
@@ -3784,7 +3893,7 @@ async function boot(): Promise<void> {
         const tick = () => {
           if (m.hidden) return;
           const st = canvas.stats();
-          m.textContent = `${st.fps} fps · draw ${st.drawMs} ms · ${st.dots} dots · ${st.boundaries} boundaries · ${st.bundles} bundles${st.awake ? " · moving" : ""}`;
+          m.textContent = `${st.fps} fps · draw ${st.drawMs} ms · ${st.dots} dots · ${st.circles} circles · ${st.bundles} bundles${st.awake ? " · moving" : ""}`;
           setTimeout(tick, 250);
         };
         tick();

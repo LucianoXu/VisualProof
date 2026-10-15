@@ -14,7 +14,7 @@
 // A board of a past build is a board of that graph and nothing else: its scope evaluated on it
 // (shared/board.ts, boardSet), what is lit computed on it, its numbering its own.
 
-import type { ViewMeta, ViewNode } from "./graph.ts";
+import type { GitSource, ViewMeta, ViewNode } from "./graph.ts";
 import { byName } from "./review.ts";
 import type { KeyMark, Opinion, ReviewData, Target } from "./review.ts";
 import { Graph } from "./viewgraph.ts";
@@ -84,6 +84,13 @@ export interface PastGraph {
   kept: ReadonlyMap<string, "lake" | "places">;
 }
 
+/** The git source of a past build: the project's source, the build's own commit; none where the
+ *  build's commit is not known, or only guessed. */
+function gitThen(now: GitSource | undefined, commit: Snapshot["commit"]): { git?: GitSource } {
+  if (!commit || commit.guessed) return { git: undefined };
+  return { git: { source: now?.source ?? null, commit: commit.hash, branch: commit.branch, ...(commit.dirty ? { dirty: true as const } : {}) } };
+}
+
 /** The past graph of snapshot `snap` (its declarations and its edges, as /graph's parts give them),
  *  marked by `diff` (from it to the latest), with the project's description of `now`. */
 export function pastGraph(snap: SnapshotNodes, edges: Int32Array, now: Graph, diff: HistoryDiff): PastGraph {
@@ -96,7 +103,8 @@ export function pastGraph(snap: SnapshotNodes, edges: Int32Array, now: Graph, di
   const meta: ViewMeta = {
     schema: 1,
     layoutVersion: now.meta.layoutVersion,
-    project: { ...now.meta.project, extractedAt: snap.snapshot.at },
+    // the commit of that build, where it is known; the source is the project's now
+    project: { ...now.meta.project, extractedAt: snap.snapshot.at, ...gitThen(now.meta.project.git, snap.snapshot.commit) },
     modules: snap.modules.map((m) => ({ name: m.name, file: null, imports: m.imports })),
     nodes,
     projectCount: P,

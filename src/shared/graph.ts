@@ -175,6 +175,15 @@ export type ClusterMode = "namespace" | "module";
  *  server's layout memory, places dropped in a browser) do not carry over. 2: dependency order. */
 export const LAYOUT_VERSION = 2;
 
+/** A project's git source and commit, as a page may show them. */
+export interface GitSource {
+  source: string | null;
+  commit: string;
+  branch: string | null;
+  /** a `.lean` file differed from the commit */
+  dirty?: true;
+}
+
 export interface ViewMeta {
   schema: 1;
   layoutVersion: number;
@@ -188,6 +197,10 @@ export interface ViewMeta {
     toolchain: string;
     extractedAt: string;
     extractMs: number;
+    /** where the project is a git repository (server/history.ts, gitSource): its source — the
+     *  remote's host and path, no user name or password; null where it has none on the network — and
+     *  the commit it was read from. An artwork's foot says them (ExportSpec decision 19). */
+    git?: GitSource;
   };
   /** `compiled`: the Lake hash of the text the module's declarations were read from (its build's
    *  source); a source served with another hash is not that text */

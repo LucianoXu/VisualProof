@@ -30,7 +30,7 @@ MCP: `companion`.
 | `source`, `sourceCollapsed` | the source window following their selection: open; collapsed to its pill |
 | `pinned` | pinned source windows, first pinned first, `{declaration, collapsed}`; followers mirror them (an agent pins none) |
 | `history` | `{snapshot, built}`: the build they browse in the Time Machine |
-| `activity`, `lostAndFound`, `colouring`, `edges`, `proofEdges` | what else followers take, where their page says it (a page from before, and an agent, say none): `activity` `{open, kind, who, mine?}` (kind: all, review, build, change; who: all, agents, people; `mine`: the person whose targets it keeps to); `lostAndFound` `{open}`; `colouring` `kind` or `status`; edges drawn or not |
+| `activity`, `lostAndFound`, `colouring`, `edges` | what else followers take, where their page says it (a page from before, and an agent, say none): `activity` `{open, kind, who, mine?}` (kind: all, review, build, change; who: all, agents, people; `mine`: the person whose targets it keeps to); `lostAndFound` `{open}`; `colouring` `kind` or `status`; edges drawn or not |
 | `inWords` | the place in words; of the row above, only what differs from a fresh page |
 
 `wait=<s>` (≤ 60) waits until someone comes, goes, goes idle or moves (view, selection,
@@ -80,7 +80,7 @@ Fields go over your own place (none: your place): every `POST view` field but `l
 | `history` | a snapshot id: the Time Machine at that build; `null`: none |
 | `region` | `[x, y, w, h]`: centre, width, height in the board's world (a top-level cluster's place is its `at` in `views/view`, a nested one's its parents' added up), fitted to the opener's screen. Left out, framed as for any link |
 | `activity` | `{"open": true, "kind": "review", "who": "people"}`, values as in `companion` |
-| `lostFound`, `scheme`, `edges`, `proofEdges` | the lost-and-found open; the colouring, `kind` or `status`; edges, proof edges drawn |
+| `lostFound`, `scheme`, `edges` | the lost-and-found open; the colouring, `kind` or `status`; edges drawn |
 | `exact` | `false`: the view's address alone (Share's switch off) |
 
 ```json

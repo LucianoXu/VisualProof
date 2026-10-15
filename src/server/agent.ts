@@ -1128,7 +1128,7 @@ export class AgentApi {
       people: out,
       privateCount: P.privateCount(),
       agents,
-      note: "privateCount: how many people are here privately — not listed, not followable, nothing known of where they are. Each person's place is that of their liveliest page: the view, the tool (how a click selects), what is selected (a query), the declaration their panel tells of, whether its source window is open (and collapsed), the source windows they pinned (pinned: declaration, collapsed), and, where their page says them, Activity (open, kind, who, mine: whose targets), the lost-and-found (lostAndFound.open), the colouring (kind or status), edges and proofEdges — all of which those following them see too. idle: no input for five minutes, or the page in the background. verified: invited by a personal link, so the name is theirs. To look where someone looks, POST /api/agent/view with their view and declaration; ?wait=<s>&since=<rev> waits for the next change (at most 60 s).",
+      note: "privateCount: how many people are here privately — not listed, not followable, nothing known of where they are. Each person's place is that of their liveliest page: the view, the tool (how a click selects), what is selected (a query), the declaration their panel tells of, whether its source window is open (and collapsed), the source windows they pinned (pinned: declaration, collapsed), and, where their page says them, Activity (open, kind, who, mine: whose targets), the lost-and-found (lostAndFound.open), the colouring (kind or status), edges — all of which those following them see too. idle: no input for five minutes, or the page in the background. verified: invited by a personal link, so the name is theirs. To look where someone looks, POST /api/agent/view with their view and declaration; ?wait=<s>&since=<rev> waits for the next change (at most 60 s).",
     });
   }
 
@@ -1172,7 +1172,7 @@ export class AgentApi {
         ? ", with the lost-and-found open"
         : "";
     const drawn =
-      (v.scheme ? `, coloured by ${v.scheme}` : "") + (v.edges === false ? ", edges hidden" : "") + (v.proofEdges ? ", proof edges shown" : "");
+      (v.scheme ? `, coloured by ${v.scheme}` : "") + (v.edges === false ? ", edges hidden" : "");
     return {
       view: v.view ?? PROJECT,
       viewTitle: title,
@@ -1190,7 +1190,6 @@ export class AgentApi {
       ...(v.lostFound ? { lostAndFound: { open: v.lostFound.open } } : {}),
       ...(v.scheme ? { colouring: v.scheme } : {}),
       ...(v.edges !== undefined ? { edges: v.edges } : {}),
-      ...(v.proofEdges !== undefined ? { proofEdges: v.proofEdges } : {}),
       inWords: words + then + shownBy + drawn + ".",
     };
   }
@@ -2564,7 +2563,8 @@ export class AgentApi {
       place[k] = b[k];
       return null;
     };
-    const bad = bool("sourceCollapsed") ?? bool("edges") ?? bool("proofEdges");
+    // (proofEdges, said until 2026-10-15, is no more: left as it is, as any word not known)
+    const bad = bool("sourceCollapsed") ?? bool("edges");
     if (bad) return bad;
     if (b.lostFound !== undefined) {
       if (typeof b.lostFound !== "boolean") return fail(400, "lostFound is true (open) or false.", "The lost-and-found has no filters.");
@@ -2768,7 +2768,7 @@ export class AgentApi {
       {
         method: "GET", path: "/api/agent/companion", brief: "who is on the page, and where each one looks", about: "Who is on the page now and where each one is — every person (the place of their liveliest page: view, tool, selection, the declaration in their panel, the source window and the pinned ones, Activity, the lost-and-found, the colouring and the edges, idle or not) and the agents present — to follow the people you help; privateCount says how many people are here privately, who are not listed and cannot be followed. With wait, the answer waits until someone comes, goes or moves.",
         params: { wait: "optional: seconds to wait for a change (at most 60)", since: "optional: the rev of an earlier answer; with wait, the answer comes as soon as the revision is another" },
-        returns: "{rev, changed?, now, sharedBy?: {name, here}, sharedByNote?, people: [{name, idle, pages, place: {view, viewTitle, targets?, scope?, mode, tool, selection, declaration, source, sourceCollapsed, pinned: [{declaration, collapsed}], history?, activity?: {open, kind, who, mine?}, lostAndFound?: {open}, colouring?, edges?, proofEdges?, inWords}}], privateCount, agents: [{name, idle, state?, status?, lastSeen?, you?, place}], note}",
+        returns: "{rev, changed?, now, sharedBy?: {name, here}, sharedByNote?, people: [{name, idle, pages, place: {view, viewTitle, targets?, scope?, mode, tool, selection, declaration, source, sourceCollapsed, pinned: [{declaration, collapsed}], history?, activity?: {open, kind, who, mine?}, lostAndFound?: {open}, colouring?, edges?, inWords}}], privateCount, agents: [{name, idle, state?, status?, lastSeen?, you?, place}], note}",
         run: (a) => this.companion(a),
       },
       {
@@ -2905,7 +2905,7 @@ export class AgentApi {
       },
       {
         method: "POST", path: "/api/agent/view/link", about: "A link to what you look at, or to a place you give, that opens exactly that for whoever opens it, as a person's Share makes with Exactly what I see (the owner's decision of 2026-10-12): the address, and after it a snapshot of everything followed — the view, the build in the Time Machine, the region of the board, the tool, the selection, the focus, the panel, the source windows, the reference window, Activity, the lost-and-found, the colouring, the edges. Fields you send are taken over your own place (as POST view takes them); nothing moves, you neither. The page that opens it applies it once, and says in a line what is no longer there. It holds no key: it opens for whoever is let in already, the people on the page.",
-        params: { "view, review, sel, selection, mode, source, focus, paper": "as POST view: over your own place", sourceCollapsed: "true: the source window following sel is collapsed to its pill", pinned: `source windows pinned, [{name, collapsed?}], at most ${MAX_PINNED}, the first pinned first`, history: "a snapshot's id (GET /api/agent/history): the Time Machine at that build; null for none", region: "[x, y, w, h]: the region of the board framed — its centre, width and height in the board's world — fitted to the opener's screen; left out, framed as for any link", activity: "{open, kind?, who?, mine?}: Activity open or closed, its filters", lostFound: "true: the lost-and-found open", scheme: "kind or status: the colouring", edges: "edges drawn", proofEdges: "proof edges drawn", exact: "false: only the view, as Share's switch turned off makes it (the address alone)" },
+        params: { "view, review, sel, selection, mode, source, focus, paper": "as POST view: over your own place", sourceCollapsed: "true: the source window following sel is collapsed to its pill", pinned: `source windows pinned, [{name, collapsed?}], at most ${MAX_PINNED}, the first pinned first`, history: "a snapshot's id (GET /api/agent/history): the Time Machine at that build; null for none", region: "[x, y, w, h]: the region of the board framed — its centre, width and height in the board's world — fitted to the opener's screen; left out, framed as for any link", activity: "{open, kind?, who?, mine?}: Activity open or closed, its filters", lostFound: "true: the lost-and-found open", scheme: "kind or status: the colouring", edges: "edges drawn", exact: "false: only the view, as Share's switch turned off makes it (the address alone)" },
         returns: "{ok, link, exact, carries: what the link opens on, length, note, temporary?}",
         run: (a) => this.viewLink(a),
       },

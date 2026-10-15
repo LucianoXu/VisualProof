@@ -34,14 +34,15 @@ board holds, else `null`. Your own focus (`POST view {focus}`) changes nothing o
 
 ## The query language
 
-`all`, `tcb(A, B)`, `uses(A)`, `usedBy(A)`, `decl(A, B)`, `key(T)` (the target and the declarations
+`all`, `tcb(A, B)`, `uses(A)` (everything used), `usedBy(A)`, `refs(A)` (A and what it uses
+directly: the page's Direct), `decl(A, B)`, `key(T)` (the target and the declarations
 marked key for it that its review still holds; `key(targets)`: every target's), `ns(P)`, `file(P)`,
 `trusted`, `external`, `kind(theorem, def)`, `status(unreviewed|approved|commented|stale)`,
 `advice(approve|comment)`, `sorry`, `nonstandard`; joined left to right by `and`, `or`, `except`;
 parentheses group; a closure may take a query (`tcb(ns(P) except external)`); a name that needs it
 is in JSON quotes. A target's review set: `tcb(T) except trusted or (uses(T) and kind(axiom) and
 nonstandard)`. At most 20,000 characters, 32 levels of nesting, 1,000 parts, 2,000 names, 64
-closures (`tcb`, `uses`, `usedBy`, each target of a `key(…)`); beyond, 400.
+closures (`tcb`, `uses`, `usedBy`, `refs`, each target of a `key(…)`); beyond, 400.
 
 ## The endpoints
 

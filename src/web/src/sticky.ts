@@ -72,8 +72,8 @@ import { shortName } from "../../shared/viewgraph.ts";
 import type { FitBox, Ring, RingItem } from "../../shared/ring.ts";
 import { AUTO_COLLAPSE_PX, noteExcerpt, noteLook, noteMarkers, placeAt, placeIn as viewPlaceIn } from "../../shared/sticky.ts";
 import type { NoteCard, NoteCarry, NoteDecl, NotePlace, PlaceCluster, StickyNote } from "../../shared/sticky.ts";
-import { firstWords } from "../../shared/doc/outline.ts";
 import { BOT } from "./agentmark.ts";
+import type { NotePicture } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { dragKeyHeld, MAC, menuClick } from "./drag.ts";
 import { escapeHtml } from "./highlight.ts";
@@ -1316,8 +1316,9 @@ export class Stickies {
 
   /** Put note `id` at a spot of the board inside cluster `key` (null: in none), as letting it go
    *  there would: the linear form's drop (web/src/linear.ts, ExportSpec decision 18). It keeps
-   *  whatever it is attached to. False where the board is not drawn or the note not on it. */
-  moveInto(id: string, key: string | null, world: [number, number]): boolean {
+   *  whatever it is attached to, unless `detach`. False where the board is not drawn or the note
+   *  not on it. */
+  moveInto(id: string, key: string | null, world: [number, number], detach = false): boolean {
     const d = this.drawn.get(id);
     const b = this.hooks.board();
     const nb = this.board();
@@ -1333,15 +1334,81 @@ export class Stickies {
       if (c >= 0) to = { kind: "view", place: viewPlaceIn(b.mode, world, clusters, c) };
     }
     if (!to) return false;
-    this.hooks.moved(id, { decl: d.note.decl ?? null, to });
+    this.hooks.moved(id, { decl: detach ? null : (d.note.decl ?? null), to });
     return true;
   }
 
-  /** The notes the board shows now, each where its icon is in the board's world, with its first
-   *  words: what an artwork draws (web/src/artwork.ts). */
-  shownNotes(): { world: [number, number]; words: string }[] {
-    const out: { world: [number, number]; words: string }[] = [];
-    for (const d of this.drawn.values()) if (d.world && d.look !== "hidden") out.push({ world: d.world, words: firstWords(d.note.text) });
+  /** The notes as the board shows them now, read from their elements — where each mark, leader and
+   *  card is on the screen, in what colours, with what text: what an artwork's file draws of them
+   *  (ExportSpec decision 19, web/src/artwork.ts). */
+  asDrawn(): NotePicture[] {
+    const out: NotePicture[] = [];
+    const style = (el: Element) => getComputedStyle(el);
+    const surface = style(document.body).getPropertyValue("--surface-solid").trim();
+    /** a leader's ends, from what place() wrote: translate(x, y) rotate(a), its width the length */
+    const ends = (el: HTMLElement): [number, number, number, number] | null => {
+      const m = /translate\(([-\d.]+)px, ([-\d.]+)px\) rotate\(([-\d.e]+)rad\)/.exec(el.style.transform);
+      const len = parseFloat(el.style.width);
+      if (!m || !(len >= 0)) return null;
+      const [x, y, a] = [Number(m[1]), Number(m[2]), Number(m[3])];
+      return [x, y, x + len * Math.cos(a), y + len * Math.sin(a)];
+    };
+    for (const d of this.drawn.values()) {
+      if (d.look === "hidden" || !d.at) continue;
+      const ir = d.icon.getBoundingClientRect();
+      if (!(ir.width > 0)) continue;
+      const r = ir.width / 2, s = r / ICON_R;
+      const ic = style(d.icon), svg = d.icon.querySelector("svg.sk-icon");
+      const dot = d.icon.querySelector(".sk-dot");
+      let decl: NotePicture["decl"] = null;
+      const dl = !d.dlead.hidden ? ends(d.dlead) : null;
+      const mk = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec(d.dmark.style.transform);
+      if (dl && mk) {
+        const ds = style(d.dlead);
+        decl = { line: dl, width: parseFloat(ds.borderTopWidth) || 1.5 * s, colour: ds.borderTopColor, mark: [Number(mk[1]), Number(mk[2])], markPx: 5 * s };
+      }
+      let card: NotePicture["card"] = null, lead: NotePicture["lead"] = null;
+      if (d.look === "open" && d.box) {
+        const cr = d.card.getBoundingClientRect(), cs = style(d.card);
+        const text = d.card.querySelector<HTMLElement>(".sk-text"), by = d.card.querySelector<HTMLElement>(".sk-by");
+        card = {
+          x: cr.left,
+          y: cr.top,
+          w: cr.width,
+          h: cr.height,
+          bg: cs.backgroundColor,
+          edge: cs.getPropertyValue("--note-edge").trim(),
+          accent: cs.getPropertyValue("--note-icon").trim(),
+          text: text?.innerText ?? "",
+          by: by?.innerText.trim() ?? "",
+          textColour: cs.color,
+          byColour: by ? style(by).color : cs.color,
+        };
+        const ln = !d.lead.hidden ? ends(d.lead) : null;
+        if (ln) {
+          const ls = style(d.lead);
+          lead = { line: ln, colour: ls.borderTopColor, dashed: ls.borderTopStyle === "dashed" };
+        }
+      }
+      out.push({
+        x: ir.left + r,
+        y: ir.top + r,
+        r,
+        t: d.t,
+        fill: ic.backgroundColor,
+        ring: ic.borderTopColor,
+        ringW: (parseFloat(ic.borderTopWidth) || 1.5) * s,
+        dashed: ic.borderTopStyle === "dashed",
+        glyph: svg?.innerHTML ?? "",
+        glyphPx: 14 * s,
+        colour: svg ? style(svg).color : ic.borderTopColor,
+        dot: dot ? style(dot).backgroundColor : ic.borderTopColor,
+        surface,
+        decl,
+        card,
+        lead,
+      });
+    }
     return out;
   }
 

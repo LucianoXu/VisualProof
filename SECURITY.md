@@ -30,6 +30,10 @@ into the latest release only.
   until revoked, which ends its pages at once. With `--public` the address alone makes a read-only
   reader of whoever comes without the key or a link: it puts the whole project, its review and its
   library online, so give it only to a project meant to be public.
+- **The project's git remote.** Where the project is a git repository, the page is told its remote's
+  address and the commit it was read from (an artwork's foot shows them): the host and path alone,
+  never a user name, password or token written into the remote's URL, and nothing for a remote that
+  is a path on the machine. Git is only asked, never written to.
 - **Plain HTTP.** The server speaks HTTP only: the key and the cookies cross the network in the
   clear. Beyond a trusted network, put a TLS reverse proxy (or a VPN such as Tailscale) in front.
   Its cookies are `HttpOnly` and `SameSite=Lax`.

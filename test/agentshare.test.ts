@@ -282,13 +282,14 @@ test("the companion: where every person is, and the agents; it waits until someo
     // 2026-10-11): Activity and its filters, the lost-and-found, the colouring, the edges — said
     // where her page says them, which an older page does not; a move
     for (const k of ["activity", "lostAndFound", "colouring", "edges", "proofEdges"]) assert.ok(!(k in hers), k);
+    // (proof edges, said until 2026-10-15, are no more: one still sent is not carried)
     const shows = { activity: { open: true, kind: "review", who: "people", mine: "Alice" }, lostFound: { open: false }, scheme: "status", edges: false, proofEdges: true };
     await S.ask("POST", "/api/presence", { token: hello.token, view: { ...here, ...shows }, idle: false }, ALICE);
     const third = (await S.ask("GET", "/api/agent/companion", undefined, bearer(token))).json!;
     assert.notEqual(third.rev, after.rev);
     const sees = third.people.find((p: Json) => p.name === "Alice").place;
-    assert.deepEqual([sees.activity, sees.lostAndFound, sees.colouring, sees.edges, sees.proofEdges], [shows.activity, { open: false }, "status", false, true]);
-    assert.match(sees.inWords, /with Activity open on Review, people only, on Alice's targets, coloured by status, edges hidden, proof edges shown\.$/);
+    assert.deepEqual([sees.activity, sees.lostAndFound, sees.colouring, sees.edges, sees.proofEdges], [shows.activity, { open: false }, "status", false, undefined]);
+    assert.match(sees.inWords, /with Activity open on Review, people only, on Alice's targets, coloured by status, edges hidden\.$/);
     assert.equal((await S.ask("GET", "/api/agent/companion?since=x", undefined, bearer(token))).status, 400);
     alice.close();
   } finally {

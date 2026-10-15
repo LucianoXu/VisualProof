@@ -213,7 +213,7 @@ shows while the pointer is on its button, and nowhere else. With something selec
 another tool selects the pick last clicked again under it, alone: from Selection only the last
 pick stays; back to Selection, only the one thing clicked. **Rests on** is one mode at three
 granularities (ViewSpec decision 20), its steps beside it while it is the mode: `2` enters it at
-the step last used (TCB at first) and, pressed again, steps TCB → Keys → Uses.
+the step last used (TCB at first) and, pressed again, steps TCB → Keys → Uses → Direct.
 
 | Tool | A click on a declaration (or a cluster: all its declarations) selects | Key |
 |---|---|---|
@@ -221,6 +221,7 @@ the step last used (TCB at first) and, pressed again, steps TCB → Keys → Use
 | Rests on · Uses | it and everything it uses, proofs included | 2 |
 | Rests on · TCB | it and the definitions its statement rests on, proofs skipped | 2 |
 | Rests on · Keys | it and the key declarations in its TCB: where the review has a focus that target's, elsewhere every target's (a target clicked: its own); the key graph's edges join them, dashed | 2 |
+| Rests on · Direct | it and what it uses directly, in its statement, its body or its proof | 2 |
 | Used by | it and everything that uses it | 3 |
 
 A cluster picked covers the picks inside it. With any tool but Selection, a click makes the
@@ -295,10 +296,13 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   what holds it. Neighbours make way and spring back; what a moved declaration depends on leans
   after it. Pins and folds belong to the board: everyone on the view sees them (see Views).
 - **Edges** are bundled along the cluster tree. With nothing selected, statement and body edges
-  between what is visible are aggregated (zoomed out, between clusters) and drawn faint; proof
-  edges only with **Proof edges** (and with them the grammar edges, into syntax no TCB holds). The
-  selection's edges are drawn on top, the rest fade; under Keys, the key graph's edges among what
+  between what is visible are aggregated (zoomed out, between clusters) and drawn faint; an edge
+  only a proof or grammar holds is not drawn there. The selection's edges are drawn on top, the rest fade; under Keys, the key graph's edges among what
   is lit instead, dashed.
+- **Names** float over everything else on the board, each on a halo of the background that fades
+  outward, so that no edge or point crosses a name. A cluster's name sits inside the top of its
+  circle; declarations' names show once you zoom in, those nearest the middle first, none over
+  another.
 - **Going somewhere**: a row in the panel's lists, a name in a signature or the source, a search
   hit, a target — is a click there with the tool: the panel tells of it and the lead points to it; ‹ and › in the bar and in the source
   window (or the browser's own back and forward) step through where you have been. The address always names what is shown, so
@@ -352,7 +356,7 @@ A view is a board ([ViewSpec.md](../SPEC/ViewSpec.md)): what is on it and how it
 everyone on it; where you look, what you selected and your mode are yours alone; the
 review is the same on every board. The page says so by where things are: the side panel on the
 left is the board, the buttons at the bottom right are your eyes (zoom and fit; behind ⋯ the
-lock, edges, the linear form, proof edges, theme), the top holds your tabs and your mode.
+lock, edges, the linear form, theme), the top holds your tabs and your mode.
 
 - **The side panel**: the **targets**, each with its progress, opening its view on the target (one
   with no view is given a temporary view of its TCB, linked to it while it lasts); then the cluster tree, whose rows select their cluster. Over the tree, **⚙ Board** opens
@@ -635,27 +639,75 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   vertical line, in the document's order, the first at the top; a section's circle holds what it
   holds, each level of nesting one more circle, the labels on the right indented by depth, numbered
   as the PDF numbers its sections, the notes it prints in italics, and the edges (where ⋯ draws them)
-  as arcs on the left. Things ease from where the board has them to the line, and back when the
-  window closes. ⋯ → **Linear form**, or `o`, shows it at any time; those following you see it too.
-  The wheel scrolls it, Ctrl (⌘) with the wheel zooms, a drag on empty space pans, a click selects.
-  **Drag a declaration, a note or a section along the line** (as on the board: with the lock let go,
-  or the drag key held) to move it among its siblings — never out of its section: on release it is
-  put on the board between its new neighbours, as a drop there would (a pin, for everyone on the
-  view; a note moved in its cluster), and the document's order follows. A note attached to a
-  declaration moves with it. Not on a snapshot, a read-only page or a past build's preview.
+  as arcs on the left, orange at the end that uses and blue at the end used, bold where the board
+  draws its edge lit (both ends lit, of what the mode follows; under Keys, the key links, dashed). Things
+  ease from where the board has them to the line, and back when the window closes. ⋯ → **Linear
+  form**, or `o`, shows it at any time; those following you see it too. A section's ▸ (or a double
+  click on its heading) folds it into one row with its count, the edges of what it holds ending
+  there; a section of more than ten items starts folded, and the one the selection is in opens.
+  What the document starts with, under no heading, has a heading of its own here, **In no
+  section**, which folds the same. What you fold is yours alone. The wheel zooms about the pointer,
+  as far out as the board does. The row the pointer is over, from its point to the end of its name,
+  is lit: it is what a click selects, a drag moves and the right click is on; elsewhere a drag pans.
+  The **right click**
+  opens the board's menu on the row (Fold folds it here; Hide this level, notes, trust, views as on
+  the board); **Add a note here** puts the note right after the row (a section's: first in it). A
+  click on a note opens it, its text in place, or closes it.
+  **Drag a declaration, a note or a section along the line** by its point or its label (the lock
+  does not apply here) to move it among its siblings — never out of its section. It follows the
+  pointer and the others make room; on release the board is changed as little as gives exactly the
+  order dropped — the rows it passed each taking the place of the one before them, else it alone
+  between its new neighbours, else the rows passed stacked anew (pins, for everyone on the view;
+  notes moved in their cluster) — checked as the board will draw it, so the rest stay put; where
+  the board has no room for that order, nothing moves and you are told. A note attached to a
+  declaration moves with it; dragged on its own elsewhere, it is attached no more. Not on a
+  snapshot, a read-only page or a past build's preview.
 - **Artwork** (decision 19): the Export window's second tab makes a picture of the board, PNG or
-  SVG. The window closes into framing: a frame in the middle of the screen, of the shape of the size
-  chosen, the rest shaded and the panels put away, the whole board fitted in it to start with. Pan
-  and zoom the board under it as ever; once it is still, the frame shows the picture as it will be.
-  The panel beside it sets the size — presets (1920 × 1080, 4K, 4096², A3 and A2 at 300 dpi, either
-  way round) or width and height up to 16,384 pixels — and the look: Kind or Status, light or dark,
-  the background (the theme's, white, transparent), names (all, the clusters' only, none), edges
-  (all, the selection's, none) and proof edges, notes, targets (star and name, as any, or alone with
-  the rest faded) and the selection as you see it. **Save PNG** or **Save SVG** makes the file in
-  your browser, named after the view: the picture in the frame at the size chosen — the same picture,
-  more pixels. Nothing is asked of the server, so a read-only page makes one too, and a snapshot of
-  the page, whose Export goes straight to framing. Esc or **Done** puts the board back as it was. The
-  choices are kept in this browser.
+  SVG. The window closes into the artwork mode, where the board itself is the picture (of the bar,
+  only Share and Search work until you leave it): it is drawn
+  with the artwork's settings at once, moving or still, and everything works on it as ever — pan,
+  zoom, select, drag, the menu, notes. Over it, a viewfinder: a frame in the middle of the screen,
+  of the shape of the size chosen, the rest shaded and the panels put away, the whole board fitted
+  in it to start with — the frame closing in on it and the board taking the artwork's look over half
+  a second, as the linear form comes. What lies in the frame is the picture. The panel at the right sets the size —
+  HD, 4K, a square, A3 or A2 at 300 dpi, landscape or portrait, or width and height up to 16,384
+  pixels — and the look. **Style**: *As the board*; *Cells*, each top-level namespace a glowing
+  territory of its own colour on a dark field; or *Starfield*, a night sky where each declaration
+  is a star, the brighter the more it is used, and each cluster a constellation. In any style a
+  cluster's name runs along the top of its circle, in the fonts VisualProof ships: the top-level
+  ones in spaced capitals of Jost, as the title is in every style, the rest in Source Sans 3 (Source
+  Serif 4 for the starfield). **Title** and the line **Under it** go at the top left —
+  the project's name and how many declarations and targets it has, until you write your own (empty
+  for none; *The project's own* brings them back) — at the **Size** you slide, made smaller where
+  that would not fit across the picture, as in a narrow portrait: these are set above
+  the frame's top left, and the **Source and commit** switch below its bottom right, with a **Size**
+  slider beside it for the foot — both its sides, "Generated by VisualProof" and the source, kept on
+  one line: the slider goes as far as the picture's width allows; opening the mode
+  fits the board below the title. The panel's **Picture** section also offers **A thin border round
+  the picture**. Then the theme (light, dark, or transparent for a light page or a
+  dark one, shown as a checkerboard; a dark style's own ground, or transparent), Kind or Status, names (as the board shows them, the clusters' only,
+  none, or by selection), edges (all, the selection's, none), notes, targets (star
+  and name, as any, alone with the rest faded, or by selection), the key declarations' diamonds
+  (**Key marks**), and the selection as you see it. The project's git source and commit go at the
+  bottom right when you ask; "Generated by VisualProof" is always at the bottom left; the frame shows
+  both where the file will have them. Where many targets' stars cover the picture, Targets **By
+  selection** lists every target of the review, all ticked to start with: untick one and it is drawn
+  as any declaration, its keys' diamonds gone with it. Names **By selection** starts from *As
+  shown* and lists the names the frame holds, clusters first, under a filter, ticked where they are
+  written: untick a name to hide it (no other name takes its place), tick one to show it, even over
+  another. Pan and zoom, and the names As shown writes come and go as ever, without those you hid.
+  **As shown** starts again from it, **None** from no name at all, so that only the names you tick
+  are written; with a filter, **All these** and **None of these** do every name it holds. The
+  board's right-click menu on a declaration or a cluster offers *Show its name in the artwork* or
+  *Hide its name in the artwork*. What you choose goes to those following you too. **Save PNG** draws the frame
+  again with the board's own renderer at the size chosen — its names, marks and notes over it — the
+  same picture, more pixels. **Save SVG** writes the same content, within the frame, as vectors:
+  circles, points, edges as paths, names as text, the notes. Both are made in your browser, named
+  after the view: nothing is asked of the server, so a read-only page makes one too, and a snapshot
+  of the page, whose Export goes straight to the artwork. Esc or **Done** leaves as smoothly, the
+  board drawn as before. The artwork is followed and shared: those following you see your board drawn with it and
+  your frame, and Share's *Exactly what I see* carries it. Your last settings are kept in this
+  browser for the next one.
 - **The window** says which view it exports and what that holds — *Export the view "X": N
   declarations in M sections*, and how many declarations from outside the project it holds, which
   are not printed — then the document's **title** and **author line** as they will print, then the
@@ -781,7 +833,7 @@ what each one looks at stays their own.
   the Time Machine, camera, tool, selection and focus, what their panel tells of, their source
   windows and reference window (each opened, collapsed and closed with theirs, placed as your
   screen places them), Activity and the lost-and-found open or closed with Activity's filters, and
-  their colouring, edges and proof edges. Changing any of these ends following, as acting on what
+  their colouring and edges. Changing any of these ends following, as acting on what
   you are shown does (a button of the panel, typing a comment), and Esc. Nothing of yours ends it:
   where windows sit, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
   Export, Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —

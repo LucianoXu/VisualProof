@@ -178,8 +178,8 @@ test("retool into and out of Keys: the same thing clicked, at the new step", () 
   assert.equal(text(retool(read, shownOf(read[0]), "tcb")), "tcb(N.X)");
 });
 
-test("key 2: Rests on at the step last used, TCB at first; again, TCB, Keys, Uses", () => {
-  assert.deepEqual(STEPS, ["deps", "tcb", "keys"], "as the switch shows them");
+test("key 2: Rests on at the step last used, TCB at first; again, TCB, Keys, Uses, Direct", () => {
+  assert.deepEqual(STEPS, ["deps", "tcb", "keys", "refs"], "as the switch shows them");
   // entering, from Selection or Used by
   assert.equal(keyTwo("plain", undefined), "tcb", "a reader who never chose starts at TCB");
   assert.equal(keyTwo("plain", "keys"), "keys");
@@ -188,14 +188,15 @@ test("key 2: Rests on at the step last used, TCB at first; again, TCB, Keys, Use
   assert.equal(enterStep("deps"), "deps");
   assert.equal(enterStep("apps"), "tcb", "only a step is remembered");
   // pressed again
-  const cycle = (from: "tcb" | "keys" | "deps", n: number) => {
+  const cycle = (from: "tcb" | "keys" | "deps" | "refs", n: number) => {
     const out: string[] = [];
     let m: string = from;
     for (let k = 0; k < n; k++) out.push((m = keyTwo(m as "tcb", null)));
     return out;
   };
-  assert.deepEqual(cycle("tcb", 4), ["keys", "deps", "tcb", "keys"]);
-  assert.deepEqual(cycle("deps", 2), ["tcb", "keys"]);
+  assert.deepEqual(cycle("tcb", 5), ["keys", "deps", "refs", "tcb", "keys"]);
+  assert.deepEqual(cycle("deps", 2), ["refs", "tcb"]);
+  assert.equal(enterStep("refs"), "refs");
 });
 
 test("the step last used is kept in this browser, beside the other reading preferences", () => {

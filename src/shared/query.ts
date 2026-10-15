@@ -8,7 +8,7 @@
 //
 // The text form, left to right:
 //
-//   all | selection | decl(A, B) | tcb(A) | uses(A, B) | usedBy(selection)
+//   all | selection | decl(A, B) | tcb(A) | uses(A, B) | usedBy(selection) | refs(A)
 //   tcb(ns(Fermat42) except external)   a closure of the set a query holds
 //   ns(Fermat42)                 declarations whose name is under the prefix
 //   file(Mathlib.NumberTheory)   declarations of the modules under the prefix
@@ -40,7 +40,9 @@ export type Query =
   | { op: "all" }
   | { op: "selection" }
   | { op: "decl"; names: string[] }
-  | { op: "tcb" | "uses" | "usedBy"; of: Roots }
+  /** closures of the graph — the TCB, everything used, everything using — and `refs`, the roots
+   *  and what they use directly (one step: the Direct step of Rests on, ViewSpec decision 20) */
+  | { op: ClosureOp; of: Roots }
   | { op: "ns" | "file"; prefix: string }
   | { op: "trusted" | "external" | "sorry" | "nonstandard" }
   | { op: "kind"; kinds: Kind[] }
@@ -58,7 +60,8 @@ export type Combinator = "and" | "or" | "except";
 export const KINDS: Kind[] = ["theorem", "def", "abbrev", "instance", "structure", "class", "inductive", "opaque", "axiom", "quot", "constructor", "recursor", "notation", "unknown"];
 export const STATUSES: ReviewStatus[] = ["unreviewed", "approved", "commented", "stale"];
 const VERDICTS: Verdict[] = ["approve", "comment"];
-const CLOSURES = ["tcb", "uses", "usedBy"] as const;
+const CLOSURES = ["tcb", "uses", "usedBy", "refs"] as const;
+type ClosureOp = (typeof CLOSURES)[number];
 const PLAIN = ["all", "selection", "trusted", "external", "sorry", "nonstandard"] as const;
 const COMBINATORS: Combinator[] = ["and", "or", "except"];
 /** words for the same thing, read as the first */
@@ -70,11 +73,12 @@ export const LIGHT: Record<Mode, Query> = {
   plain: { op: "selection" },
   tcb: { op: "tcb", of: "selection" },
   deps: { op: "uses", of: "selection" },
+  refs: { op: "refs", of: "selection" },
   apps: { op: "usedBy", of: "selection" },
 };
 
-/** Which closure each closure word is, as the graph computes it (shared/viewgraph.ts). */
-const CLOSURE_MODE: Record<(typeof CLOSURES)[number], Mode> = { tcb: "tcb", uses: "deps", usedBy: "apps" };
+/** Which walk of the graph each closure word is (shared/viewgraph.ts); `refs` is one step. */
+const CLOSURE_MODE: Record<ClosureOp, Mode> = { tcb: "tcb", uses: "deps", usedBy: "apps", refs: "refs" };
 
 // ---------------------------------------------------------------- how large a query may be
 
@@ -96,7 +100,7 @@ export const QUERY_LIMITS = {
   names: 2_000,
   /** characters of one name or prefix */
   name: 2_000,
-  /** closures (tcb, uses, usedBy), each a walk of the graph; each target of a `key(…)` counts as
+  /** closures (tcb, uses, usedBy, refs), each a walk of the graph; each target of a `key(…)` counts as
    *  one too, since its review set is walked to keep only the marks still in it. `key(targets)`
    *  counts as one: how many targets there are is the project's, not the query's, and every
    *  `key(targets)` of a query shares the same walks (evaluateIn) */
@@ -125,6 +129,7 @@ export function beyondLimits(q: Query): string | null {
       case "tcb":
       case "uses":
       case "usedBy":
+      case "refs":
         closures++;
         if (x.of !== "selection" && !Array.isArray(x.of)) {
           terms++;
@@ -161,7 +166,7 @@ export function beyondLimits(q: Query): string | null {
   if (terms > L.terms) return `the query has ${terms} parts, more than ${L.terms.toLocaleString("en")}`;
   if (names > L.names) return `the query names ${names} declarations or prefixes, more than ${L.names.toLocaleString("en")}`;
   if (longest > L.name) return `a name in the query is longer than ${L.name.toLocaleString("en")} characters`;
-  if (closures > L.closures) return `the query has ${closures} closures (tcb, uses, usedBy), more than ${L.closures}`;
+  if (closures > L.closures) return `the query has ${closures} closures (tcb, uses, usedBy, refs), more than ${L.closures}`;
   const length = printQuery(q).length;
   if (length > L.text) return `the query is ${length.toLocaleString("en")} characters long as printed, more than ${L.text.toLocaleString("en")}`;
   return null;
@@ -301,7 +306,7 @@ function parse(text: string): Query {
       return q;
     }
     const w = keyword(t);
-    if (w === null) throw new QueryError(t.t === "string" ? "a quoted name stands only inside decl(…), tcb(…), uses(…) or usedBy(…)" : `${t.t} is out of place`, t.at);
+    if (w === null) throw new QueryError(t.t === "string" ? "a quoted name stands only inside decl(…), tcb(…), uses(…), usedBy(…) or refs(…)" : `${t.t} is out of place`, t.at);
     if (++terms > QUERY_LIMITS.terms) throw new QueryError(`the query has more than ${QUERY_LIMITS.terms.toLocaleString("en")} parts`, t.at);
     k++;
     if ((PLAIN as readonly string[]).includes(w)) return { op: w } as Query;
@@ -341,7 +346,7 @@ function parse(text: string): Query {
     if (w === "kind") return { op: "kind", kinds: choose(args(), KINDS, "kind") };
     if (w === "status") return { op: "status", statuses: choose(args(), STATUSES, "status") };
     if (w === "advice") return { op: "advice", verdicts: choose(args(), VERDICTS, "advice") };
-    throw new QueryError(`${text1(t)} is not a word of the query language (all, tcb, uses, usedBy, decl, key, ns, file, trusted, external, kind, status, advice, sorry, nonstandard)`, t.at);
+    throw new QueryError(`${text1(t)} is not a word of the query language (all, tcb, uses, usedBy, refs, decl, key, ns, file, trusted, external, kind, status, advice, sorry, nonstandard)`, t.at);
   };
 
   const expr = (): Query => {
@@ -381,7 +386,8 @@ export function printQuery(q: Query): string {
       return `key(${q.of === "targets" ? "targets" : q.of.map((t) => (t === "targets" ? JSON.stringify(t) : arg(t))).join(", ")})`;
     case "tcb":
     case "uses":
-    case "usedBy": {
+    case "usedBy":
+    case "refs": {
       if (q.of === "selection" || Array.isArray(q.of)) return `${q.op}(${q.of === "selection" ? "selection" : q.of.map(arg).join(", ")})`;
       // a query of one plain word would read as a name
       const inner = printQuery(q.of);
@@ -466,7 +472,8 @@ function readJson(x: unknown, why = false): Query | string | null {
         return names(o.of) ? { op: "key", of: [...o.of] } : null;
       case "tcb":
       case "uses":
-      case "usedBy": {
+      case "usedBy":
+      case "refs": {
         if (o.of === "selection") return { op: o.op, of: "selection" };
         if (o.of && typeof o.of === "object" && !Array.isArray(o.of)) {
           const of = walk(o.of);
@@ -544,7 +551,7 @@ export function namesIn(q: Query): string[] {
   const walk = (x: Query) => {
     if (x.op === "decl") x.names.forEach((n) => out.add(n));
     else if (x.op === "key" && x.of !== "targets") x.of.forEach((n) => out.add(n));
-    else if (x.op === "tcb" || x.op === "uses" || x.op === "usedBy") {
+    else if (x.op === "tcb" || x.op === "uses" || x.op === "usedBy" || x.op === "refs") {
       if (Array.isArray(x.of)) x.of.forEach((n) => out.add(n));
       else if (x.of !== "selection") walk(x.of);
     } else if (x.op === "and" || x.op === "or" || x.op === "except") {
@@ -559,7 +566,7 @@ export function namesIn(q: Query): string[] {
 /** Whether the query reads the review (trust, statuses, advice): its set changes with opinions. */
 export function readsReview(q: Query): boolean {
   if (q.op === "trusted" || q.op === "status" || q.op === "advice" || q.op === "key") return true;
-  if ((q.op === "tcb" || q.op === "uses" || q.op === "usedBy") && q.of !== "selection" && !Array.isArray(q.of)) return readsReview(q.of);
+  if ((q.op === "tcb" || q.op === "uses" || q.op === "usedBy" || q.op === "refs") && q.of !== "selection" && !Array.isArray(q.of)) return readsReview(q.of);
   if (q.op === "and" || q.op === "or" || q.op === "except") return readsReview(q.a) || readsReview(q.b);
   return false;
 }
@@ -572,6 +579,7 @@ export function withSelection(q: Query, names: string[]): Query {
     case "tcb":
     case "uses":
     case "usedBy":
+    case "refs":
       if (q.of === "selection") return { op: q.op, of: [...names] };
       return Array.isArray(q.of) ? q : { op: q.op, of: withSelection(q.of, names) };
     case "and":
@@ -662,6 +670,8 @@ export function describe(q: Query): string {
       return `TCB of ${roots(q.of)}`;
     case "uses":
       return `what ${roots(q.of)} uses`;
+    case "refs":
+      return `what ${roots(q.of)} uses directly`;
     case "usedBy":
       return `what uses ${roots(q.of)}`;
     case "ns":
@@ -767,7 +777,8 @@ function evaluateIn(q: Query, ctx: QueryContext, walks: Map<string, Uint8Array>)
       return out;
     case "tcb":
     case "uses":
-    case "usedBy": {
+    case "usedBy":
+    case "refs": {
       const key = `${q.op}\u0000${q.of === "selection" ? "\u0001" : Array.isArray(q.of) ? JSON.stringify(q.of) : printQuery(q.of)}`;
       let walked = walks.get(key);
       if (!walked) {

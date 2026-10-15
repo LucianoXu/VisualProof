@@ -85,10 +85,9 @@ export interface Places {
   drawnR: Float32Array;
 }
 
-/** The overview's toggles: the outside world shown, the proof edges asked for. */
+/** The overview's toggles: the outside world shown. */
 export interface Toggles {
   externals: boolean;
-  proofs: boolean;
 }
 
 /** One zoom point asked for: `point` the zoom-point index, the camera's centre (`x`, `y`), the
@@ -183,7 +182,7 @@ export const LEVELS_KEPT = 6;
 export class OverviewModel {
   private g: OverviewGraph | null = null;
   private tree: Tree | null = null;
-  private toggles: Toggles = { externals: true, proofs: false };
+  private toggles: Toggles = { externals: true };
   private levels = new Map<number, OverviewLevel>();
 
   setGraph(g: OverviewGraph): void {
@@ -233,8 +232,9 @@ export class OverviewModel {
   private aggregateLevel(level: number, places: Places): OverviewLevel {
     const g = this.g!;
     const unit = units({ ...this.tree!, curR: places.curR }, Math.pow(2, level / 2), 45);
-    // proofs and grammar, which no TCB follows, with the proof edges
-    const sites = SITE_STMT | SITE_BODY | (this.toggles.proofs ? SITE_PROOF | SITE_GRAMMAR : 0);
+    // statements and bodies: never proofs or grammar, which no TCB follows (proof edges are no more,
+    // the owner's decision of 2026-10-15)
+    const sites = SITE_STMT | SITE_BODY;
     const ext = this.toggles.externals;
     const pairs = aggregate(g, unit, sites, (i) => i < g.projectCount || ext);
     return { pairs, units: Int32Array.from(new Set(unit)) };

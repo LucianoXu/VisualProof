@@ -19,7 +19,7 @@ of invisible clusters" is the view's hidden levels (decision 24).
    - A view is its exported document's outline: what it holds, ordered bottom first by position on
      the board (ExportSpec decisions 12–13).
 3. **The reader's own**: camera and selection (remembered per view), the tool, reading preferences
-   (edges, proof edges, theme, colour scheme), open tabs. A follower sees all but the theme and the
+   (edges, theme, colour scheme), open tabs. A follower sees all but the theme and the
    tabs (CollabSpec decision 4).
 4. **One query language** for scopes and the selection (decisions 11, 13).
 5. **The Project and the board's settings.**
@@ -27,7 +27,7 @@ of invisible clusters" is the view's hidden levels (decision 24).
      a target's included, is rescoped by the scope chips, `e` (the outside world), Add to view and
      Remove from this view, and renamed by Rename.
    - Whether the outside world is on a board is a scope condition (`except external`), so shared.
-     Edges and proof edges are personal.
+     Edges are personal (proof edges are no more: the owner's decision of 2026-10-15).
    - Folds, Depth and Re-layout are the board's. Re-layout drops the board's pins under both
      clusterings and its layout memory, for everyone, so it asks first; people and agents at level
      full (AgentSpec decision 9) may do it.
@@ -40,7 +40,7 @@ of invisible clusters" is the view's hidden levels (decision 24).
 7. **The clustering belongs to the board.**
 8. **Placement says whom a control affects**: the left side panel is the board's (targets, cluster
    tree, ⚙ Board, Trusted); the bottom right is the reader's (zoom, fit; behind ⋯ the lock, edges,
-   proof edges, theme), as is the legend at the bottom left; the top holds the reader's tabs, tools and
+   theme), as is the legend at the bottom left; the top holds the reader's tabs, tools and
    selection.
 9. **Shared changes are visible**: a fold, move or rescope by someone else shows a short note where it
    happened ("Alice folded CaseI"). The timeline records views saved, renamed, rescoped (items
@@ -85,16 +85,19 @@ of invisible clusters" is the view's hidden levels (decision 24).
     - The panel always shows kind, name, namespace, place, Source, editor link, "Also declares",
       statement, doc and review. Why-in-TCB (with a focus; starts open), counts, axioms and the TCB
       list (start folded; a non-standard axiom in red) fold, kept as the reader leaves them.
-    - Behind ⋯: lock (a dot on ⋯ while drags move things), edges, proof edges, theme.
+    - Behind ⋯: lock (a dot on ⋯ while drags move things), edges, theme.
     - Activity is an icon with a count. Popovers close on a press elsewhere, Esc, or their button.
 18. **One mode**: no simple or advanced page; every tool and key is there for every reader.
 19. **Nothing to choose**: a browser's `visualproof:ui` entry is neither read nor removed.
 
 ## Rests on
 
-20. **Rests on is one mode in three steps**: Uses (everything used, proofs included) ⊇ TCB ⊇ Keys.
-    - The bar: *Selection | Rests on | Used by* (keys `1`–`3`), with a Uses / TCB / Keys switch while
-      Rests on is on. `2` again steps TCB → Keys → Uses. Entering Rests on resumes the last step (a
+20. **Rests on is one mode in four steps**: Uses (everything used, proofs included) ⊇ TCB ⊇ Keys;
+    and Direct (what it uses directly: the declarations its statement, body and proof refer to, one
+    step; `refs(X)`), added by the owner's decision of 2026-10-14: everything used selects all a
+    term depends on, to Zoom in on, and what it uses directly is what its code is read with.
+    - The bar: *Selection | Rests on | Used by* (keys `1`–`3`), with a Uses / TCB / Keys / Direct switch while
+      Rests on is on. `2` again steps TCB → Keys → Uses → Direct. Entering Rests on resumes the last step (a
       reading preference; TCB by default).
     - **Keys** selects X and the key declarations in its TCB: of the focus target (decision 28); with
       no focus, of every target, but a target clicked takes its own. The pick is `tcb(X) and (key(T…)
@@ -245,7 +248,7 @@ printed text is canonical: queries are the same when their texts are.
 query   := term { ("and" | "or" | "except") term }        left to right
 term    := "(" query ")"
          | "all" | "selection" | "trusted" | "external" | "sorry" | "nonstandard"
-         | ("tcb" | "uses" | "usedBy") "(" roots ")"
+         | ("tcb" | "uses" | "usedBy" | "refs") "(" roots ")"
          | "decl" "(" name { "," name } ")"
          | "key" "(" ( "targets" | name { "," name } ) ")"
          | ("ns" | "file") "(" name ")"
@@ -266,7 +269,8 @@ name    := a word without whitespace, "(", ")", "," or '"'  |  a JSON string
 - A name with whitespace, parentheses, a comma or a quote, or equal to `selection` (in `key`,
   `targets`), is a JSON string; quoted names are only arguments. Keywords ignore case; `namespace`,
   `module`, `decls` alias `ns`, `file`, `decl`.
-- Meaning: closures are TCB, everything used (proofs included), everything using; `ns(P)` names under
+- Meaning: closures are TCB, everything used (proofs included), everything using; `refs` is the
+  roots and what they refer to directly (statement, body, proof: one step); `ns(P)` names under
   P; `file(P)` modules under P; `external` outside the project; `sorry` rests on `sorryAx`;
   `nonstandard` rests on a non-standard axiom; `status`, `advice` (AgentSpec decision 2) of the
   present version; `key(T, …)` each target and its key marks still in its review set; `key(targets)`

@@ -58,7 +58,7 @@ export class EdgeQueue {
   private onReady: () => void;
   private graph: OverviewGraph | null = null;
   private tree: Tree | null = null;
-  private toggles: Toggles = { externals: true, proofs: false };
+  private toggles: Toggles = { externals: true };
   private base = 0;
   private lo = -Infinity;
   private hi = Infinity;
@@ -229,7 +229,6 @@ export class EdgeQueue {
       nodeCluster: T.nodeCluster,
       rep: T.rep,
       externals: this.toggles.externals,
-      proofs: this.toggles.proofs,
     });
   }
 

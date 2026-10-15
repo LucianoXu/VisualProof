@@ -20,6 +20,9 @@ import type { Dirs } from "./dirs.ts";
 
 /** the tool's own folder, `src/`; the repository is above it */
 export const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+/** the fonts the page draws an artwork's names and title in (ExportSpec decision 19): Source Sans 3
+ *  and Source Serif 4, their Latin and Greek, and Jost, its Latin, under the SIL Open Font License */
+export const WEBFONTS = join(SRC, "assets", "webfonts");
 export const REPO = resolve(SRC, "..");
 export const WEB = join(SRC, "web");
 
@@ -48,8 +51,8 @@ export function bundleDir(): string {
  *  views from an older server are rebuilt rather than served. 7: a notation unit's statement is
  *  its command's text. 8: notation units carry their Lean constant, display form, what they
  *  interpret and their rules. 9: a node's hash is its version, beside the kernel's
- *  (server/versions.ts). */
-const VIEW_VERSION = 9;
+ *  (server/versions.ts). 10: the project's git source and commit (server/history.ts, gitSource). */
+const VIEW_VERSION = 10;
 
 export interface Prepared {
   fingerprint: string;

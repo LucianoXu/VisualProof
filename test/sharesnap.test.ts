@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { cleanArtwork, cleanView } from "../src/shared/collab.ts";
 import type { PresenceView } from "../src/shared/collab.ts";
 import { addressOf, camOf, goneNames, missingLine, readSnapshot, regionOf, SNAPSHOT_FORMS, SNAPSHOT_MAX, snapshotIn, sortOut, withSnapshot, writeSnapshot } from "../src/shared/sharesnap.ts";
 import type { Region, Screen } from "../src/shared/sharesnap.ts";
@@ -26,7 +27,7 @@ const SMALL: Screen = { w: 1024, h: 700, insets: { left: 0, right: 0, top: 100, 
 
 /** Everything a page can show at once: a view, a build, a camera, a selection under Keys, the focus,
  *  a trail of visitors, six pinned windows beside the following one, the reference window on a link,
- *  Activity filtered, the lost-and-found, the Status colouring, proof edges. */
+ *  Activity filtered, the lost-and-found, the Status colouring, the edges hidden. */
 function heavy(): PresenceView {
   return {
     view: "v7f3a9c2e41",
@@ -47,7 +48,8 @@ function heavy(): PresenceView {
     lostFound: { open: true },
     scheme: "status",
     edges: false,
-    proofEdges: true,
+    linear: false,
+    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", namesFrom: "board", hiddenNames: [], shownNames: [], edges: "selection", notes: true, targets: "highlight", shownTargets: [], keys: true, selection: true, source: true, style: "stars", title: "Sphere Packing", subtitle: null, titleSize: 9.5, footSize: 2.4, border: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
     tabs: ["project", "v7f3a9c2e41"],
   };
 }
@@ -128,6 +130,20 @@ test("a heavy snapshot stays small: several windows, filters, visitors, a long s
   const small = await writeSnapshot({ edges: true }, null);
   assert.match(small, /^j/);
   assert.deepEqual((await readSnapshot(small, null))!.view, { edges: true });
+});
+
+test("an artwork with as many names and targets chosen as it carries, of names the longer in bytes, fits in a heartbeat the server takes (16 KB) and in a link", async () => {
+  const many = Array.from({ length: 2000 }, (_, i) => N(`«term_∘_∣_»_lemma_${i}`));
+  const v = heavy();
+  const art = cleanArtwork({ ...v.artwork, labels: "chosen", targets: "chosen", hiddenNames: many.map((n) => `d:${n}`), shownNames: many.map((n) => `c:${n}`), shownTargets: many })!;
+  assert.ok(art.hiddenNames.length > 30 && art.shownNames.length > 30 && art.shownTargets.length > 20, `${art.hiddenNames.length} + ${art.shownNames.length} names, ${art.shownTargets.length} targets`);
+  const view = cleanView({ ...v, artwork: art })!;
+  const beat = JSON.stringify({ token: "t".repeat(64), view, idle: false });
+  assert.ok(Buffer.byteLength(beat) < 16384, `${Buffer.byteLength(beat)} bytes`);
+  const snap = await writeSnapshot(view, WIDE);
+  assert.ok(snap.length < SNAPSHOT_MAX, `${snap.length} characters`);
+  const back = (await readSnapshot(snap, WIDE))!.view.artwork!;
+  assert.deepEqual([back.hiddenNames, back.shownNames, back.shownTargets], [art.hiddenNames, art.shownNames, art.shownTargets], "read back as written");
 });
 
 test("a snapshot is anyone's to write: what is not one is not read, and what of it is wrong is left out", async () => {
@@ -251,13 +267,13 @@ test("Share's switch, Exactly what I see: on by default, the links carry the sna
   assert.equal(snapshotIn(new URL(on).hash), snap, "the snapshot is in the fragment, which no server is sent");
   assert.ok(asked > 0);
   assert.match(page.pop.innerHTML, /role="switch" aria-checked="true" data-exact/);
-  assert.match(page.pop.innerHTML, /It opens on what you see now, once/);
+  assert.match(page.pop.innerHTML, /Opens once on exactly what you see now/);
   // off: the link as it was before the switch, and the choice kept
   await page.press("[data-exact]");
   assert.deepEqual(kept, { shareExact: false });
   assert.equal(page.shown(), `http://example.org:4173/k/KEY${hash}`);
   assert.match(page.pop.innerHTML, /aria-checked="false"/);
-  assert.match(page.pop.innerHTML, /Only the view/);
+  assert.match(page.pop.innerHTML, /Opens on the view and its selection/);
   // a personal link takes the address after it, and the snapshot as the switch says
   await page.press("[data-tab]");
   await page.press("[data-exact]");
@@ -406,7 +422,7 @@ test("an agent makes such a link from its own place, or from a place it gives ov
     const given = await S.ask(
       "POST",
       "/api/agent/view/link",
-      { sel: "N.a", selection: "tcb(N.a)", mode: "tcb", pinned: [{ name: "N.b", collapsed: true }], scheme: "status", edges: false, proofEdges: true, activity: { open: true, kind: "review" }, lostFound: true, region: [10, 20, 400, 300] },
+      { sel: "N.a", selection: "tcb(N.a)", mode: "tcb", pinned: [{ name: "N.b", collapsed: true }], scheme: "status", edges: false, activity: { open: true, kind: "review" }, lostFound: true, region: [10, 20, 400, 300] },
       as,
     );
     assert.equal(given.status, 200);
@@ -414,7 +430,7 @@ test("an agent makes such a link from its own place, or from a place it gives ov
     assert.equal(shot.view.sel, "N.a");
     assert.equal(shot.view.selection, "tcb(N.a)");
     assert.deepEqual(shot.view.pinned, [{ decl: "N.b", collapsed: true }]);
-    assert.deepEqual([shot.view.scheme, shot.view.edges, shot.view.proofEdges], ["status", false, true]);
+    assert.deepEqual([shot.view.scheme, shot.view.edges], ["status", false]);
     assert.deepEqual(shot.view.activity, { open: true, kind: "review", who: "all" });
     assert.deepEqual(shot.view.lostFound, { open: true });
     sameRegion(shot.region!, { x: 10, y: 20, w: 400, h: 300 }, "the region given");

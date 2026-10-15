@@ -9,7 +9,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { WEB, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
+import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import { SiteBusy, cacheHome, dataHome, lockSite, openSite, projectDirs } from "./dirs.ts";
 import { ProjectError, openProject, targetsInWords } from "./project.ts";
 import type { Project } from "./project.ts";
@@ -19,7 +19,7 @@ import { isDeclName, LeanHover } from "./hover.ts";
 import { Identities, layoutAuthor } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import { MAX_MEMORY_BYTES, Views } from "./views.ts";
-import { cleanView, defaultAgentName, validSession } from "../shared/collab.ts";
+import { cleanView, defaultAgentName, validSession, withoutArtwork } from "../shared/collab.ts";
 import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
@@ -765,6 +765,8 @@ export class App {
       if (cookies.length) res.setHeader("set-cookie", cookies);
       if (path === "/" || path === "/index.html") return sendFile(req, res, join(WEB, "index.html"));
       if (path === "/style.css") return sendFile(req, res, join(WEB, "style.css"));
+      // the fonts an artwork is drawn in (ExportSpec decision 19)
+      if (FONT_PATH.test(path)) return sendFile(req, res, join(WEBFONTS, path.slice("/fonts/".length)));
       // the page, and its workers: the one that lays out the Time Machine's past graphs
       // (web/src/layoutworker.ts), the one that chooses the overview's edges (web/src/edgeworker.ts),
       // and pdf.js's, which reads the library's PDFs for the reference window (AttachmentSpec decision 11)
@@ -864,7 +866,8 @@ export class App {
         // its own event stream only, by the secret the stream was given (`hello`)
         const name = this.ids.who(req);
         const priv = !agent && b.private === true;
-        if (agent && name) live.presence.agentBeat(name, cleanView(b.view));
+        // agents have no artwork (ExportSpec decision 19): the page draws it
+        if (agent && name) live.presence.agentBeat(name, withoutArtwork(cleanView(b.view)));
         else if (!live.beat(b.token, priv ? null : name, priv ? null : cleanView(b.view), !priv && b.idle === true, priv, !!this.ids.person(req)))
           return sendJson(res, { error: "This heartbeat is not from an open event stream of this page's: it is sent with the token the stream says hello with.", stream: false }, 403);
         return sendJson(res, { ok: true });
@@ -986,7 +989,11 @@ export class App {
   }
 }
 
+/** an artwork's font file (assets/webfonts/) */
+const FONT_PATH = /^\/fonts\/(source-sans-3|source-serif-4|jost)-[a-z-]+\.woff2$/;
+
 const TYPES: Record<string, string> = {
+  ".woff2": "font/woff2",
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",

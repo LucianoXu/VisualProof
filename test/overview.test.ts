@@ -85,7 +85,7 @@ test("the page's blend of two points is exactly the blend it drew before, edge f
   const { g, S } = world();
   const M = new OverviewModel();
   M.setGraph(g);
-  M.setTree(S, { externals: true, proofs: false });
+  M.setTree(S, { externals: true });
   for (const point of [-14, -9, -6, -3, 0, 2]) {
     const A = M.choose(askAt(S, point), S);
     const B = M.choose(askAt(S, point + 1), S);
@@ -106,7 +106,7 @@ test("with more than two points, an edge's alpha is the sum at the weights and i
   const { g, S } = world();
   const M = new OverviewModel();
   M.setGraph(g);
-  M.setTree(S, { externals: true, proofs: false });
+  M.setTree(S, { externals: true });
   const P = [-8, -7, -6].map((p) => M.choose(askAt(S, p), S));
   const w = [0.2, 0.5, 0.3];
   const drawn = drawnOf(P.map((looks, k) => ({ looks, w: w[k] })));
@@ -138,7 +138,7 @@ test("a point chosen under another selection is shown dimmed as the selection no
   const { g, S } = world();
   const M = new OverviewModel();
   M.setGraph(g);
-  M.setTree(S, { externals: true, proofs: false });
+  M.setTree(S, { externals: true });
   const plain = M.choose(askAt(S, -6), S);
   const dimmed = M.choose(askAt(S, -6, { dim: true }), S);
   const shown = drawnOf([{ looks: plain, w: 1, scale: DIM }]);
@@ -158,7 +158,7 @@ test("the worker answers in the protocol's shapes: looks in typed arrays, transf
     return { type: "choose", id, base, places: places(), ...a };
   };
   const tree = (base: number, externals: boolean): ToWorker =>
-    structuredClone({ type: "tree", base, nc: S.nc, n: S.n, parent: S.parent, nodeCluster: S.nodeCluster, rep: S.rep, externals, proofs: false });
+    structuredClone({ type: "tree", base, nc: S.nc, n: S.n, parent: S.parent, nodeCluster: S.nodeCluster, rep: S.rep, externals });
   // a tree but no graph yet: an error, not a throw
   core.receive(tree(1, true), post);
   core.receive(choose(1, -6), post);
@@ -194,7 +194,7 @@ test("the worker answers in the protocol's shapes: looks in typed arrays, transf
   // the worker's answer is what the page would have chosen itself
   const M = new OverviewModel();
   M.setGraph(g);
-  M.setTree(S, { externals: true, proofs: false });
+  M.setTree(S, { externals: true });
   assert.deepEqual(structuredClone(L), M.choose(askAt(S, -5), S));
   // another tree: what waits for the old one is dropped
   core.receive(choose(6, -4), post);
@@ -206,13 +206,13 @@ test("the aggregations kept are the steps last used, at most LEVELS_KEPT of them
   const { g, S } = world();
   const M = new OverviewModel();
   M.setGraph(g);
-  M.setTree(S, { externals: true, proofs: false });
+  M.setTree(S, { externals: true });
   for (let p = -24; p <= 8; p++) {
     M.choose(askAt(S, p), S);
     assert.ok(M.levelCount <= LEVELS_KEPT);
   }
   assert.equal(M.levelCount, LEVELS_KEPT);
-  M.setTree(S, { externals: false, proofs: false });
+  M.setTree(S, { externals: false });
   assert.equal(M.levelCount, 0);
 });
 
@@ -240,7 +240,7 @@ test("the queue sends the graph, the tree and the questions, a copy of the posit
   let ready = 0;
   const Q = new EdgeQueue(() => w as unknown as EdgeWorker, () => ready++);
   Q.setGraph(g);
-  Q.setBase(S, { externals: true, proofs: false });
+  Q.setBase(S, { externals: true });
   Q.near(-8, -3);
   assert.equal(Q.onPageThread, false);
   assert.deepEqual(w.sent.map((s) => s.m.type), ["graph", "tree", "near"]);
@@ -274,11 +274,11 @@ test("the latest answer wins, and one no longer near the camera, or for a replac
   const w = fakeWorker();
   const Q = new EdgeQueue(() => w as unknown as EdgeWorker, () => {});
   Q.setGraph(g);
-  Q.setBase(S, { externals: true, proofs: false });
+  Q.setBase(S, { externals: true });
   Q.near(-8, -3);
   const M = new OverviewModel();
   M.setGraph(g);
-  M.setTree(S, { externals: true, proofs: false });
+  M.setTree(S, { externals: true });
   const lastId = () => (w.sent.at(-1)!.m as { id: number }).id;
   const answer = (id: number, point: number, looks: PointLooks) => w.onmessage!({ data: { type: "looks", id, point, looks, ms: 1 } } as MessageEvent<FromWorker>);
   // the same point asked twice (the view moved, say): the later question's answer comes first
@@ -303,7 +303,7 @@ test("the latest answer wins, and one no longer near the camera, or for a replac
   // a fold or a toggle since: another tree, and what was held is let go
   Q.ask(askAt(S, 2), () => S);
   const before = lastId();
-  Q.setBase(S, { externals: false, proofs: false });
+  Q.setBase(S, { externals: false });
   assert.equal(Q.points.size, 0);
   Q.near(0, 5);
   answer(before, 2, M.choose(askAt(S, 2), S));
@@ -318,14 +318,14 @@ test("without a worker the page chooses itself, at once, what it chose before", 
     let ready = 0;
     const Q = new EdgeQueue(spawn, () => ready++);
     Q.setGraph(g);
-    Q.setBase(S, { externals: true, proofs: false });
+    Q.setBase(S, { externals: true });
     assert.equal(Q.onPageThread, true);
     for (let k = 0; k < IN_FLIGHT + 2; k++) assert.equal(Q.ask(askAt(S, -6 + k), () => S), true, "no limit on the page's thread");
     assert.equal(Q.inFlight, 0);
     assert.equal(ready, 0, "nothing to wait for");
     const M = new OverviewModel();
     M.setGraph(g);
-    M.setTree(S, { externals: true, proofs: false });
+    M.setTree(S, { externals: true });
     assert.deepEqual(Q.points.get(-6)!.looks, M.choose(askAt(S, -6), S));
   }
 });
@@ -337,7 +337,7 @@ test("a worker that fails hands over to the page's thread, which asks again what
     let ready = 0;
     const Q = new EdgeQueue(() => w as unknown as EdgeWorker, () => ready++);
     Q.setGraph(g);
-    Q.setBase(S, { externals: true, proofs: false });
+    Q.setBase(S, { externals: true });
     Q.ask(askAt(S, -6), () => S);
     const id = (w.sent.at(-1)!.m as { id: number }).id;
     const warn = console.warn;

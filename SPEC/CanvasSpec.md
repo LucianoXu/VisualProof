@@ -284,7 +284,8 @@ Implementation notes:
   opacity growing with log(count). Zoomed out, the heaviest bundles; zoomed in, the dependencies among
   the declarations in view (a single one drawn clearly), with a fifth of the budget for links beyond
   the view. **What is drawn follows the zoom continuously**, never time: edges grow in and bundles
-  dissolve in proportion to the zoom, reversibly. Proof edges are off unless asked for.
+  dissolve in proportion to the zoom, reversibly. No edge only a proof or grammar holds is drawn
+  there: proof edges, once asked for by a switch, are no more (the owner's decision of 2026-10-15).
 - **A selection**: the lit edges bundled on top, the rest faded. Under Keys (ViewSpec decision 20),
   the key graph's edges instead: dashed ("rests on, through non-key declarations") and slightly bowed.
 - Colour runs from the user (orange) to the used (blue), a key-graph edge from the end that rests on
@@ -311,6 +312,11 @@ Implementation notes:
   stopped for 60 ms settles at once. Fast zooms and flights ask ahead for where they will land.
 - Declaration names (zoomed in, nothing lit): at most 700, nearest the middle first; one covering
   another name or a cluster label is left out.
+- **Names float over everything** (the owner's decision of 2026-10-15): clusters' and declarations'
+  names are written last, over the edges, points, rings and marks, each on a halo of the background
+  that fades outward (web/src/halo.ts: three strokes round the letters, 7, 4.5 and 2.6 px wide at 22,
+  40 and 85 % opacity), the halos of all of them before any name, so that nothing crosses a name and
+  no halo covers another. An artwork's names and foot are written so too (ExportSpec decision 19).
 
 ## Depth
 
@@ -321,7 +327,7 @@ Implementation notes:
 ## Zoom, theme and the ⋯ menu
 
 - Zoom buttons (+, −, fit; keys `+`, `-`, `f`) at the bottom right. ⋯ (ViewSpec decision 17) holds
-  the lock, edges, the linear form (ExportSpec decision 18, `o`), proof edges and theme (light, dark
+  the lock, edges, the linear form (ExportSpec decision 18, `o`) and theme (light, dark
   or the system's; light by default on every platform, the owner's decision of 2026-10-14); the theme
   is the browser's, for all projects, applied from the first paint.
 
