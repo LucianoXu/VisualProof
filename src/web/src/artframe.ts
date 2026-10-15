@@ -20,7 +20,7 @@ import type { ArtworkView } from "../../shared/collab.ts";
 import { ART_NAMES_BYTES, ART_TARGETS_BYTES } from "../../shared/collab.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { ArtSettings, NameRow, NotePicture } from "./artwork.ts";
-import { artName, chooseIn, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, footMost, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
+import { artName, chooseIn, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawNotes, encodePng, footMost, FRAME_ROOM, frameRect, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, titleRoom, withChosen, writeOver } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { ART_DISPLAY, ART_SANS, ART_SERIF } from "./halo.ts";
 import { FOOT_SIZE, TITLE_SIZE } from "../../shared/collab.ts";
@@ -52,11 +52,8 @@ export interface ArtHooks {
 
 /** the panel's width, and the room kept around the frame: at its sides, and above and below it for
  *  the strips set there (the title's, the source's) */
-const PANEL_W = 300;
-const MARGIN = 32;
-const GAP = 12;
-const HEAD_ROOM = 60;
-const TAIL_ROOM = 34;
+const PANEL_W = FRAME_ROOM.panel;
+const MARGIN = FRAME_ROOM.margin;
 /** how long the mode takes to come and to go, as the linear form (web/src/linear.ts); and how long
  *  the board dips to its ground while its look changes */
 const EASE_MS = 480;
@@ -215,9 +212,7 @@ export class ArtFrame {
     const s = cleanSettings(given ?? this.hooks.saved(), this.hooks.now());
     // the whole board in the frame, below the title where there is one
     const came = this.start(s, (r) => {
-      const own = this.hooks.titles();
-      const titled = !!(s.title ?? own.title) || !!(s.subtitle ?? own.subtitle);
-      const below = titled ? Math.min(r.h * 0.4, ((s.titleSize * 1.7) / 100) * r.h + Math.max(14, r.h * 0.035)) : 0;
+      const below = titleRoom(r.h, s, this.hooks.titles());
       return this.canvas.fitCam({ x: r.x, y: r.y + below, w: r.w, h: r.h - below });
     });
     this.hooks.changed();
@@ -366,10 +361,7 @@ export class ArtFrame {
   private place(keep: boolean): void {
     const s = this.s!;
     // the bar above, the panel at the right; the title's strip over the frame and the source's under it
-    const roomW = innerWidth - PANEL_W - 3 * MARGIN, roomH = innerHeight - 60 - HEAD_ROOM - TAIL_ROOM - 2 * GAP;
-    const scale = Math.min(roomW / s.w, roomH / s.h);
-    const w = Math.max(40, s.w * scale), h = Math.max(40, s.h * scale);
-    const x = MARGIN + (roomW - w) / 2, y = 60 + GAP + HEAD_ROOM + (roomH - h) / 2;
+    const { x, y, w, h } = frameRect({ w: innerWidth, h: innerHeight }, s);
     const was = this.rect;
     if (keep && was.w > 0) {
       const C = this.canvas;
@@ -451,14 +443,7 @@ export class ArtFrame {
 
   /** What an artwork writes over the board within `rect`: its border, its title and its foot. */
   private writeOver(ctx: CanvasRenderingContext2D, s: ArtSettings, rect: { x: number; y: number; w: number; h: number }): void {
-    const own = this.hooks.titles();
-    const cs = getComputedStyle(document.body);
-    const v = (name: string) => cs.getPropertyValue(name).trim();
-    const halo = s.style === "cells" ? "#0f1520" : s.style === "stars" ? "#090d1a" : v("--canvas");
-    if (s.border) drawBorder(ctx, rect, s.style === "cells" ? "rgba(200, 212, 236, 0.55)" : s.style === "stars" ? "rgba(241, 230, 200, 0.55)" : v("--text-2"));
-    drawTitle(ctx, rect, s.title ?? own.title, s.subtitle ?? own.subtitle, s.titleSize, s.style, { ink: v("--text"), quiet: v("--text-2"), halo });
-    const quiet = s.style === "board" ? v("--text-2") : "rgba(200, 208, 224, 0.7)";
-    drawFoot(ctx, rect, s.source ? this.hooks.source() : null, { text: quiet, halo }, ART_SANS, s.footSize);
+    writeOver(ctx, s, rect, this.hooks.titles(), this.hooks.source());
   }
 
   /** The title, its line or its size changed beside the frame, or the foot's size: kept, drawn over

@@ -245,25 +245,36 @@ export type Kind = "circles" | "points" | "lines" | "bundles";
 interface Layer {
   kind: Kind;
   inst: Instances;
-  vao: WebGLVertexArrayObject;
+  vao: WebGLVertexArrayObject | null;
   visible: boolean;
 }
 
+/** The most pixels a side has where nothing is drawn on a graphics card: an artwork's largest side
+ *  (shared/collab.ts, ART_MAX_SIDE) */
+const NO_CARD_SIDE = 16384;
+
+/** The board's drawing on the graphics card; or, given no canvas (`new Renderer(null)`: the artwork
+ *  command, ExportSpec decision 21), kept to its data — the layers' instances, which an artwork's SVG
+ *  reads (`drawn`) — with nothing drawn or uploaded. */
 export class Renderer {
-  readonly gl: WebGL2RenderingContext;
-  private circleProg: WebGLProgram;
-  private pointProg: WebGLProgram;
-  private bundleProg: WebGLProgram;
-  private posTex: WebGLTexture;
+  readonly gl: WebGL2RenderingContext | null;
+  private circleProg!: WebGLProgram;
+  private pointProg!: WebGLProgram;
+  private bundleProg!: WebGLProgram;
+  private posTex!: WebGLTexture;
   private posRows = 0;
   private dpr = 1;
-  private lineProg: WebGLProgram;
+  private lineProg!: WebGLProgram;
   private layers = new Map<string, Layer>();
   private order: string[] = [];
-  private circleCorners: WebGLBuffer;
-  private lineCorners: WebGLBuffer;
+  private circleCorners!: WebGLBuffer;
+  private lineCorners!: WebGLBuffer;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement | null) {
+    if (!canvas) {
+      this.gl = null;
+      return;
+    }
     const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: true, alpha: true });
     if (!gl) throw new Error("WebGL2 is not available in this browser");
     this.gl = gl;
@@ -287,6 +298,11 @@ export class Renderer {
     const gl = this.gl;
     const stride = kind === "lines" ? LINE_STRIDE : kind === "bundles" ? BUNDLE_STRIDE : CIRCLE_STRIDE;
     const inst = new Instances(gl, stride);
+    if (!gl) {
+      this.layers.set(name, { kind, inst, vao: null, visible: true });
+      this.order.push(name);
+      return inst;
+    }
     const vao = gl.createVertexArray()!;
     gl.bindVertexArray(vao);
     if (kind === "circles" || kind === "lines") {
@@ -311,6 +327,7 @@ export class Renderer {
   /** World positions the bundled edges read: (x, y) pairs, 1024 per texture row. */
   setPositions(xy: Float32Array): void {
     const gl = this.gl;
+    if (!gl) return;
     const count = xy.length / 2;
     const rows = Math.max(1, Math.ceil(count / 1024));
     gl.bindTexture(gl.TEXTURE_2D, this.posTex);
@@ -332,7 +349,7 @@ export class Renderer {
   private uniform(prog: WebGLProgram, name: string): WebGLUniformLocation | null {
     let m = this.uniforms.get(prog);
     if (!m) this.uniforms.set(prog, (m = new Map()));
-    if (!m.has(name)) m.set(name, this.gl.getUniformLocation(prog, name));
+    if (!m.has(name)) m.set(name, this.gl!.getUniformLocation(prog, name));
     return m.get(name)!;
   }
 
@@ -354,6 +371,7 @@ export class Renderer {
   /** The most pixels a side of what this context draws at once can have. */
   maxSide(): number {
     const gl = this.gl;
+    if (!gl) return NO_CARD_SIDE;
     const dims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
     return Math.min(dims[0], dims[1], gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number);
   }
@@ -363,6 +381,7 @@ export class Renderer {
    *  screen's (an artwork's PNG) keeps it as wide in pixels as the screen does. */
   render(cam: { x: number; y: number; k: number }, w: number, h: number, dpr: number, dotPx: number, aa = 0.35): void {
     const gl = this.gl;
+    if (!gl) return;
     gl.viewport(0, 0, Math.round(w * dpr), Math.round(h * dpr));
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);

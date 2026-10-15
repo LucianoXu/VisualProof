@@ -99,12 +99,13 @@ export async function prepare(
   dirs: Dirs,
   saved: string | null,
   log: (line: string) => void,
-  opts: { freshLayout?: boolean; reuse?: string; extraction?: Extraction; provisional?: boolean; completes?: string } = {},
+  opts: { freshLayout?: boolean; reuse?: string; extraction?: Extraction; provisional?: boolean; completes?: string; readOnlySite?: boolean } = {},
 ): Promise<Prepared> {
   // `reuse`: lay out an extraction already held, without reading the build (which may be
   // half-written right now); `extraction`: one in hand (the usage pass's, merged); `provisional`:
   // the graph waits for its usage pass; `completes`: the fingerprint of the build's extraction that
-  // this graph, the usage pass's merged, completes
+  // this graph, the usage pass's merged, completes; `readOnlySite`: the site's layout memory read,
+  // never written (the artwork command, ExportSpec decision 21)
   const held = opts.extraction ?? (opts.reuse ? cachedExtraction(dirs.cache, opts.reuse) : null);
   if (opts.reuse && !held) throw new Error("the graph on screen is no longer cached; it is laid out afresh at the next build");
   const ex = held ?? (saved ? loadSaved(saved) : await extract(project, dirs, log));
@@ -126,7 +127,7 @@ export async function prepare(
   const completing = memory !== null && opts.completes !== undefined && memory.fingerprint === opts.completes && memory.before !== undefined;
   const against = completing ? (memory.before ?? null) : (memory?.layouts ?? null);
   const view = await buildViewOffThread(project, ex, log, against);
-  saveMemory(dirs.site, ex.fingerprint, view.meta, opts.provisional ? against : undefined);
+  if (!opts.readOnlySite) saveMemory(dirs.site, ex.fingerprint, view.meta, opts.provisional ? against : undefined);
   const metaGz = gzipSync(JSON.stringify(view.meta));
   const edgesGz = gzipSync(Buffer.from(view.edges.buffer, view.edges.byteOffset, view.edges.byteLength));
   writeFileSync(metaFile, metaGz);
