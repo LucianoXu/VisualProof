@@ -311,6 +311,11 @@ Implementation notes:
   stopped for 60 ms settles at once. Fast zooms and flights ask ahead for where they will land.
 - Declaration names (zoomed in, nothing lit): at most 700, nearest the middle first; one covering
   another name or a cluster label is left out.
+- **Names float over everything** (the owner's decision of 2026-10-15): clusters' and declarations'
+  names are written last, over the edges, points, rings and marks, each on a halo of the background
+  that fades outward (web/src/halo.ts: three strokes round the letters, 7, 4.5 and 2.6 px wide at 22,
+  40 and 85 % opacity), the halos of all of them before any name, so that nothing crosses a name and
+  no halo covers another. An artwork's names and foot are written so too (ExportSpec decision 19).
 
 ## Depth
 

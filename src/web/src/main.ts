@@ -104,6 +104,7 @@ import { LinearForm } from "./linear.ts";
 import { isPhone, Phone } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
+import { sourceLine } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
@@ -1047,6 +1048,10 @@ async function boot(): Promise<void> {
     },
     changed: () => people.report(),
     notes: () => stickies.asDrawn(),
+    source: () => {
+      const git = vg().meta.project.git;
+      return git ? sourceLine(git) : null;
+    },
     say: (text) => say(text),
   });
   /** The board drawn with the artwork's settings while its mode is on, or as the reader's own again
@@ -3836,7 +3841,7 @@ async function boot(): Promise<void> {
         const tick = () => {
           if (m.hidden) return;
           const st = canvas.stats();
-          m.textContent = `${st.fps} fps · draw ${st.drawMs} ms · ${st.dots} dots · ${st.boundaries} boundaries · ${st.bundles} bundles${st.awake ? " · moving" : ""}`;
+          m.textContent = `${st.fps} fps · draw ${st.drawMs} ms · ${st.dots} dots · ${st.circles} circles · ${st.bundles} bundles${st.awake ? " · moving" : ""}`;
           setTimeout(tick, 250);
         };
         tick();

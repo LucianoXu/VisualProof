@@ -123,7 +123,7 @@ function reading(): PageParts["read"] {
 }
 
 /** an artwork's settings and the rectangle of the board its frame holds (ExportSpec decision 19) */
-const ART: ArtworkView = { w: 1920, h: 1080, scheme: "status", theme: "dark", background: "white", labels: "clusters", edges: "selection", proofs: true, notes: false, targets: "highlight", selection: false, region: [10, -20, 640, 360] };
+const ART: ArtworkView = { w: 1920, h: 1080, scheme: "status", theme: "dark", background: "transparent", labels: "clusters", edges: "selection", proofs: true, notes: false, targets: "highlight", selection: false, source: true, region: [10, -20, 640, 360] };
 
 test("presence carries exactly the followed parts, and the views a page holds open; the server keeps every one of them", () => {
   const v = presenceOf(reading(), ["v1", "v2"]);
@@ -140,9 +140,12 @@ test("presence carries exactly the followed parts, and the views a page holds op
   // the artwork (ExportSpec decision 19): off is said as such; settings out of their range, or a
   // frame that holds nothing, are not carried
   assert.equal(cleanView({ ...v, artwork: null })!.artwork, null);
-  for (const bad of [{ ...ART, w: 99999 }, { ...ART, w: 15 }, { ...ART, scheme: "rainbow" }, { ...ART, notes: "yes" }, { ...ART, region: [0, 0, 0, 10] }, { ...ART, region: [0, 0, 1] }, { ...ART, region: [0, 0, 1, Infinity] }, "on"])
+  for (const bad of [{ ...ART, w: 99999 }, { ...ART, w: 15 }, { ...ART, scheme: "rainbow" }, { ...ART, notes: "yes" }, { ...ART, background: "white" }, { ...ART, labels: "all" }, { ...ART, region: [0, 0, 0, 10] }, { ...ART, region: [0, 0, 1] }, { ...ART, region: [0, 0, 1, Infinity] }, "on"])
     assert.equal(cleanView({ ...v, artwork: bad })!.artwork, undefined, JSON.stringify(bad));
   assert.deepEqual(cleanView({ ...v, artwork: { ...ART, extra: 1 } })!.artwork, ART, "nothing else is carried");
+  // a page from before the source was said: none
+  const { source: _source, ...older } = ART;
+  assert.equal(cleanView({ ...v, artwork: older })!.artwork!.source, false);
   // an agent's presence carries none: agents have no artwork
   const { artwork: _artwork, ...rest } = cleanView(v)!;
   assert.deepEqual(withoutArtwork(cleanView(v)), rest);

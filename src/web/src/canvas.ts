@@ -23,6 +23,8 @@ import type { Weighted, Weights } from "./overview.ts";
 import { MODE_SITES } from "../../shared/viewgraph.ts";
 import type { Graph, Mode } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
+import { writeNames } from "./halo.ts";
+import type { Written } from "./halo.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
 import { ST_APPROVED, ST_BUILDING, ST_COMMENTED, ST_FAILED, ST_SORRY, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
@@ -56,12 +58,12 @@ export type OrderBody = { kind: "node" | "cluster"; k: number } | { kind: "spot"
 
 /** The board drawn as an artwork (ExportSpec decision 19, the owner's decisions of 2026-10-14): what
  *  the picture holds of what the board draws besides the colouring, the theme and the edges on or
- *  off, which are the board's own. Names: all of them, wherever there is room, at any zoom; the
- *  clusters' (and the targets'); none. Edges: all, or only the selection's, or none. Targets: their
+ *  off, which are the board's own. Names: as the board writes them, a lit declaration's where the
+ *  board would give it a card (an artwork has none); the clusters' (and the targets'); none. Edges: all, or only the selection's, or none. Targets: their
  *  stars, keys' diamonds and names marked, or nothing of them. While it is set, nothing of the
  *  reader's own is drawn over the picture: no cards, no hover, no visitors, no one else's initials. */
 export interface ArtLook {
-  labels: "all" | "clusters" | "none";
+  labels: "board" | "clusters" | "none";
   edges: "all" | "selection" | "none";
   targets: "marked" | "plain" | "highlight";
 }
@@ -205,6 +207,10 @@ function sameTarget(a: Target, b: Target): boolean {
 
 /** A colour at `k` of its opacity. */
 const fade = (c: RGBA, k: number): RGBA => [c[0], c[1], c[2], c[3] * k];
+
+/** How many lit declarations the board gives a card at zoom `k`: a card's name is what an artwork
+ *  writes in its place (it has no cards). */
+const cardCap = (k: number) => (k < 0.12 ? 0 : k < 0.35 ? 40 : k < 0.8 ? 90 : CARD_CAP);
 
 export const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif`;
 const CELL = 24;
@@ -2333,12 +2339,15 @@ export class GraphCanvas {
     const labels: number[] = [];
     const named = new Map<number, number>();
     const art = this.art;
+    // the names, written last, over every mark (writeNames)
+    const written: Written[] = [];
+    const write = (text: string, x: number, y: number) => written.push({ text, x, y, font: ctx.font, align: ctx.textAlign, fill: String(ctx.fillStyle) });
     const place = (text: string, cx: number, baseline: number, size: number): boolean => {
       const w = ctx.measureText(text).width / 2 + 3;
       const x0 = cx - w, x1 = cx + w, y0 = baseline - size, y1 = baseline + size * 0.3;
       if (!free(x0, y0, x1, y1)) return false;
       take(x0, y0, x1, y1);
-      ctx.fillText(text, cx, baseline);
+      write(text, cx, baseline);
       labels.push(...this.toWorld(x0, y0), ...this.toWorld(x1, y1));
       return true;
     };
@@ -2380,23 +2389,46 @@ export class GraphCanvas {
       this.drawPeers(onScreen, dotR);
     }
     this.drawSelection(dotR);
-    // an artwork's targets have their names, marked, before any other; its names are all there is
-    // room for, at any zoom (ExportSpec decision 19)
-    const marked = art && art.labels !== "none" && art.targets !== "plain" ? this.targetList : [];
-    ctx.textAlign = "left";
-    for (const i of marked) {
-      if (!this.visibleNode(i)) continue;
+    // a declaration's name beside its point, where it covers no other name
+    const nameAt = (i: number, text: string, w: number): boolean => {
       const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
-      if (!onScreen(sx, sy, 8)) continue;
-      ctx.font = `600 11px ${FONT}`;
-      ctx.fillStyle = th.label;
-      const text = this.g.short(i);
-      const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + ctx.measureText(text).width + 2, y1 = sy + 5;
-      if (!free(x0, y0, x1, y1)) continue;
+      const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
+      if (!free(x0, y0, x1, y1)) return false;
       take(x0, y0, x1, y1);
-      ctx.fillText(text, sx + dotR + 3, sy + 3.5);
+      write(text, sx + dotR + 3, sy + 3.5);
+      return true;
+    };
+    const shown = (i: number) => {
+      if (!this.visibleNode(i)) return false;
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      return onScreen(sx, sy, 8);
+    };
+    // an artwork's (ExportSpec decision 19): its targets' names, marked, before any other; and where
+    // something is lit, the lit declarations' names where the board would give them cards, nearest
+    // the middle first
+    const marked = art && art.labels !== "none" && art.targets !== "plain" ? this.targetList.filter(shown) : [];
+    ctx.textAlign = "left";
+    ctx.font = `600 11px ${FONT}`;
+    ctx.fillStyle = th.label;
+    for (const i of marked) nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width);
+    const seen = new Set(marked);
+    if (art?.labels === "board" && act) {
+      ctx.font = `11px ${FONT}`;
+      ctx.fillStyle = th.text;
+      const cx = this.w / 2, cy = this.h / 2;
+      const lit = this.activeList.filter((i) => !seen.has(i) && shown(i));
+      const d = (i: number) => {
+        const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+        return (sx - cx) ** 2 + (sy - cy) ** 2;
+      };
+      lit.sort((a, b) => d(a) - d(b));
+      let budget = cardCap(k);
+      for (const i of lit) {
+        if (budget <= 0) break;
+        if (nameAt(i, this.g.short(i), ctx.measureText(this.g.short(i)).width)) budget--;
+      }
     }
-    if (art ? art.labels === "all" : k > 1.1 && !act) {
+    if ((!art || art.labels === "board") && k > 1.1 && !act) {
       ctx.font = `11px ${FONT}`;
       ctx.textAlign = "left";
       ctx.fillStyle = th.text;
@@ -2414,21 +2446,23 @@ export class GraphCanvas {
       }
       near.sort((a, b) => dist[a] - dist[b]);
       if (this.nameW.length !== this.g.n) this.nameW = new Float32Array(this.g.n).fill(-1);
-      let budget = art ? 4000 : 700;
-      const seen = new Set(marked);
-      for (let t = 0; t < near.length && t < (art ? 20000 : 4000) && budget > 0; t++) {
+      let budget = 700;
+      for (let t = 0; t < near.length && t < 4000 && budget > 0; t++) {
         const i = near[t];
         if (seen.has(i)) continue;
-        const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
         let w = this.nameW[i];
         if (!(w >= 0)) w = this.nameW[i] = ctx.measureText(this.g.short(i)).width;
-        const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
-        if (!free(x0, y0, x1, y1)) continue;
-        take(x0, y0, x1, y1);
-        ctx.fillText(this.g.short(i), sx + dotR + 3, sy + 3.5);
-        budget--;
+        if (nameAt(i, this.g.short(i), w)) budget--;
       }
     }
+    this.writeNames(written);
+  }
+
+  /** The names, over everything else written on the board, each on its halo of the background
+   *  (web/src/halo.ts). */
+  private writeNames(names: readonly Written[]): void {
+    const bg = this.theme.bg;
+    writeNames(this.ctx, names, `rgb(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)})`);
   }
 
   /** In the Status scheme, how far the review of each cluster on screen has come, on its outline: an
@@ -3012,7 +3046,7 @@ export class GraphCanvas {
     // which active nodes get a card: the nearest to the screen centre
     const cx = this.w / 2;
     const cy = this.h / 2;
-    const cap = this.art ? 0 : k < 0.12 ? 0 : k < 0.35 ? 40 : k < 0.8 ? 90 : CARD_CAP;
+    const cap = this.art ? 0 : cardCap(k);
     const ranked = activeDots
       .filter((i) => !chosen.has(i))
       .map((i) => {

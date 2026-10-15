@@ -157,3 +157,32 @@ test("names made unique: a unit given twice is one, with the edges of both", () 
   assert.deepEqual(u.edges.filter(([s, d]) => s === 1 && d === 0), [[1, 0, 3]]);
   assert.ok(u.edges.some(([s, d]) => s === 1 && d === 3), "the outside declaration moved down by one");
 });
+
+test("a project's git source as a page shows it: host and path, never a user name or a password; none for a path on this machine", async () => {
+  const { sourceAddress, gitSource } = await import("../src/server/history.ts");
+  assert.equal(sourceAddress("git@github.com:LucianoXu/VisualProof.git"), "github.com/LucianoXu/VisualProof");
+  assert.equal(sourceAddress("https://github.com/LucianoXu/VisualProof"), "github.com/LucianoXu/VisualProof");
+  assert.equal(sourceAddress("https://user:ghp_secret@github.com/A/B.git/"), "github.com/A/B");
+  assert.equal(sourceAddress("ssh://git@gitlab.example.org:2222/group/sub/repo.git"), "gitlab.example.org/group/sub/repo");
+  for (const local of ["/srv/git/repo.git", "file:///srv/git/repo", "C:\\repos\\x", "../other", "", "https://github.com/", "https://github.com/a b"]) assert.equal(sourceAddress(local), null, local);
+  // a repository: its remote and commit, read without writing a thing into it
+  const { spawnSync } = await import("node:child_process");
+  const dir = mkdtempSync(join(tmpdir(), "vp-gitsource-"));
+  try {
+    const git = (...a: string[]) => spawnSync("git", ["-C", dir, ...a], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "T", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "T", GIT_COMMITTER_EMAIL: "t@t" } });
+    if (git("init", "-q", "-b", "main").status !== 0) return;
+    assert.equal(gitSource(dir), null, "no commit yet");
+    writeFileSync(join(dir, "A.lean"), "def a := 1\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "a");
+    const hash = git("rev-parse", "HEAD").stdout.trim();
+    assert.deepEqual(gitSource(dir), { source: null, commit: hash, branch: "main" }, "no remote: no source");
+    git("remote", "add", "upstream", "https://bob:pw@example.org/x/y.git");
+    git("remote", "add", "origin", "git@github.com:A/B.git");
+    writeFileSync(join(dir, "A.lean"), "def a := 2\n");
+    assert.deepEqual(gitSource(dir), { source: "github.com/A/B", commit: hash, branch: "main", dirty: true }, "origin first; a .lean file changed");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  assert.equal(gitSource(join(tmpdir(), "vp-no-such-dir")), null);
+});

@@ -185,9 +185,13 @@ export interface ArtworkLook {
   w: number;
   h: number;
   scheme: ColourScheme;
+  /** the theme's colours, on its background or on none (a transparent picture, light for a light
+   *  page, dark for a dark one) */
   theme: "light" | "dark";
-  background: "theme" | "white" | "transparent";
-  labels: "all" | "clusters" | "none";
+  background: "theme" | "transparent";
+  /** names as the board writes them (a lit declaration's where the board would give it a card); the
+   *  clusters' and the targets' alone; none */
+  labels: "board" | "clusters" | "none";
   edges: "all" | "selection" | "none";
   proofs: boolean;
   notes: boolean;
@@ -195,10 +199,12 @@ export interface ArtworkLook {
   targets: "marked" | "plain" | "highlight";
   /** the selection and what is lit drawn as the reader sees them */
   selection: boolean;
+  /** the project's git source and the commit it was read from, at the bottom right */
+  source: boolean;
 }
 
 /** The artwork mode as presence carries it: its settings, and the rectangle of the board's world its
- *  frame holds (x, y, width, height), which a follower's frame holds too. */
+ *  frame holds (its middle, its width and height), which a follower's frame holds too. */
 export interface ArtworkView extends ArtworkLook {
   region: [number, number, number, number];
 }
@@ -221,11 +227,12 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   const side = (x: unknown) => (Number.isInteger(x) && (x as number) >= 16 && (x as number) <= ART_MAX_SIDE ? (x as number) : null);
   const r = Array.isArray(o.region) && o.region.length === 4 && o.region.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1e9) ? (o.region as [number, number, number, number]) : null;
   const w = side(o.w), h = side(o.h), scheme = one(SCHEMES, o.scheme), theme = one(["light", "dark"] as const, o.theme);
-  const background = one(["theme", "white", "transparent"] as const, o.background), labels = one(["all", "clusters", "none"] as const, o.labels);
+  const background = one(["theme", "transparent"] as const, o.background), labels = one(["board", "clusters", "none"] as const, o.labels);
   const edges = one(["all", "selection", "none"] as const, o.edges), targets = one(["marked", "plain", "highlight"] as const, o.targets);
   if (!r || r[2] <= 0 || r[3] <= 0 || !w || !h || !scheme || !theme || !background || !labels || !edges || !targets) return null;
   if (typeof o.proofs !== "boolean" || typeof o.notes !== "boolean" || typeof o.selection !== "boolean") return null;
-  return { w, h, scheme, theme, background, labels, edges, proofs: o.proofs, notes: o.notes, targets, selection: o.selection, region: [...r] };
+  // the source, said since 2026-10-15: off where a page does not say it
+  return { w, h, scheme, theme, background, labels, edges, proofs: o.proofs, notes: o.notes, targets, selection: o.selection, source: o.source === true, region: [...r] };
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */
