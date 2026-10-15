@@ -20,7 +20,7 @@ import type { ArtworkView } from "../../shared/collab.ts";
 import { ART_NAMES_BYTES, ART_TARGETS_BYTES } from "../../shared/collab.ts";
 import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { ArtSettings, NameRow, NotePicture } from "./artwork.ts";
-import { artName, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
+import { artName, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, footMost, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { ART_DISPLAY, ART_SANS, ART_SERIF } from "./halo.ts";
 import { FOOT_SIZE, TITLE_SIZE } from "../../shared/collab.ts";
@@ -363,10 +363,23 @@ export class ArtFrame {
     this.rect = { x, y, w, h };
     Object.assign(this.frameEl.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
     Object.assign(this.sky.style, { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` });
-    Object.assign(this.head.style, { left: `${x}px`, top: `${y - 8}px`, maxWidth: `${innerWidth - PANEL_W - MARGIN - x - 16}px` });
-    Object.assign(this.tail.style, { right: `${innerWidth - x - w}px`, top: `${y + h + 8}px` });
+    this.placeStrips();
     this.renderSky();
     this.renderInk();
+  }
+
+  /** The strips beside the frame, each on one line (the owner's decision of 2026-10-15): the title's
+   *  above its top left, further left where it would reach the panel; the source's below its bottom
+   *  right, further right where it would leave the screen. */
+  private placeStrips(): void {
+    const { x, y, w, h } = this.rect;
+    const end = innerWidth - PANEL_W - MARGIN - 16;
+    // measured where nothing narrows them
+    Object.assign(this.head.style, { left: `${MARGIN}px`, top: `${y - 8}px`, maxWidth: `${end - MARGIN}px` });
+    Object.assign(this.tail.style, { right: "0px", top: `${y + h + 8}px` });
+    const hw = this.head.offsetWidth, tw = this.tail.offsetWidth;
+    this.head.style.left = `${Math.max(MARGIN, Math.min(x, end - hw))}px`;
+    this.tail.style.right = `${Math.max(0, Math.min(innerWidth - x - w, innerWidth - MARGIN - tw))}px`;
   }
 
   /** The style's ground under the board, within the frame (artwork.ts, drawBackdrop): none for the
@@ -692,9 +705,13 @@ export class ArtFrame {
     // beside the frame, in its shade: the title above its top left, the source below its bottom right
     this.head.innerHTML = this.titleHtml();
     // and the foot's size, both its lines
+    // — up to as large as the picture holds on one line, its shape and the source's line as they are
+    const most = Math.min(FOOT_SIZE.most, Math.max(FOOT_SIZE.least, Math.floor(footMost(this.measure, s.w, s.h, s.source ? source : null, ART_SANS) * 10) / 10));
+    const foot = Math.min(s.footSize, most);
     this.tail.innerHTML =
       check("source", "Source and commit", source ?? "This project is not a git repository", !source) +
-      `<label class="ex-field art-size"><span>Size <output data-art-foot-size>${s.footSize}%</output></span><input type="range" data-art="footSize" min="${FOOT_SIZE.least}" max="${FOOT_SIZE.most}" step="0.1" value="${s.footSize}" aria-label="The foot's size, in hundredths of the picture's height"></label>`;
+      `<label class="ex-field art-size"><span>Size <output data-art-foot-size>${foot}%</output></span><input type="range" data-art="footSize" min="${FOOT_SIZE.least}" max="${most}" step="0.1" value="${foot}" aria-label="The foot's size, in hundredths of the picture's height"></label>`;
+    if (this.rect.w) this.placeStrips();
     for (const [k, top] of scrolls) {
       const el = this.panel.querySelector<HTMLElement>(`[data-art-rows="${k}"]`);
       if (el) el.scrollTop = top;
