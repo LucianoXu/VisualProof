@@ -48,6 +48,8 @@ function heavy(): PresenceView {
     scheme: "status",
     edges: false,
     proofEdges: true,
+    linear: false,
+    artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "all", edges: "selection", proofs: false, notes: true, targets: "highlight", selection: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
     tabs: ["project", "v7f3a9c2e41"],
   };
 }

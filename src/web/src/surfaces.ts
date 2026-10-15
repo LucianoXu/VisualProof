@@ -193,6 +193,13 @@ export const FOLLOWED = [
     changes: "#linear-btn",
     keys: ["o"],
   },
+  {
+    part: "artwork",
+    what: "the artwork mode (ExportSpec decision 19): on or off, its settings — the board drawn with them — and what its frame holds",
+    fields: ["artwork"],
+    changes: "#art-panel select, #art-panel input, #art-panel [data-art-done], #export-modal [data-ex-art]",
+    reads: "#art-panel",
+  },
 ] as const satisfies readonly Followed[];
 
 /** The surfaces of the reader's own. */
@@ -205,7 +212,6 @@ export const YOURS = [
   { id: "whatChanged", what: "\"What changed\" opened: the Time Machine's counts and the lists they open", where: "#tmbar .tm-sum, [data-tm-list], #tm-list" },
   { id: "legend", what: "the legend folded or open", where: "#legend" },
   { id: "eyes", what: "the eyes' ⋯ popover, opened", where: "#eyes-btn, #eyes-pop" },
-  { id: "artwork", what: "framing an artwork (ExportSpec decision 19): its frame, its size and look, saving it", where: "#art, #art-panel", whole: true },
   { id: "phone", what: "a phone's ⋯ menu of the bar's buttons, and the button of the side panel's drawer (web/src/phone.ts)", where: "#more-btn, #more-pop, #side-btn" },
   { id: "theme", what: "the theme", where: "#theme-seg" },
   { id: "lock", what: "the layout lock", where: "#lock-btn", keys: ["l"] },
@@ -244,8 +250,9 @@ export const BOOKKEEPING = ["tabs"] as const satisfies readonly (keyof PresenceV
  *  the reader, as on the canvas), and what is in them is declared each. */
 export const FRAMES = ["#bar", "#viewbar", "#foot", "#windows", "#zoom"] as const;
 /** Elements of the page's skeleton that are no surface: the bar's words, and what passes —
- *  tooltips, hints, notes of others' changes, the loader. */
-export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader"] as const;
+ *  tooltips, hints, notes of others' changes, the loader, the artwork's frame (the pointer passes it
+ *  to the board under it; its panel is the artwork part's). */
+export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art"] as const;
 
 export type Part = (typeof FOLLOWED)[number]["part"];
 type Of<P extends Part> = Extract<(typeof FOLLOWED)[number], { part: P }>;

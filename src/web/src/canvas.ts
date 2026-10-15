@@ -54,6 +54,28 @@ export interface PinMove {
 
 export type OrderBody = { kind: "node" | "cluster"; k: number } | { kind: "spot"; x: number; y: number };
 
+/** The board drawn as an artwork (ExportSpec decision 19, the owner's decisions of 2026-10-14): what
+ *  the picture holds of what the board draws besides the colouring, the theme and the edges on or
+ *  off, which are the board's own. Names: all of them, wherever there is room, at any zoom; the
+ *  clusters' (and the targets'); none. Edges: all, or only the selection's, or none. Targets: their
+ *  stars, keys' diamonds and names marked, or nothing of them. While it is set, nothing of the
+ *  reader's own is drawn over the picture: no cards, no hover, no visitors, no one else's initials. */
+export interface ArtLook {
+  labels: "all" | "clusters" | "none";
+  edges: "all" | "selection" | "none";
+  targets: "marked" | "plain" | "highlight";
+}
+
+/** What the board's renderer draws, as an artwork's SVG writes it (ExportSpec decision 19), in the
+ *  screen's pixels and in the renderer's order: a circle or a point (its fill, and a ring of `ring`
+ *  pixels at radius `ringR`, dashed or not), a segment, a bundled edge (its control points, the
+ *  spline's straightening `beta`, its colours from the end that uses to the end used). Colours are
+ *  the renderer's, 0 to 1. */
+export type ArtShape =
+  | { kind: "circle"; x: number; y: number; r: number; fill: RGBA; stroke: RGBA | null; ring: number; ringR: number; dashed: boolean }
+  | { kind: "line"; x0: number; y0: number; x1: number; y1: number; colour: RGBA; width: number }
+  | { kind: "bundle"; ctrl: number[]; beta: number; width: number; c0: RGBA; c1: RGBA };
+
 /** What the pointer is on: one declaration, one cluster (open or folded), or a visitor (by its index
  *  in the trail, setVisitors). */
 export type Target = { kind: "node"; i: number } | { kind: "cluster"; c: number } | { kind: "visitor"; k: number };
@@ -184,7 +206,7 @@ function sameTarget(a: Target, b: Target): boolean {
 /** A colour at `k` of its opacity. */
 const fade = (c: RGBA, k: number): RGBA => [c[0], c[1], c[2], c[3] * k];
 
-const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif`;
+export const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", sans-serif`;
 const CELL = 24;
 const CARD_CAP = 180;
 /** position ids kept past the scene's for the visitors and their temporary clusters, whose edges are
@@ -331,6 +353,11 @@ export class GraphCanvas {
   /** edges with nothing selected: on by default, proofs off (CanvasSpec "Edges") */
   showEdges = true;
   proofEdges = false;
+  /** the artwork's look while its mode is on (ExportSpec decision 19): the board is the picture */
+  art: ArtLook | null = null;
+  /** where the names and marks are drawn other than on the screen (an artwork's file): the transform
+   *  from the screen's CSS pixels to that context's */
+  private labelBase: [number, number, number, number, number, number] | null = null;
   /** smoothed time between animation frames, ms; and the last draw's cost */
   frameMs = 16;
   drawMs = 0;
@@ -766,22 +793,6 @@ export class GraphCanvas {
     return i === undefined ? null : this.toScreen(...this.posOf(i));
   }
 
-  /** Whether declaration `i` is drawn as itself now (not folded away, not a hidden outside one):
-   *  what an artwork draws (web/src/artwork.ts). */
-  isNodeShown(i: number): boolean {
-    return this.visibleNode(i);
-  }
-
-  /** A declaration's point on the screen, in pixels, at the zoom now. */
-  get dotSize(): number {
-    return this.dotPx();
-  }
-
-  /** The graph the board is drawn from (its numbering). */
-  get graph(): Graph {
-    return this.g;
-  }
-
   /** Where cluster `key`'s circle is drawn on the screen: its centre and radius. */
   clusterDisc(key: string): [number, number, number] | null {
     const c = this.layout.clusters.findIndex((x) => x.key === key);
@@ -1108,6 +1119,117 @@ export class GraphCanvas {
     this.recomputeEdges();
     this.rebuildGrid();
     this.invalidate();
+  }
+
+  /** The board's drawing of the screen's rectangle `rect` at `f` pixels for each of the screen's,
+   *  its rows `y0` to `y0 + rows`, onto `out` from its top left: an artwork's PNG, a band at a time
+   *  (ExportSpec decision 19). The renderer draws it a tile at a time on the board's own canvas —
+   *  through `cam`, the camera the picture was framed with, its soft rims as many pixels wide as the
+   *  screen's (Renderer.render, `aa`) — and the names and marks are written over it as the screen has
+   *  them; the screen is drawn again after. */
+  paintArtBand(out: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, f: number, y0: number, rows: number, cam: { x: number; y: number; k: number }): void {
+    const was = { cam: this.cam, ctx: this.ctx, w: this.canvas.width, h: this.canvas.height };
+    const W = out.canvas.width;
+    const tile = Math.min(2048, this.gl.maxSide());
+    this.cam = { ...cam };
+    try {
+      const dotR = this.dotPx();
+      for (let x0 = 0; x0 < W; x0 += tile) {
+        const tw = Math.min(tile, W - x0);
+        if (this.canvas.width !== tw || this.canvas.height !== rows) [this.canvas.width, this.canvas.height] = [tw, rows];
+        const cw = tw / f, ch = rows / f;
+        const [wx, wy] = this.toWorld(rect.x + x0 / f + cw / 2, rect.y + y0 / f + ch / 2);
+        this.gl.render({ x: wx, y: wy, k: cam.k }, cw, ch, f, dotR, (0.35 * this.dpr) / f);
+        out.drawImage(this.canvas, 0, 0, tw, rows, x0, 0, tw, rows);
+      }
+      // the names and the marks, on a canvas of their own laid over it
+      const lab = document.createElement("canvas");
+      [lab.width, lab.height] = [W, rows];
+      this.ctx = lab.getContext("2d")!;
+      this.labelBase = [f, 0, 0, f, -rect.x * f, -(rect.y * f + y0)];
+      this.drawLabels((sx, sy, pad) => sx > -pad && sy > -pad && sx < this.w + pad && sy < this.h + pad, dotR);
+      out.drawImage(lab, 0, 0);
+    } finally {
+      this.cam = was.cam;
+      this.ctx = was.ctx;
+      this.labelBase = null;
+      [this.canvas.width, this.canvas.height] = [was.w, was.h];
+      this.dirty = true;
+      this.draw();
+    }
+  }
+
+  /** The names and marks the board writes over its renderer's drawing, written with `ctx` (an
+   *  artwork's SVG, web/src/artwork.ts: it records what is drawn), in the screen's CSS pixels. */
+  drawMarks(ctx: CanvasRenderingContext2D): void {
+    const was = this.ctx;
+    this.ctx = ctx;
+    this.labelBase = [1, 0, 0, 1, 0, 0];
+    try {
+      this.drawLabels((sx, sy, pad) => sx > -pad && sy > -pad && sx < this.w + pad && sy < this.h + pad, this.dotPx());
+    } finally {
+      this.ctx = was;
+      this.labelBase = null;
+      this.dirty = true;
+      this.request();
+    }
+  }
+
+  /** What the renderer draws that reaches the screen's rectangle `rect`, as shapes in the screen's
+   *  pixels, in its order: what an artwork's SVG writes as vectors (ExportSpec decision 19). */
+  artShapes(rect: { x: number; y: number; w: number; h: number }): ArtShape[] {
+    const { x: cx, y: cy, k } = this.cam;
+    const sx = (x: number) => (x - cx) * k + this.w / 2, sy = (y: number) => (y - cy) * k + this.h / 2;
+    const dot = this.dotPx();
+    const meets = (x0: number, y0: number, x1: number, y1: number) => x1 >= rect.x && y1 >= rect.y && x0 <= rect.x + rect.w && y0 <= rect.y + rect.h;
+    const P = this.posData;
+    const out: ArtShape[] = [];
+    const four = (d: Float32Array, o: number): RGBA => [d[o], d[o + 1], d[o + 2], d[o + 3]];
+    for (const L of this.gl.drawn()) {
+      const d = L.data;
+      for (let n = 0; n < L.count; n++) {
+        const o = n * L.stride;
+        if (L.kind === "circles" || L.kind === "points") {
+          const unit = d[o + 3];
+          const r = Math.max(unit < 0.5 ? d[o + 2] * k : unit < 1.5 ? d[o + 2] : d[o + 2] * dot, d[o + 15]);
+          const x = sx(d[o]), y = sy(d[o + 1]);
+          const ring = d[o + 12], ringR = r + d[o + 14];
+          const ext = Math.max(r, ringR + ring / 2);
+          if (!meets(x - ext, y - ext, x + ext, y + ext)) continue;
+          const fill = four(d, o + 4), stroke = ring > 0 && d[o + 11] > 0 ? four(d, o + 8) : null;
+          if (fill[3] <= 0.002 && !stroke) continue;
+          out.push({ kind: "circle", x, y, r, fill, stroke, ring, ringR, dashed: (Math.round(d[o + 13]) & FLAG_DASHED) !== 0 });
+        } else if (L.kind === "lines") {
+          const x0 = sx(d[o]), y0 = sy(d[o + 1]), x1 = sx(d[o + 2]), y1 = sy(d[o + 3]), w = d[o + 8];
+          if (!meets(Math.min(x0, x1) - w, Math.min(y0, y1) - w, Math.max(x0, x1) + w, Math.max(y0, y1) + w)) continue;
+          out.push({ kind: "line", x0, y0, x1, y1, colour: four(d, o + 4), width: w });
+        } else {
+          const len = Math.round(d[o + 8]);
+          const ctrl: number[] = [];
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (let j = 0; j < len; j++) {
+            const id = Math.round(d[o + j]);
+            const x = sx(P[2 * id]), y = sy(P[2 * id + 1]);
+            ctrl.push(x, y);
+            [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+          }
+          // a B-spline keeps within its control points: one whose box misses the frame misses it
+          const w = d[o + 10];
+          if (!meets(x0 - w, y0 - w, x1 + w, y1 + w)) continue;
+          out.push({ kind: "bundle", ctrl, beta: d[o + 9], width: w, c0: four(d, o + 12), c1: four(d, o + 16) });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Draw the board as an artwork (null: as ever). */
+  setArt(look: ArtLook | null): void {
+    this.art = look;
+    this.overviewBase = "";
+    this.setHover(null, 0, 0);
+    this.invalidate();
+    this.request();
   }
 
   setEdges(show: boolean, proofs: boolean): void {
@@ -1819,12 +1941,12 @@ export class GraphCanvas {
       const fill: RGBA = [base[0], base[1], base[2], lit ? 1 : Math.min(1, base[3] * 3 + 0.15) * (act ? 0.5 : 1)];
       circle(bubbles, S.cwx[c], S.cwy[c], S.drawnR[c], UNIT_WORLD, fill, null, 0, FLAG_SHADED, 0, 6);
     }
-    this.tempDiscs(discs);
+    if (!this.art) this.tempDiscs(discs);
 
     // edges of the selection, bundled along the tree, on top of the overview
     const sel = g.layer("selection", "bundles");
     sel.clear();
-    if (act && this.edges.length) {
+    if (act && this.edges.length && this.art?.edges !== "none") {
       const count = this.edges.length / 3;
       const fade = count < 250 ? 1 : Math.max(0.25, Math.sqrt(250 / count));
       const width = count > 4000 ? 1 : 1.6;
@@ -1842,7 +1964,7 @@ export class GraphCanvas {
         bundle(sel, pathOf(S, a, b), 0.85, width, c0, c1);
       }
     }
-    this.visitBundles(sel);
+    if (!this.art) this.visitBundles(sel);
 
     // points: dots for declarations, rings for the world outside the project, in the scheme's
     // colours; what is lit is drawn over them in draw()
@@ -1994,7 +2116,7 @@ export class GraphCanvas {
     const S = this.scene;
     const L = this.gl.layer("overview", "bundles");
     const Q = this.edgeQ;
-    if (!this.showEdges) {
+    if (!this.showEdges || (this.art && this.art.edges !== "all")) {
       L.clear();
       this.overviewBase = "";
       this.drawnW = null;
@@ -2163,7 +2285,7 @@ export class GraphCanvas {
     C.clear();
     P.clear();
     const t = this.hoverTarget;
-    if (!t || t.kind === "visitor") return;
+    if (!t || t.kind === "visitor" || this.art) return;
     const a = th.lit;
     if (t.kind === "cluster") {
       if (S.rep[t.c] >= 0 && S.rep[t.c] !== t.c) return;
@@ -2180,7 +2302,7 @@ export class GraphCanvas {
     const k = this.cam.k;
     const th = this.theme;
     const S = this.scene;
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.setTransform(...(this.labelBase ?? ([this.dpr, 0, 0, this.dpr, 0, 0] as const)));
     ctx.clearRect(0, 0, this.w, this.h);
     // under everything else written here: the names, marks and rings read over them
     this.drawKeyEdges(dotR);
@@ -2210,6 +2332,7 @@ export class GraphCanvas {
     // note's card keeps off its own cluster's name (`labelOf`)
     const labels: number[] = [];
     const named = new Map<number, number>();
+    const art = this.art;
     const place = (text: string, cx: number, baseline: number, size: number): boolean => {
       const w = ctx.measureText(text).width / 2 + 3;
       const x0 = cx - w, x1 = cx + w, y0 = baseline - size, y1 = baseline + size * 0.3;
@@ -2221,6 +2344,7 @@ export class GraphCanvas {
     };
     ctx.fillStyle = th.label;
     for (let c = 0; c < S.nc; c++) {
+      if (art?.labels === "none") break;
       const rep = S.rep[c];
       if (!this.clusterVisible(c)) continue;
       const cl = this.layout.clusters[c];
@@ -2241,17 +2365,38 @@ export class GraphCanvas {
       // covered at the top: one line lower, still inside its own circle
       if (place(cl.label, sx, sy - sr + size + 6, size) || (sr > 4 * size && place(cl.label, sx, sy - sr + 2 * size + 10, size))) named.set(c, labels.length - 4);
     }
-    this.tempLabels(place, onScreen);
+    // what is the reader's own is not drawn over an artwork: visitors and their clusters, others
+    if (!art) this.tempLabels(place, onScreen);
     this.labelBoxes = labels;
     this.labelOfC = named;
     this.drawProgress(onScreen);
     this.drawLeaders();
-    this.drawKeys(onScreen, dotR);
-    this.drawStars(onScreen, dotR);
-    this.drawVisitors(onScreen);
-    this.drawPeers(onScreen, dotR);
+    if (art?.targets !== "plain") {
+      this.drawKeys(onScreen, dotR);
+      this.drawStars(onScreen, dotR);
+    }
+    if (!art) {
+      this.drawVisitors(onScreen);
+      this.drawPeers(onScreen, dotR);
+    }
     this.drawSelection(dotR);
-    if (k > 1.1 && !act) {
+    // an artwork's targets have their names, marked, before any other; its names are all there is
+    // room for, at any zoom (ExportSpec decision 19)
+    const marked = art && art.labels !== "none" && art.targets !== "plain" ? this.targetList : [];
+    ctx.textAlign = "left";
+    for (const i of marked) {
+      if (!this.visibleNode(i)) continue;
+      const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
+      if (!onScreen(sx, sy, 8)) continue;
+      ctx.font = `600 11px ${FONT}`;
+      ctx.fillStyle = th.label;
+      const text = this.g.short(i);
+      const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + ctx.measureText(text).width + 2, y1 = sy + 5;
+      if (!free(x0, y0, x1, y1)) continue;
+      take(x0, y0, x1, y1);
+      ctx.fillText(text, sx + dotR + 3, sy + 3.5);
+    }
+    if (art ? art.labels === "all" : k > 1.1 && !act) {
       ctx.font = `11px ${FONT}`;
       ctx.textAlign = "left";
       ctx.fillStyle = th.text;
@@ -2269,9 +2414,11 @@ export class GraphCanvas {
       }
       near.sort((a, b) => dist[a] - dist[b]);
       if (this.nameW.length !== this.g.n) this.nameW = new Float32Array(this.g.n).fill(-1);
-      let budget = 700;
-      for (let t = 0; t < near.length && t < 4000 && budget > 0; t++) {
+      let budget = art ? 4000 : 700;
+      const seen = new Set(marked);
+      for (let t = 0; t < near.length && t < (art ? 20000 : 4000) && budget > 0; t++) {
         const i = near[t];
+        if (seen.has(i)) continue;
         const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
         let w = this.nameW[i];
         if (!(w >= 0)) w = this.nameW[i] = ctx.measureText(this.g.short(i)).width;
@@ -2796,7 +2943,8 @@ export class GraphCanvas {
       ctx.stroke();
     }
     for (const el of this.cards.values()) if (el.dataset.cluster !== undefined) el.classList.toggle("picked", carded.has(Number(el.dataset.cluster)));
-    const lead = this.lead && markOf(this.lead);
+    // none in an artwork, whose panels are put away (ExportSpec decision 19)
+    const lead = !this.art && this.lead && markOf(this.lead);
     if (!lead) return ctx.restore();
     const box = this.canvas.getBoundingClientRect();
     const at = this.leadEnd();
@@ -2864,7 +3012,7 @@ export class GraphCanvas {
     // which active nodes get a card: the nearest to the screen centre
     const cx = this.w / 2;
     const cy = this.h / 2;
-    const cap = k < 0.12 ? 0 : k < 0.35 ? 40 : k < 0.8 ? 90 : CARD_CAP;
+    const cap = this.art ? 0 : k < 0.12 ? 0 : k < 0.35 ? 40 : k < 0.8 ? 90 : CARD_CAP;
     const ranked = activeDots
       .filter((i) => !chosen.has(i))
       .map((i) => {

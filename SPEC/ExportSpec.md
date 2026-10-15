@@ -192,28 +192,38 @@ Numbers missing below are withdrawn decisions.
 19. **Artwork** (SPEC.md, "Export"; the owner's words of 2026-10-13: PNG and SVG, the canvas's size
     chosen and rendered at high resolution; a highlighted frame in the middle with shade around it,
     the canvas dragged under it to choose what is drawn; the colours, the items and the targets
-    adjustable; the owner's decision of 2026-10-14: as drafted).
+    adjustable; the owner's decisions of 2026-10-14: as drafted; then, that evening: no picture
+    drawn apart from the board — the board itself, drawn with the artwork's settings, is the
+    picture, whether it moves or is still, and everything done on the board works under the frame;
+    the artwork followed and shared; SVG the same content as the PNG, within the frame).
     - **Where**: the Export window's second tab, *Artwork*, beside *Document*. Choosing it closes the
-      window into the framing mode; Esc or Done leaves it, the board as it was.
-    - **The frame**: fixed in the middle of the screen, its aspect the size chosen; outside it the
-      screen is shaded. The reader pans and zooms the board under it (drag, wheel, the keys), and
-      what lies in the frame is what is drawn, at the size chosen.
+      window into the artwork mode; Esc or Done leaves it, the board drawn as before.
+    - **The board is the picture**: while the artwork mode is on, the board itself is drawn with the
+      panel's settings, moving or still; nothing is drawn in its place. Everything done on the
+      board works as ever under the frame — pan, zoom, select, drag, the menu, notes.
+    - **The frame**: a viewfinder fixed in the middle of the room the panel leaves, its aspect the
+      size chosen; outside it the screen is shaded. What lies in it is the picture.
     - **The size**: presets (1920 × 1080, 3840 × 2160, 4096 × 4096, A3 and A2 at 300 dpi, portrait or
-      landscape) or width and height in pixels, at most 16,384 on a side. A preview scale shows what
-      a label's size will be in the image.
-    - **The appearance**, in a small panel beside the frame, shown live: the colour scheme (Kind or
-      Status) and the theme (light, dark), the background (the theme's, white, or transparent for
-      PNG and SVG); labels (all, clusters only, none); edges (all, the selection's, none) and proof
-      edges; items — notes and attachments — shown or not; targets — their star and name marked,
-      shown as any declaration, or highlighted with the rest faded. The selection and what is lit
-      count as the reader sees them, or not at all.
-    - **The output**: PNG, drawn by the page off screen at the full size (in tiles where the size
-      passes what the graphics card draws at once); SVG, vector — circles, points, labels as text,
-      edges as paths. Made in the browser, from what the page holds: nothing is asked of the server,
-      so a read-only reader and a snapshot of the page can make one too. The file is named after the
-      view and the build ("TCB of Hilbert91 @ Oct 14 12:38.png").
-    - **What is kept**: the reader's own choices, in their browser; nothing is shared or recorded.
-      Agents have no artwork (the page draws it).
+      landscape) or width and height in pixels, at most 16,384 on a side. What a name's size will be
+      in the image is said beside it.
+    - **The appearance**, in a small panel at the right, applied to the board at once: the colour
+      scheme (Kind or Status) and the theme (light, dark), the background (the theme's, white, or
+      transparent); names (all, clusters only, none); edges (all, the selection's, none) and proof
+      edges; notes shown or not; targets — their star and name marked, drawn as any declaration, or
+      alone, the rest faded. The selection and what is lit count as the reader sees them, or not at
+      all.
+    - **Followed and shared**: the artwork — that it is on, its settings, its frame — is part of
+      what those following see (CollabSpec decision 4), as the linear form is: a follower's board is
+      drawn with the leader's artwork. Share's *Exactly what I see* carries it. The reader's last
+      settings are kept in their browser as the start of their next artwork.
+    - **The output**: PNG — the board's own drawing (its renderer, its names and notes) made again
+      off screen at the size chosen, in tiles where the size passes what the graphics card draws at
+      once: the frame's view, more pixels. SVG — the same content, within the frame, as vectors
+      (circles, points, names as text, edges as paths), the names those the board shows, as close as
+      vectors draw what the renderer draws. Made in the browser, from what the page holds: nothing
+      is asked of the server, so a read-only reader and a snapshot of the page can make one too.
+      The file is named after the view and the build ("TCB of Hilbert91 @ Oct 14 12:38.png").
+    - Agents have no artwork (the page draws it).
 
 ## Implementation notes
 
@@ -382,24 +392,40 @@ Numbers missing below are withdrawn decisions.
 
 ### Artwork
 
-- **Framing** (web/src/artframe.ts): `#art`, the frame, with a shadow of the screen's size round it
-  for the shade, and the picture over it (an `<img>` of the SVG) once the camera has not moved for
-  160 ms; `#art-panel` beside it, 300 pixels wide. The frame is the size's shape, as large as the
-  room the panel leaves allows; the board is fitted in it (canvas `fitRect`) and the camera goes back
-  on leaving. `body.framing` puts the panels away. A snapshot's Export button frames at once.
-- **The picture** (web/src/artwork.ts) is drawn in the frame's pixels and scaled to the size: its
-  `viewBox` is the frame, its `width` and `height` the size. From the scene as drawn now: open
-  circles, folded ones shaded with their name under them, the points (the dot's size at this zoom),
-  the outside world as rings; the edges between the units the overview would draw at this zoom
-  (bundles.ts `units` at 45 pixels, `aggregate`), heaviest first, at most 8,000 with an end in the
-  frame, each the shader's clamped cubic B-spline (`bundlePoints`) straightened by the overview's
-  beta, its width and opacity by its weight as the overview's; the names as the board writes them
-  (a cluster's inside the top of its circle, sized by its radius, a folded one's under it, a
-  declaration's beside its point, a target's first, none over another); the notes' icons and first
-  words; the targets' stars. The theme's colours are read from the style with `data-theme` set for
-  the moment of reading and resolved to `rgba()` (gl.ts `rgba`).
-- **The files**: SVG as drawn; PNG drawn by the browser from that SVG a band of rows at a time (at
-  most 4096² pixels a band, what every browser's canvas allows), each band's pixels compressed as
-  they come (`encodePng`: the browser's own deflate, `CompressionStream`), so no canvas of the full
-  size is ever made; refused with a message where the browser cannot. Named after the view's title,
-  stripped of what Windows refuses (`artName`).
+- **The mode** (web/src/artframe.ts): `#art`, the frame, with a shadow of the screen's size round it
+  for the shade, the pointer passing through it to the board; `#art-panel` at the right, 300 pixels
+  wide. The frame is the size's shape, as large as the room the panel leaves allows; opening fits the
+  board in it (canvas `fitRect`), and Done or Esc takes the camera back. A snapshot's Export button
+  opens the mode at once.
+- **The board drawn with the settings** (web/src/main.ts, `drawLook`): `body.framing` puts the panels
+  and the legend away; the theme is set on `<html>` (`applyTheme` restores the reader's); the colouring
+  and the edges are the canvas's (`setScheme`, `setEdges`), the reader's own kept under them;
+  `body[data-art-bg]` paints white or a checkerboard for transparent; `body.art-nonotes` hides the
+  notes. The canvas's `setArt` sets the rest: names (all of them at any zoom, as many as there is room
+  for, up to 4,000; the clusters' and the targets'; none), edges (the overview only with all, the
+  selection's unless none), targets (stars, keys' diamonds and marked names, or none). Targets alone:
+  what is lit is the targets, nothing else; the selection off: nothing lit, the reader's selection
+  kept. Nothing of the reader's own is drawn: no cards, no hover, no visitors, no initials, no lead to
+  the panel.
+- **Followed** as `artwork` (CollabSpec, "Surfaces"): presence carries the settings and the frame's
+  `region` — the middle of the board's world it holds, its width and height (`ArtworkView`,
+  shared/collab.ts, checked by `cleanArtwork`); null where the mode is off. A follower's frame holds
+  the same region at its own screen's size (artframe `follow`); its settings are not kept as the
+  follower's. A share link's snapshot carries it the same way.
+- **PNG** (canvas `paintArtBand`): the board's renderer draws the frame again on its own canvas at
+  `f` = width ÷ the frame's width pixels to each of the screen's, a tile of at most 2,048 pixels at a
+  time through the camera the picture was framed with (its soft rim kept as many pixels wide as on
+  the screen: renderer `aa`); the names and marks are written over each band from the same drawing as
+  the screen's, transformed; the notes over them (artwork `drawNotes`, from sticky `asDrawn`: each
+  mark, leader and open card as its elements show it, the icons' glyphs as pictures). A band of rows
+  at a time (at most 4096² pixels), each band's pixels compressed as they come (`encodePng`: the
+  browser's own deflate, `CompressionStream`), so no canvas of the full size is ever made; refused
+  with a message where the browser cannot. The screen is drawn again after each band.
+- **SVG** (artwork `artSvg`): its `viewBox` the frame, its `width` and `height` the size, what lies
+  outside the frame clipped away. What the renderer draws is read from its layers (renderer `drawn`,
+  canvas `artShapes`), each instance that reaches the frame a shape: a circle or point with its ring
+  (dashed where the renderer dashes it), a segment, a bundled edge as the shader's spline
+  (`bundlePoints`, 48 pieces) with a gradient from its end that uses to its end used. What the board
+  writes over it — names, stars, keys, rings, the key graph's edges — is recorded as it is written
+  (`SvgContext`, a 2D context's methods writing SVG; canvas `drawMarks`); then the notes, their
+  glyphs as SVG. Named after the view's title, stripped of what Windows refuses (`artName`).

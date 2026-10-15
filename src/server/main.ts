@@ -19,7 +19,7 @@ import { isDeclName, LeanHover } from "./hover.ts";
 import { Identities, layoutAuthor } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import { MAX_MEMORY_BYTES, Views } from "./views.ts";
-import { cleanView, defaultAgentName, validSession } from "../shared/collab.ts";
+import { cleanView, defaultAgentName, validSession, withoutArtwork } from "../shared/collab.ts";
 import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
@@ -864,7 +864,8 @@ export class App {
         // its own event stream only, by the secret the stream was given (`hello`)
         const name = this.ids.who(req);
         const priv = !agent && b.private === true;
-        if (agent && name) live.presence.agentBeat(name, cleanView(b.view));
+        // agents have no artwork (ExportSpec decision 19): the page draws it
+        if (agent && name) live.presence.agentBeat(name, withoutArtwork(cleanView(b.view)));
         else if (!live.beat(b.token, priv ? null : name, priv ? null : cleanView(b.view), !priv && b.idle === true, priv, !!this.ids.person(req)))
           return sendJson(res, { error: "This heartbeat is not from an open event stream of this page's: it is sent with the token the stream says hello with.", stream: false }, 403);
         return sendJson(res, { ok: true });

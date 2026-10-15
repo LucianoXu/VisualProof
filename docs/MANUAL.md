@@ -660,18 +660,23 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   declaration moves with it; dragged on its own elsewhere, it is attached no more. Not on a
   snapshot, a read-only page or a past build's preview.
 - **Artwork** (decision 19): the Export window's second tab makes a picture of the board, PNG or
-  SVG. The window closes into framing: a frame in the middle of the screen, of the shape of the size
-  chosen, the rest shaded and the panels put away, the whole board fitted in it to start with. Pan
-  and zoom the board under it as ever; once it is still, the frame shows the picture as it will be.
-  The panel beside it sets the size — presets (1920 × 1080, 4K, 4096², A3 and A2 at 300 dpi, either
-  way round) or width and height up to 16,384 pixels — and the look: Kind or Status, light or dark,
-  the background (the theme's, white, transparent), names (all, the clusters' only, none), edges
-  (all, the selection's, none) and proof edges, notes, targets (star and name, as any, or alone with
-  the rest faded) and the selection as you see it. **Save PNG** or **Save SVG** makes the file in
-  your browser, named after the view: the picture in the frame at the size chosen — the same picture,
-  more pixels. Nothing is asked of the server, so a read-only page makes one too, and a snapshot of
-  the page, whose Export goes straight to framing. Esc or **Done** puts the board back as it was. The
-  choices are kept in this browser.
+  SVG. The window closes into the artwork mode, where the board itself is the picture: it is drawn
+  with the artwork's settings at once, moving or still, and everything works on it as ever — pan,
+  zoom, select, drag, the menu, notes. Over it, a viewfinder: a frame in the middle of the screen,
+  of the shape of the size chosen, the rest shaded and the panels put away, the whole board fitted
+  in it to start with. What lies in the frame is the picture. The panel at the right sets the size —
+  presets (1920 × 1080, 4K, 4096², A3 and A2 at 300 dpi, either way round) or width and height up to
+  16,384 pixels — and the look: Kind or Status, light or dark, the background (the theme's, white,
+  or transparent, shown as a checkerboard), names (all, the clusters' only, none), edges (all, the
+  selection's, none) and proof edges, notes, targets (star and name, as any, or alone with the rest
+  faded) and the selection as you see it. **Save PNG** draws the frame again with the board's own
+  renderer at the size chosen — its names, marks and notes over it — the same picture, more pixels.
+  **Save SVG** writes the same content, within the frame, as vectors: circles, points, edges as
+  paths, names as text, the notes. Both are made in your browser, named after the view: nothing is
+  asked of the server, so a read-only page makes one too, and a snapshot of the page, whose Export
+  goes straight to the artwork. Esc or **Done** leaves, the board drawn as before. The artwork is
+  followed and shared: those following you see your board drawn with it and your frame, and Share's
+  *Exactly what I see* carries it. Your last settings are kept in this browser for the next one.
 - **The window** says which view it exports and what that holds — *Export the view "X": N
   declarations in M sections*, and how many declarations from outside the project it holds, which
   are not printed — then the document's **title** and **author line** as they will print, then the

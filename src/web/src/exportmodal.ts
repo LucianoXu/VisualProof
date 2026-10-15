@@ -77,9 +77,9 @@ export interface ExportHooks {
   /** the window opened or closed: the board is drawn in the linear form while it is open
    *  (ExportSpec decision 18) */
   shown?(open: boolean): void;
-  /** the Artwork tab: the window closes into framing (ExportSpec decision 19) */
+  /** the Artwork tab: the window closes into the artwork mode (ExportSpec decision 19) */
   artwork?(): void;
-  /** no document can be made here (a snapshot of the page): Export goes straight to framing */
+  /** no document can be made here (a snapshot of the page): Export goes straight to the artwork */
   artworkOnly?(): boolean;
 }
 

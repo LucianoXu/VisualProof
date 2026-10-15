@@ -1029,8 +1029,10 @@ async function boot(): Promise<void> {
   });
   linearBtn.addEventListener("click", () => linear.toggle());
 
-  // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): framed under a frame fixed
-  // in the middle of the screen, drawn in the browser
+  // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
+  // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
+  /** the artwork's settings the board is drawn with: null where its mode is off */
+  let artLook: ArtSettings | null = null;
   const art = new ArtFrame($("#art"), $("#art-panel"), canvas, {
     title: () => views.title(nav.board.id),
     saved: () => S.artwork as Partial<ArtSettings> | undefined,
@@ -1039,19 +1041,34 @@ async function boot(): Promise<void> {
       store.save();
     },
     now: () => ({ scheme: canvas.scheme, theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
-    isTarget: (i) => canvas.isTarget(i),
-    notes: () => stickies.shownNotes(),
-    say: (text) => say(text),
-    framing: (on) => {
-      document.body.classList.toggle("framing", on);
-      if (on) linear.hide("reader");
+    look: (s) => {
+      artLook = s && { ...s };
+      drawLook();
     },
+    changed: () => people.report(),
+    notes: () => stickies.asDrawn(),
+    say: (text) => say(text),
   });
-  // the frame's picture waits for the board to be still
-  canvas.onFrame = () => {
-    stickies.frame();
-    art.frame();
+  /** The board drawn with the artwork's settings while its mode is on, or as the reader's own again
+   *  (ExportSpec decision 19): the colouring and the theme, the background, the notes, the edges, the
+   *  names, the targets and the selection; the panels put away for the frame. The reader's own
+   *  choices are kept as they are, under it. */
+  const drawLook = () => {
+    const a = artLook;
+    document.body.classList.toggle("framing", !!a);
+    document.body.classList.toggle("art-nonotes", !!a && !a.notes);
+    if (a && a.background !== "theme") document.body.dataset.artBg = a.background;
+    else delete document.body.dataset.artBg;
+    if (a) {
+      linear.hide("reader");
+      document.documentElement.dataset.theme = a.theme;
+    } else applyTheme();
+    canvas.setArt(a && { labels: a.labels, edges: a.edges, targets: a.targets });
+    applyScheme();
+    syncEdges();
+    apply();
   };
+  canvas.onFrame = () => stickies.frame();
   // the notes the outline holds are those the board shows
   stickies.onRender = () => linear.refresh();
   /** the board the notes were last drawn for */
@@ -1294,8 +1311,10 @@ async function boot(): Promise<void> {
 
   /** The review has a focus on the board on show: where the review strip shows. */
   const onReview = () => reviewRoot() !== null;
+  /** the reader's own colouring here, under an artwork's (drawLook) */
+  const ownScheme = () => store.schemeFor(onReview());
   const applyScheme = () => {
-    canvas.setScheme(store.schemeFor(onReview()));
+    canvas.setScheme(artLook?.scheme ?? ownScheme());
     legend.render();
   };
   const chooseScheme = (s: Scheme) => {
@@ -1349,10 +1368,12 @@ async function boot(): Promise<void> {
       paper: () => (papers.state() ? { paper: papers.state()! } : {}),
       activity: () => ({ activity: activity.state() }),
       lostFound: () => ({ lostFound: { open: lostDrawer.open } }),
-      colouring: () => ({ scheme: canvas.scheme }),
+      // the reader's own, under an artwork's, which the artwork's part carries
+      colouring: () => ({ scheme: ownScheme() }),
       edges: () => ({ edges: S.showEdges }),
       proofEdges: () => ({ proofEdges: S.proofEdges }),
       linear: () => ({ linear: linear.shown }),
+      artwork: () => ({ artwork: art.view() }),
     },
     // what this page shows is this reader's own once following ends, so it is kept as shown: the
     // colouring and the edges in this browser, as the reader's own choice is
@@ -1360,11 +1381,12 @@ async function boot(): Promise<void> {
       activity: (v) => activity.mirror(v.activity!),
       lostFound: (v) => lostDrawer.toggle(v.lostFound!.open),
       colouring: (v) => {
-        if (canvas.scheme !== v.scheme) chooseScheme(v.scheme!);
+        if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
       },
       edges: (v) => setEdges(v.edges!, S.proofEdges),
       proofEdges: (v) => setEdges(S.showEdges, v.proofEdges!),
       linear: (v) => (v.linear ? void linear.show("reader") : linear.hide("reader")),
+      artwork: (v) => art.follow(v.artwork ?? null),
     },
   };
   /** Where this page is: what the others are told, and what Share tells an agent. */
@@ -1574,6 +1596,8 @@ async function boot(): Promise<void> {
       syncInsets();
       canvas.jumpTo(camOf(shot.region, canvas.screen));
     }
+    // an artwork's frame holds what the sharer's held
+    if (v.artwork) art.follow(v.artwork);
     const line = missingLine(gone);
     if (line) say(line);
   };
@@ -2033,7 +2057,14 @@ async function boot(): Promise<void> {
         if (c >= 0) clusters.push(c);
       }
     }
-    canvas.setActivation(edgeMode(picks), decls, lit?.set ?? null, clusters, keyEdges);
+    // an artwork's look (ExportSpec decision 19): its targets alone, the rest faded; or nothing of the
+    // selection, which stays the reader's
+    if (artLook?.targets === "highlight") {
+      const alone = new Uint8Array(G.n);
+      for (let i = 0; i < G.n; i++) if (canvas.isTarget(i)) alone[i] = 1;
+      canvas.setActivation(edgeMode(picks), [], alone, [], null);
+    } else if (artLook && !artLook.selection) canvas.setActivation(edgeMode(picks), [], null, [], null);
+    else canvas.setActivation(edgeMode(picks), decls, lit?.set ?? null, clusters, keyEdges);
     linear.request();
     drawVisitors();
     renderSelBar(q, lit);
@@ -2923,7 +2954,8 @@ async function boot(): Promise<void> {
     proofsBtn.classList.toggle("on", S.proofEdges);
     edgesBtn.setAttribute("aria-pressed", String(S.showEdges));
     proofsBtn.setAttribute("aria-pressed", String(S.proofEdges));
-    canvas.setEdges(S.showEdges, S.proofEdges);
+    // an artwork's, while its mode is on (drawLook)
+    canvas.setEdges(artLook ? artLook.edges !== "none" : S.showEdges, artLook ? artLook.proofs : S.proofEdges);
   };
   // what the board draws, which those following this reader see too (CollabSpec decision 4)
   setEdges = (edges, proofs) => {
@@ -3792,7 +3824,7 @@ async function boot(): Promise<void> {
     else if (e.key === "e") toggleOutside();
     else if (e.key === "g") edgesBtn.click();
     else if (e.key === "o") linear.toggle();
-    else if (e.key === "c") chooseScheme(canvas.scheme === "kind" ? "status" : "kind");
+    else if (e.key === "c") chooseScheme(ownScheme() === "kind" ? "status" : "kind");
     else if (e.key === "l") toggleLock();
     else if (e.key === "[") canvas.stepLevels(-1);
     else if (e.key === "]") canvas.stepLevels(1);

@@ -174,6 +174,58 @@ export interface PresenceView {
   proofEdges?: boolean;
   /** the board drawn as its document's outline (ExportSpec decision 18, web/src/linear.ts) */
   linear?: boolean;
+  /** the artwork mode (ExportSpec decision 19): its settings, the board drawn with them, and what its
+   *  frame holds; null where it is off */
+  artwork?: ArtworkView | null;
+}
+
+/** An artwork's settings (ExportSpec decision 19, web/src/artwork.ts): the picture's size in pixels,
+ *  and its look. */
+export interface ArtworkLook {
+  w: number;
+  h: number;
+  scheme: ColourScheme;
+  theme: "light" | "dark";
+  background: "theme" | "white" | "transparent";
+  labels: "all" | "clusters" | "none";
+  edges: "all" | "selection" | "none";
+  proofs: boolean;
+  notes: boolean;
+  /** a target's star and name marked; drawn as any declaration; or it alone, the rest faded */
+  targets: "marked" | "plain" | "highlight";
+  /** the selection and what is lit drawn as the reader sees them */
+  selection: boolean;
+}
+
+/** The artwork mode as presence carries it: its settings, and the rectangle of the board's world its
+ *  frame holds (x, y, width, height), which a follower's frame holds too. */
+export interface ArtworkView extends ArtworkLook {
+  region: [number, number, number, number];
+}
+
+/** the most pixels a side of an artwork has */
+export const ART_MAX_SIDE = 16384;
+
+/** A place with no artwork in it: an agent's (ExportSpec decision 19, agents have no artwork). */
+export function withoutArtwork(v: PresenceView | null): PresenceView | null {
+  if (!v || !("artwork" in v)) return v;
+  const { artwork: _artwork, ...rest } = v;
+  return rest;
+}
+
+/** An artwork's settings as given, checked; null where they are not. */
+export function cleanArtwork(v: unknown): ArtworkView | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const one = <T extends string>(xs: readonly T[], x: unknown): T | null => (xs.includes(x as T) ? (x as T) : null);
+  const side = (x: unknown) => (Number.isInteger(x) && (x as number) >= 16 && (x as number) <= ART_MAX_SIDE ? (x as number) : null);
+  const r = Array.isArray(o.region) && o.region.length === 4 && o.region.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1e9) ? (o.region as [number, number, number, number]) : null;
+  const w = side(o.w), h = side(o.h), scheme = one(SCHEMES, o.scheme), theme = one(["light", "dark"] as const, o.theme);
+  const background = one(["theme", "white", "transparent"] as const, o.background), labels = one(["all", "clusters", "none"] as const, o.labels);
+  const edges = one(["all", "selection", "none"] as const, o.edges), targets = one(["marked", "plain", "highlight"] as const, o.targets);
+  if (!r || r[2] <= 0 || r[3] <= 0 || !w || !h || !scheme || !theme || !background || !labels || !edges || !targets) return null;
+  if (typeof o.proofs !== "boolean" || typeof o.notes !== "boolean" || typeof o.selection !== "boolean") return null;
+  return { w, h, scheme, theme, background, labels, edges, proofs: o.proofs, notes: o.notes, targets, selection: o.selection, region: [...r] };
 }
 
 /** The legend's schemes (CanvasSpec, "Colour schemes"). */
@@ -371,5 +423,6 @@ export function cleanView(v: unknown): PresenceView | null {
     ...(typeof o.edges === "boolean" ? { edges: o.edges } : {}),
     ...(typeof o.proofEdges === "boolean" ? { proofEdges: o.proofEdges } : {}),
     ...(typeof o.linear === "boolean" ? { linear: o.linear } : {}),
+    ...(o.artwork === null ? { artwork: null } : cleanArtwork(o.artwork) ? { artwork: cleanArtwork(o.artwork) } : {}),
   };
 }

@@ -1,93 +1,174 @@
-// Artwork (ExportSpec decision 19, web/src/artwork.ts): the board as a picture, drawn as vectors
-// from where the board draws things — the size chosen, the look set — and the edges bundled as the
-// board bundles them.
+// Artwork (ExportSpec decision 19, web/src/artwork.ts): the board is the picture. Its SVG is what the
+// board's renderer draws, read as shapes, and what the board writes over it, recorded as SVG
+// (SvgContext), within the frame; its PNG is the board drawn again at the size chosen, made band by
+// band. The settings are read with care, and the file is named so that every file system takes it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ArtScene, ArtSettings, Palette } from "../src/web/src/artwork.ts";
-import { artName, artSvg, bundlePoints, cleanSettings, MAX_SIDE } from "../src/web/src/artwork.ts";
+import type { ArtShape } from "../src/web/src/canvas.ts";
+import type { NotePicture } from "../src/web/src/artwork.ts";
+import { artName, artSvg, bundlePoints, cleanSettings, drawNotes, MAX_SIDE, SvgContext, svgColour, wrapText } from "../src/web/src/artwork.ts";
 
-const PAL: Palette = {
-  bg: "rgba(250,250,250,1)", disc: "rgba(0,0,0,0.04)", discLine: "rgba(0,0,0,0.2)", label: "rgba(20,20,20,1)", text: "rgba(80,80,80,1)",
-  kind: { def: "rgba(0,0,255,1)", theorem: "rgba(128,0,128,1)" }, ext: "rgba(120,120,120,1)",
-  status: ["rgba(1,1,1,1)", "rgba(2,2,2,1)", "rgba(3,3,3,1)", "rgba(4,4,4,1)", "rgba(5,5,5,1)", "rgba(6,6,6,1)", "rgba(7,7,7,1)", "rgba(8,8,8,1)"],
-  edgeFrom: "rgba(255,128,0,1)", edgeTo: "rgba(0,128,255,1)", accent: "rgba(100,80,255,1)", star: "rgba(255,200,0,1)", starEdge: "rgba(160,120,0,1)",
-  noteIcon: "rgba(100,80,255,1)", noteBg: "rgba(255,255,255,0.9)", noteText: "rgba(20,20,20,1)",
-};
-
-const SCENE: ArtScene = {
-  w: 400,
-  h: 300,
-  dot: 3,
-  clusters: [
-    { x: 200, y: 150, r: 120, label: "Fixture", depth: 0, folded: false },
-    { x: 330, y: 60, r: 20, label: "Point", depth: 1, folded: true },
-  ],
-  nodes: [
-    { x: 150, y: 150, kind: "def", ext: false, status: 2, label: "helper", target: false, lit: true },
-    { x: 250, y: 150, kind: "theorem", ext: false, status: 5, label: "main_thm", target: true, lit: false },
-    { x: 200, y: 250, kind: "external", ext: true, status: 0, label: "Nat", target: false, lit: false },
-    { x: 900, y: 900, kind: "def", ext: false, status: 2, label: "far", target: false, lit: false },
-  ],
-  edges: [
-    { pts: [150, 150, 200, 140, 250, 150], width: 1.2, alpha: 0.3, lit: false },
-    { pts: [150, 150, 175, 200, 200, 250], width: 0.8, alpha: 0.2, lit: true },
-  ],
-  notes: [{ x: 300, y: 250, words: "Why <this>" }],
-  lit: true,
-};
-
-const base: ArtSettings = { w: 1600, h: 1200, scheme: "kind", theme: "light", background: "theme", labels: "all", edges: "all", proofs: false, notes: true, targets: "marked", selection: true };
+const FAMILY = `"Inter", sans-serif`;
 const measure = (t: string) => t.length * 6;
-const svg = (over: Partial<ArtSettings> = {}) => artSvg(SCENE, PAL, { ...base, ...over }, measure);
+const ctxOf = (pen: SvgContext) => pen as unknown as CanvasRenderingContext2D;
 
-test("the picture is the frame's at the size chosen: its viewBox the frame's pixels, its size the size asked for; the background the theme's, white or none", () => {
-  const s = svg();
-  assert.match(s, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" viewBox="0 0 400 300" width="1600" height="1200"/);
-  assert.match(s, /<rect width="100%" height="100%" fill="rgba\(250,250,250,1\)"\/>/);
-  assert.match(svg({ background: "white" }), /fill="#ffffff"/);
-  assert.doesNotMatch(svg({ background: "transparent" }), /<rect width="100%"/);
-  assert.ok(s.endsWith("</svg>"));
+test("the picture is the frame's at the size chosen: its viewBox the frame's pixels, what lies outside it clipped away; the background the theme's, white or none", () => {
+  const frame = { x: 100, y: 50, w: 400, h: 225 };
+  const svg = artSvg(frame, { w: 3840, h: 2160 }, "#fafafa", FAMILY, measure, (pen) => pen.shape({ kind: "circle", x: 300, y: 160, r: 4, fill: [1, 0, 0, 1], stroke: null, ring: 0, ringR: 4, dashed: false }));
+  assert.match(svg, /^<svg xmlns="http:\/\/www.w3.org\/2000\/svg" viewBox="0 0 400 225" width="3840" height="2160" font-family="&quot;Inter&quot;, sans-serif">/);
+  assert.match(svg, /<clipPath id="frame"><rect width="400" height="225"\/><\/clipPath>/);
+  assert.match(svg, /<rect width="100%" height="100%" fill="rgb\(250,250,250\)"\/><g clip-path="url\(#frame\)"><g transform="translate\(-100 -50\)"><circle cx="300" cy="160" r="4" fill="rgb\(255,0,0\)"\/><\/g><\/g><\/svg>$/);
+  assert.ok(!artSvg(frame, { w: 10, h: 10 }, null, FAMILY, measure, () => {}).includes(`height="100%"`), "transparent: no background");
 });
 
-test("what lies outside the frame is left out; the circles, a folded one shaded; the points in the scheme's colours, the outside world as rings", () => {
-  const s = svg();
-  assert.doesNotMatch(s, /far/, "a declaration outside the frame");
-  assert.match(s, /<circle cx="200" cy="150" r="120" fill="rgba\(0,0,0,0.04\)"/);
-  assert.match(s, /<circle cx="330" cy="60" r="20" fill="rgba\(0,0,0,0.2\)" fill-opacity="0.35"/);
-  assert.match(s, /cx="250" cy="150" r="3" fill="rgba\(128,0,128,1\)"/, "a theorem by kind");
-  assert.match(s, /cx="200" cy="250" r="3" fill="none" stroke="rgba\(120,120,120,1\)"/, "the outside world, a ring");
-  const st = svg({ scheme: "status" });
-  assert.match(st, /cx="250" cy="150" r="3" fill="rgba\(6,6,6,1\)"/, "by status: its state's colour");
+test("the renderer's shapes as SVG draws them: a point and its ring, a dashed ring apart from its disc, a segment, an edge's spline coloured from end to end", () => {
+  const pen = new SvgContext(measure, FAMILY);
+  const shapes: ArtShape[] = [
+    { kind: "circle", x: 10, y: 20, r: 3, fill: [0, 0, 1, 0.5], stroke: [0, 0, 0, 1], ring: 1, ringR: 3, dashed: false },
+    { kind: "circle", x: 50, y: 50, r: 30, fill: [0, 0, 0, 0], stroke: [0.5, 0.5, 0.5, 0.75], ring: 1.2, ringR: 32.5, dashed: true },
+    { kind: "circle", x: 60, y: 60, r: 8, fill: [0, 1, 0, 1], stroke: [0, 0, 0, 1], ring: 2, ringR: 10, dashed: false },
+    { kind: "line", x0: 0, y0: 0, x1: 10, y1: 10, colour: [1, 1, 1, 0.25], width: 1.5 },
+    { kind: "bundle", ctrl: [0, 0, 50, 80, 100, 0], beta: 0.85, width: 1.6, c0: [1, 0.5, 0, 0.4], c1: [0, 0.5, 1, 0.4] },
+    { kind: "bundle", ctrl: [0, 0, 100, 0], beta: 0.85, width: 1, c0: [1, 0, 0, 1], c1: [1, 0, 0, 1] },
+  ];
+  for (const s of shapes) pen.shape(s);
+  const [dot, dashed, disc, ring, line, bent, straight] = pen.body;
+  assert.equal(dot, `<circle cx="10" cy="20" r="3" fill="rgb(0,0,255)" fill-opacity="0.5" stroke="rgb(0,0,0)" stroke-width="1"/>`);
+  assert.equal(dashed, `<circle cx="50" cy="50" r="32.5" fill="none" stroke="rgb(128,128,128)" stroke-opacity="0.75" stroke-width="1.2" stroke-dasharray="5 4"/>`, "a ring alone: no disc");
+  assert.equal(disc, `<circle cx="60" cy="60" r="8" fill="rgb(0,255,0)"/>`);
+  assert.equal(ring, `<circle cx="60" cy="60" r="10" fill="none" stroke="rgb(0,0,0)" stroke-width="2"/>`, "a ring off its disc: apart");
+  assert.equal(line, `<line x1="0" y1="0" x2="10" y2="10" stroke="rgb(255,255,255)" stroke-opacity="0.25" stroke-width="1.5"/>`);
+  // the shader's spline, as finely as it draws it, its colours by a gradient from end to end
+  assert.equal(bent.match(/[ML]/g)!.length, 49);
+  assert.match(bent, /^<path d="M0,0L.*L100,0" fill="none" stroke="url\(#e0\)" stroke-width="1.6"\/>$/);
+  assert.deepEqual(pen.defs, [`<linearGradient id="e0" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="100" y2="0"><stop offset="0" stop-color="rgb(255,128,0)" stop-opacity="0.4"/><stop offset="1" stop-color="rgb(0,128,255)" stop-opacity="0.4"/></linearGradient>`]);
+  assert.match(straight, /stroke="rgb\(255,0,0\)" stroke-width="1"\/>$/, "one colour: no gradient");
 });
 
-test("the selection as seen: what is lit larger, the rest faint, its edges in the accent; not at all, all alike", () => {
-  const s = svg();
-  assert.match(s, /cx="150" cy="150" r="4.1" fill/, "lit, larger");
-  assert.match(s, /cx="250" cy="150" r="3" fill="rgba\(128,0,128,1\)" opacity="0.25"/, "not lit, faint");
-  assert.match(s, /stroke="rgba\(100,80,255,1\)" stroke-opacity="0.8"/, "a lit edge");
-  const off = svg({ selection: false });
-  assert.doesNotMatch(off, /opacity="0.25"/);
-  assert.match(off, /cx="150" cy="150" r="3" fill/);
+test("what the board writes is recorded as it is written: paths filled and stroked, arcs, dashes, the context's alpha, texts in their fonts, gradients once", () => {
+  const pen = new SvgContext(measure, FAMILY);
+  const c = ctxOf(pen);
+  // a ring round a point: a whole turn is a circle in two halves
+  c.beginPath();
+  c.arc(10, 10, 5, 0, 2 * Math.PI);
+  c.strokeStyle = "rgba(10, 20, 30, 0.5)";
+  c.lineWidth = 2;
+  c.setLineDash([3, 2]);
+  c.stroke();
+  c.setLineDash([]);
+  assert.equal(pen.body[0], `<path d="M15,10A5 5 0 1 1 5,10A5 5 0 1 1 15,10" fill="none" stroke="rgb(10,20,30)" stroke-opacity="0.5" stroke-width="2" stroke-dasharray="3 2"/>`);
+  // a quarter, and three quarters the other way round
+  c.beginPath();
+  c.arc(0, 0, 10, 0, Math.PI / 2);
+  c.fillStyle = "#336699";
+  c.fill();
+  assert.equal(pen.body[1], `<path d="M10,0A10 10 0 0 1 0,10" fill="rgb(51,102,153)"/>`);
+  c.beginPath();
+  c.moveTo(0, 0);
+  c.arc(0, 0, 10, 0, Math.PI / 2, true);
+  c.closePath();
+  c.fill();
+  assert.equal(pen.body[2], `<path d="M0,0L10,0A10 10 0 1 0 0,10Z" fill="rgb(51,102,153)"/>`);
+  // the context's alpha, kept by save and given back by restore
+  c.save();
+  c.globalAlpha = 0.5;
+  c.fillStyle = "#fff8";
+  c.beginPath();
+  c.rect(0, 0, 4, 4);
+  c.fill();
+  c.restore();
+  assert.equal(pen.body[3], `<path d="M0,0L4,0L4,4L0,4Z" fill="rgb(255,255,255)" fill-opacity="0.267"/>`);
+  assert.equal(c.globalAlpha, 1);
+  // texts: a cluster's name, centred and bold; a declaration's, from its left; a halo; another font
+  c.font = `600 14px ${FAMILY}`;
+  c.textAlign = "center";
+  c.fillStyle = "rgb(20, 20, 20)";
+  c.fillText("Fixture <A&B>", 100, 40);
+  c.font = `11px ${FAMILY}`;
+  c.textAlign = "left";
+  c.fillText("helper", 5, 6);
+  c.lineWidth = 3;
+  c.lineJoin = "round";
+  c.strokeStyle = "rgba(250,250,250,0.9)";
+  c.strokeText("main", 1, 2);
+  c.font = "italic 500 12px Georgia";
+  c.textBaseline = "middle";
+  c.fillText("note", 0, 0);
+  assert.deepEqual(pen.body.slice(4), [
+    `<text x="100" y="40" font-size="14" font-weight="600" text-anchor="middle" fill="rgb(20,20,20)">Fixture &lt;A&amp;B&gt;</text>`,
+    `<text x="5" y="6" font-size="11" fill="rgb(20,20,20)">helper</text>`,
+    `<text x="1" y="2" font-size="11" fill="none" stroke="rgb(250,250,250)" stroke-opacity="0.9" stroke-width="3" stroke-linejoin="round">main</text>`,
+    `<text x="0" y="0" font-size="12" font-weight="500" font-style="italic" font-family="Georgia" dominant-baseline="central" fill="rgb(20,20,20)">note</text>`,
+  ]);
+  assert.equal(c.measureText("abc").width, 18);
+  // a gradient, written once however often it is used
+  const g = c.createLinearGradient(0, 0, 10, 0);
+  g.addColorStop(0, "#ff0000");
+  g.addColorStop(1, "rgba(0,0,255,0.5)");
+  c.strokeStyle = g;
+  c.setLineDash([]);
+  c.lineJoin = "miter";
+  c.lineWidth = 1;
+  for (let k = 0; k < 2; k++) {
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(10, 0);
+    c.stroke();
+  }
+  assert.equal(pen.defs.length, 1);
+  assert.equal(pen.defs[0], `<linearGradient id="g0" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="10" y2="0"><stop offset="0" stop-color="rgb(255,0,0)" stop-opacity="1"/><stop offset="1" stop-color="rgb(0,0,255)" stop-opacity="0.5"/></linearGradient>`);
+  assert.equal(pen.body.at(-1), `<path d="M0,0L10,0" fill="none" stroke="url(#g0)" stroke-width="1"/>`);
+  // what is cleared is nothing; a transform scales and moves what follows
+  c.clearRect(0, 0, 100, 100);
+  c.setTransform(2, 0, 0, 2, 10, 20);
+  c.beginPath();
+  c.arc(0, 0, 3, 0, 2 * Math.PI);
+  c.stroke();
+  assert.match(pen.body.at(-1)!, /^<path d="M16,20A6 6 0 1 1 4,20A6 6 0 1 1 16,20" fill="none" stroke="url\(#g0\)" stroke-width="2"\/>$/);
 });
 
-test("names: the clusters' and the declarations', none over another; the clusters' only; none. Edges: all, the selection's, none. Notes, and targets marked, alone or as any", () => {
-  const s = svg({ selection: false });
-  assert.match(s, />Fixture</);
-  assert.match(s, />helper</);
-  assert.match(s, /font-weight="600"[^>]*>main_thm</, "a target's name, marked");
-  assert.match(s, /<path d="M[^"]*Z" fill="rgba\(255,200,0,1\)"/, "its star");
-  const clusters = svg({ labels: "clusters", selection: false });
-  assert.match(clusters, />Fixture</);
-  assert.doesNotMatch(clusters, />helper</);
-  assert.match(clusters, />main_thm</, "a target keeps its name");
-  assert.doesNotMatch(svg({ labels: "none", notes: false }), /<text/, "no name at all");
-  const edges = (o: Partial<ArtSettings>) => (svg(o).match(/<path d="M[\d.,L]+"/g) ?? []).length;
-  assert.deepEqual([edges({}), edges({ edges: "selection" }), edges({ edges: "none" })], [2, 1, 0]);
-  assert.match(s, /Why &lt;this&gt;/, "a note's words, escaped");
-  assert.doesNotMatch(svg({ notes: false }), /Why/);
-  const alone = svg({ targets: "highlight", selection: false });
-  assert.match(alone, /cx="150" cy="150" r="3" fill="rgba\(0,0,255,1\)" opacity="0.25"/, "the rest faded");
-  assert.doesNotMatch(svg({ targets: "plain", selection: false }), /fill="rgba\(255,200,0,1\)"/, "no star");
+test("colours as SVG writes them: hex, rgb() and rgba() read, an opacity apart; any other as it is", () => {
+  assert.deepEqual(svgColour("#abc"), { rgb: "rgb(170,187,204)", a: 1 });
+  assert.deepEqual(svgColour("#11223380"), { rgb: "rgb(17,34,51)", a: 0.502 });
+  assert.deepEqual(svgColour("rgb(1, 2, 3)"), { rgb: "rgb(1,2,3)", a: 1 });
+  assert.deepEqual(svgColour("rgba(1,2,3,0.25)", 0.5), { rgb: "rgb(1,2,3)", a: 0.125 });
+  assert.deepEqual(svgColour("rgb(1 2 3 / 40%)"), { rgb: "rgb(1,2,3)", a: 0.4 });
+  assert.deepEqual(svgColour("currentColor"), { rgb: "currentColor", a: 1 });
+});
+
+test("the notes as the board shows them: the leader to a declaration and its diamond, the leader to the card, the icon with its glyph, its dot as far as it turned into one, the card with its text", () => {
+  const pen = new SvgContext(measure, FAMILY);
+  const base: NotePicture = { x: 30, y: 40, r: 12, t: 1, fill: "rgb(255, 255, 255)", ring: "rgb(80, 80, 255)", ringW: 1.5, dashed: false, glyph: `<path d="M3 2.5h10"/>`, glyphPx: 14, colour: "rgb(80, 80, 255)", dot: "rgb(80, 80, 255)", surface: "rgb(255, 255, 255)", decl: null, card: null, lead: null };
+  const glyphs: NotePicture[] = [];
+  const open: NotePicture = {
+    ...base,
+    decl: { line: [30, 40, 60, 40], width: 1.5, colour: "rgba(80, 80, 255, 0.85)", mark: [62, 40], markPx: 5 },
+    card: { x: 50, y: 0, w: 120, h: 60, bg: "rgb(255, 250, 230)", edge: "rgba(0, 0, 0, 0.1)", accent: "rgb(80, 80, 255)", text: "Why <this> holds", by: "Alice", textColour: "rgb(20, 20, 20)", byColour: "rgb(120, 120, 120)" },
+    lead: { line: [40, 35, 50, 30], colour: "rgba(80, 80, 255, 0.75)", dashed: true },
+  };
+  // a dot alone, and an icon half turned into one
+  drawNotes(ctxOf(pen), [open, { ...base, t: 0, r: 2.5 }, { ...base, x: 0, y: 0, t: 0.5, r: 6 }], FAMILY, (n) => glyphs.push(n));
+  const b = pen.body;
+  assert.equal(b[0], `<path d="M30,40L60,40" fill="none" stroke="rgb(80,80,255)" stroke-opacity="0.85" stroke-width="1.5" stroke-dasharray="4.5 4.5"/>`, "the leader to the declaration, dashed");
+  assert.match(b[1], /^<path d="M62,36.46L65.54,40L62,43.54L58.46,40Z" fill="rgb\(80,80,255\)" fill-opacity="0.85"\/>$/, "the diamond on the point's rim");
+  assert.equal(b[3], `<path d="M40,35L50,30" fill="none" stroke="rgb(80,80,255)" stroke-opacity="0.75" stroke-width="1.2" stroke-dasharray="4 3"/>`, "the leader to the card");
+  assert.match(b[4], /^<path d="M41.25,40A11.25 11.25 0 1 1 18.75,40A11.25 11.25 0 1 1 41.25,40" fill="rgb\(255,255,255\)"\/>$/, "the icon, its ring inside its edge");
+  assert.match(b[5], /stroke="rgb\(80,80,255\)" stroke-width="1.5"\/>$/);
+  const texts = b.filter((x) => x.startsWith("<text"));
+  assert.deepEqual(texts, [`<text x="62" y="19.8" font-size="12.5" fill="rgb(20,20,20)">Why &lt;this&gt; holds</text>`, `<text x="62" y="51" font-size="11" fill="rgb(120,120,120)">Alice</text>`]);
+  assert.deepEqual(glyphs.map((n) => n.t), [1, 0.5], "a glyph where the icon shows");
+  // the dot: drawn over the icon as much as it has turned into one
+  const dots = b.filter((x) => x.includes(`fill-opacity="1"`) || x.includes(`fill-opacity="0.5"`));
+  assert.ok(dots.some((x) => x.includes(`fill-opacity="0.5"`)), "half way: half the dot");
+  assert.ok(b.some((x) => /A2.81 2.81 0 1 1/.test(x)), "a dot alone: its radius a little past the mark's");
+});
+
+test("a card's text is broken as the card breaks it: at its line breaks, between words, inside a word too long", () => {
+  const w = (t: string) => t.length;
+  assert.deepEqual(wrapText("one two three", 8, w), ["one two", "three"]);
+  assert.deepEqual(wrapText("a\nb c", 10, w), ["a", "b c"]);
+  assert.deepEqual(wrapText("abcdefghij kl", 4, w), ["abcd", "efgh", "ij", "kl"]);
+  assert.deepEqual(wrapText("", 4, w), [""]);
 });
 
 test("an edge is the board's spline: from one end to the other, through its clusters, straight where beta is 0", () => {
@@ -148,3 +229,4 @@ test("a PNG made band by band is a PNG: its chunks and their CRCs, its pixels as
   }
   await assert.rejects(encodePng(w, h + 1, bands()), /rows/);
 });
+

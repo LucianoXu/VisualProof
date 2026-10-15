@@ -39,10 +39,11 @@ in float v_r;
 in vec4 v_fill;
 in vec4 v_stroke;
 in vec3 v_extra;
+uniform float u_aa;
 out vec4 o;
 void main() {
   float d = length(v_local);
-  float w = max(fwidth(d), 0.35);
+  float w = max(fwidth(d), u_aa);
   float fa = (1.0 - smoothstep(v_r - w, v_r + w, d)) * v_fill.a;
   vec3 fill = v_fill.rgb;
   int flags = int(v_extra.y + 0.5);
@@ -194,9 +195,10 @@ precision highp float;
 in float v_across;
 in float v_hw;
 in vec4 v_color;
+uniform float u_aa;
 out vec4 o;
 void main() {
-  float w = max(fwidth(v_across), 0.35);
+  float w = max(fwidth(v_across), u_aa);
   float a = (1.0 - smoothstep(v_hw - w, v_hw + w, abs(v_across))) * v_color.a;
   if (a < 0.002) discard;
   o = vec4(v_color.rgb * a, a);
@@ -229,7 +231,7 @@ export function bundlePath(L: Instances, paths: ArrayLike<number>, off: number, 
 }
 
 
-type Kind = "circles" | "points" | "lines" | "bundles";
+export type Kind = "circles" | "points" | "lines" | "bundles";
 
 interface Layer {
   kind: Kind;
@@ -331,7 +333,26 @@ export class Renderer {
     if (L) L.visible = on;
   }
 
-  render(cam: { x: number; y: number; k: number }, w: number, h: number, dpr: number, dotPx: number): void {
+  /** The layers drawn, in their order: what an artwork's SVG writes as vectors (ExportSpec decision
+   *  19, web/src/artwork.ts). */
+  drawn(): { name: string; kind: Kind; data: Float32Array; count: number; stride: number }[] {
+    return this.order.flatMap((name) => {
+      const L = this.layers.get(name)!;
+      return L.visible && L.inst.count ? [{ name, kind: L.kind, data: L.inst.data, count: L.inst.count, stride: L.inst.stride }] : [];
+    });
+  }
+
+  /** The most pixels a side of what this context draws at once can have. */
+  maxSide(): number {
+    const gl = this.gl;
+    const dims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
+    return Math.min(dims[0], dims[1], gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number);
+  }
+
+  /** Draw every layer through camera `cam`, on `w` × `h` CSS pixels of `dpr` pixels each. `aa`: the
+   *  least width an edge's soft rim has, in CSS pixels — a picture drawn at more pixels than the
+   *  screen's (an artwork's PNG) keeps it as wide in pixels as the screen does. */
+  render(cam: { x: number; y: number; k: number }, w: number, h: number, dpr: number, dotPx: number, aa = 0.35): void {
     const gl = this.gl;
     gl.viewport(0, 0, Math.round(w * dpr), Math.round(h * dpr));
     gl.clearColor(0, 0, 0, 0);
@@ -352,6 +373,7 @@ export class Renderer {
       gl.uniform2f(u("u_cam"), cam.x, cam.y);
       gl.uniform1f(u("u_k"), cam.k);
       gl.uniform2f(u("u_view"), w, h);
+      gl.uniform1f(u("u_aa"), aa);
       if (L.kind === "circles" || L.kind === "points") gl.uniform1f(u("u_dot"), dotPx);
       if (L.kind === "points") gl.uniform1f(u("u_dpr"), dpr);
       gl.bindVertexArray(L.vao);

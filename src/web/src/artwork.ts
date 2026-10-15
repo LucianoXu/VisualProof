@@ -1,43 +1,22 @@
 // Artwork (ExportSpec decision 19, the owner's decisions of 2026-10-13 and 2026-10-14): the board as
-// a picture, PNG or SVG, at a size of the reader's choosing. From the Export window's Artwork tab the
-// page goes into framing: a frame fixed in the middle of the screen, of the size's shape, the rest of
-// the screen shaded; the reader pans and zooms the board under it, and what lies in the frame is what
-// is drawn. A panel beside it sets the size and the look — the colouring and the theme, the
-// background, the labels, the edges, the notes, the targets, the selection — and the frame shows the
-// picture as it will be, once the board is still.
+// a picture, PNG or SVG, at a size of the reader's choosing. There is no picture drawn apart from the
+// board: while the artwork mode is on, the board itself is drawn with the artwork's settings — the
+// colouring, the theme, the background, the names, the edges, the notes, the targets, the selection —
+// and a frame fixed in the middle of the screen (web/src/artframe.ts) says what of it the picture
+// holds. Everything done on the board works under the frame.
 //
-// The picture is drawn here, as vectors, from where the board draws things now (web/src/canvas.ts,
-// its scene): the circles, the points in the scheme's colours, the edges bundled through the
-// clusters as the overview bundles them (web/src/bundles.ts, the shader's spline in
-// web/src/gl/renderer.ts), the names as the board writes them — a cluster's inside the top of its
-// circle, a declaration's beside its point, none over another — the notes' icons and first words,
-// the targets' stars. It is the frame's picture at the frame's size, scaled to the size chosen: the
-// same picture, more pixels. SVG is that drawing; PNG is it drawn by the browser at the full size.
-// Nothing is asked of the server, so a read-only page and a snapshot can make one too.
+// The files are made from the board's own drawing. PNG: the board's renderer (web/src/gl/renderer.ts)
+// draws the frame again at the size chosen, a tile at a time, and the board's names and marks are
+// written over it as the screen has them (GraphCanvas.paintArtBand): the frame's view, more pixels.
+// SVG: what the renderer draws, read from its layers as shapes (GraphCanvas.artShapes), and what the
+// board writes over it — its names, stars, rings — recorded as it is written (SvgContext), within the
+// frame. Nothing is asked of the server, so a read-only page and a snapshot can make one too.
 
-import { SITE_BODY, SITE_GRAMMAR, SITE_PROOF, SITE_STMT } from "../../shared/graph.ts";
-import { aggregate, pathOf, units } from "./bundles.ts";
-import type { GraphCanvas } from "./canvas.ts";
-import { KINDS } from "./canvas.ts";
-import { rgba } from "./gl/gl.ts";
-import { STATUSES } from "./status.ts";
+import type { ArtworkLook } from "../../shared/collab.ts";
+import { ART_MAX_SIDE } from "../../shared/collab.ts";
+import type { ArtShape } from "./canvas.ts";
 
-export interface ArtSettings {
-  /** the picture's size, pixels */
-  w: number;
-  h: number;
-  scheme: "kind" | "status";
-  theme: "light" | "dark";
-  background: "theme" | "white" | "transparent";
-  labels: "all" | "clusters" | "none";
-  edges: "all" | "selection" | "none";
-  proofs: boolean;
-  notes: boolean;
-  /** a target's star and name marked; drawn as any declaration; or it alone, the rest faded */
-  targets: "marked" | "plain" | "highlight";
-  /** the selection and what is lit drawn as the reader sees them */
-  selection: boolean;
-}
+export type ArtSettings = ArtworkLook;
 
 export const PRESETS: readonly { name: string; w: number; h: number }[] = [
   { name: "1920 × 1080", w: 1920, h: 1080 },
@@ -48,7 +27,7 @@ export const PRESETS: readonly { name: string; w: number; h: number }[] = [
   { name: "A2 landscape, 300 dpi", w: 7016, h: 4961 },
   { name: "A2 portrait, 300 dpi", w: 4961, h: 7016 },
 ];
-export const MAX_SIDE = 16384;
+export const MAX_SIDE = ART_MAX_SIDE;
 
 const DEFAULTS: ArtSettings = {
   w: 3840,
@@ -85,193 +64,183 @@ export function cleanSettings(s: Partial<ArtSettings> | undefined, now: { scheme
   };
 }
 
-/** A theme's colours, as the page's style defines them, each a plain `rgba()`. */
-export interface Palette {
-  bg: string;
-  disc: string;
-  discLine: string;
-  label: string;
-  text: string;
-  kind: Record<string, string>;
-  ext: string;
-  status: string[];
-  edgeFrom: string;
-  edgeTo: string;
-  accent: string;
-  star: string;
-  starEdge: string;
-  noteIcon: string;
-  noteBg: string;
-  noteText: string;
+/** The picture's background, the theme's: read while the artwork mode is on, it is its theme's. */
+export function themeBackground(): string {
+  return getComputedStyle(document.body).getPropertyValue("--canvas").trim();
 }
 
-const css = (c: string, alpha = 1): string => {
-  const [r, g, b, a] = rgba(c, alpha);
-  return `rgba(${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)},${+a.toFixed(3)})`;
-};
-
-/** The colours of `theme`, read from the page's style with the theme set for the moment of reading
- *  (synchronously: nothing is painted in between). */
-export function readPalette(theme: "light" | "dark"): Palette {
-  const root = document.documentElement;
-  const was = root.dataset.theme;
-  root.dataset.theme = theme;
-  try {
-    const cs = getComputedStyle(document.body);
-    const v = (name: string) => cs.getPropertyValue(name).trim();
-    const kind: Record<string, string> = {};
-    for (const k of KINDS) kind[k] = css(v(`--k-${k}`));
-    return {
-      bg: css(v("--canvas")),
-      disc: css(v("--disc")),
-      discLine: css(v("--disc-line")),
-      label: css(v("--label")),
-      text: css(v("--text-2")),
-      kind,
-      ext: css(v("--k-external")),
-      status: STATUSES.map((st) => css(v(`--status-${st}`))),
-      edgeFrom: css(v("--edge-from")),
-      edgeTo: css(v("--edge-to")),
-      accent: css(v("--accent")),
-      star: css(v("--target-star")),
-      starEdge: css(v("--target-star-edge")),
-      noteIcon: css(v("--note-icon")),
-      noteBg: css(v("--note-bg")),
-      noteText: css(v("--note-text")),
-    };
-  } finally {
-    if (was === undefined) delete root.dataset.theme;
-    else root.dataset.theme = was;
-  }
+/** A note as the board shows it now (web/src/sticky.ts, Stickies.asDrawn), in the screen's pixels and
+ *  the colours its elements have: what a picture draws of it. */
+export interface NotePicture {
+  /** its mark's middle and radius; how much of it is its icon (1) rather than its dot (0) */
+  x: number;
+  y: number;
+  r: number;
+  t: number;
+  /** the icon: its fill, its ring (colour, width, dashed for a view's own note), and its glyph — an
+   *  SVG's contents, 16 units across, drawn in `colour` — `glyphPx` across */
+  fill: string;
+  ring: string;
+  ringW: number;
+  dashed: boolean;
+  glyph: string;
+  glyphPx: number;
+  colour: string;
+  /** the dot it turns into, zoomed out, and the page's surface round it */
+  dot: string;
+  surface: string;
+  /** attached to a declaration: the dashed leader to its point, and the diamond on the point's rim */
+  decl: { line: [number, number, number, number]; width: number; colour: string; mark: [number, number]; markPx: number } | null;
+  /** open: its card — its box, colours, text and who wrote it — and the leader from the icon to it */
+  card: { x: number; y: number; w: number; h: number; bg: string; edge: string; accent: string; text: string; by: string; textColour: string; byColour: string } | null;
+  lead: { line: [number, number, number, number]; colour: string; dashed: boolean } | null;
 }
 
-/** What a picture draws, in the frame's pixels (its top left at 0, 0). */
-export interface ArtScene {
-  w: number;
-  h: number;
-  /** a declaration's point, its radius in pixels */
-  dot: number;
-  clusters: { x: number; y: number; r: number; label: string; depth: number; folded: boolean }[];
-  nodes: { x: number; y: number; kind: string; ext: boolean; status: number; label: string; target: boolean; lit: boolean }[];
-  edges: { pts: number[]; width: number; alpha: number; lit: boolean }[];
-  notes: { x: number; y: number; words: string }[];
-  /** something is selected: what is not lit is drawn faint, as the board draws it */
-  lit: boolean;
+/** A rounded rectangle's path. */
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
-const FONT = `-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Helvetica, Arial, sans-serif`;
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const n1 = (v: number) => +v.toFixed(1);
-
-/** A five-pointed star of outer radius `r` at (x, y), as an SVG path. */
-function star(x: number, y: number, r: number): string {
-  const pts: string[] = [];
-  for (let k = 0; k < 10; k++) {
-    const a = -Math.PI / 2 + (k * Math.PI) / 5;
-    const rr = k % 2 ? r * 0.45 : r;
-    pts.push(`${n1(x + rr * Math.cos(a))},${n1(y + rr * Math.sin(a))}`);
-  }
-  return `M${pts.join("L")}Z`;
-}
-
-/** The picture of `sc` as SVG, `out` pixels in size, its look `s` in the colours `pal`. `measure`
- *  gives a text's width in a CSS font, for keeping names off each other. */
-export function artSvg(sc: ArtScene, pal: Palette, s: ArtSettings, measure: (text: string, font: string) => number): string {
+/** `text` broken into lines `width` wide in the context's font, as the card breaks it: at its line
+ *  breaks, between words, and inside a word too long for a line. */
+export function wrapText(text: string, width: number, measure: (s: string) => number): string[] {
   const out: string[] = [];
-  const inFrame = (x: number, y: number, pad: number) => x > -pad && y > -pad && x < sc.w + pad && y < sc.h + pad;
-  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n1(sc.w)} ${n1(sc.h)}" width="${s.w}" height="${s.h}" font-family='${FONT}'>`);
-  if (s.background !== "transparent") out.push(`<rect width="100%" height="100%" fill="${s.background === "white" ? "#ffffff" : pal.bg}"/>`);
-  const fadeAll = s.targets === "highlight" ? sc.nodes.some((v) => v.target) : s.selection && sc.lit;
-  const strong = (v: ArtScene["nodes"][number]) => (s.targets === "highlight" ? v.target : !s.selection || !sc.lit || v.lit);
-
-  // the circles, outermost first; a folded one a shaded disc
-  out.push(`<g stroke-width="1">`);
-  for (const c of sc.clusters) {
-    if (!inFrame(c.x, c.y, c.r)) continue;
-    out.push(c.folded ? `<circle cx="${n1(c.x)}" cy="${n1(c.y)}" r="${n1(c.r)}" fill="${pal.discLine}" fill-opacity="0.35" stroke="${pal.discLine}"/>` : `<circle cx="${n1(c.x)}" cy="${n1(c.y)}" r="${n1(c.r)}" fill="${pal.disc}" stroke="${pal.discLine}"/>`);
-  }
-  out.push(`</g>`);
-
-  // the edges, under the points
-  if (s.edges !== "none") {
-    out.push(`<g fill="none" stroke-linecap="round">`);
-    for (const e of sc.edges) {
-      if (s.edges === "selection" && !e.lit) continue;
-      const d = `M${n1(e.pts[0])},${n1(e.pts[1])}${Array.from({ length: e.pts.length / 2 - 1 }, (_, k) => `L${n1(e.pts[2 * k + 2])},${n1(e.pts[2 * k + 3])}`).join("")}`;
-      const colour = e.lit ? pal.accent : pal.edgeFrom;
-      const alpha = e.lit ? 0.8 : fadeAll ? e.alpha * 0.4 : e.alpha;
-      out.push(`<path d="${d}" stroke="${colour}" stroke-opacity="${+alpha.toFixed(3)}" stroke-width="${n1(e.width)}"/>`);
-    }
-    out.push(`</g>`);
-  }
-
-  // the points: the outside world as rings, in either scheme
-  out.push(`<g>`);
-  for (const v of sc.nodes) {
-    if (!inFrame(v.x, v.y, sc.dot)) continue;
-    const colour = s.scheme === "status" ? pal.status[v.status] ?? pal.ext : v.ext ? pal.ext : pal.kind[v.kind] ?? pal.ext;
-    const op = fadeAll && !strong(v) ? ` opacity="0.25"` : "";
-    const r = n1(v.lit && s.selection ? sc.dot * 1.35 : sc.dot);
-    out.push(v.ext ? `<circle cx="${n1(v.x)}" cy="${n1(v.y)}" r="${r}" fill="none" stroke="${colour}" stroke-width="${n1(Math.max(0.8, sc.dot * 0.45))}"${op}/>` : `<circle cx="${n1(v.x)}" cy="${n1(v.y)}" r="${r}" fill="${colour}"${op}/>`);
-  }
-  out.push(`</g>`);
-
-  // the targets' stars
-  if (s.targets !== "plain") {
-    for (const v of sc.nodes) if (v.target && inFrame(v.x, v.y, 12)) out.push(`<path d="${star(v.x, v.y - sc.dot - 7, 6)}" fill="${pal.star}" stroke="${pal.starEdge}" stroke-width="0.8"/>`);
-  }
-
-  // the names, as the board writes them: none over another, the clusters' first
-  if (s.labels !== "none") {
-    const boxes: number[][] = [];
-    const free = (x0: number, y0: number, x1: number, y1: number) => !boxes.some((b) => x0 < b[2] && x1 > b[0] && y0 < b[3] && y1 > b[1]);
-    const texts: string[] = [];
-    for (const c of sc.clusters) {
-      if (!inFrame(c.x, c.y, c.r)) continue;
-      let size: number, y: number;
-      if (c.folded) {
-        if (c.r < 10) continue;
-        size = 11;
-        y = c.y + c.r + 13;
-      } else {
-        if (c.r <= 38) continue;
-        size = Math.max(10, Math.min(20, 9 + c.r / 40));
-        y = c.y - c.r + size + 6;
+  for (const para of text.split("\n")) {
+    let line = "";
+    for (const word of para.split(/(?<=\s)/)) {
+      if (measure(line + word) <= width || !line) line += word;
+      else {
+        out.push(line.trimEnd());
+        line = word;
       }
-      const font = `${c.depth === 0 && !c.folded ? 600 : 500} ${size}px ${FONT}`;
-      const w = measure(c.label, font) / 2 + 3;
-      if (!free(c.x - w, y - size, c.x + w, y + size * 0.3)) continue;
-      boxes.push([c.x - w, y - size, c.x + w, y + size * 0.3]);
-      texts.push(`<text x="${n1(c.x)}" y="${n1(y)}" text-anchor="middle" font-size="${size}" font-weight="${c.depth === 0 && !c.folded ? 600 : 500}" fill="${pal.label}">${esc(c.label)}</text>`);
+      // a word longer than the line: broken where it reaches the edge
+      while (measure(line.trimEnd()) > width && line.length > 1) {
+        let k = line.length - 1;
+        while (k > 1 && measure(line.slice(0, k)) > width) k--;
+        out.push(line.slice(0, k));
+        line = line.slice(k);
+      }
     }
-    // the targets' names, marked, before every other declaration's
-    const named = (v: ArtScene["nodes"][number]) => v.target && s.targets !== "plain";
-    const order = sc.nodes.map((_, k) => k).sort((a, b) => Number(named(sc.nodes[b])) - Number(named(sc.nodes[a])));
-    for (const k of order) {
-      const v = sc.nodes[k];
-      if ((s.labels === "clusters" && !named(v)) || !inFrame(v.x, v.y, 8)) continue;
-      const bold = named(v);
-      const font = `${bold ? 600 : 400} 11px ${FONT}`;
-      const w = measure(v.label, font);
-      const x0 = v.x + sc.dot + 2, y0 = v.y - 7, x1 = x0 + w + 2, y1 = v.y + 5;
-      if (!free(x0, y0, x1, y1)) continue;
-      boxes.push([x0, y0, x1, y1]);
-      const op = fadeAll && !strong(v) ? ` opacity="0.35"` : "";
-      texts.push(`<text x="${n1(v.x + sc.dot + 3)}" y="${n1(v.y + 3.5)}" font-size="11"${bold ? ` font-weight="600"` : ""} fill="${bold ? pal.label : pal.text}"${op}>${esc(v.label)}</text>`);
-    }
-    out.push(`<g>${texts.join("")}</g>`);
+    out.push(line.trimEnd());
   }
+  return out;
+}
 
-  // the notes: their icon, and their first words
-  if (s.notes) {
-    for (const nt of sc.notes) {
-      if (!inFrame(nt.x, nt.y, 10)) continue;
-      out.push(`<rect x="${n1(nt.x - 6)}" y="${n1(nt.y - 6)}" width="12" height="12" rx="2.5" fill="${pal.noteBg}" stroke="${pal.noteIcon}" stroke-width="1.5"/>`);
-      if (nt.words) out.push(`<text x="${n1(nt.x + 10)}" y="${n1(nt.y + 4)}" font-size="11" font-style="italic" fill="${pal.noteText}">${esc(nt.words)}</text>`);
+/** The notes as the board shows them, written with `ctx` in the screen's pixels — over the board in a
+ *  PNG, recorded into an SVG: the leader to a declaration and its diamond, the leader to an open card,
+ *  the mark (its icon, its dot over it as far as it has turned into one) and the card with its text.
+ *  `glyph` draws an icon's glyph, which is SVG: a PNG has it as a picture, an SVG as it is. */
+export function drawNotes(ctx: CanvasRenderingContext2D, notes: readonly NotePicture[], font: string, glyph: (n: NotePicture) => void): void {
+  for (const n of notes) {
+    ctx.save();
+    if (n.decl) {
+      const d = n.decl, [x0, y0, x1, y1] = d.line;
+      ctx.globalAlpha = n.t;
+      ctx.strokeStyle = d.colour;
+      ctx.lineWidth = d.width;
+      ctx.setLineDash([3 * d.width, 3 * d.width]);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const q = d.markPx / Math.SQRT2, [mx, my] = d.mark;
+      ctx.beginPath();
+      ctx.moveTo(mx, my - q);
+      ctx.lineTo(mx + q, my);
+      ctx.lineTo(mx, my + q);
+      ctx.lineTo(mx - q, my);
+      ctx.closePath();
+      ctx.fillStyle = d.colour;
+      ctx.fill();
+      ctx.strokeStyle = n.surface;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
+    if (n.lead && n.card) {
+      const [x0, y0, x1, y1] = n.lead.line;
+      ctx.strokeStyle = n.lead.colour;
+      ctx.lineWidth = 1.2;
+      if (n.lead.dashed) ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // the mark: the icon, and the dot covering it as the zoom turns it into one
+    if (n.t > 0) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, Math.max(0.1, n.r - n.ringW / 2), 0, 2 * Math.PI);
+      ctx.fillStyle = n.fill;
+      ctx.fill();
+      ctx.strokeStyle = n.ring;
+      ctx.lineWidth = n.ringW;
+      if (n.dashed) ctx.setLineDash([3 * n.ringW, 2 * n.ringW]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      glyph(n);
+    }
+    if (n.t < 1) {
+      const s = n.r / 12;
+      ctx.globalAlpha = 1 - n.t;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r + 1.5 * s, 0, 2 * Math.PI);
+      ctx.fillStyle = n.dot;
+      ctx.fill();
+      ctx.strokeStyle = n.surface;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // the card: its accent down its left, its edge, its text and who wrote it
+    const c = n.card;
+    if (c) {
+      ctx.fillStyle = c.accent;
+      roundRect(ctx, c.x, c.y, c.w, c.h, 8);
+      ctx.fill();
+      ctx.strokeStyle = c.edge;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = c.bg;
+      roundRect(ctx, c.x + 2, c.y, c.w - 2, c.h, 8);
+      ctx.fill();
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.font = `12.5px ${font}`;
+      ctx.fillStyle = c.textColour;
+      const lh = 12.5 * 1.45, bottom = c.y + c.h - 6 - (c.by ? 20 : 0);
+      let y = c.y + 7 + 12.8;
+      for (const line of wrapText(c.text, c.w - 22, (t) => ctx.measureText(t).width)) {
+        if (y > bottom + 1) break;
+        ctx.fillText(line, c.x + 12, y);
+        y += lh;
+      }
+      if (c.by) {
+        ctx.font = `11px ${font}`;
+        ctx.fillStyle = c.byColour;
+        ctx.fillText(c.by, c.x + 12, c.y + c.h - 9);
+      }
+    }
+    ctx.restore();
   }
-  out.push(`</svg>`);
-  return out.join("");
+}
+
+/** An icon's glyph as a picture of its own (`<svg>`, `px` across) in `colour`. */
+export function glyphSvg(glyph: string, colour: string, px: number): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="${px}" height="${px}" color="${esc(colour)}">${glyph}</svg>`;
 }
 
 /** A bundled edge's points: the shader's clamped uniform cubic B-spline through its control points,
@@ -298,65 +267,296 @@ export function bundlePoints(ctrl: readonly number[], beta: number, segs = 32): 
   return out;
 }
 
-/** The board as a picture draws it now, in the frame's pixels: the frame is the rectangle `frame`
- *  of the screen (CSS pixels). */
-export function sceneOf(C: GraphCanvas, frame: { x: number; y: number; w: number; h: number }, opts: { proofs: boolean; targets: (i: number) => boolean; notes: () => { world: [number, number]; words: string }[] }): ArtScene {
-  const S = C.scene;
-  const g = C.graph;
-  const k = C.cam.k;
-  const at = (wx: number, wy: number): [number, number] => {
-    const [sx, sy] = C.toScreen(wx, wy);
-    return [sx - frame.x, sy - frame.y];
-  };
-  const clusters: ArtScene["clusters"] = [];
-  for (let c = 0; c < S.nc; c++) {
-    if (!C.isClusterShown(c)) continue;
-    const rep = S.rep[c];
-    // inside a folded circle: drawn as that one
-    if (rep >= 0 && rep !== c) continue;
-    const [x, y] = at(S.cwx[c], S.cwy[c]);
-    const cl = C.layout.clusters[c];
-    clusters.push({ x, y, r: S.drawnR[c] * k, label: cl.label, depth: cl.depth, folded: rep === c });
+// ---------------------------------------------------------------- SVG
+
+const n2 = (v: number) => +v.toFixed(2);
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** A CSS colour as SVG writes it everywhere: `rgb(…)` and an opacity apart. The forms the page's
+ *  style gives (hex, rgb(), rgba()) are read; any other is written as it is, opaque. */
+export function svgColour(css: string, alpha = 1): { rgb: string; a: number } {
+  const s = css.trim();
+  let r: number, g: number, b: number, a = 1;
+  const hex = /^#([0-9a-f]{3,8})$/i.exec(s);
+  const fn = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i.exec(s);
+  if (hex && [3, 4, 6, 8].includes(hex[1].length)) {
+    const h = hex[1].length <= 4 ? [...hex[1]].map((c) => c + c).join("") : hex[1];
+    [r, g, b] = [0, 2, 4].map((k) => parseInt(h.slice(k, k + 2), 16));
+    if (h.length === 8) a = parseInt(h.slice(6, 8), 16) / 255;
+  } else if (fn) {
+    [r, g, b] = [fn[1], fn[2], fn[3]].map(Number);
+    if (fn[4] !== undefined) a = fn[4].endsWith("%") ? parseFloat(fn[4]) / 100 : Number(fn[4]);
+  } else return { rgb: s, a: alpha };
+  return { rgb: `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`, a: +(a * alpha).toFixed(3) };
+}
+
+/** A colour of the renderer's (0 to 1) as SVG writes it. */
+function glColour(c: readonly number[]): { rgb: string; a: number } {
+  return { rgb: `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`, a: +c[3].toFixed(3) };
+}
+
+const paint = (attr: "fill" | "stroke", c: { rgb: string; a: number }) => ` ${attr}="${c.rgb}"${c.a < 1 ? ` ${attr}-opacity="${c.a}"` : ""}`;
+
+/** A gradient handed out by SvgContext.createLinearGradient: its stops, written into the picture's
+ *  definitions where it is used. */
+class SvgGradient {
+  stops: [number, string][] = [];
+  id = "";
+  readonly x0: number;
+  readonly y0: number;
+  readonly x1: number;
+  readonly y1: number;
+  constructor(x0: number, y0: number, x1: number, y1: number) {
+    [this.x0, this.y0, this.x1, this.y1] = [x0, y0, x1, y1];
   }
-  const lit = C.active;
-  const nodes: ArtScene["nodes"] = [];
-  for (let i = 0; i < g.n; i++) {
-    if (!C.isNodeShown(i)) continue;
-    const [x, y] = at(...C.posOf(i));
-    nodes.push({ x, y, kind: g.isExt(i) ? "external" : g.nodes[i].kind, ext: g.isExt(i), status: C.statusOf(i), label: g.short(i), target: opts.targets(i), lit: !!lit?.[i] });
+  addColorStop(offset: number, colour: string): void {
+    this.stops.push([offset, colour]);
   }
-  // the edges: between what is drawn as itself at this zoom, counted, as the overview bundles them
-  const unit = units(S, k, 45);
-  const sites = SITE_STMT | SITE_BODY | (opts.proofs ? SITE_PROOF | SITE_GRAMMAR : 0);
-  const pairs = aggregate(g, unit, sites, (i) => C.isNodeShown(i) || S.nodeRep[i] >= 0);
-  const X = (id: number) => (id < S.nc ? S.cwx[id] : S.nwx[id - S.nc]);
-  const Y = (id: number) => (id < S.nc ? S.cwy[id] : S.nwy[id - S.nc]);
-  let max = 1;
-  for (let p = 0; p < pairs.n; p++) max = Math.max(max, pairs.w[p]);
-  const order = Array.from({ length: pairs.n }, (_, p) => p).sort((a, b) => pairs.w[b] - pairs.w[a]);
-  const edges: ArtScene["edges"] = [];
-  const litEnd = (id: number) => (id >= S.nc ? !!lit?.[id - S.nc] : false);
-  for (const p of order) {
-    if (edges.length >= 8000) break;
-    const a = pairs.a[p], b = pairs.b[p], w = pairs.w[p];
-    const [ax, ay] = at(X(a), Y(a)), [bx, by] = at(X(b), Y(b));
-    const out = (x: number, y: number) => x < 0 || y < 0 || x > frame.w || y > frame.h;
-    if (out(ax, ay) && out(bx, by)) continue;
-    const path = pathOf(S, a, b);
-    let R = 0;
-    for (let q = 1; q < path.length - 1; q++) if (path[q] < S.nc) R = Math.max(R, S.drawnR[path[q]]);
-    const d = Math.hypot(X(b) - X(a), Y(b) - Y(a));
-    const beta = R > 0 ? 0.85 * Math.min(1, (2 * d) / R) : 0.85;
-    const ctrl: number[] = [];
-    for (const id of path) ctrl.push(...at(X(id), Y(id)));
-    const t = Math.log1p(w) / Math.log1p(max);
-    edges.push({ pts: bundlePoints(ctrl, beta), width: 0.7 + 2 * t * Math.min(1, Math.log1p(max) / Math.log1p(50)), alpha: 0.12 + 0.33 * t * t, lit: litEnd(a) && litEnd(b) });
+}
+
+interface PenState {
+  fillStyle: string | SvgGradient;
+  strokeStyle: string | SvgGradient;
+  lineWidth: number;
+  font: string;
+  textAlign: CanvasTextAlign;
+  textBaseline: CanvasTextBaseline;
+  globalAlpha: number;
+  lineCap: CanvasLineCap;
+  lineJoin: CanvasLineJoin;
+  dash: number[];
+  /** setTransform's scale and offset (the board writes with no rotation) */
+  m: [number, number, number, number, number, number];
+}
+
+/** What a canvas's 2D context draws, recorded as SVG: as much of the context as the board uses to
+ *  write its names and marks over its renderer's drawing (GraphCanvas.drawMarks), and the notes. A
+ *  path is written when it is filled or stroked, a text when it is written; what is cleared is
+ *  nothing. `measure` gives a text's width in a CSS font. */
+export class SvgContext {
+  readonly body: string[] = [];
+  readonly defs: string[] = [];
+  private st: PenState = { fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, font: "10px sans-serif", textAlign: "start", textBaseline: "alphabetic", globalAlpha: 1, lineCap: "butt", lineJoin: "miter", dash: [], m: [1, 0, 0, 1, 0, 0] };
+  private stack: PenState[] = [];
+  private d: string[] = [];
+  private open = false;
+  private ids = 0;
+  private measure: (text: string, font: string) => number;
+  private family: string;
+
+  constructor(measure: (text: string, font: string) => number, family: string) {
+    this.measure = measure;
+    this.family = family;
   }
-  const notes = opts.notes().map((nt) => {
-    const [x, y] = at(nt.world[0], nt.world[1]);
-    return { x, y, words: nt.words };
-  });
-  return { w: frame.w, h: frame.h, dot: C.dotSize, clusters, nodes, edges, notes, lit: !!lit };
+
+  get fillStyle(): string | SvgGradient { return this.st.fillStyle; }
+  set fillStyle(v: string | SvgGradient) { this.st.fillStyle = v; }
+  get strokeStyle(): string | SvgGradient { return this.st.strokeStyle; }
+  set strokeStyle(v: string | SvgGradient) { this.st.strokeStyle = v; }
+  get lineWidth(): number { return this.st.lineWidth; }
+  set lineWidth(v: number) { this.st.lineWidth = v; }
+  get font(): string { return this.st.font; }
+  set font(v: string) { this.st.font = v; }
+  get textAlign(): CanvasTextAlign { return this.st.textAlign; }
+  set textAlign(v: CanvasTextAlign) { this.st.textAlign = v; }
+  get textBaseline(): CanvasTextBaseline { return this.st.textBaseline; }
+  set textBaseline(v: CanvasTextBaseline) { this.st.textBaseline = v; }
+  get globalAlpha(): number { return this.st.globalAlpha; }
+  set globalAlpha(v: number) { this.st.globalAlpha = v; }
+  get lineCap(): CanvasLineCap { return this.st.lineCap; }
+  set lineCap(v: CanvasLineCap) { this.st.lineCap = v; }
+  get lineJoin(): CanvasLineJoin { return this.st.lineJoin; }
+  set lineJoin(v: CanvasLineJoin) { this.st.lineJoin = v; }
+
+  save(): void {
+    this.stack.push({ ...this.st, dash: [...this.st.dash], m: [...this.st.m] });
+  }
+  restore(): void {
+    this.st = this.stack.pop() ?? this.st;
+  }
+  setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void {
+    this.st.m = [a, b, c, d, e, f];
+  }
+  clearRect(): void {}
+  setLineDash(segments: number[]): void {
+    this.st.dash = [...segments];
+  }
+  getLineDash(): number[] {
+    return [...this.st.dash];
+  }
+  measureText(text: string): { width: number } {
+    return { width: this.measure(text, this.st.font) };
+  }
+  createLinearGradient(x0: number, y0: number, x1: number, y1: number): SvgGradient {
+    const [a, b] = this.at(x0, y0), [c, d] = this.at(x1, y1);
+    return new SvgGradient(a, b, c, d);
+  }
+
+  // the path
+  beginPath(): void {
+    this.d = [];
+    this.open = false;
+  }
+  moveTo(x: number, y: number): void {
+    this.d.push(`M${this.pt(x, y)}`);
+    this.open = true;
+  }
+  lineTo(x: number, y: number): void {
+    this.d.push(`${this.open ? "L" : "M"}${this.pt(x, y)}`);
+    this.open = true;
+  }
+  quadraticCurveTo(cx: number, cy: number, x: number, y: number): void {
+    this.d.push(`Q${this.pt(cx, cy)} ${this.pt(x, y)}`);
+  }
+  bezierCurveTo(c1x: number, c1y: number, c2x: number, c2y: number, x: number, y: number): void {
+    this.d.push(`C${this.pt(c1x, c1y)} ${this.pt(c2x, c2y)} ${this.pt(x, y)}`);
+  }
+  closePath(): void {
+    this.d.push("Z");
+  }
+  rect(x: number, y: number, w: number, h: number): void {
+    this.moveTo(x, y);
+    this.lineTo(x + w, y);
+    this.lineTo(x + w, y + h);
+    this.lineTo(x, y + h);
+    this.closePath();
+  }
+  /** An arc as the canvas draws it: a line from where the path is to its start, then the arc; a
+   *  whole turn or more is a circle, in two halves. */
+  arc(x: number, y: number, r: number, a0: number, a1: number, ccw = false): void {
+    const T = 2 * Math.PI;
+    const p = (a: number) => this.pt(x + r * Math.cos(a), y + r * Math.sin(a));
+    const R = n2(r * this.scale());
+    this.d.push(`${this.open ? "L" : "M"}${p(a0)}`);
+    this.open = true;
+    const span = ccw ? a0 - a1 : a1 - a0;
+    const sweep = ccw ? 0 : 1;
+    if (span >= T) {
+      const mid = ccw ? a0 - Math.PI : a0 + Math.PI;
+      this.d.push(`A${R} ${R} 0 1 ${sweep} ${p(mid)}A${R} ${R} 0 1 ${sweep} ${p(a0)}`);
+      return;
+    }
+    const delta = ((span % T) + T) % T;
+    this.d.push(`A${R} ${R} 0 ${delta > Math.PI ? 1 : 0} ${sweep} ${p(ccw ? a0 - delta : a0 + delta)}`);
+  }
+
+  fill(): void {
+    if (this.d.length) this.body.push(`<path d="${this.d.join("")}"${this.style("fill")}/>`);
+  }
+  stroke(): void {
+    if (this.d.length) this.body.push(`<path d="${this.d.join("")}" fill="none"${this.style("stroke")}${this.lines()}/>`);
+  }
+  fillText(text: string, x: number, y: number): void {
+    this.body.push(`<text ${this.textAt(x, y)}${this.style("fill")}>${esc(text)}</text>`);
+  }
+  strokeText(text: string, x: number, y: number): void {
+    this.body.push(`<text ${this.textAt(x, y)} fill="none"${this.style("stroke")}${this.lines()}>${esc(text)}</text>`);
+  }
+
+  /** SVG's own markup, written as it is: a note's glyph. */
+  raw(markup: string): void {
+    this.body.push(markup);
+  }
+
+  /** A shape the board's renderer draws (GraphCanvas.artShapes), as SVG draws it. */
+  shape(s: ArtShape): void {
+    if (s.kind === "circle") {
+      const fill = s.fill[3] > 0.002 ? glColour(s.fill) : null;
+      const ring = s.stroke ? `${paint("stroke", glColour(s.stroke))} stroke-width="${n2(s.ring)}"${s.dashed ? ` stroke-dasharray="5 4"` : ""}` : "";
+      const c = `cx="${n2(s.x)}" cy="${n2(s.y)}"`;
+      if (fill && ring && Math.abs(s.ringR - s.r) < 0.01) this.body.push(`<circle ${c} r="${n2(s.r)}"${paint("fill", fill)}${ring}/>`);
+      else {
+        if (fill) this.body.push(`<circle ${c} r="${n2(s.r)}"${paint("fill", fill)}/>`);
+        if (ring) this.body.push(`<circle ${c} r="${n2(s.ringR)}" fill="none"${ring}/>`);
+      }
+    } else if (s.kind === "line") {
+      this.body.push(`<line x1="${n2(s.x0)}" y1="${n2(s.y0)}" x2="${n2(s.x1)}" y2="${n2(s.y1)}"${paint("stroke", glColour(s.colour))} stroke-width="${n2(s.width)}"/>`);
+    } else {
+      // the shader's spline, as finely as it draws it
+      const pts = bundlePoints(s.ctrl, s.beta, 48);
+      const d = `M${n2(pts[0])},${n2(pts[1])}${Array.from({ length: pts.length / 2 - 1 }, (_, k) => `L${n2(pts[2 * k + 2])},${n2(pts[2 * k + 3])}`).join("")}`;
+      const a = glColour(s.c0), b = glColour(s.c1);
+      let stroke: string;
+      if (a.rgb === b.rgb && a.a === b.a) stroke = paint("stroke", a);
+      else {
+        // from the end that uses to the end used, as the renderer colours it
+        const id = `e${this.ids++}`;
+        const n = pts.length;
+        this.defs.push(`<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${n2(pts[0])}" y1="${n2(pts[1])}" x2="${n2(pts[n - 2])}" y2="${n2(pts[n - 1])}"><stop offset="0" stop-color="${a.rgb}" stop-opacity="${a.a}"/><stop offset="1" stop-color="${b.rgb}" stop-opacity="${b.a}"/></linearGradient>`);
+        stroke = ` stroke="url(#${id})"`;
+      }
+      this.body.push(`<path d="${d}" fill="none"${stroke} stroke-width="${n2(s.width)}"/>`);
+    }
+  }
+
+  private scale(): number {
+    const [a, b, c, d] = this.st.m;
+    return Math.sqrt(Math.abs(a * d - b * c));
+  }
+  private at(x: number, y: number): [number, number] {
+    const [a, b, c, d, e, f] = this.st.m;
+    return [a * x + c * y + e, b * x + d * y + f];
+  }
+  private pt(x: number, y: number): string {
+    const [px, py] = this.at(x, y);
+    return `${n2(px)},${n2(py)}`;
+  }
+  /** A fill's or a stroke's paint: a colour (and the context's alpha), or a gradient written once. */
+  private style(attr: "fill" | "stroke"): string {
+    const v = attr === "fill" ? this.st.fillStyle : this.st.strokeStyle;
+    const alpha = this.st.globalAlpha;
+    if (typeof v === "string") return paint(attr, svgColour(v, alpha));
+    if (!v.id) {
+      v.id = `g${this.ids++}`;
+      const stops = v.stops.map(([o, c]) => {
+        const k = svgColour(c);
+        return `<stop offset="${o}" stop-color="${k.rgb}" stop-opacity="${k.a}"/>`;
+      });
+      this.defs.push(`<linearGradient id="${v.id}" gradientUnits="userSpaceOnUse" x1="${n2(v.x0)}" y1="${n2(v.y0)}" x2="${n2(v.x1)}" y2="${n2(v.y1)}">${stops.join("")}</linearGradient>`);
+    }
+    return ` ${attr}="url(#${v.id})"${alpha < 1 ? ` ${attr}-opacity="${+alpha.toFixed(3)}"` : ""}`;
+  }
+  private lines(): string {
+    const s = this.st, k = this.scale();
+    return ` stroke-width="${n2(s.lineWidth * k)}"${s.lineCap !== "butt" ? ` stroke-linecap="${s.lineCap}"` : ""}${s.lineJoin !== "miter" ? ` stroke-linejoin="${s.lineJoin}"` : ""}${s.dash.length ? ` stroke-dasharray="${s.dash.map((x) => n2(x * k)).join(" ")}"` : ""}`;
+  }
+  /** Where a text is written and in what font, as SVG's attributes. */
+  private textAt(x: number, y: number): string {
+    const [px, py] = this.at(x, y);
+    const f = /^\s*((?:(?:italic|oblique|normal|bold|bolder|lighter|\d{3})\s+)*)([\d.]+)px\s+(.+?)\s*$/i.exec(this.st.font);
+    const words = (f?.[1] ?? "").trim().toLowerCase().split(/\s+/);
+    const size = f ? Number(f[2]) * this.scale() : 10;
+    const family = f?.[3] ?? "sans-serif";
+    const weight = words.find((w) => /^\d{3}$|^bold/.test(w));
+    const italic = words.some((w) => w === "italic" || w === "oblique");
+    const align = this.st.textAlign;
+    const anchor = align === "center" ? "middle" : align === "right" || align === "end" ? "end" : null;
+    const base = this.st.textBaseline;
+    const baseline = base === "middle" ? "central" : base === "top" || base === "hanging" ? "hanging" : base === "bottom" || base === "ideographic" ? "text-after-edge" : null;
+    return (
+      `x="${n2(px)}" y="${n2(py)}" font-size="${n2(size)}"` +
+      (weight && weight !== "400" && weight !== "normal" ? ` font-weight="${weight}"` : "") +
+      (italic ? ` font-style="italic"` : "") +
+      (family !== this.family ? ` font-family="${esc(family)}"` : "") +
+      (anchor ? ` text-anchor="${anchor}"` : "") +
+      (baseline ? ` dominant-baseline="${baseline}"` : "")
+    );
+  }
+}
+
+/** The picture as SVG: what `draw` draws with an SvgContext in the screen's pixels, within the
+ *  rectangle `frame` of the screen, `size` pixels in size; on `background` where there is one.
+ *  `family`: the board's font, the picture's own. */
+export function artSvg(frame: { x: number; y: number; w: number; h: number }, size: { w: number; h: number }, background: string | null, family: string, measure: (text: string, font: string) => number, draw: (pen: SvgContext) => void): string {
+  const pen = new SvgContext(measure, family);
+  draw(pen);
+  const bg = background ? svgColour(background) : null;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n2(frame.w)} ${n2(frame.h)}" width="${size.w}" height="${size.h}" font-family="${esc(family)}">` +
+    `<defs><clipPath id="frame"><rect width="${n2(frame.w)}" height="${n2(frame.h)}"/></clipPath>${pen.defs.join("")}</defs>` +
+    (bg ? `<rect width="100%" height="100%"${paint("fill", bg)}/>` : "") +
+    `<g clip-path="url(#frame)"><g transform="translate(${n2(-frame.x)} ${n2(-frame.y)})">${pen.body.join("")}</g></g></svg>`
+  );
 }
 
 /** A name for the picture's file, from the view's title: what no file system refuses. */

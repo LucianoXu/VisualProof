@@ -145,6 +145,7 @@ export const SNAPSHOT_FORMS = {
   edges: same("edges"),
   proofEdges: same("proofEdges"),
   linear: same("linear"),
+  artwork: same("artwork"),
 } as const satisfies Record<string, SnapForm>;
 
 /** What a link's snapshot says: the followed fields it holds, the camera fitted to the screen it was
