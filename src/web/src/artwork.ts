@@ -137,8 +137,74 @@ export function withChosen(list: readonly string[], add: readonly string[], budg
 }
 
 /** The picture's background, the theme's: read while the artwork mode is on, it is its theme's. */
-export function themeBackground(): string {
-  return getComputedStyle(document.body).getPropertyValue("--canvas").trim();
+export function themeBackground(v: (name: string) => string = browserVar): string {
+  return v("--canvas");
+}
+
+/** A custom property of the page as the browser has it now (the theme on show). */
+const browserVar = (name: string) => getComputedStyle(document.body).getPropertyValue(name).trim();
+
+/** The page's custom properties as its style sheet sets them, in the light theme or the dark one,
+ *  read without a browser (the artwork command, ExportSpec decision 21): `:root`, and
+ *  `:root[data-theme="dark"]` over it; `var()` followed. */
+export function cssTheme(css: string, dark: boolean): (name: string) => string {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const props = new Map<string, string>();
+  const take = (selector: string) => {
+    for (const m of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (m[1].trim() !== selector) continue;
+      for (const d of m[2].split(";")) {
+        const i = d.indexOf(":");
+        const k = d.slice(0, i).trim();
+        if (i > 0 && k.startsWith("--")) props.set(k, d.slice(i + 1).trim());
+      }
+    }
+  };
+  take(":root");
+  if (dark) take(':root[data-theme="dark"]');
+  const get = (name: string, depth = 0): string => {
+    const raw = props.get(name) ?? "";
+    if (depth > 8) return raw;
+    return raw.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\)/g, (_, k: string, dflt: string | undefined) => (props.has(k) ? get(k, depth + 1) : (dflt ?? "").trim()));
+  };
+  return get;
+}
+
+// ---------------------------------------------------------------- the frame, as the page places it
+
+/** The room the artwork mode keeps (web/src/artframe.ts): the panel's width at the right, the margin
+ *  at the frame's sides, the gaps above and below it, the room for the title's strip above it and
+ *  the source's below it, and the page's bar at the top. */
+export const FRAME_ROOM = { panel: 300, margin: 32, gap: 12, head: 60, tail: 34, bar: 60 } as const;
+
+/** Where the frame is on a screen of `screen.w` × `screen.h`: in the middle of the room the panel
+ *  leaves, of the picture's shape, as large as that room allows (artframe place; the artwork command
+ *  places it so, on the screen it is given: ExportSpec decision 21). */
+export function frameRect(screen: { w: number; h: number }, size: { w: number; h: number }): { x: number; y: number; w: number; h: number } {
+  const R = FRAME_ROOM;
+  // a screen too small for the panel and the strips leaves the frame a room of 40 pixels at least;
+  // the frame keeps the picture's shape whatever the room
+  const roomW = Math.max(40, screen.w - R.panel - 3 * R.margin), roomH = Math.max(40, screen.h - R.bar - R.head - R.tail - 2 * R.gap);
+  const scale = Math.min(roomW / size.w, roomH / size.h);
+  const w = size.w * scale, h = size.h * scale;
+  return { x: R.margin + (roomW - w) / 2, y: R.bar + R.gap + R.head + (roomH - h) / 2, w, h };
+}
+
+/** How much of the frame's top its title takes: the board is fitted below it as the mode opens. */
+export function titleRoom(h: number, s: Pick<ArtSettings, "title" | "subtitle" | "titleSize">, own: { title: string; subtitle: string }): number {
+  const titled = !!(s.title ?? own.title) || !!(s.subtitle ?? own.subtitle);
+  return titled ? Math.min(h * 0.4, ((s.titleSize * 1.7) / 100) * h + Math.max(14, h * 0.035)) : 0;
+}
+
+/** What an artwork writes over the board within `rect` (the page's and the command's alike): its
+ *  border, its title and its foot, in the theme's colours as `v` reads them; `own`, the project's
+ *  title and line where the reader gave none; `source`, the foot's source line or none. */
+export function writeOver(ctx: CanvasRenderingContext2D, s: ArtSettings, rect: { x: number; y: number; w: number; h: number }, own: { title: string; subtitle: string }, source: string | null, v: (name: string) => string = browserVar): void {
+  const halo = s.style === "cells" ? "#0f1520" : s.style === "stars" ? "#090d1a" : v("--canvas");
+  if (s.border) drawBorder(ctx, rect, s.style === "cells" ? "rgba(200, 212, 236, 0.55)" : s.style === "stars" ? "rgba(241, 230, 200, 0.55)" : v("--text-2"));
+  drawTitle(ctx, rect, s.title ?? own.title, s.subtitle ?? own.subtitle, s.titleSize, s.style, { ink: v("--text"), quiet: v("--text-2"), halo });
+  const quiet = s.style === "board" ? v("--text-2") : "rgba(200, 208, 224, 0.7)";
+  drawFoot(ctx, rect, s.source ? source : null, { text: quiet, halo }, ART_SANS, s.footSize);
 }
 
 /** A note as the board shows it now (web/src/sticky.ts, Stickies.asDrawn), in the screen's pixels and

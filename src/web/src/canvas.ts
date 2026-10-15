@@ -183,7 +183,8 @@ export interface CanvasEvents {
   frozenDrag?(): void;
 }
 
-interface Theme {
+/** The board's colours, as the theme on show gives them (themeOf). */
+export interface Theme {
   bg: RGBA;
   disc: RGBA;
   discLine: RGBA;
@@ -214,7 +215,13 @@ interface Theme {
 
 function readTheme(): Theme {
   const cs = getComputedStyle(document.body);
-  const v = (name: string) => cs.getPropertyValue(name).trim();
+  return themeOf((name) => cs.getPropertyValue(name).trim());
+}
+
+/** The board's colours from the page's custom properties as `v` reads them: the browser's (the theme
+ *  on show), or the style sheet's read without one (the artwork command, ExportSpec decision 21:
+ *  web/src/artwork.ts, cssTheme). */
+export function themeOf(v: (name: string) => string): Theme {
   const kind: Record<string, RGBA> = {};
   for (const k of KINDS) kind[k] = rgba(v(`--k-${k}`));
   return {
@@ -297,6 +304,16 @@ const ZOOM_REST = 60;
 /** A fast zoom is asked for where it will be by the time the answer comes, at most this many frames
  *  ahead. */
 const LEAD = 6;
+
+/** A board drawn without a browser (the artwork command, ExportSpec decision 21): a screen of `w` ×
+ *  `h` pixels, the theme's colours, and the context the names are written to (one that measures as
+ *  the fonts the package ships do: web/src/artwork.ts SvgContext). */
+export interface Headless {
+  w: number;
+  h: number;
+  theme: Theme;
+  ctx: CanvasRenderingContext2D;
+}
 
 export class GraphCanvas {
   private canvas: HTMLCanvasElement;
@@ -473,30 +490,43 @@ export class GraphCanvas {
   private openAround = new Set<number>();
   private tempOpen = new Set<number>();
 
-  constructor(canvas: HTMLCanvasElement, labels: HTMLCanvasElement, cardsEl: HTMLElement, g: Graph, ev: CanvasEvents) {
-    this.canvas = canvas;
-    this.gl = new Renderer(canvas);
-    this.labels = labels;
-    this.ctx = labels.getContext("2d")!;
+  /** drawn without a browser: no graphics card, no input, no frames but those asked for (`settle`) */
+  private readonly headless: boolean;
+
+  /** A board on the page's canvas; or, with `host` (and nulls for the elements), the same board drawn
+   *  without a browser — its renderer kept to its data, which an artwork's SVG reads (ExportSpec
+   *  decision 21). */
+  constructor(canvas: HTMLCanvasElement | null, labels: HTMLCanvasElement | null, cardsEl: HTMLElement | null, g: Graph, ev: CanvasEvents, host?: Headless) {
+    this.headless = !!host;
+    this.canvas = canvas as HTMLCanvasElement;
+    this.gl = new Renderer(host ? null : canvas);
+    this.labels = labels as HTMLCanvasElement;
+    this.ctx = host ? host.ctx : labels!.getContext("2d")!;
     // layers draw in this order
     // (an artwork's: the starfield's figures under the edges, a glow under the points)
     for (const [name, kind] of [["discs", "circles"], ["figures", "lines"], ["overview", "bundles"], ["selection", "bundles"], ["glow", "points"], ["dots", "points"],
       ["rings", "points"], ["bubbles", "circles"], ["active", "points"], ["hoverC", "circles"], ["hoverP", "points"]] as const)
       this.gl.layer(name, kind);
-    this.cardsEl = cardsEl;
+    this.cardsEl = cardsEl as HTMLElement;
     this.g = g;
     this.ev = ev;
     this.edgeQ = new EdgeQueue(
-      () => (typeof Worker === "undefined" ? null : (new Worker("/edges.js", { type: "module" }) as unknown as EdgeWorker)),
+      () => (host || typeof Worker === "undefined" ? null : (new Worker("/edges.js", { type: "module" }) as unknown as EdgeWorker)),
       () => this.request(),
     );
+    if (host) {
+      // a screen of its own, at one pixel each; the edges chosen at once (EdgeQueue, no worker)
+      this.theme = host.theme;
+      [this.w, this.h, this.dpr] = [host.w, host.h, 1];
+      return;
+    }
     this.theme = readTheme();
     // light or dark changed (the reader's choice, or the system's): the colours are read again
     new MutationObserver(() => {
       this.theme = readTheme();
       this.invalidate();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    new ResizeObserver(() => this.resize()).observe(canvas);
+    new ResizeObserver(() => this.resize()).observe(this.canvas);
     this.resize();
     this.bindInput();
     let last = performance.now();
@@ -524,6 +554,22 @@ export class GraphCanvas {
 
   request(): void {
     this.dirty = true;
+  }
+
+  /** Without a browser (ExportSpec decision 21): draw until nothing more comes — the scene at rest,
+   *  the overview's points chosen and blended, nothing asking for another frame — at most `most`
+   *  frames; whether it came to rest. */
+  settle(most = 60): boolean {
+    for (let n = 0; n < most; n++) {
+      if (this.scene?.moving) {
+        this.scene.step(64);
+        this.afterMotion();
+      }
+      this.dirty = false;
+      this.draw();
+      if (!this.dirty && !this.scene?.moving) return true;
+    }
+    return false;
   }
 
   /** Called after every frame drawn: what lies over the canvas and follows it (the notes,
@@ -1176,11 +1222,13 @@ export class GraphCanvas {
     this.focus = focus;
     this.picked = clusters;
     this.active = closure;
-    // the theme's colours are read again (an edge's colours are the theme's, the same in every mode)
-    requestAnimationFrame(() => {
-      this.theme = readTheme();
-      this.invalidate();
-    });
+    // the theme's colours are read again (an edge's colours are the theme's, the same in every mode);
+    // without a browser they are the host's
+    if (!this.headless)
+      requestAnimationFrame(() => {
+        this.theme = readTheme();
+        this.invalidate();
+      });
     this.activeList = [];
     if (closure) for (let i = 0; i < closure.length; i++) if (closure[i]) this.activeList.push(i);
     this.countActive();
@@ -3465,6 +3513,8 @@ export class GraphCanvas {
 
   /** Place the cards for this frame; returns the nodes that got one. */
   private drawCards(activeDots: number[]): Set<number> {
+    // without a browser there are no cards (ExportSpec decision 21): they are elements of the page
+    if (this.headless) return new Set();
     const k = this.cam.k;
     const S = this.scene;
     // what is selected has no card: a ring says where it is (drawSelection)

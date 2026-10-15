@@ -61,6 +61,13 @@ manual's figures come from it, on these projects, each built at its commit:
 
 A project on Mathlib is built with `lake exe cache get && lake build`.
 
+`visualproof artwork` (ExportSpec decision 21) draws with fonts the package ships as TrueType
+(`src/assets/webfonts/ttf/`) and measures text by their advance widths
+(`src/assets/webfonts/metrics.json`). Both are made from the page's WOFF2 files by
+`scripts/artfonts.py`, which needs Python 3 with fontTools (`python3 -m venv .venv && .venv/bin/pip
+install fonttools brotli`, outside the repository): run it again whenever the page's fonts change, and
+commit what it writes. The PNG is drawn by resvg's WebAssembly build (`@resvg/resvg-wasm`).
+
 `node scripts/artwork-batch.mjs <batch.json> [--out <dir>] [--headed]` makes pictures of many
 boards in one go (ExportSpec decision 20): per job, a server, its key (or key file), an artwork
 recipe and a name; the file's head comment says its format. It needs Playwright, which the package

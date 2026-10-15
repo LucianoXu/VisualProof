@@ -358,7 +358,37 @@ Numbers missing below are withdrawn decisions.
     - **A batch**: `scripts/artwork-batch.mjs` (a tool of the repository, not of the package) takes
       a list of servers, keys, recipes and names, and saves each picture with a headless browser.
     - **An installed command** (`visualproof artwork`), making a picture without a full browser, is
-      wanted (the owner's decision of 2026-10-15); its design is pending.
+      wanted (the owner's decision of 2026-10-15): decision 21.
+21. **The artwork command** (the owner's decisions of 2026-10-15: an installed command for those who
+    only want the pictures, without a browser; the PNG as the page's PNG looks; the design below
+    approved as drafted that evening).
+    - **What**: `visualproof artwork <lean-project> --recipe <file> [-o <name>] [--png] [--svg]
+      [--site <dir>] [--cache <dir>] [--jobs <n>] [--screen <w>x<h>]`, both files where neither is
+      named. The recipe is decision 20's, resolved as the page resolves it; `-o` names the files,
+      else the recipe's title, else the project, made safe as the page's files are (`artName`).
+    - **The build as `visualproof export` reads it**: never built, nothing written into the project;
+      the cache as the server's (`--cache`). With `--site`, what the site keeps: the layouts' memory
+      (the board as its readers see it), the review's targets (a recipe's `targets: "all"`), the
+      views and their notes; without it, the board as a new site would lay it out, and the targets the
+      recipe names.
+    - **The same picture as the page**: the board's own drawing code (web/src/canvas.ts) runs without
+      a browser — the renderer kept to its data (what the SVG reads already, `artShapes`), the names
+      measured from the fonts the package ships — on a screen of `--screen` (1920 × 1200 by default,
+      the batch's), so that names are as large in the picture as a reader's would be. The SVG is
+      written as the page writes it; the PNG is that SVG drawn by resvg (its WebAssembly build, no
+      native code, MPL-2.0) with the same fonts, so that the two agree; the page's own Save PNG stays
+      its renderer's, whose look the SVG matches (2026-10-15).
+    - **Fonts**: beside the page's WOFF2, each face the picture uses as a TTF (Source Sans 3, Source
+      Serif 4, Jost, at the weights the picture draws), and their advance widths precomputed into a
+      small table (`assets/webfonts/metrics.json`, made by a script in `scripts/`), so that measuring
+      needs no font library when the command runs.
+    - **Deterministic**: the same build, site and recipe make the same bytes (no clock, no random
+      draw; the starfield's dust is seeded already).
+    - **What it says**: as the API's answer (decision 20) — the names written, those a rule skipped,
+      the targets, the selection — then the files and their sizes; problems (an unknown name, no
+      build) as the API refuses them, exit status 1.
+    - **Not in the first version**: a note's image or PDF page (their glyphs are drawn, as the SVG
+      draws them).
 
 ## Implementation notes
 
@@ -663,3 +693,62 @@ Numbers missing below are withdrawn decisions.
   in the picture), the downloads saved as `<name>.png` and `.svg`, the name made safe for every
   file system (no reserved device name, with an extension or none) and no two jobs' the same in any
   case.
+
+### The artwork command
+
+- **The pipeline** (server/artcmd.ts `makeArtwork`; main.ts `artworkCommand`): the build read as
+  `visualproof export` reads it (the extraction, the usage pass with `--jobs`, `prepare` under
+  `readOnlySite` — the site's layout memory read and never written, and the view laid out kept out of
+  the cache's `view/`, which a server would take for its site's; without `--site`, `freshLayout`, the
+  layout a new site's); the review (`ReviewStore`) and the Project view (server/views.ts
+  `readProjectView`: its pins, folds, hidden levels and clustering, read and nothing written — the
+  `Views` class sets aside a file it cannot read; the command says so and draws as a new site would)
+  read from the site, or none. The board is the whole graph on `wholeLayout`, as the page's Project;
+  the recipe resolved by shared/artrecipe.ts against its layout's clusters, the targets the review's
+  (with a site) or the recipe's (without); the settings checked as a browser's are (`cleanSettings`).
+  The selection's name found as the agents' API finds one (shared/declfind.ts `declAt`: the graph's
+  own, else the declaration a name it folds is folded into), a name not found answered with
+  `guessNames`' first. The command draws the Project view: a recipe naming another is refused.
+  Whatever fails ends it with status 1 (the server's logger of unhandled rejections is not set).
+- **The board without a browser** (web/src/canvas.ts): `new GraphCanvas(null, null, null, g, events,
+  host)` with a host — the screen (`--screen`, at one pixel each), the theme's colours (`themeOf` over
+  `cssTheme`, the style sheet's custom properties, light, or dark as `drawLook` chooses: the board's
+  style in its theme, the cells and the starfield in the dark one), and the context names are
+  written to (an `SvgContext` measuring with `textMeasurer`, shared/artfonts.ts). Its renderer is
+  `new Renderer(null)`: the layers' instances kept (`drawn`, which `artShapes` reads), nothing drawn
+  or uploaded; colours parsed by `parseColour` (web/src/gl/gl.ts) where there is no document; the
+  overview's points chosen at once (no worker); `settle()` draws until nothing more is asked. The
+  review on it as the page's `syncStatus` puts it (targets, keys, status codes, no build's file
+  states), the look as `drawLook` sets it (`setScheme`, `setEdges`, `setArt`), the selection as
+  `apply` lights it (`lightUp`; Keys' key edges; the targets alone where they are faded). No cards
+  (`drawCards`): they are the page's elements, and an artwork has none.
+- **The frame** (artwork.ts `frameRect`, `titleRoom`): placed on the screen as the mode places it
+  (the room the panel, the margins, the strips and the bar leave; 40 pixels at least, the picture's
+  shape kept) and fitted as `open` fits it (the whole board below the title, `fitCam`, the camera
+  put there at once). `--screen` is 640x480 at least.
+- **The files**: the SVG as the page's Save SVG writes it (`artSvg`: the ground, the border's clip,
+  `artShapes`, `drawMarks`, `writeOver` — the title, the foot, the border, a pure function the page
+  uses too — and the faces written in from the style sheet's `@font-face` rules and the WOFF2 files
+  beside it); the PNG that SVG drawn by resvg (`pngOf`) with the package's TrueType faces and none of
+  the system's, at the picture's size. resvg holds a picture about four times over (the clipped
+  groups' layers and their masks, 17 bytes a pixel) in WebAssembly's memory, at most 4 GiB: up to
+  80 million pixels (`PNG_PIXELS`) it draws the picture whole; beyond, the command draws it in bands
+  of about 20 million (`bandSvg`: the viewBox moved, the frame's clip left out as a band is within
+  the frame) and writes the PNG itself, row by row. resvg sizes a clipped group's layer up to twice
+  the band's height beyond the band, so a band costs 35 bytes a pixel and the picture about three
+  times as long; and it fails (`unreachable`) on a clipped group whose contents lie wholly beyond
+  that, which a rectangle as large as the frame, drawing nothing, keeps the border's group from. The
+  git source is asked of git as the page asks it now (`gitSource`). The names said are those
+  `writtenNames` gives after the last frame; a rule's names not among them were left out where they
+  would have covered another.
+- **Measured** (2026-10-15, leanycrypt's A2 portrait poster, 14,770 declarations, against the page's
+  of the same recipe): the same names written and skipped; the PNG within 3.1% RMSE of the page's
+  (WebGL's) and the two SVGs, both drawn by resvg, within 1.8%; the text widths within 1.9% of the
+  browser's on average (kerning is left out, as resvg is given none); 20 s and 1.2 GB for the
+  4961 × 7016 PNG (resvg 19 s of it), 9 s for Sphere-Packing's. The same bytes on each run. Drawn
+  in bands of 877 rows instead, 64 s and 0.6 GB, 1.5% of its pixels a level apart from the whole
+  drawing (at most 18, where translucent shapes overlap: resvg's layers round otherwise). At
+  16384 × 16384, in 14 bands, 201 s and 2.0 GB (drawn whole, resvg ran out of memory at 3.6 GB); at
+  11585 × 16384 drawn whole, 57 s and 3.5 GB.
+- **Not in this version**: notes (the page lays them out with its style sheet; the command says how
+  many a recipe asking for them left out).

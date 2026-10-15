@@ -42,6 +42,10 @@ into the latest release only.
   SVG, at most the largest size an artwork has (16,384 pixels a side), as Save PNG and Save SVG
   would. Nothing else: the page reads the recipe as settings, the browser asks before a site saves
   several files, and the link holds no key.
+- **The artwork command.** `visualproof artwork` reads the build, the cache and, with `--site`, the
+  site (the review, the views); it never writes the site or the project, nor the views the cache
+  keeps for a server. It writes its files and, in the cache, the extraction and the usage pass's
+  results, as `visualproof export` does, and runs no Lean but the usage pass's (`--jobs`).
 - **Plain HTTP.** The server speaks HTTP only: the key and the cookies cross the network in the
   clear. Beyond a trusted network, put a TLS reverse proxy (or a VPN such as Tailscale) in front.
   Its cookies are `HttpOnly` and `SameSite=Lax`.

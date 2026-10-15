@@ -4,7 +4,7 @@
 // and serves the prebuilt page. The export needs lake.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { after, before, test } from "node:test";
@@ -57,6 +57,10 @@ test("the package holds the server compiled, the page bundled, and what the serv
     "dist/assets/webfonts/source-serif-4-latin-wght-italic.woff2",
     "dist/assets/webfonts/LICENSE-SourceSerif4.txt",
     "dist/assets/webfonts/jost-latin-wght-normal.woff2",
+    "dist/assets/webfonts/ttf/jost-400-normal.ttf",
+    "dist/assets/webfonts/ttf/source-sans-3-500-normal.ttf",
+    "dist/assets/webfonts/ttf/noto-sans-math.ttf",
+    "dist/assets/webfonts/metrics.json",
     "dist/web/index.html",
     "dist/web/style.css",
     "dist/web/bundle/app.js",
@@ -89,6 +93,26 @@ test("the built command runs without TypeScript: its usage, its version, the doc
   const d = cli("doctor");
   assert.match(d.stdout, new RegExp(`^VisualProof ${pkgJson.version.replace(/\./g, "\\.")}\n  [✓✗] Node `));
   assert.doesNotMatch(d.stderr, /Error/);
+});
+
+test("the built command makes an artwork without a browser or TypeScript: the page's drawing code compiled, the fonts and resvg found from the package", () => {
+  const dir = join(tmp, "art");
+  const project = join(dir, "proj");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "lean-toolchain"), "leanprover/lean4:v4.33.1\n");
+  writeFileSync(join(project, "M.lean"), "namespace N\ndef a : Nat := 0\ndef b : Nat := a\nend N\n");
+  const graph = { schema: 1, roots: ["M"], modules: [{ name: "M", imports: [] }], nodes: [{ name: "N.a", kind: "def", module: "M", type: "Nat", ax: 0, hash: "ha" }, { name: "N.b", kind: "def", module: "M", type: "Nat", ax: 0, hash: "hb" }], externals: [{ name: "Nat", kind: "inductive", module: "Init.Prelude", ax: 0 }], edges: [[1, 0, 1], [0, 2, 1]], axioms: [], axiomSets: [[]], stats: { folded: 0, metaDropped: 0, ms: 1 } };
+  writeFileSync(join(dir, "graph.json"), JSON.stringify(graph));
+  writeFileSync(join(dir, "recipe.json"), JSON.stringify({ size: { w: 320, h: 240 }, names: { clusters: 0 }, title: "Small" }));
+  const r = spawnSync(
+    process.execPath,
+    ["--no-experimental-strip-types", join(pkg, "dist", "server", "main.js"), "artwork", project, "--root", "M", "--graph", join(dir, "graph.json"), "--recipe", join(dir, "recipe.json"), "-o", join(dir, "Small"), "--cache", join(dir, "cache")],
+    { encoding: "utf8", timeout: 120_000 },
+  );
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(readFileSync(join(dir, "Small.svg"), "utf8"), /^<svg /);
+  const png = readFileSync(join(dir, "Small.png"));
+  assert.deepEqual([png.toString("latin1", 1, 4), png.readUInt32BE(16), png.readUInt32BE(20)], ["PNG", 320, 240]);
 });
 
 test("the built command exports the fixture: the Lean programs compiled from the package, the prebuilt page", { skip: !haveLake }, () => {
