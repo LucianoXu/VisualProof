@@ -207,7 +207,9 @@ Numbers missing below are withdrawn decisions.
     left, the project's name over what it holds, both to be changed, its size too; one or two open
     fonts shipped with the package; then, of the bar only Share and Search while the mode is on; the
     panel in sections, the title's controls and the source's switch set in the shade beside the
-    frame where they act; a thin border round the picture, as a choice).
+    frame where they act; a thin border round the picture, as a choice; then, after a page of title
+    faces on the board: the title in spaced capitals of Jost, the same in every style, and the
+    top-level clusters' names in it too).
     - **Where**: the Export window's second tab, *Artwork*, beside *Document*. Choosing it closes the
       window into the artwork mode; Esc or Done leaves it, the board drawn as before. While it is on,
       of the bar only Share and Search can be used; the rest is greyed and out of reach, by the pointer
@@ -235,15 +237,18 @@ Numbers missing below are withdrawn decisions.
       used most, as short as join them all), the outermost two levels' bounds dotted, the edges a
       faint starlight. The cells and the starfield are dark: on their own ground, or transparent.
     - **Names in an artwork**: a cluster's name runs along the top of its circle where it fits there,
-      a top-level one in spaced capitals, the others in italics; under a folded cluster's disc, and
-      inside the top of a circle too small for the arc, straight. In Source Sans 3; the starfield's in
-      Source Serif 4, its declarations' names in italics. Each on its halo of the style's ground.
+      a top-level one in spaced capitals of Jost (the title's face), the others in italics; under a
+      folded cluster's disc, and inside the top of a circle too small for the arc, straight. The rest
+      in Source Sans 3; the starfield's in Source Serif 4, its declarations' names in italics. Each on
+      its halo of the style's ground.
     - **The title**: at the top left, the project's name over a line of what it holds ("7,851
       declarations · 4 targets"), both the reader's to change (empty for none) or to have the
-      project's own again; its size from 3 to 16 hundredths of the picture's height. Each style
-      writes it its own way: the board's in Source Serif 4 over a line in spaced capitals, the cells'
-      in bold Source Sans 3 of a pale light, the starfield's in spaced serif capitals of a pale gold
-      over a line in italics. Opening the mode fits the board below it.
+      project's own again; its size from 3 to 16 hundredths of the picture's height. In every style
+      the title is set the same: spaced capitals of Jost, a display face beside Source Sans 3, as the
+      top-level clusters' names are; the line under it in the style's own face. The styles differ in
+      colour and weight alone: the board's in the theme's ink, the cells' in a pale light, the
+      starfield's lighter, in a pale gold, its line in serif italics. Opening the mode fits the board
+      below it.
     - **The appearance**, in a small panel at the right, applied to the board at once: the theme —
       light, dark, or transparent in the light or the dark theme's colours (for a light page or a dark
       one; a dark style's own ground or transparent); the colour scheme (Kind or Status); names (as the board shows them — a lit declaration's
@@ -527,7 +532,8 @@ Numbers missing below are withdrawn decisions.
 - **The title and the foot** (artwork `drawTitle`, `drawFoot`; artframe `writeOver`): written over
   the board within the frame on a canvas of their own (`.art-ink`), and over each band of the PNG and
   into the SVG by the same code. The fonts (assets/webfonts/: Source Sans 3 and Source Serif 4, their
-  Latin, Latin Extended and Greek, variable weight, SIL Open Font License) are the page's
+  Latin, Latin Extended and Greek, and Jost, its Latin and Latin Extended; variable weight, SIL Open
+  Font License) are the page's
   (`/fonts/…`, web/style.css; within a snapshot of the page, inlined); a file is drawn once they are
   there, and an SVG carries them, each face in base64 (artframe `faces`).
 - **The foot** (artwork `drawFoot`, in both files and on the frame's `.art-ink`): 10 pixels of the

@@ -21,7 +21,7 @@ import type { Dirs } from "./dirs.ts";
 /** the tool's own folder, `src/`; the repository is above it */
 export const SRC = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** the fonts the page draws an artwork's names and title in (ExportSpec decision 19): Source Sans 3
- *  and Source Serif 4, their Latin and Greek, under the SIL Open Font License */
+ *  and Source Serif 4, their Latin and Greek, and Jost, its Latin, under the SIL Open Font License */
 export const WEBFONTS = join(SRC, "assets", "webfonts");
 export const REPO = resolve(SRC, "..");
 export const WEB = join(SRC, "web");

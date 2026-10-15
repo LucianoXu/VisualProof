@@ -22,7 +22,7 @@ import { ZOOM_LEAST, ZOOM_MOST } from "../../shared/sticky.ts";
 import type { ArtSettings, NameRow, NotePicture } from "./artwork.ts";
 import { artName, artSvg, borderBand, borderInset, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, encodePng, glyphSvg, MAX_SIDE, nameRows, oriented, PRESETS, presetOf, themeBackground, withChosen } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
-import { ART_SANS, ART_SERIF } from "./halo.ts";
+import { ART_DISPLAY, ART_SANS, ART_SERIF } from "./halo.ts";
 import { TITLE_SIZE } from "../../shared/collab.ts";
 import { escapeHtml } from "./highlight.ts";
 
@@ -783,7 +783,7 @@ export class ArtFrame {
 }
 
 /** the faces an artwork writes in: drawn with them once they are there */
-const ART_FACES = [`400 16px ${ART_SANS}`, `italic 400 16px ${ART_SANS}`, `600 16px ${ART_SANS}`, `700 16px ${ART_SANS}`, `400 16px ${ART_SERIF}`, `italic 400 16px ${ART_SERIF}`, `500 16px ${ART_SERIF}`, `600 16px ${ART_SERIF}`];
+const ART_FACES = [`400 16px ${ART_DISPLAY}`, `500 16px ${ART_DISPLAY}`, `400 16px ${ART_SANS}`, `italic 400 16px ${ART_SANS}`, `600 16px ${ART_SANS}`, `700 16px ${ART_SANS}`, `400 16px ${ART_SERIF}`, `italic 400 16px ${ART_SERIF}`, `500 16px ${ART_SERIF}`, `600 16px ${ART_SERIF}`];
 
 /** The artwork's fonts as an SVG carries them, so that it is written in them wherever it is opened:
  *  each face the page declares for them (web/style.css), its file within. A face that cannot be
@@ -801,7 +801,7 @@ async function faces(): Promise<string> {
       if (!(rule instanceof CSSFontFaceRule)) continue;
       const st = rule.style;
       const family = st.getPropertyValue("font-family").replace(/["']/g, "").trim();
-      if (family !== "Source Sans 3" && family !== "Source Serif 4") continue;
+      if (family !== "Source Sans 3" && family !== "Source Serif 4" && family !== "Jost") continue;
       const url = /url\(["']?([^"')]+)["']?\)/.exec(st.getPropertyValue("src"))?.[1];
       if (!url) continue;
       try {

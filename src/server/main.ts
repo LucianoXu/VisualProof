@@ -990,7 +990,7 @@ export class App {
 }
 
 /** an artwork's font file (assets/webfonts/) */
-const FONT_PATH = /^\/fonts\/source-(sans-3|serif-4)-[a-z-]+\.woff2$/;
+const FONT_PATH = /^\/fonts\/(source-sans-3|source-serif-4|jost)-[a-z-]+\.woff2$/;
 
 const TYPES: Record<string, string> = {
   ".woff2": "font/woff2",

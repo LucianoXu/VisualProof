@@ -56,6 +56,7 @@ test("the package holds the server compiled, the page bundled, and what the serv
     "dist/assets/webfonts/source-sans-3-latin-wght-normal.woff2",
     "dist/assets/webfonts/source-serif-4-latin-wght-italic.woff2",
     "dist/assets/webfonts/LICENSE-SourceSerif4.txt",
+    "dist/assets/webfonts/jost-latin-wght-normal.woff2",
     "dist/web/index.html",
     "dist/web/style.css",
     "dist/web/bundle/app.js",

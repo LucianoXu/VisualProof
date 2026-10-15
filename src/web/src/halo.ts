@@ -5,9 +5,12 @@
 // artwork's cluster names may run along the top of their circle (`arc`), letter by letter.
 
 /** The fonts an artwork writes in (assets/webfonts/, web/style.css): its names' and its foot's,
- *  and the starfield's and its title's. */
+ *  and the starfield's. */
 export const ART_SANS = `"Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
 export const ART_SERIF = `"Source Serif 4", Georgia, "Times New Roman", serif`;
+/** an artwork's title and its top-level clusters' names, in spaced capitals, in every style (the
+ *  owner's decisions of 2026-10-15) */
+export const ART_DISPLAY = `"Jost", "Source Sans 3", -apple-system, "Segoe UI", sans-serif`;
 
 /** A name to write: its text, where, in what font, aligned how, in what paint; `spacing`, pixels
  *  between its letters; `arc`, a circle whose top it follows, centred there, its letters' feet on it

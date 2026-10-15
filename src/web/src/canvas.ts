@@ -23,7 +23,7 @@ import type { Weighted, Weights } from "./overview.ts";
 import { MODE_SITES } from "../../shared/viewgraph.ts";
 import type { Graph, Mode } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
-import { ART_SANS, ART_SERIF, spacedWidth, writeNames } from "./halo.ts";
+import { ART_DISPLAY, ART_SANS, ART_SERIF, spacedWidth, writeNames } from "./halo.ts";
 import type { Written } from "./halo.ts";
 import type { NameRow } from "./artwork.ts";
 import { artNameId } from "../../shared/collab.ts";
@@ -91,7 +91,8 @@ const STAR_LINE = "rgba(175, 198, 255, 1)";
 
 /** How an artwork writes its names, by its style (ExportSpec decision 19, the owner's decisions of
  *  2026-10-15): a cluster's along the top of its circle where it fits, a top-level one in spaced
- *  capitals, the others in italics; in Source Sans 3, or the starfield's in Source Serif 4. */
+ *  capitals of Jost — the title's face, in every style — the others in italics; in Source Sans 3,
+ *  or the starfield's in Source Serif 4. */
 function artText(style: ArtStyle, th: { label: string; text: string }) {
   const serif = style === "stars";
   const fam = serif ? ART_SERIF : ART_SANS;
@@ -100,11 +101,11 @@ function artText(style: ArtStyle, th: { label: string; text: string }) {
     halo: style === "cells" ? "#0f1520" : style === "stars" ? "#090d1a" : null,
     clusterFill: style === "board" ? th.label : style === "cells" ? "rgba(226, 232, 246, 0.85)" : "rgba(238, 228, 200, 0.88)",
     declFill: style === "board" ? th.text : style === "cells" ? "rgba(205, 214, 232, 0.8)" : "rgba(206, 216, 236, 0.76)",
-    top: (size: number) => `${serif ? 500 : 600} ${size}px ${fam}`,
+    top: (size: number) => `${serif ? 400 : 500} ${size}px ${ART_DISPLAY}`,
     sub: (size: number) => `italic 400 ${size}px ${fam}`,
     decl: serif ? `italic 400 11.5px ${ART_SERIF}` : `400 11px ${ART_SANS}`,
     target: serif ? `italic 600 12px ${ART_SERIF}` : `600 11px ${ART_SANS}`,
-    spacing: (top: boolean, size: number) => size * (top ? (serif ? 0.26 : 0.22) : 0.03),
+    spacing: (top: boolean, size: number) => size * (top ? 0.2 : 0.03),
   };
 }
 

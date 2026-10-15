@@ -16,7 +16,7 @@ import type { ArtStyle, ArtworkLook } from "../../shared/collab.ts";
 import { ART_MAX_SIDE, ART_NAMES_BYTES, ART_STYLES, ART_TARGETS_BYTES, cleanNames, cleanTitle, cleanTitleSize, isArtNameId, TITLE_SIZE } from "../../shared/collab.ts";
 import type { GitSource } from "../../shared/graph.ts";
 import type { ArtShape } from "./canvas.ts";
-import { ART_SANS, ART_SERIF, writeNames } from "./halo.ts";
+import { ART_DISPLAY, ART_SANS, ART_SERIF, writeNames } from "./halo.ts";
 import type { Written } from "./halo.ts";
 
 export type ArtSettings = ArtworkLook;
@@ -395,30 +395,33 @@ export function drawBackdrop(ctx: CanvasRenderingContext2D, style: ArtStyle, rec
 }
 
 /** An artwork's title and the line under it at the top left of the frame `rect` (the screen's
- *  pixels), written with `ctx` on halos of `halo` (the owner's decisions of 2026-10-15): the title
- *  `size` hundredths of the frame's height high, the line about a third of it; in the style's fonts
- *  and colours — the board's in Source Serif 4 over spaced capitals, the cells' bold Source Sans 3 in
- *  a pale light, the starfield's in spaced serif capitals of a pale gold. `ink` and `quiet`: the
- *  theme's strong and quiet text, for the board's style. */
+ *  pixels), written with `ctx` on halos of `halo` (the owner's decisions of 2026-10-15): the title in
+ *  spaced capitals of Jost in every style, `size` hundredths of the frame's height its letters' em,
+ *  as its top-level clusters' names are; the line under it in the style's own face, about a third of
+ *  it. The styles differ in colour and weight: the board's in the theme's ink, the cells' in a pale
+ *  light, the starfield's in a pale gold, its line in serif italics. `ink` and `quiet`: the theme's
+ *  strong and quiet text, for the board's style. */
 export function drawTitle(ctx: CanvasRenderingContext2D, rect: { x: number; y: number; w: number; h: number }, title: string, subtitle: string, size: number, style: ArtStyle, colours: { ink: string; quiet: string; halo: string }): void {
   if (!title && !subtitle) return;
-  const t = (size / 100) * rect.h, sub = Math.max(7, t * 0.34);
+  const t = (size / 100) * rect.h * 0.8, sub = Math.max(7, (size / 100) * rect.h * 0.36);
   const x = rect.x + Math.max(14, rect.w * 0.035), top = rect.y + Math.max(14, rect.h * 0.035);
-  const ty = top + t * 0.92, sy = title ? ty + sub * 1.9 : top + sub;
+  // the capitals' top at the margin, the line under them
+  const ty = top + t * 0.72, sy = title ? ty + sub * 1.9 : top + sub;
   const items: Written[] = [];
   ctx.save();
+  const caps = (weight: number, fill: string | CanvasGradient): Written => ({ text: title.toUpperCase(), x, y: ty, font: `${weight} ${t}px ${ART_DISPLAY}`, align: "left", fill, spacing: 0.18 * t });
   if (style === "cells") {
-    const fill = ctx.createLinearGradient(x, 0, x + t * 7.5, 0);
+    const fill = ctx.createLinearGradient(x, 0, x + t * 9, 0);
     fill.addColorStop(0, "#dfe7ff");
     fill.addColorStop(1, "#9fb6ff");
-    if (title) items.push({ text: title, x, y: ty, font: `700 ${t}px ${ART_SANS}`, align: "left", fill, spacing: -0.02 * t });
-    if (subtitle) items.push({ text: subtitle, x: x + t * 0.03, y: sy, font: `400 ${sub}px ${ART_SANS}`, align: "left", fill: "rgba(200, 208, 224, 0.78)" });
+    if (title) items.push(caps(500, fill));
+    if (subtitle) items.push({ text: subtitle, x, y: sy, font: `400 ${sub}px ${ART_SANS}`, align: "left", fill: "rgba(200, 208, 224, 0.78)" });
   } else if (style === "stars") {
-    if (title) items.push({ text: title.toUpperCase(), x, y: ty, font: `500 ${t}px ${ART_SERIF}`, align: "left", fill: "#f1e6c8", spacing: 0.16 * t });
-    if (subtitle) items.push({ text: subtitle, x: x + t * 0.04, y: sy, font: `italic 400 ${sub * 1.1}px ${ART_SERIF}`, align: "left", fill: "rgba(200, 212, 236, 0.8)" });
+    if (title) items.push(caps(400, "#f1e6c8"));
+    if (subtitle) items.push({ text: subtitle, x, y: sy, font: `italic 400 ${sub * 1.05}px ${ART_SERIF}`, align: "left", fill: "rgba(200, 212, 236, 0.8)" });
   } else {
-    if (title) items.push({ text: title, x, y: ty, font: `600 ${t}px ${ART_SERIF}`, align: "left", fill: colours.ink, spacing: -0.01 * t });
-    if (subtitle) items.push({ text: subtitle.toUpperCase(), x: x + t * 0.04, y: sy, font: `600 ${sub * 0.86}px ${ART_SANS}`, align: "left", fill: colours.quiet, spacing: sub * 0.1 });
+    if (title) items.push(caps(500, colours.ink));
+    if (subtitle) items.push({ text: subtitle, x, y: sy, font: `400 ${sub}px ${ART_SANS}`, align: "left", fill: colours.quiet });
   }
   writeNames(ctx, items, colours.halo);
   ctx.restore();

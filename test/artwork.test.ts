@@ -344,23 +344,27 @@ test("the styles and the title (the owner's decisions of 2026-10-15): read with 
   assert.ok(a.body.length > 100, `${a.body.length - 1} stars of dust`);
 });
 
-test("the title at the top left, as each style writes it, on halos: the board's in a serif over spaced capitals, the starfield's in spaced serif capitals", () => {
+test("the title at the top left, the same in every style: spaced capitals of Jost over a line in the style's own face, on halos; the styles differ in colour and weight", () => {
   const frame = { x: 0, y: 0, w: 1000, h: 600 };
   const texts = (style: "board" | "cells" | "stars") => {
     const pen = new SvgContext(measure, FAMILY);
     drawTitle(ctxOf(pen), frame, "Sphere Packing", "7,851 declarations · 4 targets", 7, style, { ink: "#111", quiet: "#666", halo: "#fff" });
     return pen.body.filter((x) => x.startsWith("<text") && !x.includes('fill="none"'));
   };
-  const board = texts("board");
-  // the title letter by letter (its spacing), then its line in capitals
-  assert.ok(board[0].includes(`font-size="42" font-weight="600" font-family="&quot;Source Serif 4&quot;, Georgia, &quot;Times New Roman&quot;, serif"`), board[0]);
-  assert.match(board[0], /x="35" y="59.64"/);
-  assert.ok(board.some((x) => />7<\/text>$/.test(x)), "the line in capitals, letter by letter");
-  const stars = texts("stars");
-  assert.ok(stars.some((x) => />S<\/text>$/.test(x)) && !stars.some((x) => />h<\/text>$/.test(x)), "the starfield's title in capitals");
-  assert.ok(stars.some((x) => x.includes(`font-style="italic"`) && x.includes(">7,851 declarations · 4 targets<")), "its line in italics, whole");
-  const cells = texts("cells");
-  assert.ok(cells.some((x) => x.includes(`fill="url(#`)), "the cells' title in a pale light");
+  const jost = `font-family="&quot;Jost&quot;, &quot;Source Sans 3&quot;, -apple-system, &quot;Segoe UI&quot;, sans-serif"`;
+  for (const style of ["board", "cells", "stars"] as const) {
+    const t = texts(style);
+    // the title letter by letter (its spacing), in capitals, at 7 % of the height its em times 0.8
+    assert.ok(t[0].includes(`font-size="33.6"`) && t[0].includes(jost) && />S<\/text>$/.test(t[0]), `${style}: ${t[0]}`);
+    assert.ok(!t.some((x) => />h<\/text>$/.test(x)), `${style}: in capitals`);
+    // the line under it whole, in the style's face
+    const line = t.find((x) => x.includes(">7,851 declarations · 4 targets<"))!;
+    assert.ok(line, `${style}: its line`);
+    assert.equal(line.includes(`font-style="italic"`), style === "stars", `${style}: the starfield's line in italics`);
+  }
+  assert.match(texts("board")[0], /x="35" y="45.19" font-size="33.6" font-weight="500" .*fill="rgb\(17,17,17\)"/, "the theme's ink");
+  assert.ok(texts("cells")[0].includes(`fill="url(#`), "the cells' in a pale light");
+  assert.ok(texts("stars")[0].includes(`fill="rgb(241,230,200)"`) && !texts("stars")[0].includes("font-weight"), "the starfield's in a pale gold, lighter");
   // none: nothing
   const none = new SvgContext(measure, FAMILY);
   drawTitle(ctxOf(none), frame, "", "", 7, "board", { ink: "#111", quiet: "#666", halo: "#fff" });

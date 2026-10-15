@@ -674,8 +674,9 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   pixels — and the look. **Style**: *As the board*; *Cells*, each top-level namespace a glowing
   territory of its own colour on a dark field; or *Starfield*, a night sky where each declaration
   is a star, the brighter the more it is used, and each cluster a constellation. In any style a
-  cluster's name runs along the top of its circle, in the fonts VisualProof ships (Source Sans 3,
-  and Source Serif 4 for the starfield). **Title** and the line **Under it** go at the top left —
+  cluster's name runs along the top of its circle, in the fonts VisualProof ships: the top-level
+  ones in spaced capitals of Jost, as the title is in every style, the rest in Source Sans 3 (Source
+  Serif 4 for the starfield). **Title** and the line **Under it** go at the top left —
   the project's name and how many declarations and targets it has, until you write your own (empty
   for none; *The project's own* brings them back) — at the **Size** you slide: these are set above
   the frame's top left, and the **Source and commit** switch below its bottom right; opening the mode
