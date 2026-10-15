@@ -1,13 +1,43 @@
 # VisualProof
 
-**See what a Lean theorem actually rests on.**
+<p align="center">
+  <a href="https://github.com/math-inc/Sphere-Packing-Lean"><img src="docs/images/artwork-sphere-packing.webp" width="19%" alt="Sphere Packing"></a>
+  <a href="https://github.com/leanprover-community/flt-regular"><img src="docs/images/artwork-flt-regular.webp" width="19%" alt="FLT Regular"></a>
+  <a href="https://github.com/AlexKontorovich/PrimeNumberTheoremAnd"><img src="docs/images/artwork-prime-numbers.webp" width="19%" alt="Prime Numbers"></a>
+  <a href="https://github.com/openai/NavierStokesAndEuler"><img src="docs/images/artwork-navier-stokes.webp" width="19%" alt="Navier–Stokes"></a>
+  <a href="https://github.com/cedar-policy/cedar-spec"><img src="docs/images/artwork-cedar.webp" width="19%" alt="Cedar"></a>
+</p>
+<p align="center"><sub>Five Lean codebases, drawn by <code>visualproof artwork</code>.</sub></p>
+
+## Try it
+
+Prompt to your coding agent in your Lean codebase:
+```text
+Set up VisualProof (https://github.com/LucianoXu/VisualProof) for this Lean project, and give me the address to open.
+```
+
+Set up manually:
+```bash
+npm install --global visualproof
+cd my-lean-project && lake build
+visualproof serve .
+```
+
+It needs Node, elan and Poppler ([Requirements](#requirements)).
+
+## See what a Lean theorem actually rests on
 
 Lean checks that a proof is correct. It cannot check that the theorem says what you mean: that the
 definitions in its statement mean what their names suggest. VisualProof shows exactly which
 definitions those are, so that people, and AI agents, can read them, review them together, and
 keep a record of the review.
 
-<!-- A screenshot or a short video of the board goes here. -->
+![VisualProof on flt-regular: the TCB of flt_regular — IsRegularPrime, IsRegularNumber and the Mathlib definitions they use — with the theorem's review panel](docs/images/board.webp)
+
+On [flt-regular](https://github.com/leanprover-community/flt-regular), Fermat's Last Theorem for
+regular primes. Of the project's
+297 declarations, two light up besides the theorem, `IsRegularPrime` and `IsRegularNumber`: with
+the Mathlib definitions they use, they are what you need to read to believe what it says.
 
 ## What it does
 
@@ -37,28 +67,6 @@ keep a record of the review.
 
 The project must have been built with `lake build`: VisualProof only reads what the build left,
 and never builds it.
-
-## Try it
-
-VisualProof is not on npm yet: install its `visualproof` command from a checkout, which packs it
-as npm would. Here it is on [flt-regular](https://github.com/leanprover-community/flt-regular),
-Fermat's Last Theorem for regular primes, built on Mathlib:
-
-```bash
-git clone https://github.com/LucianoXu/VisualProof
-(cd VisualProof && npm install && npm pack && npm install --global ./visualproof-*.tgz)
-
-git clone https://github.com/leanprover-community/flt-regular
-(cd flt-regular && git checkout bd81b78ba6 && lake exe cache get && lake build)
-
-visualproof doctor flt-regular     # what is missing, if anything, and what to do
-visualproof serve flt-regular
-```
-
-Open http://127.0.0.1:4173/. Choose the *Rests on* tool (`2`), find `flt_regular` with the search
-(`/`), and click it on the board. Of the project's 297 declarations, two light up besides the
-theorem: `IsRegularPrime` and `IsRegularNumber`. With the Mathlib definitions they use, they are
-what you need to read to believe what the theorem says.
 
 ## Where it keeps things
 
