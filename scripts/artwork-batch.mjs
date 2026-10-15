@@ -18,7 +18,9 @@
 //
 // A job's recipe is laid over the batch's, field by field (`names` as a whole). The files are named
 // `<name>.png` and `<name>.svg`, the name made safe for every file system (no `< > : " / \ | ? *`,
-// no trailing dot or space, no reserved device name, no `NAME~N` shape).
+// no trailing dot or space, no reserved device name, no `NAME~N` shape), and no two jobs' the same
+// (in any case): a later one takes a number. The key goes only to the job's own server, as a Bearer
+// on its requests, and is never printed.
 
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
@@ -56,12 +58,22 @@ const out = resolve(here, home(outArg ?? batch.out ?? "."));
 mkdirSync(out, { recursive: true });
 const [vw, vh] = Array.isArray(batch.viewport) ? batch.viewport : [1920, 1200];
 
-/** A name every file system takes (the Vault's naming rules: Windows is the strictest). */
+/** A name every file system takes (the Vault's naming rules: Windows is the strictest): no reserved
+ *  device name, with an extension or none. */
 function safeName(name) {
   let s = String(name).replace(/[<>:"/\\|?*\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim();
-  s = s.replace(/[. ]+$/, "").replace(/~(\d)/g, "-$1") || "Artwork";
-  if (/^(CON|PRN|AUX|NUL|COM\d|LPT\d)$/i.test(s)) s = `${s}_`;
-  return s.slice(0, 90);
+  s = s.replace(/~(\d)/g, "-$1").slice(0, 90).replace(/[. ]+$/, "") || "Artwork";
+  if (/^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(\.|$)/i.test(s)) s = `_${s}`;
+  return s;
+}
+
+/** the names taken, in any case: macOS and Windows tell no two apart by case alone */
+const taken = new Set();
+function uniqueName(name) {
+  let s = name;
+  for (let k = 2; taken.has(s.toLowerCase()); k++) s = `${name}-${k}`;
+  taken.add(s.toLowerCase());
+  return s;
 }
 
 /** A PNG's width and height, from its header. */
@@ -79,8 +91,10 @@ try {
     const key = job.key ?? batch.key ?? (keyFile ? readFileSync(home(isAbsolute(keyFile) || keyFile.startsWith("~/") ? keyFile : join(here, keyFile)), "utf8").trim() : null);
     const recipe = { ...(batch.recipe ?? {}), ...(job.recipe ?? {}) };
     const save = String(job.save ?? batch.save ?? "png,svg");
-    const name = safeName(job.name ?? `Artwork ${n + 1}`);
-    const say = (line) => console.log(`[${n + 1}] ${name}: ${line}`);
+    const name = uniqueName(safeName(job.name ?? `Artwork ${n + 1}`));
+    // the key is never printed, whatever says it
+    const hide = (text) => (key ? String(text).split(key).join("<key>").split(encodeURIComponent(key)).join("<key>") : String(text));
+    const say = (line) => console.log(hide(`[${n + 1}] ${name}: ${line}`));
     try {
       // the link, from the agents' API: the key lets the request in, the headers say it is a script's
       const r = await fetch(`${server}/api/agent/artwork`, {
@@ -90,28 +104,36 @@ try {
       });
       const a = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(`${server} answered ${r.status}: ${a.error ?? "?"}${a.hint ? ` (${a.hint})` : ""}`);
-      if (a.names && typeof a.names === "object") say(`names: ${a.names.clusters.length + a.names.ruled.length} clusters (${a.names.ruled.length} by the rule, each where it covers no other name), ${a.names.decls.length} declarations`);
-      // the page, let in by the key's link, then the picture's
+      if (a.names && typeof a.names === "object") say(`names: ${a.names.clusters.length + a.names.ruled.length} clusters (${a.names.ruled.length} by the rule, each where it covers no other name), ${a.names.decls.length} declarations${a.left ? `; ${a.left} left out for room` : ""}`);
+      // the page, let in by the key as a Bearer on the requests to this server alone (server/access.ts
+      // takes one on every path), opened on this server: the link may name the server's public
+      // address, where the browser has nothing
       const context = await browser.newContext({ acceptDownloads: true, viewport: { width: vw, height: vh }, deviceScaleFactor: 1 });
       try {
+        const origin = new URL(server).origin;
+        if (key) await context.route((u) => u.origin === origin, (route) => route.continue({ headers: { ...route.request().headers(), authorization: `Bearer ${key}` } }));
         const page = await context.newPage();
-        if (key) await page.goto(`${server}/k/${key}`, { waitUntil: "domcontentloaded" });
         const kinds = save.split(",").filter((k) => k === "png" || k === "svg");
         const got = [];
         page.on("download", (d) => got.push(d));
-        await page.goto(a.link, { waitUntil: "domcontentloaded" });
+        await page.goto(`${origin}/${new URL(a.link).hash}`, { waitUntil: "domcontentloaded" });
         await page.waitForFunction(() => document.documentElement.dataset.artworkSaved !== undefined, null, { timeout: 300_000 });
         const said = await page.evaluate(() => document.documentElement.dataset.artworkSaved);
-        if (said === "none") throw new Error("the page could not open the artwork mode");
-        for (let t = 0; got.length < kinds.length && t < 600; t++) await page.waitForTimeout(100);
+        if (said === "none") throw new Error("the page made no file (the artwork mode could not open, or the browser could not draw the picture)");
+        // the files the page says it made, each a download
+        const made = said.split(",");
+        for (let t = 0; got.length < made.length && t < 600; t++) await page.waitForTimeout(100);
         for (const d of got) {
-          const ext = d.suggestedFilename().split(".").pop();
+          // a PNG or an SVG, nothing else
+          const ext = d.suggestedFilename().split(".").pop()?.toLowerCase();
+          if (ext !== "png" && ext !== "svg") continue;
           const path = join(out, `${name}.${ext}`);
           await d.saveAs(path);
           const size = ext === "png" ? pngSize(path) : null;
           say(`${path} (${statSync(path).size.toLocaleString("en")} bytes${size ? `, ${size[0]} × ${size[1]}` : ""})`);
         }
-        if (got.length < kinds.length) throw new Error(`${got.length} of ${kinds.length} files came`);
+        if (made.length < kinds.length) throw new Error(`the page made ${made.join(" and ")} of ${kinds.join(" and ")}`);
+        if (got.length < made.length) throw new Error(`${got.length} of ${made.length} files came`);
       } finally {
         await context.close();
       }

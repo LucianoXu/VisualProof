@@ -2581,7 +2581,7 @@ export class AgentApi {
       projectCount: v.meta.projectCount,
     });
     if (res.problems.length)
-      return fail(404, `The recipe names what the board has not: ${res.problems.join("; ")}.`, "Clusters by key (GET /api/agent/views/view lists a view's), declarations and targets by full name (GET /api/agent/search; the targets: GET /api/agent/targets).", { problems: res.problems });
+      return fail(404, `The recipe names what the board has not: ${res.problems.join("; ")}.`, "Clusters by key (GET /api/agent/views/view lists a view's), declarations and targets by full name (GET /api/agent/search; the targets: GET /api/agent/targets). A target of the review the graph no longer has is left out unsaid where the recipe does not name it.", { problems: res.problems });
     const address = addressOf({ view: rec ? rec.id : null, scope: null, mode: r.selection?.mode ?? "tcb", selection: null, sel });
     const link = `${a.base ?? ""}/#${address}&${RECIPE_PARAM}=${encodeRecipe(r)}${save.length ? `&${SAVE_PARAM}=${[...new Set(save)].join(",")}` : ""}`;
     const look = res.look;
@@ -2593,6 +2593,8 @@ export class AgentApi {
       names: look.labels === "chosen" ? res.named : look.labels,
       targets: look.targets === "chosen" ? look.shownTargets : look.targets,
       selection: sel ? { name: sel, mode: r.selection!.mode ?? "tcb" } : null,
+      // names and targets beyond what the artwork carries, left out: said, not refused
+      left: res.left,
       note: "It holds no key: it opens for whoever is let in already, or for a script that enters with the key (scripts/artwork-batch.mjs). The page that opens it resolves the recipe again against its board, opens the artwork mode fitted to the whole board, and saves the files asked for on that machine; nothing comes back here.",
     });
   }
@@ -2966,7 +2968,7 @@ export class AgentApi {
       {
         method: "POST", path: "/api/agent/artwork", about: "A link that opens the board as a picture, in the artwork mode, as the recipe says (ExportSpec decision 20): its size, its look, names by a rule, the targets marked, the selection — in words that hold on any project, so that one recipe makes the same kind of picture of every codebase; the page saves the PNG or SVG where asked, once the board is ready. It changes nothing, and holds no key. A name, a target or a cluster the board has not is refused (404, problems).",
         params: { recipe: "the picture: {size, orientation, style, theme, transparent, colouring, border, title, subtitle, titleSize, footSize, source, names, targets, keys, notes, edges, selection, lit, view}, each optional (GET /api/agent/docs/export, \"Artwork\")", save: "png, svg or png,svg: the files the page saves once the board is ready; left out, none" },
-        returns: "{ok, link, length, size: [w, h], names: {clusters, decls: written wherever they fall; ruled: by the rule, each only where it covers no other name} | how the board writes them, targets, selection, note}",
+        returns: "{ok, link, length, size: [w, h], names: {clusters, decls: written wherever they fall; ruled: by the rule, each only where it covers no other name} | how the board writes them, targets, selection, left: names and targets left out for room, note}",
         run: (a) => this.artwork(a),
       },
       {
