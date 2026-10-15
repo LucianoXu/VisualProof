@@ -5,12 +5,15 @@
 import { historyAnswer } from "./historyapi.ts";
 import { gitSource } from "./history.ts";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
+import type { Prepared } from "./pipeline.ts";
+import { makeArtwork, pngOf, projectView } from "./artcmd.ts";
 import { SiteBusy, cacheHome, dataHome, lockSite, openSite, projectDirs } from "./dirs.ts";
 import { ProjectError, openProject, targetsInWords } from "./project.ts";
 import type { Project } from "./project.ts";
@@ -48,7 +51,7 @@ import { READONLY_PATH } from "./readonly.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 
 interface Options {
-  cmd: "serve" | "export" | "purge-file" | "doctor";
+  cmd: "serve" | "export" | "purge-file" | "doctor" | "artwork";
   path: string;
   roots: string[];
   port: number;
@@ -81,6 +84,12 @@ interface Options {
   publicRead: boolean;
   /** purge-file: the file whose bytes go */
   sha: string | null;
+  /** artwork (ExportSpec decision 21): the recipe's file, the files to make (neither said: both),
+   *  and the screen the board is drawn on */
+  recipe: string | null;
+  png: boolean;
+  svg: boolean;
+  screen: { w: number; h: number };
 }
 
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
@@ -94,6 +103,8 @@ function usage(code = 2): never {
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Name]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
+       visualproof artwork <lean-project> --recipe recipe.json [-o name] [--png] [--svg] [--root Name]...
+                                         [--site dir] [--cache dir] [--jobs ${DEFAULT_JOBS}] [--screen 1920x1200] [--graph saved.json]
        visualproof doctor [<lean-project>] [--root Name]... [--site dir] [--cache dir]
        visualproof --version
 
@@ -117,6 +128,16 @@ function usage(code = 2): never {
   --graph  use a saved extraction (a projects/*/extract/*.json of the cache) instead of reading
            the build; the project path still supplies the sources
   export   writes one self-contained HTML file: the page, its data and the sources, frozen
+
+  artwork  makes the picture an artwork recipe says (the agents' API's, docs/agent-api/export.md:
+           the size, the look, names by a rule, the targets, the selection), as the page's
+           artwork mode makes it, without a browser: an SVG and a PNG (--png or --svg for one),
+           named by -o (a name, or a path without its extension), else the recipe's title, else
+           the project. With --site, the board as that site keeps it (its layout, pins and folds)
+           and its review's targets; without, the board as a new site would lay it out, and the
+           targets the recipe names. --screen: the screen the board is drawn on, as a reader's
+           (default 1920x1200): how large names are in the picture. It reads the site, never
+           writes it; it writes the files and the cache. Notes are not drawn yet.
 
   --identity-header  behind a proxy that authenticates (Tailscale, oauth2-proxy, …): take each
            reader's name from this header instead of the name the page gives. Only use it when
@@ -177,8 +198,8 @@ function parseArgs(argv: string[]): Options {
     console.log(packageVersion());
     process.exit(0);
   }
-  if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file" && cmd !== "doctor") usage();
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false };
+  if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file" && cmd !== "doctor" && cmd !== "artwork") usage();
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 } };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -194,6 +215,14 @@ function parseArgs(argv: string[]): Options {
     else if (a === "--editor") o.editor = val();
     else if (a === "--access-key-file") o.accessKeyFile = resolve(val());
     else if (a === "--public") o.publicRead = true;
+    else if (a === "--recipe" && cmd === "artwork") o.recipe = resolve(val());
+    else if (a === "--png" && cmd === "artwork") o.png = true;
+    else if (a === "--svg" && cmd === "artwork") o.svg = true;
+    else if (a === "--screen" && cmd === "artwork") {
+      const m = /^(\d+)x(\d+)$/.exec(val());
+      if (!m || +m[1] < 320 || +m[2] < 320 || +m[1] > 10000 || +m[2] > 10000) usage();
+      o.screen = { w: +m[1], h: +m[2] };
+    }
     else if (a === "--public-url") {
       const u = val();
       if (!/^https?:\/\/[^\s/?#]+\/?$/.test(u)) {
@@ -222,7 +251,7 @@ function parseArgs(argv: string[]): Options {
     else if (cmd === "purge-file" && !o.sha) o.sha = a;
     else usage();
   }
-  if ((!o.path && cmd !== "doctor") || (cmd === "export" && !o.out)) usage();
+  if ((!o.path && cmd !== "doctor") || (cmd === "export" && !o.out) || (cmd === "artwork" && !o.recipe)) usage();
   // read-only for whoever comes, beside those the key or a link lets in: without a key, everyone is in
   // already; behind a sign-in, there is nobody else
   if (o.publicRead && (!o.accessKeyFile || o.identityHeader)) {
@@ -1224,6 +1253,8 @@ async function main(): Promise<void> {
     }
     throw e;
   }
+  // a picture: the site read, never made, locked or written (ExportSpec decision 21)
+  if (o.cmd === "artwork") return artworkCommand(project, o);
   const dirs = projectDirs(project.root, o.site, o.cache);
   openSite(dirs.site);
   mkdirSync(dirs.cache, { recursive: true });
@@ -1315,6 +1346,76 @@ async function main(): Promise<void> {
     );
   });
   live.start();
+}
+
+/** The artwork command (ExportSpec decision 21): the build read as an export reads it, the picture a
+ *  recipe says made of it (server/artcmd.ts), its files written; what it named said as the agents'
+ *  API says it; problems said, and exit status 1. */
+async function artworkCommand(project: Project, o: Options): Promise<void> {
+  const fail = (why: string): never => {
+    console.error(`visualproof artwork: ${why}`);
+    process.exit(1);
+  };
+  const dirs = projectDirs(project.root, o.site, o.cache);
+  const site = o.site ? dirs.site : null;
+  if (site && !existsSync(site)) fail(`there is no site at ${site}`);
+  // without a site, none is read: a folder that is not there, never made (prepare reads no memory)
+  const readDirs = site ? dirs : { ...dirs, site: join(tmpdir(), `visualproof-artwork-no-site-${process.pid}`) };
+  let recipe: unknown;
+  try {
+    recipe = JSON.parse(readFileSync(o.recipe!, "utf8"));
+  } catch (e) {
+    fail(`the recipe ${o.recipe} cannot be read: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  mkdirSync(dirs.cache, { recursive: true });
+  const log = (l: string) => console.log(l);
+  let prep: Prepared;
+  try {
+    let ex = o.graph ? undefined : await extract(project, readDirs, log);
+    if (ex && o.jobs > 0) {
+      const pass = new UsagePass(project, readDirs, o.jobs, log);
+      const plan = pass.plan(ex.graph);
+      if (plan.todo.length) log(`usage pass: elaborating ${plan.todo.length} of ${plan.modules.length} modules, ${o.jobs} at a time`);
+      const results = await pass.run(plan);
+      if (results) {
+        ex = mergeUsage(ex, plan, results, pass.status.failed, pass.status.ms ?? 0);
+        saveMerged(readDirs.cache, ex);
+      }
+    }
+    prep = await prepare(project, readDirs, o.graph, log, { ...(ex ? { extraction: ex } : {}), readOnlySite: true });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : String(e));
+  }
+  const views = site ? new Views(site, LAYOUT_VERSION, () => {}) : null;
+  const review = site ? new ReviewStore(project.root, site).data : null;
+  // -o: a name, or a path without its extension
+  const outBase = o.out ? o.out.replace(/\.(png|svg)$/i, "") : null;
+  const a = makeArtwork(prep, review, projectView(views?.book ?? null), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root });
+  if (!("svg" in a)) {
+    for (const p of a.problems) console.error(`visualproof artwork: ${p}`);
+    process.exit(1);
+  }
+  const list = (xs: string[]) => (xs.length ? xs.join(", ") : "none");
+  console.log(`names written: ${list(a.names.written)}`);
+  if (a.names.ruledSkipped.length) console.log(`names a rule chose, left out where they would cover another: ${list(a.names.ruledSkipped)}`);
+  if (a.names.left) console.log(`names or targets left out for room: ${a.names.left}`);
+  console.log(`targets marked: ${list(a.targets)}`);
+  console.log(`selection: ${a.selection ? `${a.selection.mode} of ${a.selection.name}` : "none"}`);
+  if (a.notesLeftOut) console.log(`notes: ${a.notesLeftOut} on the board, not drawn (the command draws no notes yet)`);
+  const dir = outBase ? dirname(outBase) : process.cwd();
+  const both = !o.png && !o.svg;
+  const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
+  if (both || o.svg) {
+    const file = join(dir, a.file("svg"));
+    writeFileSync(file, a.svg);
+    console.log(`wrote ${file} (${mb(Buffer.byteLength(a.svg))})`);
+  }
+  if (both || o.png) {
+    const png = await pngOf(a.svg);
+    const file = join(dir, a.file("png"));
+    writeFileSync(file, png);
+    console.log(`wrote ${file} (${mb(png.length)}, ${a.look.w} × ${a.look.h})`);
+  }
 }
 
 // run as the command (`node src/server/main.ts`, the `visualproof` bin), not when a test imports App
