@@ -24,6 +24,8 @@ keep a record of the review.
 - **History**: every build is kept, and a past board can be browsed.
 - **A printed document** of what a view holds: definitions in full, proofs left out, typeset with
   XeLaTeX.
+- **A picture of the board**, PNG or SVG up to poster size: from the page, from an agent's link, or
+  without a browser (`visualproof artwork <project> --recipe recipe.json`).
 
 ## Requirements
 

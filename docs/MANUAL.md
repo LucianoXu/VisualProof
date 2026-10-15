@@ -124,6 +124,20 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data
   and sources, 2.5 MB for flt-regular) that opens from disk with no server. It is frozen
   (`--label` names it).
+- `visualproof artwork <path> --recipe recipe.json` makes the picture an artwork recipe says (the
+  agents' API's: [export](agent-api/export.md), "Artwork") without a browser: the same picture as
+  the page's artwork mode, as an SVG and a PNG (`--png` or `--svg` for one). `-o` names the files (a
+  name, or a path without its extension); else the recipe's title, else the project's name. With
+  `--site`, the board is the Project view as that site keeps it — its layout, pins, folds and hidden
+  levels — and the targets are its review's; without, the board as a new site would lay it out and
+  the targets the recipe names. `--screen 1920x1200` (the default) is the screen the board is drawn
+  on, as a reader's would be: the smaller the screen, the larger the names in the picture. It says
+  what it wrote — the names, those a rule left out where they would have covered another, the
+  targets, the selection — then the files; a name, target or view the build has not ends it with
+  status 1. It reads the build and the site and writes only the files (and the cache); the same
+  build, site and recipe make the same bytes. An A2 poster at 300 dpi of a project of 15,000
+  declarations takes about 20 seconds and 1.2 GB of memory, most of it drawing the PNG. Notes are
+  not drawn yet.
 
 ## Supported Lean versions
 

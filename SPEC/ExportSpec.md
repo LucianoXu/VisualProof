@@ -693,3 +693,43 @@ Numbers missing below are withdrawn decisions.
   in the picture), the downloads saved as `<name>.png` and `.svg`, the name made safe for every
   file system (no reserved device name, with an extension or none) and no two jobs' the same in any
   case.
+
+### The artwork command
+
+- **The pipeline** (server/artcmd.ts `makeArtwork`; main.ts `artworkCommand`): the build read as
+  `visualproof export` reads it (the extraction, the usage pass with `--jobs`, `prepare` — the site's
+  layout memory read and never written, `readOnlySite`; without `--site`, a site that is not there,
+  so the layout is a new site's); the review (`ReviewStore`) and the Project view (`Views`, its
+  pins, folds, hidden levels and clustering) read from the site, or none. The board is the whole
+  graph on `wholeLayout`, as the page's Project; the recipe resolved by shared/artrecipe.ts against
+  its layout's clusters, the targets the review's (with a site) or the recipe's (without); the
+  settings checked as a browser's are (`cleanSettings`). The command draws the Project view: a
+  recipe naming another is refused.
+- **The board without a browser** (web/src/canvas.ts): `new GraphCanvas(null, null, null, g, events,
+  host)` with a host — the screen (`--screen`, at one pixel each), the theme's colours (`themeOf` over
+  `cssTheme`, the style sheet's custom properties, light, or dark as `drawLook` chooses: the board's
+  style in its theme, the cells and the starfield in the dark one), and the context names are
+  written to (an `SvgContext` measuring with `textMeasurer`, shared/artfonts.ts). Its renderer is
+  `new Renderer(null)`: the layers' instances kept (`drawn`, which `artShapes` reads), nothing drawn
+  or uploaded; colours parsed by `parseColour` (web/src/gl/gl.ts) where there is no document; the
+  overview's points chosen at once (no worker); `settle()` draws until nothing more is asked. The
+  review on it as the page's `syncStatus` puts it (targets, keys, status codes, no build's file
+  states), the look as `drawLook` sets it (`setScheme`, `setEdges`, `setArt`), the selection as
+  `apply` lights it (`lightUp`; Keys' key edges; the targets alone where they are faded).
+- **The frame** (artwork.ts `frameRect`, `titleRoom`): placed on the screen as the mode places it
+  (the room the panel, the margins, the strips and the bar leave) and fitted as `open` fits it (the
+  whole board below the title, `fitCam`, the camera put there at once).
+- **The files**: the SVG as the page's Save SVG writes it (`artSvg`: the ground, the border's clip,
+  `artShapes`, `drawMarks`, `writeOver` — the title, the foot, the border, a pure function the page
+  uses too — and the faces written in from the style sheet's `@font-face` rules and the WOFF2 files
+  beside it); the PNG that SVG drawn by resvg (`pngOf`) with the package's TrueType faces and none of
+  the system's, at the picture's size. The git source is asked of git as the page asks it now
+  (`gitSource`). The names said are those `writtenNames` gives after the last frame; a rule's names
+  not among them were left out where they would have covered another.
+- **Measured** (2026-10-15, leanycrypt's A2 portrait poster, 14,770 declarations, against the page's
+  of the same recipe): the same names written and skipped; the PNG within 3.1% RMSE of the page's
+  (WebGL's) and the two SVGs, both drawn by resvg, within 1.8%; the text widths within 1.9% of the
+  browser's on average (kerning is left out, as resvg is given none); 20 s and 1.2 GB for the
+  4961 × 7016 PNG (resvg 19 s of it), 9 s for Sphere-Packing's. The same bytes on each run.
+- **Not in this version**: notes (the page lays them out with its style sheet; the command says how
+  many a recipe asking for them left out).
