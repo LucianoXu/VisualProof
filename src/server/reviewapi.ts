@@ -18,6 +18,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { MAX_NAME, sameName, validName } from "../shared/collab.ts";
 import { exactContext, judgedText } from "../shared/context.ts";
 import type { ModuleContexts } from "../shared/context.ts";
 import type { ViewMeta } from "../shared/graph.ts";
@@ -210,24 +211,33 @@ export class ReviewApi {
     }
   }
 
-  /** Append a writer's event to their log; the answer carries the change, which the page applies
-   *  at once, and the event as written. */
   /** Whose an opinion is to be (ReviewSpec decision 8): the asker's own where `asked` is absent or
    *  names them; else another person's, recorded for them — by their link's id where `asked` is an
-   *  invited person's name — and never an agent's, nor by an agent. */
+   *  invited person's name, a guest's as the logs write it — and never an agent's, nor by an agent. */
   private voice(asked: unknown, who: Writer): { for?: string; forPerson?: string } | Refusal {
     if (asked === undefined) return {};
     if (who.agent) return refuse(403, "An agent records no opinion for anyone else.", "Leave out for: your opinion is your own, and advice.");
-    if (typeof asked !== "string" || !asked.trim() || asked.trim().length > 120) return refuse(400, "for is the name of the person the opinion is recorded for, at most 120 characters.", "Send {op: \"opinion\", name, verdict, for: \"<their name>\"}.");
+    if (typeof asked !== "string" || !validName(asked.trim())) return refuse(400, `for is the name of the person the opinion is recorded for: 1–${MAX_NAME} characters, no line breaks.`, "Send {op: \"opinion\", name, verdict, for: \"<their name>\"}.");
     const name = asked.trim();
     const held = this.world.invited?.(name);
     // one's own name, or one's own link: one's own opinion
-    if (held ? held.id === who.person : name === who.name.trim()) return {};
+    if (held ? held.id === who.person : sameName(name, who.name.trim())) return {};
+    // the writers the logs name, people's and agents', in any case
     const d = this.world.review.data;
-    const agentNamed = Object.values(d.opinions).some((ops) => ops.some((o) => o.agent && o.by === name)) || Object.values(d.targets).some((t) => t.agent && t.by === name);
-    if (agentNamed) return refuse(400, `${name} is an agent: nobody records an opinion for an agent.`, "Record it for a person, or as your own.");
-    return held ? { for: held.name, forPerson: held.id } : { for: name };
+    const writers = [
+      ...Object.values(d.opinions).flatMap((ops) => ops.map((o) => ({ by: o.by, agent: !!o.agent, person: !!o.person }))),
+      ...Object.values(d.targets).map((t) => ({ by: t.by, agent: !!t.agent, person: !!t.person })),
+      ...Object.values(d.keys).flatMap((marks) => Object.values(marks).map((m) => ({ by: m.by, agent: !!m.agent, person: !!m.person }))),
+    ];
+    if (writers.some((w) => w.agent && sameName(w.by, name))) return refuse(400, `${name} is an agent: nobody records an opinion for an agent.`, "Record it for a person, or as your own.");
+    if (held) return { for: held.name, forPerson: held.id };
+    // a guest already in the logs, as they write their name: "bob" is Bob
+    const guest = writers.find((w) => !w.agent && !w.person && sameName(w.by, name));
+    return { for: guest?.by ?? name };
   }
+
+  /** Append a writer's event to their log; the answer carries the change, which the page applies
+   *  at once, and the event as written. */
 
   private record(op: ReviewOp, who: Writer): ReviewAnswer {
     return appended(this.world.review.append(who, op, this.world.project.toolchain));

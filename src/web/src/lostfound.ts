@@ -279,7 +279,11 @@ export class LostAndFound {
           e.verdict === "approve"
             ? e.agent ? `suggested <span class="ok">approving</span>` : `<span class="ok">approved</span>`
             : `<span class="commented">${e.agent ? "commented (advice)" : "commented"}</span>`;
-        return `${by} ${verb} ${when}` + (e.comment ? `<div class="act-quote md">${this.hooks.comment(e.comment, e.name)}</div>` : "");
+        // recorded for them by someone else: theirs, without their mark, saying who typed it
+        // (ReviewSpec decision 8)
+        const rec = e.recordedBy;
+        const whose = rec ? `<b>${escapeHtml(e.by ?? "")}</b>` : by;
+        return `${whose} ${verb}${rec ? ` <span class="muted">· recorded by ${this.who(rec.by, undefined, rec.person)}</span>` : ""} ${when}` + (e.comment ? `<div class="act-quote md">${this.hooks.comment(e.comment, e.name)}</div>` : "");
       }
       case "target":
         return `<span class="star">★</span> a target, marked by ${by} ${when}`;

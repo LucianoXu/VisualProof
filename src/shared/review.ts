@@ -41,6 +41,7 @@
 // `constructor`, even `__proto__`. Every object keyed by names here has no prototype (`byName`),
 // is read with Object.hasOwn, and is never spread or assigned into a plain object.
 
+import { validName } from "./collab.ts";
 import { applyLibrary, invalidLibrary, isLibraryOp, libraryEventOf, libraryFromJson, libraryNoChange, readLibraryEvent, renamePerson } from "./library.ts";
 import type { FileRecord, LibraryEvent, LibraryOp, LibraryStep, Link } from "./library.ts";
 import { applyMove, moveIsIdle, readMove } from "./moves.ts";
@@ -244,9 +245,9 @@ export function invalid(r: unknown): string | null {
   if (o.for !== undefined || o.forPerson !== undefined) {
     if (o.op !== "opinion") return "only an opinion is recorded for someone else";
     if (o.agent) return "an agent records for no one";
-    if (!str(o.for, 120) || !(o.for as string).trim()) return "for";
+    if (typeof o.for !== "string" || !validName(o.for.trim())) return "for";
     if (o.forPerson !== undefined && !validPersonId(o.forPerson)) return "forPerson";
-    if ((o.for as string).trim() === (o.by as string).trim() || (o.forPerson !== undefined && o.forPerson === o.person)) return "an opinion of one's own is recorded as one's own";
+    if (o.for.trim() === (o.by as string).trim() || (o.forPerson !== undefined && o.forPerson === o.person)) return "an opinion of one's own is recorded as one's own";
   }
   switch (o.op) {
     case "opinion":
@@ -388,7 +389,16 @@ function named(d: ReviewData, id: string, name: string): void {
   const p = Object.hasOwn(d.people, id) ? d.people[id] : null;
   if (p?.name === name) return;
   if (!p) {
-    d.people[id] = { name, was: [] };
+    // first seen after opinions were recorded for them (decision 8): those show under this name,
+    // the names they were written under kept, so that a quote of one still finds it
+    const was = new Set<string>();
+    for (const ops of Object.values(d.opinions))
+      for (const o of ops)
+        if (o.person === id && o.by !== name) {
+          was.add(o.by);
+          o.by = name;
+        }
+    d.people[id] = { name, was: [...was] };
     return;
   }
   p.was = [...p.was.filter((n) => n !== p.name && n !== name), p.name];
@@ -471,7 +481,7 @@ export function readEvent(raw: unknown, agentLog: boolean, personLog: string | n
       // recorded for someone else (ReviewSpec decision 8): a person's line, for another person
       if (o.for !== undefined || o.forPerson !== undefined) {
         if (agentLog) return "an agent's opinion recorded for someone else";
-        if (!str(o.for, 120) || !(o.for as string).trim()) return "for";
+        if (typeof o.for !== "string" || !validName(o.for)) return "for";
         if (o.forPerson !== undefined && !validPersonId(o.forPerson)) return "forPerson";
         if (o.for === by || (o.forPerson !== undefined && o.forPerson === personLog)) return "an opinion recorded for its own writer";
         e.for = o.for as string;

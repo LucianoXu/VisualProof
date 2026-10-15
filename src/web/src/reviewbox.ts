@@ -37,6 +37,7 @@ import type { LineDiff } from "./linediff.ts";
 import { renderComment } from "./markdown.ts";
 import { membersOf } from "./trust.ts";
 import { invitedNames, VERIFIED } from "./verified.ts";
+import { MAX_NAME } from "../../shared/collab.ts";
 
 /** "3 h ago", for an opinion. */
 export function ago(iso: string): string {
@@ -172,7 +173,7 @@ export class ReviewBox {
   /** The opinions given from now on are `name`'s (none: the reader's own): every review box on the
    *  page says so at once, without being drawn again (ReviewSpec decision 8). */
   private speakFor(name: string, except: Element | null): void {
-    this.speakingFor = name.slice(0, 120) || null;
+    this.speakingFor = name.slice(0, MAX_NAME) || null;
     try {
       if (this.speakingFor) sessionStorage.setItem(FOR_KEY, this.speakingFor);
       else sessionStorage.removeItem(FOR_KEY);
@@ -632,7 +633,7 @@ export class ReviewBox {
         `<textarea class="rv-text" data-rv-comment="${esc(v.name)}" rows="${rowsFor(this.drafts.get(v.name) ?? "")}" placeholder="Comment (optional with an approval) · Markdown" title="Markdown: &gt; quote, \`code\`, \`\`\`lean blocks, **bold**, *italics*; a declaration's full name in backticks links to it. Quote an opinion with its Quote, lines of code by selecting them in the source window">${esc(this.drafts.get(v.name) ?? "")}</textarea>` +
         `<div class="rv-actions"><button class="rv-btn approve" data-rv="approve" title="Approve (a), with the comment if there is one">Approve<span data-rv-for-who>${f ? ` for ${esc(f)}` : ""}</span></button>` +
         `<button class="rv-btn comment" data-rv="comment" title="Comment (m): send what you wrote in the box">Comment<span data-rv-for-who>${f ? ` for ${esc(f)}` : ""}</span></button>` +
-        `<label class="rv-for" title="Record the opinion as another person's, at the same screen: it counts as theirs, recorded by you. Empty: your own">Speaking for <input class="rv-for-in" data-rv-for list="rv-people" value="${esc(this.speakingFor ?? "")}" placeholder="${esc(R.reviewer ?? "yourself")}" maxlength="120" spellcheck="false" autocomplete="off"></label>` +
+        `<label class="rv-for" title="Record the opinion as another person's, at the same screen: it counts as theirs, recorded by you. Empty: your own">Speaking for <input class="rv-for-in" data-rv-for list="rv-people" value="${esc(this.speakingFor ?? "")}" placeholder="${esc(R.reviewer ?? "yourself")}" maxlength="${MAX_NAME}" spellcheck="false" autocomplete="off"></label>` +
         `</div><div class="rv-err" hidden></div>`;
     }
     // lines of someone's log that cannot be read: the rest of the review is read, and shown

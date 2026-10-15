@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { ReviewStore } from "../src/server/review.ts";
 import type { AppendResult } from "../src/server/review.ts";
-import { current, emptyReview, applyEvent, logFileName, readEvent, statusOf } from "../src/shared/review.ts";
+import { current, emptyReview, applyEvent, findOpinion, logFileName, readEvent, statusOf } from "../src/shared/review.ts";
+import { lostEntries } from "../src/shared/lostfound.ts";
 import type { ReviewEvent } from "../src/shared/review.ts";
 import { site } from "./site.ts";
 
@@ -44,6 +45,16 @@ test("an opinion recorded for someone else is theirs: in the typist's log, repla
     assert.equal(status(store.append(alice, { op: "target", name: "N.a", by: "Alice", on: true, for: "Bob" } as never, "tc")), 400, "a target is one's own");
     assert.equal(status(store.append(alice, { op: "opinion", name: "N.a", by: "Alice", verdict: "approve", for: "Alice" }, "tc")), 400, "not for oneself");
     assert.equal(status(store.append({ name: "Claude", agent: true }, { op: "opinion", name: "N.a", by: "Claude", verdict: "approve", for: "Bob", agent: true }, "tc")), 400, "an agent records for no one");
+    // a name as any: 1–60 characters, no line breaks
+    for (const bad of ["x".repeat(61), "Bo\nb", " "]) assert.equal(status(store.append(alice, { op: "opinion", name: "N.a", by: "Alice", verdict: "approve", for: bad }, "tc")), 400, JSON.stringify(bad));
+    // one recorded for, who has no log of their own: their first rename gives them one, and what was
+    // recorded for them follows it
+    assert.equal(status(store.append(alice, { op: "opinion", name: "N.c", by: "Alice", verdict: "approve", for: "Erin", forPerson: "e0e0e0e0e0" }, "tc")), 200);
+    assert.equal(status(store.named("e0e0e0e0e0", "Erina")), 200);
+    assert.equal(current(store.data, "N.c")[0].by, "Erina");
+    // the lost-and-found says it as the review does: theirs, recorded by whoever typed it
+    const lost = lostEntries(store.data, [], () => false).find((e) => e.kind === "opinion" && e.name === "N.c")!;
+    assert.deepEqual([lost.by, lost.recordedBy], ["Erina", { by: "Alice" }]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -61,6 +72,12 @@ test("an opinion recorded for someone else is theirs: in the typist's log, repla
     { op: "name", at: at(4), by: "David", person: "d0d0d0d0d0" },
   ];
   for (const e of lines) applyEvent(d, e);
+  // first seen after an opinion was recorded for them: it shows under their name, quotes of it found
+  // by the name it was written under
+  applyEvent(d, { op: "opinion", at: at(5), by: "David", person: "d0d0d0d0d0", name: "N.c", verdict: "approve", for: "Frank", forPerson: "f0f0f0f0f0" });
+  applyEvent(d, { op: "opinion", at: at(6), by: "Franklin", person: "f0f0f0f0f0", name: "N.d", verdict: "comment", comment: "mine" });
+  assert.equal(current(d, "N.c")[0].by, "Franklin");
+  assert.ok(findOpinion(d, "N.c", "Frank", at(5)), "a quote of it still finds it");
   const theirs = current(d, "N.b");
   assert.equal(theirs.length, 1);
   assert.deepEqual([theirs[0].by, theirs[0].person, theirs[0].verdict, theirs[0].recordedBy], ["Caroline", "c0c0c0c0c0", "approve", { by: "David", person: "d0d0d0d0d0" }]);
@@ -97,6 +114,15 @@ test("the server finds whom an opinion is for: one's own name is one's own, an i
     const byAgent = await S.ask("POST", "/api/agent/opinion", { name: "N.a", verdict: "approve", for: "Bob" }, { ...as("Claude"), "x-visualproof-kind": "agent" });
     assert.equal(byAgent.status, 403, JSON.stringify(byAgent.json));
     assert.equal((await give("Olivia", { for: 7 })).status, 400);
+    assert.equal((await give("Olivia", { for: "claude" })).status, 400, "an agent's name in any case");
+    // an agent at the page's door, saying for: refused
+    assert.equal((await give("Claude", { for: "Bob" }, { "x-visualproof-kind": "agent" })).status, 403);
+    // a guest already in the logs, written in another case: that guest
+    assert.equal((await give("Olivia", { for: "BOB" })).status, 200);
+    assert.equal(S.live.review.data.opinions["N.a"].at(-1)!.by, "Bob");
+    // one's own name in another case: one's own
+    assert.equal((await give("Olivia", { for: "olivia" })).status, 200);
+    assert.equal(S.live.review.data.opinions["N.a"].at(-1)!.recordedBy, undefined);
   } finally {
     await S.close();
   }

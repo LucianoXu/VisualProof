@@ -182,7 +182,9 @@ export class Panel {
     if (i === null) return this.hide();
     const same = i === this.current && this.el.classList.contains("open");
     const keepScroll = this.el.scrollTop;
-    const hadFocus = document.activeElement?.matches?.("#panel [data-rv-comment]") ?? false;
+    // the comment box or whom one speaks for (ReviewSpec decision 8), being typed into
+    const typing = document.activeElement?.matches?.("#panel [data-rv-comment], #panel [data-rv-for]") ? (document.activeElement as HTMLInputElement | HTMLTextAreaElement) : null;
+    const hadFocus = typing ? { sel: typing.matches("[data-rv-for]") ? "[data-rv-for]" : "[data-rv-comment]", from: typing.selectionStart, to: typing.selectionEnd } : null;
     this.current = i;
     const g = this.g;
     const v = g.nodes[i];
@@ -294,7 +296,11 @@ export class Panel {
     this.el.classList.add("open");
     if (!same) this.el.scrollTop = 0;
     else this.el.scrollTop = keepScroll;
-    if (same && hadFocus) this.el.querySelector<HTMLTextAreaElement>("[data-rv-comment]")?.focus();
+    if (same && hadFocus) {
+      const box = this.el.querySelector<HTMLInputElement | HTMLTextAreaElement>(hadFocus.sel);
+      box?.focus();
+      if (hadFocus.from !== null && hadFocus.to !== null) box?.setSelectionRange(hadFocus.from, hadFocus.to);
+    }
     // a quoted opinion being gone to, now that it is drawn
     this.box.reveal(this.el);
   }

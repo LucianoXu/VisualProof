@@ -198,10 +198,16 @@ agent's ends `.agent.jsonl`; an invited person's is the link's id, `3f2a9c1b07.p
   `person`) are the typist's, as on every line; `for` is the name it is recorded for, and
   `forPerson` that person's link id where they are invited, so that it follows their renames. The
   replay gives the opinion to `forPerson`, else to `for`; it is refused where `for` names the typist
-  or `forPerson` is the typist's own id, on an agent's line, and on any event but an opinion. A
-  name typed for someone that is an invited person's protected name is that person (the server
-  fills in `forPerson`); no one records for an agent's name. A version before 0.3.0 reads such a
-  line as the typist's own: nothing is lost, the attribution is.
+  or `forPerson` is the typist's own id, on an agent's line, and on any event but an opinion. `for`
+  is a name as any (`validName`: 1–60 characters, no line breaks). A name typed for someone that is
+  an invited person's protected name is that person (the server fills in `forPerson`); one that is
+  a guest's already in the logs, in another case, is that guest as the logs write them; no one
+  records for an agent's name, in any case. Someone recorded for who has no log of their own yet
+  is given one by their first rename (its `name` line), so that what was recorded for them follows
+  it; the first line of theirs read shows all of it under their name, the earlier names kept. A
+  guest recorded for under a name later given to an invited person stays that guest, as a guest's
+  own log does (CollabSpec decision 9). A version before 0.3.0 reads such a line as the typist's
+  own: nothing is lost, the attribution is.
 - `comment`: as written, at most 10,000 characters. `text` (or `statement` where there was no
   source; never both): what was judged, at most 64 Ki characters, only on opinions with a `hash`,
   not repeated by an opinion replacing the same reviewer's on the same version and text.

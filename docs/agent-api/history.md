@@ -20,7 +20,8 @@ name bare).
 Every event with a `by` has `agent`. `by` is null on a `view`, `note` or `undo` event done without a
 name (a private reader's; their opinions, targets, key marks and trust keep their name).
 
-- Review's logs (no `id`): `opinion`, `target`, `key` (as marked now: `target`, `name`), `file`
+- Review's logs (no `id`): `opinion` (`recordedBy`: who typed it for `by`, at one screen), `target`,
+  `key` (as marked now: `target`, `name`), `file`
   (`what` added, edited, archived or restored; `sha`, `title` then, `wasTitle` before an edit),
   `link` (`what` made, edited or removed; `id`, `subject`, `label`, `file`; an edit's `changed`
   (of `subject`, `label`, `place`), `wasSubject`, `wasLabel`, and `auto` if VisualProof carried it
