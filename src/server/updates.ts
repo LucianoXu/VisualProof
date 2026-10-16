@@ -45,6 +45,9 @@ export interface UpdateStatus {
   newer?: { version: string; taken: boolean; command?: string; notes: string };
   /** the versions set aside on this machine (UpdateSpec decision 7): when, and why */
   setAside?: { version: string; at: string; why: string }[];
+  /** a checkout's server (UpdateSpec decision 13): its updates are git's; nothing is asked, so
+   *  there is no mode */
+  checkout?: true;
 }
 
 /** The package's own folder, holding package.json: the one this code was loaded from. */
@@ -510,6 +513,8 @@ export interface UpdatesOptions {
   canRestart: boolean;
   /** whether the registry is asked at all: only from a package (UpdateSpec decision 13) */
   check: boolean;
+  /** a checkout's server, which follows no releases (UpdateSpec decision 13) */
+  checkout?: boolean;
   /** nobody on a page, nothing running: a moment to restart in (decision 6) */
   quiet: () => boolean;
   /** restart into version `to` (the server tells its pages, stops, and its supervisor starts it) */
@@ -579,6 +584,7 @@ export class Updates {
   /** What a page is told (UpdateSpec decision 11): the version alone where `full` is not. */
   status(full: boolean): UpdateStatus {
     if (!full) return { running: this.running };
+    if (this.o.checkout) return { running: this.running, checkout: true };
     const installed = versionAt(this.installedRoot);
     const { patch, release } = this.found();
     const s: UpdateStatus = { running: this.running, mode: this.mode, ...(installed && installed !== this.running ? { installed } : {}), ...(this.saved ? { checked: this.saved.checked } : {}) };

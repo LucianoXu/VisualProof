@@ -124,7 +124,8 @@ The owner's decisions of 2026-10-16.
     and nothing of the project. `versions/` is code the servers run: the caches' root is kept the
     user's alone. `--updates off` for a machine that asks nothing of the network.
 13. **Where none of it applies**: a checkout (`node src/server/main.ts`) never asks the registry
-    and runs no supervisor — its updates are git's; nor do `export` and `artwork`; `--updates off`.
+    and runs no supervisor — its updates are git's, and `GET /api/updates` says `checkout: true`
+    rather than a mode; nor do `export` and `artwork`; `--updates off`.
     0.3.0 has no updater: its servers are upgraded by hand to 0.4.0, the first that takes its
     patches.
 

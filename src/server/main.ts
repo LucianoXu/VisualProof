@@ -1424,6 +1424,7 @@ async function main(): Promise<void> {
     cacheRoot,
     canRestart: supervised && FROM_PACKAGE,
     check: FROM_PACKAGE,
+    checkout: !FROM_PACKAGE,
     // nobody on a page, nothing running that a restart would cut short (UpdateSpec decision 6)
     quiet: () => live.pages === 0 && !live.busy && !exporter.busy,
     restart: (to) => {
