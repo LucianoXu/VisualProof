@@ -1,12 +1,15 @@
-// The tips (GuideSpec decisions 5–11): the catalogue held to its budgets and to the page — every
-// control a tip is about is on the page and declared a surface (web/src/surfaces.ts), every key it
-// names is bound, every Show me is done somewhere, every rule is one of the eight, every More is a
-// heading of the manual — and what decides who sees which tip, and when a release is newer.
+// The tips (GuideSpec decisions 5–11): the tour film's eleven chapters and the reference tips, held
+// to their budgets and to the page — every control they are about is on the page and declared a
+// surface (web/src/surfaces.ts), every key they name is bound, every Show me is done somewhere, every
+// rule is one of the eight and shows one tip or chapter, every More is a heading of the manual, no
+// clip but the phone's — and what decides who sees which tip, the film's times as the recording
+// gives them, and when a release is newer.
 
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { GROUPS, TIPS } from "../src/web/src/tips.ts";
+import { GROUPS, TIPS, TOUR } from "../src/web/src/tips.ts";
+import { filmTimes } from "../src/web/src/tourfilm.ts";
 import { RULES } from "../src/web/src/intip.ts";
 import { matches, plain, tipsFor } from "../src/web/src/tipcards.ts";
 import { newer, TipState } from "../src/web/src/tipstate.ts";
@@ -15,6 +18,32 @@ import { GUIDE_SHOWS } from "../src/web/src/guide.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
+
+test("the film is eleven chapters, in the review's order, each a few words and one or two sentences", () => {
+  assert.deepEqual(TOUR.map((c) => c.id), ["target", "view", "source", "keys", "tcb", "project", "share", "agent", "library", "export", "artwork"]);
+  for (const c of TOUR) {
+    assert.ok(c.title.length <= 32, `${c.id}: title of ${c.title.length} characters`);
+    const words = plain(c.text);
+    assert.ok(words.length <= 220, `${c.id}: ${words.length} characters`);
+    assert.ok((words.match(/[.!?](\s|$)/g) ?? []).length <= 2, `${c.id}: two sentences at most`);
+    assert.ok(!/<(?!\/?(b|kbd|i)>)/.test(c.text), `${c.id}: <b>, <kbd>, <i> alone`);
+    assert.ok(!/\b(simple|advanced|expert|beginner)\b/i.test(c.title + words), `${c.id}: no level`);
+    assert.ok(!("clip" in c), `${c.id}: a chapter is in the film, with no clip of its own`);
+  }
+  // no tip shows a clip but the phone's gestures (the owner's decision of 2026-10-16, night)
+  assert.deepEqual(TIPS.filter((t) => t.clip).map((t) => [t.id, t.clip]), [["phone-fingers", "phone-fingers"]]);
+  // a tip and a chapter are never the same
+  for (const c of TOUR) assert.ok(!TIPS.some((t) => t.id === c.id), `${c.id}: a chapter, and no tip`);
+});
+
+test("the film's times as the recording gives them: every chapter, in order, within the film; else no film", () => {
+  const chapters = TOUR.map((c, k) => ({ id: c.id, start: 10 * k, end: 10 * k + 10 }));
+  assert.deepEqual(filmTimes({ duration: 110, chapters }, TOUR), { duration: 110, chapters });
+  assert.equal(filmTimes({ duration: 110, chapters: chapters.slice(1) }, TOUR), null, "a chapter missing");
+  assert.equal(filmTimes({ duration: 50, chapters }, TOUR), null, "beyond the film");
+  assert.equal(filmTimes({ duration: 110, chapters: [chapters[1], chapters[0], ...chapters.slice(2)].map((c, k) => (k < 2 ? { ...c, start: 20 - 10 * k, end: 30 - 10 * k } : c)) }, TOUR), null, "out of order");
+  for (const bad of [null, "x", { duration: "1" }, { duration: 1 }]) assert.equal(filmTimes(bad, TOUR), null);
+});
 
 test("each tip is a few words and one or two sentences, in a group, never of a level", () => {
   const ids = new Set<string>();
@@ -107,6 +136,16 @@ test("each control a tip is about, and each place a rule shows its tip at, is on
       assert.equal(why, null, `${t.id}: ${why}`);
     }
   }
+  for (const c of TOUR)
+    for (const a of c.about) {
+      if (a.startsWith("key:")) {
+        const k = a.slice(4) === "Space" ? " " : a.slice(4);
+        assert.ok(keys.has(k), `chapter ${c.id}: the key ${a} is declared`);
+        continue;
+      }
+      const why = onPage(a, ids);
+      assert.equal(why, null, `chapter ${c.id}: ${why}`);
+    }
   for (const [rule, r] of Object.entries(RULES))
     for (const sel of [r.at, ...(r.phone ? [r.phone] : [])]) {
       const why = onPage(sel, ids);
@@ -119,10 +158,11 @@ test("each Show me is done, each rule is one of at most eight and shows one tip,
   // the page's Show me actions: the cases of its showMe
   const body = main.slice(main.indexOf("const showMe = (action: string)"), main.indexOf("const canShowMe = (action: string)"));
   const done = new Set<string>([...GUIDE_SHOWS, ...[...body.matchAll(/case "([\w-]+)":/g)].map((m) => m[1])]);
-  for (const t of TIPS) if (t.showMe) assert.ok(done.has(t.showMe), `${t.id}: Show me ${t.showMe} is done by the guide or the page`);
-  const rules = TIPS.flatMap((t) => (t.when ? [t.when] : []));
+  for (const t of [...TIPS, ...TOUR]) if (t.showMe) assert.ok(done.has(t.showMe), `${t.id}: Show me ${t.showMe} is done by the guide or the page`);
+  // a rule shows a tip, or a chapter of the film (which opens the film at it)
+  const rules = [...TIPS, ...TOUR].flatMap((t) => (t.when ? [t.when] : []));
   assert.ok(Object.keys(RULES).length <= 8, "eight rules at most (GuideSpec decision 9)");
-  assert.deepEqual([...rules].sort(), Object.keys(RULES).sort(), "each rule shows one tip, and each tip's rule is a rule");
+  assert.deepEqual([...rules].sort(), Object.keys(RULES).sort(), "each rule shows one tip or chapter, and each one's rule is a rule");
   for (const r of Object.keys(RULES)) assert.ok(main.includes(`offerTip("${r}")`), `the page offers ${r}`);
   // GitHub's anchor of a heading: lower case, its punctuation dropped, its spaces dashes
   const anchors = new Set(
@@ -131,11 +171,9 @@ test("each Show me is done, each rule is one of at most eight and shows one tip,
       .filter((l) => /^#{2,3} /.test(l))
       .map((l) => l.replace(/^#+ /, "").toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-")),
   );
-  for (const t of TIPS) if (t.manual) assert.ok(anchors.has(t.manual), `${t.id}: More links to a heading of the manual (#${t.manual})`);
-  // the clips: one per tip that has one, within what the recorder makes
-  const clips = TIPS.flatMap((t) => (t.clip ? [t.clip] : []));
-  assert.equal(new Set(clips).size, clips.length, "a clip is one tip's");
-  for (const c of clips) assert.ok(/^[a-z0-9]+(-[a-z0-9]+)*$/.test(c), `clip ${c}`);
+  for (const t of [...TIPS, ...TOUR]) if (t.manual) assert.ok(anchors.has(t.manual), `${t.id}: More links to a heading of the manual (#${t.manual})`);
+  // the panel's ⓘ opens the film at its TCB
+  assert.match(read("src/web/src/panel.ts"), /\{ id: "tcb", title: "What a TCB is/);
 });
 
 test("a reader sees the tips for them: a read-only reader none about changing the review, a phone its own", () => {
@@ -147,8 +185,8 @@ test("a reader sees the tips for them: a read-only reader none about changing th
   const ro = tipsFor({ ...all, readOnly: true });
   assert.ok(ro.length < desk.length && ro.every((t) => t.who === "all"));
   assert.ok(!tipsFor({ ...all, applies: (t) => t.id !== "read-only-link" }).some((t) => t.id === "read-only-link"));
-  const tcb = TIPS.find((t) => t.id === "what-a-tcb-is")!;
-  assert.ok(matches(tcb, "TCB statement") && matches(tcb, "  tcb ") && !matches(tcb, "pinch"));
+  const steps = TIPS.find((t) => t.id === "rests-on-steps")!;
+  assert.ok(matches(steps, "key declarations") && matches(steps, "  tcb ") && !matches(steps, "pinch"));
 });
 
 test("a release is newer by its numbers, a pre-release before its release", () => {

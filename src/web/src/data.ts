@@ -171,6 +171,9 @@ export interface DataSource {
   updates(): Promise<UpdateStatus | null>;
   /** the clips of the tips the server has (GuideSpec decision 6); none in a snapshot */
   tipClips(): Promise<Set<string>>;
+  /** where the tour film's chapters are (`tour.chapters.json`), as the recording says; null where
+   *  there is none */
+  tourChapters(): Promise<unknown>;
   /** sharing with AI agents (AgentSpec decision 7): the tokens in force and what a new one may be;
    *  null where there is no server (a snapshot) or it cannot be reached */
   agentShares(): Promise<AgentShares | null>;
@@ -436,6 +439,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     shareInfo: async () => ({ path: null }),
     updates: async () => null,
     tipClips: async () => new Set<string>(),
+    tourChapters: async () => null,
     agentShares: async () => null,
     shareAgent: async () => ({ error: "a snapshot has no server to share with an agent" }),
     agentPrompt: async () => ({ error: "a snapshot has no server" }),
@@ -607,6 +611,10 @@ function serverSource(): DataSource {
         .then((r) => (r.ok ? r.json() : null))
         .then((b: { clips?: unknown } | null) => new Set(Array.isArray(b?.clips) ? b.clips.filter((c): c is string => typeof c === "string") : []))
         .catch(() => new Set<string>()),
+    tourChapters: () =>
+      fetch("/tips/tour.chapters.json")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
     agentShares: () =>
       fetch("/api/share/agents")
         .then((r) => (r.ok ? r.json() : null))

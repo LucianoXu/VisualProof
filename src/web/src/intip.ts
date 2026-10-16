@@ -1,6 +1,6 @@
 // Tips in place (GuideSpec decision 9), as TipKit shows them: one small card at the control a tip is
-// about, when the reader is about to need it, by a rule of its own (a tip's `when`, web/src/tips.ts,
-// where each rule is said in full). At most one in a page's session, and none in the session of a
+// about, when the reader is about to need it, by a rule of its own (a tip's or a film chapter's
+// `when`, web/src/tips.ts, where each rule is said in full); a chapter's card opens the film at it. At most one in a page's session, and none in the session of a
 // tour, while the sheet shows, while following someone, or in a snapshot. Got it ends it for good,
 // and so does doing what it teaches (`did`); left unanswered — a press elsewhere, Esc, 15 seconds —
 // it goes and may come once more in a later session, after which it is done. The reader turns them
@@ -8,7 +8,7 @@
 
 import { escapeHtml } from "./highlight.ts";
 import { isPhone } from "./phone.ts";
-import { TIPS } from "./tips.ts";
+import { TIPS, TOUR } from "./tips.ts";
 import type { Tip } from "./tips.ts";
 import type { TipState } from "./tipstate.ts";
 
@@ -25,6 +25,25 @@ export const RULES: Record<string, { at: string; phone?: string }> = {
   "first-time-machine": { at: "#tmbar" },
 };
 
+/** What a rule shows in place: a tip, or a chapter of the film. `key` is what it is kept as done
+ *  under (a chapter's: `tour-<id>`). */
+export interface InPlace {
+  key: string;
+  title: string;
+  text: string;
+  showMe?: string;
+  tip?: Tip;
+  chapter?: string;
+}
+
+/** The tip or the chapter a rule shows. */
+export function inPlaceOf(rule: string): InPlace | null {
+  const t = TIPS.find((x) => x.when === rule);
+  if (t) return { key: t.id, title: t.title, text: t.text, showMe: t.showMe, tip: t };
+  const c = TOUR.find((x) => x.when === rule);
+  return c ? { key: `tour-${c.id}`, title: c.title, text: c.text, showMe: c.showMe, chapter: c.id } : null;
+}
+
 /** how long an unanswered tip stays */
 const STAYS_MS = 15_000;
 /** how long after its moment a tip shows: what triggered it has settled (a panel slid in) */
@@ -37,7 +56,11 @@ export interface InTipHooks {
   /** whether a tip is for this reader on this screen (who and where, decision 10) */
   fits(t: Tip): boolean;
   /** Show me (decision 7) */
-  showMe(t: Tip): void;
+  showMe(e: InPlace): void;
+  /** whether the film can be watched here (it is on the server, not a snapshot) */
+  canWatch(): boolean;
+  /** the sheet opened at a chapter of the film, playing from its start */
+  watch(chapter: string): void;
 }
 
 export class InTips {
@@ -58,12 +81,15 @@ export class InTips {
     this.el = document.getElementById("intip")!;
     this.el.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
-      const tip = this.tip();
-      if (!tip) return;
+      const shown = this.entry();
+      if (!shown) return;
       if (t.closest("[data-intip-ok]")) this.end(true);
       else if (t.closest("[data-intip-show]")) {
         this.end(true);
-        this.hooks.showMe(tip);
+        this.hooks.showMe(shown);
+      } else if (t.closest("[data-intip-watch]") && shown.chapter) {
+        this.end(true);
+        this.hooks.watch(shown.chapter);
       }
     });
     // Esc, or a press elsewhere, puts it away unanswered
@@ -82,23 +108,23 @@ export class InTips {
     this.end(false);
   }
 
-  private tip(): Tip | null {
-    return this.used ? TIPS.find((t) => t.when === this.used) ?? null : null;
+  private entry(): InPlace | null {
+    return this.used ? inPlaceOf(this.used) : null;
   }
 
   /** Whether a rule's tip would show now, were its moment to come: what the page asks before it
    *  counts anything for it. */
   open(rule: string): boolean {
     if (this.used !== null || this.quiet || this.state.off || this.hooks.blocked()) return false;
-    const tip = TIPS.find((t) => t.when === rule);
-    return !!tip && !!RULES[rule] && !this.state.isDone(tip.id) && this.hooks.fits(tip);
+    const e = inPlaceOf(rule);
+    return !!e && !!RULES[rule] && !this.state.isDone(e.key) && (!e.tip || this.hooks.fits(e.tip));
   }
 
   /** One more of what a rule counts, kept across visits (the picks under one step): how many now;
    *  nothing is counted once the rule's tip is done. */
   count(name: string, rule: string): number {
-    const tip = TIPS.find((t) => t.when === rule);
-    return !tip || this.state.isDone(tip.id) ? 0 : this.state.bump(name);
+    const e = inPlaceOf(rule);
+    return !e || this.state.isDone(e.key) ? 0 : this.state.bump(name);
   }
 
   /** The page says a rule's moment came: its tip shows once what triggered it has settled, unless
@@ -108,7 +134,7 @@ export class InTips {
     // taken now, so that the same moment twice does not show it twice
     this.used = rule;
     setTimeout(() => {
-      const tip = this.tip();
+      const tip = this.entry();
       const r = RULES[rule];
       const sel = (isPhone() && r.phone) || r.at;
       const at = document.querySelector<HTMLElement>(sel);
@@ -118,10 +144,12 @@ export class InTips {
         return;
       }
       this.anchor = sel;
-      this.state.shown(tip.id);
+      this.state.shown(tip.key);
+      // a chapter: Watch opens the film at it
+      const watch = tip.chapter && this.hooks.canWatch() ? `<button class="rv-btn" data-intip-watch>Watch</button>` : "";
       this.el.innerHTML =
         `<div class="intip-title">${escapeHtml(tip.title)}</div><div class="intip-text">${tip.text}</div>` +
-        `<div class="intip-acts">${tip.showMe ? `<button class="rv-btn" data-intip-show>Show me</button>` : ""}<button class="rv-btn primary" data-intip-ok>Got it</button></div>`;
+        `<div class="intip-acts">${watch}${tip.showMe ? `<button class="rv-btn" data-intip-show>Show me</button>` : ""}<button class="rv-btn primary" data-intip-ok>Got it</button></div>`;
       this.el.hidden = false;
       this.place();
       // the control may move (a panel slides in, a window is dragged): the card goes with it
@@ -132,9 +160,9 @@ export class InTips {
 
   /** The reader did what a rule's tip teaches: it is done, shown or not. */
   did(rule: string): void {
-    const tip = TIPS.find((t) => t.when === rule);
-    if (!tip || this.state.isDone(tip.id)) return;
-    this.state.done(tip.id);
+    const tip = inPlaceOf(rule);
+    if (!tip || this.state.isDone(tip.key)) return;
+    this.state.done(tip.key);
     if (this.used === rule && !this.el.hidden) this.end(false);
   }
 
@@ -142,8 +170,8 @@ export class InTips {
     if (this.follow) clearInterval(this.follow);
     if (this.stay) clearTimeout(this.stay);
     this.follow = this.stay = null;
-    const tip = this.tip();
-    if (done && tip) this.state.done(tip.id);
+    const tip = this.entry();
+    if (done && tip) this.state.done(tip.key);
     this.el.hidden = true;
   }
 

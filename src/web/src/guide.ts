@@ -16,12 +16,15 @@ import type { Store } from "./store.ts";
 import { isPhone } from "./phone.ts";
 import { typing } from "./typing.ts";
 import type { Tool } from "./selection.ts";
-import { TIPS } from "./tips.ts";
-import type { Tip } from "./tips.ts";
-import { bigHtml, cardsHtml, ClipPlayer, reducedMotion, tipsFor } from "./tipcards.ts";
+import { TIPS, TOUR } from "./tips.ts";
+import type { Chapter, Tip } from "./tips.ts";
+import { actsHtml, reducedMotion, refsHtml, tipsFor } from "./tipcards.ts";
+import { filmTimes, TourFilm } from "./tourfilm.ts";
+import type { FilmTimes } from "./tourfilm.ts";
 import type { TipsContext } from "./tipcards.ts";
 import { TipState } from "./tipstate.ts";
 import { InTips } from "./intip.ts";
+import type { InPlace } from "./intip.ts";
 
 /** What the server says of its release and a newer one (UpdateSpec; `GET /api/updates`): a
  *  read-only reader is told `running` alone. */
@@ -99,8 +102,11 @@ export interface GuideHooks {
   setEditor(t: string): string | null;
   /** what the server says of its release (decision 13); null where it says nothing (a snapshot) */
   updates(): Promise<UpdateStatus | null>;
-  /** the clips the server has (decision 6); none in a snapshot */
+  /** the clips the server has (decision 6): the film (`tour`), the phone's gestures; none in a
+   *  snapshot */
   clips(): Promise<Set<string>>;
+  /** where the film's chapters are (`/tips/tour.chapters.json`); null where it says nothing */
+  chapters(): Promise<unknown>;
 }
 
 /** One view of a step: the TCB step shows its theorem three ways (GuideSpec decision 2). */
@@ -308,15 +314,21 @@ export class Guide {
   private news: HTMLElement;
   readonly tips = new TipState();
   readonly inPlace: InTips;
-  private player: ClipPlayer | null = null;
+  /** the tour film in the sheet, while it shows */
+  private film: TourFilm | null = null;
+  /** where the film's chapters are; null: no film here (not recorded, a snapshot); undefined: not
+   *  known yet */
+  private times: FilmTimes | null | undefined = undefined;
+  /** the reference tip open, one at a time */
+  private openRef: string | null = null;
+  /** the chapter the film starts at in this showing of the sheet (an ⓘ, Watch); null: the first */
+  private startAt: string | null = null;
   private tab: "tips" | "keys" = "tips";
   private filter = "";
   private clipsHad: Set<string> | null = null;
   /** the release tips newer than which are New while the sheet shows (decision 11); undefined until
    *  Tips is looked at in this showing of the sheet */
   private newShown: string | null | undefined = undefined;
-  /** the tip whose clip is open large in the sheet, and where the list was scrolled to */
-  private big: { id: string; scroll: number } | null = null;
   /** the release the server runs, as its event stream said (UpdateSpec); null until it says */
   private running: string | null = null;
 
@@ -332,8 +344,18 @@ export class Guide {
     this.inPlace = new InTips(this.tips, {
       blocked: () => !this.el.hidden || !this.help.hidden || this.hooks.snapshot() || this.hooks.following() || this.hooks.busy(),
       fits: (t) => tipsFor(this.context(new Set())).includes(t),
-      showMe: (t) => this.showTip(t),
+      showMe: (e) => this.showTip(e),
+      canWatch: () => !!this.times,
+      watch: (chapter) => this.openHelp("tips", { chapter }),
     });
+    // whether the film is there, and where its chapters are: read once, before it is asked for
+    if (!this.hooks.snapshot())
+      void Promise.all([this.hooks.clips(), this.hooks.chapters()]).then(([clips, raw]) => {
+        this.clipsHad = clips;
+        this.times = clips.has("tour") ? filmTimes(raw, TOUR) : null;
+        if (!this.help.hidden && this.tab === "tips") this.renderFilm();
+      });
+    else this.times = null;
     this.card.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
       const seg = t.closest<HTMLElement>("[data-tour-view]");
@@ -366,36 +388,25 @@ export class Guide {
       const t = e.target as HTMLElement;
       const tab = t.closest<HTMLElement>("[data-help-tab]");
       const show = t.closest<HTMLElement>("[data-tip-show]");
-      const big = t.closest<HTMLElement>("[data-tip-big]");
-      // a clip open large: ✕, or a press anywhere beside it but the sheet's own buttons, goes back to
-      // the tips
-      if (this.big && (t.closest("[data-tip-big-close]") || (!t.closest(".tip-big-box, [data-help-tab], [data-help-close], [data-help-tour]")))) this.closeBig();
-      else if (t.closest("[data-tip-big-play]")) this.playBig();
-      else if (big) this.openBig(big.dataset.tipBig!);
-      else if (t === this.help || t.closest("[data-help-close]")) this.closeHelp();
+      const tourShow = t.closest<HTMLElement>("[data-tour-show]");
+      const row = t.closest<HTMLElement>("[data-ref-toggle]");
+      if (row) this.toggleRef(row.dataset.refToggle!);
+      else if (tourShow) {
+        const c = TOUR.find((x) => x.id === tourShow.dataset.tourShow);
+        this.closeHelp();
+        if (c) this.showTip({ key: `tour-${c.id}`, title: c.title, text: c.text, showMe: c.showMe });
+      } else if (t === this.help || t.closest("[data-help-close]")) this.closeHelp();
       else if (tab) this.showTab(tab.dataset.helpTab === "keys" ? "keys" : "tips");
       else if (show) {
         const tip = TIPS.find((x) => x.id === show.dataset.tipShow);
         this.closeHelp();
-        if (tip) this.showTip(tip);
+        if (tip) this.showTip({ key: tip.id, title: tip.title, text: tip.text, showMe: tip.showMe });
       } else if (t.closest("[data-help-tour]")) {
         this.closeHelp();
         this.start();
       }
     });
     this.help.addEventListener("keydown", (e) => {
-      // a clip open large: Esc goes back to the tips, not out of the sheet
-      if (this.big && e.key === "Escape") {
-        e.stopPropagation();
-        return this.closeBig();
-      }
-      // Enter or Space on a card's clip opens it large
-      const big = (e.target as HTMLElement).closest?.<HTMLElement>("[data-tip-big]");
-      if (big && (e.key === "Enter" || e.key === " ")) {
-        e.preventDefault();
-        e.stopPropagation();
-        return this.openBig(big.dataset.tipBig!);
-      }
       // a ? typed into the editor's field is part of a URL, into the filter a word
       if (e.key === "Escape" || (e.key === "?" && !typing(e.target))) {
         e.stopPropagation();
@@ -426,7 +437,7 @@ export class Guide {
       if (el.closest("[data-help-editor]")) this.help.querySelector<HTMLElement>("[data-help-editor-err]")!.hidden = true;
       else if (el.closest("[data-tips-filter]")) {
         this.filter = (el as HTMLInputElement).value;
-        this.renderCards();
+        this.renderRefs();
       }
     });
     // an ⓘ anywhere on the page opens its tip in the sheet (the panel's TCB part: GuideSpec
@@ -438,7 +449,8 @@ export class Guide {
         if (!i) return;
         e.preventDefault();
         e.stopPropagation();
-        this.openHelp("tips", i.dataset.tipOpen);
+        const id = i.dataset.tipOpen!;
+        this.openHelp("tips", TOUR.some((c) => c.id === id) ? { chapter: id } : { tip: id });
       },
       true,
     );
@@ -635,7 +647,7 @@ export class Guide {
 
   /** A tip's Show me (GuideSpec decision 7): its control ringed, its words beside it, after what
    *  its action does on the reader's own page. */
-  showTip(tip: Tip): void {
+  showTip(tip: Pick<InPlace, "key" | "title" | "text" | "showMe">): void {
     if (!tip.showMe || !this.hooks.canShow(tip.showMe)) return;
     // the sheet's About: the sheet stays, on the tab that holds it
     if (tip.showMe === GUIDE_SHOWS[1]) {
@@ -654,7 +666,7 @@ export class Guide {
       step = ring === null ? null : { title: tip.title, text: tip.text, at: () => around(...ring.split(/\s*,\s*/)) };
     }
     if (!step) return;
-    this.tips.done(tip.id);
+    this.tips.done(tip.key);
     this.kind = "show";
     this.placeBefore = null;
     this.steps = [step];
@@ -821,7 +833,10 @@ export class Guide {
     return html;
   }
 
-  openHelp(tab: "tips" | "keys" = this.tab, tipId?: string): void {
+  /** The sheet, on a tab; on Tips, the film from its first chapter, or from `at.chapter`, or a
+   *  reference tip open (`at.tip`). */
+  openHelp(tab: "tips" | "keys" = this.tab, at: { chapter?: string; tip?: string } = {}): void {
+    const tipId = at.tip;
     const { server, mine } = this.hooks.editor();
     // a phone: the fingers, not the keys; no editor on it to open a declaration in
     const phone = isPhone();
@@ -835,8 +850,11 @@ export class Guide {
       `<button role="tab" data-help-tab="tips">Tips</button><button role="tab" data-help-tab="keys">${keysTab}</button></div>` +
       `<button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
       `<div class="help-pane" data-help-pane="tips" role="tabpanel">` +
-      `<input class="help-input tips-filter" data-tips-filter type="search" placeholder="Find a tip" value="${escapeHtml(this.filter)}" spellcheck="false" autocomplete="off" aria-label="Find a tip">` +
-      `<div class="tips-list" data-tips-list></div><div class="tips-big" data-tips-big hidden></div>` +
+      // the film of a review, a card per scene (GuideSpec decision 6)
+      `<div class="film-h">A review in eleven scenes</div><div data-film></div>` +
+      // the tips it does not show, one row each
+      `<div class="refs-head"><div class="help-h">More tips</div><input class="help-input tips-filter" data-tips-filter type="search" placeholder="Find a tip" value="${escapeHtml(this.filter)}" spellcheck="false" autocomplete="off" aria-label="Find a tip"></div>` +
+      `<div class="tips-list" data-tips-list></div>` +
       (this.hooks.snapshot() ? "" : `<label class="help-note tips-off"><input type="checkbox" data-tips-off${this.tips.off ? "" : " checked"}> Show a tip beside a control when it helps, now and then</label>`) +
       `</div>` +
       `<div class="help-pane" data-help-pane="keys" role="tabpanel" hidden>` +
@@ -864,30 +882,24 @@ export class Guide {
       `<div class="modal-actions"><button class="rv-btn" data-help-tour>Take the tour again</button><button class="rv-btn primary" data-help-close>Close</button></div></div>`;
     this.help.hidden = false;
     const box = this.help.querySelector<HTMLElement>(".help-box")!;
-    this.player = new ClipPlayer(this.help.querySelector<HTMLElement>("[data-tips-list]")!, box);
+    if (tipId) this.openRef = tipId;
+    this.startAt = at.chapter ?? null;
     this.showTab(tab);
     box.focus();
     void this.hooks.updates().then((u) => {
       const el = this.help.querySelector<HTMLElement>("[data-help-tool]");
       if (u && el && !this.help.hidden) el.innerHTML = this.aboutTool(u);
     });
-    // the clips the server has, read once: until then, and without them, the tips are their words
-    if (!this.clipsHad)
-      void this.hooks.clips().then((c) => {
-        this.clipsHad = c;
-        if (c.size && !this.help.hidden && this.tab === "tips") this.renderCards();
-      });
     if (tipId) {
-      const card = this.help.querySelector<HTMLElement>(`[data-tip="${CSS.escape(tipId)}"]`);
-      if (card) {
-        card.scrollIntoView({ block: "center" });
-        card.classList.add("flash");
+      const row = this.help.querySelector<HTMLElement>(`[data-tip="${CSS.escape(tipId)}"]`);
+      if (row) {
+        row.scrollIntoView({ block: "center" });
+        row.classList.add("flash");
       }
     }
   }
 
   private showTab(tab: "tips" | "keys"): void {
-    if (this.big) this.closeBig(false);
     this.tab = tab;
     for (const b of this.help.querySelectorAll<HTMLElement>("[data-help-tab]")) {
       const on = b.dataset.helpTab === tab;
@@ -900,73 +912,47 @@ export class Guide {
       this.newShown = this.tips.newSince;
       this.tips.newLooked();
     }
-    if (tab === "tips") this.renderCards();
-    else this.player?.stop();
+    if (tab === "tips") {
+      this.renderFilm();
+      this.renderRefs();
+    } else this.film?.stop();
   }
 
-  /** The cards as the filter has them; New marked until Tips has been looked at. */
-  private renderCards(): void {
+  /** The film and its cards (GuideSpec decision 6): from the chapter asked for, else the first;
+   *  without the film, the cards are their words. Shown again when the film is found. */
+  private renderFilm(): void {
+    const el = this.help.querySelector<HTMLElement>("[data-film]");
+    if (!el) return;
+    this.film?.stop();
+    const ctx = this.context(this.clipsHad ?? new Set());
+    this.film = new TourFilm(el, TOUR, this.times ?? null, {
+      still: reducedMotion(),
+      acts: (c: Chapter) => actsHtml(c.showMe, c.manual, ctx, `data-tour-show="${c.id}"`),
+    });
+    this.film.start(this.startAt ?? undefined);
+  }
+
+  /** The reference tips as the filter has them, one open; New marked until Tips has been looked at. */
+  private renderRefs(): void {
     const list = this.help.querySelector<HTMLElement>("[data-tips-list]");
     if (!list) return;
-    list.innerHTML = cardsHtml(this.context(this.clipsHad ?? new Set()), this.filter);
-    this.player?.start();
+    list.innerHTML = refsHtml(this.context(this.clipsHad ?? new Set()), this.filter, this.openRef);
   }
 
-  /** A tip's clip opened large in the sheet, in the list's place (GuideSpec decision 6): the cards'
-   *  clips stop, the list's place is kept, the focus goes to ✕. */
-  private openBig(id: string): void {
-    const tip = TIPS.find((t) => t.id === id);
-    const pane = this.help.querySelector<HTMLElement>("[data-help-pane=tips]");
-    const box = this.help.querySelector<HTMLElement>(".help-box");
-    const el = this.help.querySelector<HTMLElement>("[data-tips-big]");
-    if (!tip?.clip || !pane || !box || !el) return;
-    this.big = { id, scroll: box.scrollTop };
-    this.player?.stop();
-    el.innerHTML = bigHtml(tip, this.context(this.clipsHad ?? new Set()));
-    for (const part of pane.querySelectorAll<HTMLElement>("[data-tips-filter], [data-tips-list], .tips-off")) part.hidden = true;
-    el.hidden = false;
-    box.scrollTop = 0;
-    const v = el.querySelector<HTMLVideoElement>("video")!;
-    // with reduced motion, its key frame, until the reader plays it
-    if (reducedMotion()) el.querySelector<HTMLElement>("[data-tip-big-play]")!.hidden = false;
-    else void v.play().catch(() => {});
-    el.querySelector<HTMLElement>("[data-tip-big-close]")!.focus();
-  }
-
-  private playBig(): void {
-    const el = this.help.querySelector<HTMLElement>("[data-tips-big]");
-    const v = el?.querySelector<HTMLVideoElement>("video");
-    const b = el?.querySelector<HTMLElement>("[data-tip-big-play]");
-    if (!v || !b) return;
-    if (v.paused) void v.play().catch(() => {});
-    else v.pause();
-    b.hidden = !v.paused;
-  }
-
-  /** Back to the tips, where the list was, the focus on the card's clip (`focus`). */
-  private closeBig(focus = true): void {
-    const big = this.big;
-    this.big = null;
-    const pane = this.help.querySelector<HTMLElement>("[data-help-pane=tips]");
-    const el = this.help.querySelector<HTMLElement>("[data-tips-big]");
-    if (!big || !pane || !el) return;
-    el.querySelector("video")?.pause();
-    el.innerHTML = "";
-    el.hidden = true;
-    for (const part of pane.querySelectorAll<HTMLElement>("[data-tips-filter], [data-tips-list], .tips-off")) part.hidden = false;
-    const box = this.help.querySelector<HTMLElement>(".help-box");
-    if (box) box.scrollTop = big.scroll;
-    this.player?.start();
-    if (focus) this.help.querySelector<HTMLElement>(`[data-tip-big="${CSS.escape(big.id)}"]`)?.focus();
+  /** A reference tip opened, the one open before closed; or closed. */
+  private toggleRef(id: string): void {
+    this.openRef = this.openRef === id ? null : id;
+    this.renderRefs();
+    this.help.querySelector<HTMLElement>(`[data-ref-toggle="${CSS.escape(id)}"]`)?.focus();
   }
 
   closeHelp(): void {
     // the editor's field lets go of the focus now, not at the next frame: a key pressed right after
     // Esc is a shortcut again, not text typed into a field no one sees
     if (this.help.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-    this.player?.stop();
-    this.player = null;
-    this.big = null;
+    this.film?.stop();
+    this.film = null;
+    this.startAt = null;
     this.newShown = undefined;
     this.help.hidden = true;
   }

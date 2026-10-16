@@ -4369,6 +4369,7 @@ async function boot(): Promise<void> {
       case "ring-peers":
         return "#peers";
       // Share, the library and Export are in ⋯ on a phone
+      case "ring-share":
       case "share-readonly":
       case "share-agent":
         return phone ? "#more-btn" : "#share-btn";
@@ -4435,6 +4436,7 @@ async function boot(): Promise<void> {
     },
     updates: () => (data.snapshot ? Promise.resolve(null) : data.updates()),
     clips: () => (data.snapshot ? Promise.resolve(new Set<string>()) : data.tipClips()),
+    chapters: () => (data.snapshot ? Promise.resolve(null) : data.tourChapters()),
   });
   offerTip = (rule) => guide.inPlace.offer(rule);
   didTip = (rule) => guide.inPlace.did(rule);
