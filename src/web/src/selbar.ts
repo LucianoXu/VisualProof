@@ -16,6 +16,9 @@ export interface SelectionBarHooks {
   /** a chip's ×: its pick taken out */
   remove(k: number): void;
   zoom(): void;
+  /** whether this reader may open a view at all: a read-only reader opens none (the server refuses
+   *  it, CollabSpec decision 11), so is offered no Zoom in */
+  canOpenViews(): boolean;
   clear(): void;
   /** mark the declarations selected key for the target on show */
   markKeys(): void;
@@ -80,7 +83,7 @@ export class SelectionBar {
     this.el.innerHTML =
       `<span class="sb-chips">${chips}</span>` +
       `<span class="sb-meta"><span class="sb-n" title="Declarations lit on this board">${lit.toLocaleString()} lit</span>` +
-      `<button class="sb-btn" data-zoom${zoom ? ` title="Open a view of what is selected, laid out on its own, in a tab"` : ` disabled title="${why}"`}>Zoom in</button>` +
+      (this.hooks.canOpenViews() ? `<button class="sb-btn" data-zoom${zoom ? ` title="Open a view of what is selected, laid out on its own, in a tab"` : ` disabled title="${why}"`}>Zoom in</button>` : "") +
       (key
         ? `<button class="sb-btn sb-key" data-mark-keys${
             key.fresh

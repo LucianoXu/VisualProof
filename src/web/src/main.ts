@@ -728,7 +728,7 @@ async function boot(): Promise<void> {
     preview: (i) => canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
     previewCluster: (c) => canvas.previewCluster(c),
     zoom: (c) => void zoomCluster(c),
-    canZoom: (c) => clusterScope(c) !== null,
+    canZoom: (c) => !reader && clusterScope(c) !== null,
     hide: (c) => hideLevel(canvas.layout.clusters[c].key),
     trust: (c) => trust.state(canvas.layout.clusters[c], cm()),
     trustClicked: (c, anchor) => trust.clicked(canvas.layout.clusters[c], cm(), anchor),
@@ -746,6 +746,7 @@ async function boot(): Promise<void> {
 
   // the selection, under the mode buttons (web/src/selbar.ts)
   const selBar = new SelectionBar($("#selbar"), {
+    canOpenViews: () => !reader,
     show: (k) => {
       const to = shownOf(picks[k]);
       if (!to) return;
