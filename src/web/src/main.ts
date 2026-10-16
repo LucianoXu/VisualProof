@@ -28,7 +28,7 @@ import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
 import { evaluate, parseQuery, printQuery, readsReview, sameQuery, setOutside, withoutOutside } from "../../shared/query.ts";
 import { litKeyEdges } from "../../shared/keys.ts";
-import { keyMarked, keyMarks, under, validPrefix } from "../../shared/review.ts";
+import { keyMarked, keyMarks, trusted as isTrusted, under, validPrefix } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest } from "../../shared/review.ts";
@@ -2346,11 +2346,6 @@ async function boot(): Promise<void> {
    *  in the history. With nothing selected, only the tool changes, without a step. */
   const setMode = (m: Tool) => {
     if (m === S.mode) return;
-    // another step of Rests on than TCB: what two tips in place teach is done
-    if (m === "keys" || m === "deps" || m === "refs") {
-      didTip("tcb-first");
-      didTip("rests-only-tcb");
-    }
     useTool(m);
     syncTool();
     const r = retool(picks, shown, m, (root) => keysFor(root));
@@ -2359,6 +2354,17 @@ async function boot(): Promise<void> {
     shown = r.shown;
     apply();
     commit();
+  };
+
+  /** The tool chosen by the reader, by a mode's button or key: another step of Rests on than TCB
+   *  is what two tips in place teach (web/src/tips.ts, tcb-first and rests-only-tcb) — the tour and
+   *  Show me choose it otherwise, and teach nothing of it. */
+  const readerMode = (m: Tool) => {
+    if (m === "keys" || m === "deps" || m === "refs") {
+      didTip("tcb-first");
+      didTip("rests-only-tcb");
+    }
+    setMode(m);
   };
 
   /** Nothing selected; the visitors go with the selection (ViewSpec decision 27). */
@@ -3154,11 +3160,11 @@ async function boot(): Promise<void> {
   // ---------------------------------------------------------------- toolbar
 
   for (const b of document.querySelectorAll<HTMLElement>("#lightup [data-mode]")) {
-    b.addEventListener("click", () => setMode(b.dataset.mode as Tool));
+    b.addEventListener("click", () => readerMode(b.dataset.mode as Tool));
   }
   // Rests on: entered at the step last used; while it is the mode its steps are beside it
   $("#rests-btn").addEventListener("click", () => {
-    if (!restsOn(S.mode)) setMode(enterStep(S.restsOn));
+    if (!restsOn(S.mode)) readerMode(enterStep(S.restsOn));
   });
   for (const b of document.querySelectorAll<HTMLElement>("#board-pop [data-cluster]")) {
     b.addEventListener("click", () => void sync.setClustering(b.dataset.cluster as ClusterMode));
@@ -4055,10 +4061,10 @@ async function boot(): Promise<void> {
     if (e.key === "/") {
       e.preventDefault();
       searchBox.focus();
-    } else if (e.key === "1") setMode("plain");
+    } else if (e.key === "1") readerMode("plain");
     // Rests on, at the step last used; pressed again, its next step (web/src/selection.ts, keyTwo)
-    else if (e.key === "2") setMode(keyTwo(S.mode, S.restsOn));
-    else if (e.key === "3") setMode("apps");
+    else if (e.key === "2") readerMode(keyTwo(S.mode, S.restsOn));
+    else if (e.key === "3") readerMode("apps");
     else if (e.key === " ") {
       // Space opens and closes the source window that follows the selection, and opens it again
       // from its pill (CanvasSpec, "Hover, click, drag"); on a past board, the text of that build.
@@ -4181,15 +4187,70 @@ async function boot(): Promise<void> {
   }
   $("#loader").classList.add("gone");
   // the guide (GuideSpec): the tour on a first visit, the ? sheet at any time, its tips; tips in place
-  /** The declaration the tour shows things on (GuideSpec decision 3): the selection; a target with
-   *  key declarations, else a target; else a theorem whose TCB is worth a look and not a wall, one
-   *  whose proofs use more than its statement first, so that the TCB leaves something out. */
-  const tourExample = (): number | null => {
+  /** The tour's and Show me's own moves (GuideSpec decisions 3 and 7): a theorem selected, a tool
+   *  chosen, as a click and a mode's button would, but without a step in the history each, and
+   *  without anything a tip in place counts as the reader's doing. */
+  const tourSelect = (i: number) => {
+    if (selected() === i) return reveal(i);
+    if (toView(i) < 0) visitOn(i, selected());
+    const p = pickDecl(g.nodes[i].name);
+    picks = [p];
+    shown = shownOf(p);
+    apply();
+    reveal(i);
+  };
+  const tourTool = (m: Tool) => {
+    if (m === S.mode) return;
+    S.mode = m;
+    if (restsOn(m)) S.restsOn = m;
+    syncTool();
+    const r = retool(picks, shown, m, (root) => keysFor(root));
+    if (r.picks === picks) return;
+    picks = r.picks;
+    shown = r.shown;
+    apply();
+  };
+  /** Where the reader is when the tour begins, put back when it ends (GuideSpec decision 3): the
+   *  tool and the step of Rests on a 2 resumes, the selection, the visitors, the camera; the address
+   *  as it was, so that the tour leaves no step in the history. */
+  interface TourPlace {
+    mode: Tool;
+    restsOn: Tool | undefined;
+    picks: Pick[];
+    shown: Shown | null;
+    visitors: Visitor[];
+    cam: { x: number; y: number; k: number };
+  }
+  const tourPlace = (): TourPlace => ({ mode: S.mode, restsOn: S.restsOn, picks, shown, visitors, cam: { ...canvas.cam } });
+  const tourBack = (p: TourPlace) => {
+    S.mode = p.mode;
+    S.restsOn = p.restsOn;
+    store.save();
+    syncTool();
+    picks = p.picks;
+    shown = p.shown;
+    visitors = p.visitors;
+    apply();
+    if (reducedMotion()) canvas.jumpTo(p.cam);
+    else canvas.glideTo(p.cam, 450);
+    writeAddress(false);
+  };
+  /** What Keys lights beside declaration `name` on the board on show, as the tour's Keys view counts
+   *  it: the key declarations of the review's focus here, else the target's own. */
+  const keysLit = (name: string): number => {
+    const q = selectionQuery([declPick("keys", name, keysFor({ decl: name }))]);
+    return q ? Math.max(0, litOn(q).count - 1) : 0;
+  };
+  /** The declaration the tour shows things on (GuideSpec decision 3): the selection; a target whose
+   *  Keys view lights key declarations, else a target; else a theorem whose TCB is worth a look and
+   *  not a wall, one whose proofs use more than its statement first, so that the TCB leaves
+   *  something out. */
+  const findExample = (): number | null => {
     if (selected() !== null) return selected();
     const targets = Object.keys(review.data.targets)
       .map((n) => g.byName.get(n))
       .filter((i): i is number => i !== undefined);
-    const keyed = targets.find((i) => keyMarks(review.data, g.nodes[i].name).length > 0);
+    const keyed = targets.find((i) => keysLit(g.nodes[i].name) > 0);
     if (keyed !== undefined) return keyed;
     if (targets.length) return targets[0];
     let fallback: number | null = null;
@@ -4208,13 +4269,24 @@ async function boot(): Promise<void> {
     }
     return fallback;
   };
+  /** The same, found once for a graph, a board, a revision of the review and a selection: the
+   *  sheet asks it of each card, at each key typed in its filter. */
+  let exampleOf: { key: unknown[]; i: number | null } | null = null;
+  const tourExample = (): number | null => {
+    const key = [g, nav.board, review.epoch, review.rev, selected()];
+    if (exampleOf && exampleOf.key.every((x, k) => x === key[k])) return exampleOf.i;
+    const i = findExample();
+    exampleOf = { key, i };
+    return i;
+  };
   /** What the tour's TCB step says of declaration `i` (GuideSpec decision 2): what each of its
    *  views lights on the board on show, as the selection bar counts it, the theorem left out; what
-   *  TCB lights split into what is to be read and what is trusted, and assumed. */
+   *  TCB lights split into what is to be read and what is trusted (a prefix the review trusts, a
+   *  standard axiom: as the status colours say), and assumed. */
   const restsOnOf = (i: number): RestsOn => {
     const name = g.nodes[i].name;
     const G = vg();
-    const trusted = boardReview().trusted;
+    const d = boardReview();
     const lit = (tool: Tool) => {
       const q = selectionQuery([declPick(tool, name, keysFor({ decl: name }))]);
       return q ? litOn(q).set : null;
@@ -4229,36 +4301,38 @@ async function boot(): Promise<void> {
         if (uses?.[j]) proofs++;
         continue;
       }
-      if (trusted.some((t) => covers(t, G.nodes[j].name, G.nodes[j].module, G.isExt(j)))) assumed++;
+      if (isTrusted(d, G.nodes[j].name, G.nodes[j].module, G.isExt(j))) assumed++;
       else read++;
     }
     return { name: g.nodes[i].display ?? name.split(".").pop()!, read, assumed, proofs, keys: k, target: isTarget(name) };
   };
   /** A tip's Show me (GuideSpec decision 7; web/src/tips.ts), done on the reader's own page: the tour's
    *  theorem selected in a mode, a window or a popover opened, the linear form, the Time Machine —
-   *  never anything shared. What to ring after it; null when there is nothing to show here. */
+   *  never anything shared, and nothing a tip in place counts as the reader's doing. What to ring
+   *  after it, as a phone shows it; null when there is nothing to show here. */
   const showMe = (action: string): string | null => {
     const i = tourExample();
+    const phone = isPhone();
     const pick = (m: Tool | null): boolean => {
       if (i === null) return false;
-      if (m) setMode(m);
-      if (selected() !== i) go(i);
+      if (m) tourTool(m);
+      tourSelect(i);
       return true;
     };
     switch (action) {
       case "ring-modes":
-        return isPhone() ? "#more-btn" : "#lightup";
+        return phone ? "#more-btn" : "#lightup";
       case "rests-steps":
-        return pick("tcb") ? "#rests-steps" : null;
+        return pick("tcb") ? (phone ? "#more-btn" : "#rests-steps") : null;
       case "used-by": {
         if (i === null) return null;
         // the first of its TCB's definitions besides it, else itself
         const tcb = g.reach([i], SITE_STMT | SITE_BODY, "out");
         let d = i;
         for (let j = 0; j < g.projectCount; j++) if (tcb[j] && j !== i && g.nodes[j].kind === "def") { d = j; break; }
-        setMode("apps");
-        if (selected() !== d) go(d);
-        return "#lightup [data-mode=apps]";
+        tourTool("apps");
+        tourSelect(d);
+        return phone ? "#more-btn" : "#lightup [data-mode=apps]";
       }
       case "open-source":
         if (!pick(null)) return null;
@@ -4271,9 +4345,10 @@ async function boot(): Promise<void> {
       case "ring-review":
         return pick(null) ? "#panel .rv" : null;
       case "ring-target":
-        return pick(null) ? "#panel [data-rv-target], #targets" : null;
+        return pick(null) ? (phone ? "#panel [data-rv-target]" : "#panel [data-rv-target], #targets") : null;
       case "ring-key":
-        return reviewRoot() !== null && pick(null) ? "#panel [data-rv-key]" : "#targets";
+        // the targets are in ☰ on a phone
+        return reviewRoot() !== null && pick(null) ? "#panel [data-rv-key]" : phone ? "#side-btn" : "#targets";
       case "what-changed": {
         const d = $("#panel details[data-rv-changes]") as HTMLDetailsElement | null;
         if (!d) return null;
@@ -4281,26 +4356,27 @@ async function boot(): Promise<void> {
         return "#panel [data-rv-changes]";
       }
       case "ring-trusted":
-        return isPhone() ? "#side-btn" : "#trusted-btn";
+        return phone ? "#side-btn" : "#trusted-btn";
       case "library-pair":
-        return "#library-btn";
+        return phone ? "#more-btn" : "#library-btn";
       case "ring-lock":
         if (!eyesPop.open) eyesPop.toggle(true);
         return "#lock-btn";
       case "ring-zoom":
         return pick("tcb") ? "#selbar [data-zoom]" : null;
       case "ring-board":
-        return "#board-btn";
+        return phone ? "#side-btn" : "#board-btn";
       case "ring-peers":
         return "#peers";
+      // Share, the library and Export are in ⋯ on a phone
       case "share-readonly":
       case "share-agent":
-        return "#share-btn";
+        return phone ? "#more-btn" : "#share-btn";
       case "linear":
         if (!linear.asked) linear.toggle();
         return "#linear";
       case "ring-export":
-        return "#export-btn";
+        return phone ? "#more-btn" : "#export-btn";
       case "time-machine":
         if (!tm.active) void openTimeMachine();
         return "#tmbar";
@@ -4313,6 +4389,8 @@ async function boot(): Promise<void> {
   /** Whether a Show me has something to show on this page. */
   const canShowMe = (action: string): boolean => {
     if (["rests-steps", "used-by", "open-source", "ring-review", "ring-target", "ring-zoom", "tcb-three"].includes(action)) return tourExample() !== null;
+    // what a phone has not: the lock, the linear form (PhoneSpec)
+    if (isPhone() && (action === "ring-lock" || action === "linear")) return false;
     if (action === "ring-peers") return !$("#peers").hidden;
     if (action === "what-changed") return !!$("#panel details[data-rv-changes]");
     if (action === "share-readonly") return readOnlyLinks;
@@ -4328,11 +4406,12 @@ async function boot(): Promise<void> {
     following: () => people.followedName !== null,
     busy: () => !!artLook,
     example: tourExample,
-    select: (i) => {
-      if (selected() !== i) go(i);
-    },
-    tool: () => S.mode,
-    setTool: (m) => setMode(m),
+    select: tourSelect,
+    setTool: tourTool,
+    place: tourPlace,
+    back: (p) => tourBack(p as TourPlace),
+    // Show me's moves, one step in the history
+    record: commit,
     restsOn: restsOnOf,
     frameLit: () => {
       const q = selectionQuery(picks);

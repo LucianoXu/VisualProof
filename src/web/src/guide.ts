@@ -67,11 +67,17 @@ export interface GuideHooks {
   busy(): boolean;
   /** the declaration the tour shows things on (GuideSpec decision 3); null when there is none */
   example(): number | null;
-  /** select it, as a click would, and bring it into view */
+  /** select it, as a click would, and bring it into view — without a step in the history */
   select(i: number): void;
-  /** the reader's tool, and a change of it, as a mode button makes */
-  tool(): Tool;
+  /** choose a tool, as a mode's button would — without a step in the history, and without what a
+   *  tip in place counts as the reader's own choice */
   setTool(m: Tool): void;
+  /** where the reader is (the tool, the step of Rests on, the selection, the camera), and putting
+   *  them back there: the tour leaves the page as it found it (GuideSpec decision 3) */
+  place(): unknown;
+  back(place: unknown): void;
+  /** Show me's moves recorded as one step in the history (they stay: GuideSpec decision 7) */
+  record(): void;
   /** what the TCB step says of declaration `i` */
   restsOn(i: number): RestsOn;
   /** the camera frames what is lit (the TCB step's views; jumps with reduced motion) */
@@ -288,8 +294,8 @@ export class Guide {
   private v = 0;
   /** the tour as a whole, or one step for a tip's Show me (GuideSpec decision 7) */
   private kind: "tour" | "show" = "tour";
-  /** the reader's tool when the tour began: theirs again when it ends (GuideSpec decision 3) */
-  private toolBefore: Tool | null = null;
+  /** where the reader was when the tour began: theirs again when it ends (GuideSpec decision 3) */
+  private placeBefore: unknown = null;
   private el: HTMLElement;
   private spot: HTMLElement;
   private shades: HTMLElement[];
@@ -510,7 +516,7 @@ export class Guide {
 
   start(): void {
     this.kind = "tour";
-    this.toolBefore = this.hooks.tool();
+    this.placeBefore = this.hooks.place();
     this.inPlace.hush();
     const project = escapeHtml(this.hooks.project());
     const snapshot = this.hooks.snapshot();
@@ -626,7 +632,7 @@ export class Guide {
     if (!step) return;
     this.tips.done(tip.id);
     this.kind = "show";
-    this.toolBefore = null;
+    this.placeBefore = null;
     this.steps = [step];
     this.k = 0;
     this.v = 0;
@@ -741,11 +747,11 @@ export class Guide {
     if (this.kind === "tour") {
       this.store.data.guided = true;
       this.store.save();
-      // the reader's tool as it was (GuideSpec decision 3)
-      if (this.toolBefore && this.hooks.tool() !== this.toolBefore) this.hooks.setTool(this.toolBefore);
+      // the page as the tour found it (GuideSpec decision 3)
+      this.hooks.back(this.placeBefore);
       this.hooks.ended();
-    }
-    this.toolBefore = null;
+    } else this.hooks.record();
+    this.placeBefore = null;
   }
 
   // ---------------------------------------------------------------- What's new
