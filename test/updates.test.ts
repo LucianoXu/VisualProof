@@ -57,6 +57,21 @@ test("Node ranges as npm reads them: every operator, x-ranges, hyphens, alternat
   const no = (v: string, r: string) => assert.ok(!satisfies(v, r), `${v} not in ${JSON.stringify(r)}`);
   for (const r of ["", "  ", "*", "x", ">=22", ">= 22.0.0", ">=22.0", "22", "22.x", "22.18.*", "^22.18.0", "~22.18.0", "~22", "^22", ">22.17", ">=22 <23", "22.18.0 - 22.20.0", "22 - 24", "<23", "<=22", "<=22.18", "=22.18.0", "22.18.0", ">=20 || >=24.2.0", "^20 || ^22.18.0 || >=24.2.0", "v22.18.0"]) yes("22.18.0", r);
   for (const r of [">=24", ">= 24", ">22", "23", "^24", "~22.19", "<22.18.0", "<22", "<=22.17", "22.19.0 - 24", "24 - 26", ">=24 || <20", "^22.19.0", "=22.18.1", "lots of nonsense", ">=x.y", ">*"]) no("22.18.0", r);
+  // what npm cannot read is no range, whatever its other alternatives say; an operator is one word;
+  // numbers have no leading zero
+  for (const r of [">=22 || garbage", "> = 22", "< = 23", "022.18.0", ">=022", "22.018.0", "22.18-rc.1", "1.2.3-01"]) no("22.18.0", r);
+  // prereleases, as npm orders them
+  no("22.18.0", "<=22.18.0-rc.1");
+  no("22.18.0", "<22.18.0-rc.1");
+  yes("22.18.0", ">=22.18.0-rc.1");
+  yes("22.18.0", ">22.18.0-rc.1");
+  yes("22.18.0", "22.18.0-rc.1 - 22.18.0");
+  no("22.18.0", "=22.18.0-rc.1");
+  yes("22.18.0-rc.2", ">=22.18.0-rc.1");
+  no("22.18.0-rc.2", ">=22.17.0");
+  no("22.18.0-rc.1", ">=22.18.0-rc.2");
+  yes("22.18.0-rc.10", ">22.18.0-rc.9");
+  yes("22.18.0-rc.1", ">22.18.0-beta");
   // node-semver's desugaring at zero: ^0.2.3 is <0.3.0, ^0.0.3 is <0.0.4
   yes("0.2.9", "^0.2.3");
   no("0.3.0", "^0.2.3");
