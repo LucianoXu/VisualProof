@@ -1,0 +1,60 @@
+\input{preamble}
+\title{\bfseries Kummer's lemma in flt-regular:\\ reading notes}
+\author{Charlie}
+\date{8 September 2026}
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\section{The statement}
+
+Let $p$ be an odd prime, $K$ a $p$-th cyclotomic field and $\mathcal{O}_K$ its ring of integers.
+\textbf{Kummer's lemma.} If $p$ is regular and $u \in \mathcal{O}_K^\times$ is congruent to a
+rational integer modulo $p$, then $u = v^p$ for a unit $v$. In the project:
+\begin{code}
+variable [IsCyclotomicExtension {p} ℚ K] (hp : p ≠ 2)
+  (hreg : p.Coprime <| Fintype.card <| ClassGroup (𝓞 K))
+
+theorem eq_pow_prime_of_unit_of_congruent (u : (𝓞 K)ˣ)
+    (hcong : ∃ n : ℤ, (p : 𝓞 K) ∣ (u - n : 𝓞 K)) :
+    ∃ v, u = v ^ p
+\end{code}
+Two things to check when approving it:
+\begin{enumerate}
+\item Regularity is stated for \lean{K}, as \lean{p.Coprime (Fintype.card (ClassGroup (𝓞 K)))},
+  not as \lean{IsRegularPrime p}, which is about \lean{CyclotomicField p ℚ}. The two agree, since
+  any two $p$-th cyclotomic fields over $\mathbb{Q}$ are isomorphic and the class number is
+  invariant; the main theorem only ever applies the lemma to \lean{CyclotomicField p ℚ}.
+\item The congruence is divisibility by $p$ in $\mathcal{O}_K$: $p \mid u - n$.
+\end{enumerate}
+
+\section{The second form}
+
+\begin{code}
+theorem exists_pow_eq_of_zeta_sub_one_pow_dvd_sub_one {u : (𝓞 K)ˣ}
+    (hcong : (hζ.toInteger - 1 : 𝓞 K) ^ p ∣ (u : 𝓞 K) - 1) :
+    ∃ v : K, v ^ p = u
+\end{code}
+Here the hypothesis is $(\zeta - 1)^p \mid u - 1$, and the conclusion is a $p$-th root in $K$, not
+yet a unit. The first form is reduced to this one in the same file, through $u^{p-1}$: it is
+congruent to $1$ modulo $p$, and from there to $1$ modulo $(\zeta - 1)^p$.
+
+\section{How the proof goes}
+
+Suppose $u$ is not a $p$-th power in $K$. Then $L = K(\sqrt[p]{u})$ is a cyclic extension of
+degree $p$. The congruence $(\zeta - 1)^p \mid u - 1$ makes $L/K$ unramified: with
+$\alpha^p = u$, the element $(1 - \alpha)/(\zeta - 1)$ is a root of
+$\bigl(((\zeta - 1)X - 1)^p + u\bigr)/(\zeta - 1)^p$, a polynomial with integral coefficients,
+separable modulo every prime (\lean{KummersLemma.isUnramified}, in \lean{KummersLemma.Field}). Hilbert's
+Theorem~94 (\lean{dvd\_card\_classGroup\_of\_unramified\_isCyclic}) then says that $p$ divides the
+class number of $K$, against regularity. Theorem~94 rests on Theorem~92 (\lean{Hilbert92}), on the
+units of norm one in a cyclic extension of prime degree.
+
+\section{For the review}
+
+Approve the statements, not the proofs: Lean checked those. The class-group side
+(\lean{Hilbert92}, \lean{dvd\_card\_classGroup\_of\_unramified\_isCyclic}) is worth reading for
+what it states, since a weaker statement there would still compile.
+
+\fictional
+\end{document}

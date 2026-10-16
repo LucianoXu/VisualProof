@@ -1,0 +1,69 @@
+\input{preamble}
+\title{\bfseries Fermat's Last Theorem for regular primes:\\ review plan}
+\author{Alice}
+\date{7 September 2026}
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\section{What we review}
+
+flt-regular proves Kummer's theorem: for an odd regular prime $p$ the equation
+$a^p + b^p = c^p$ has no solution in nonzero integers. A prime $p$ is \emph{regular} when it does
+not divide the class number of the cyclotomic field $\mathbb{Q}(\zeta_p)$. In Lean:
+\begin{code}
+theorem flt_regular {p : ℕ} [Fact p.Prime] (hreg : IsRegularPrime p)
+    (hodd : p ≠ 2) : FermatLastTheoremFor p
+\end{code}
+Lean has checked the proof. What nobody has checked for us is that the statement says this:
+that \lean{IsRegularPrime} is regularity, that \lean{FermatLastTheoremFor} is Fermat's equation,
+and that the definitions underneath mean what their names say. That is the statement's
+\emph{trusted computing base} (TCB), and it is what we review, in VisualProof, declaration by
+declaration.
+
+\section{What we trust}
+
+VisualProof trusts Lean's core and all of Mathlib by default. The statement's meaning, though,
+rests on a handful of Mathlib's number-theory definitions: \lean{CyclotomicField},
+\lean{NumberField.RingOfIntegers}, \lean{FermatLastTheoremFor}. \textbf{Proposal (Bob):} trust
+every part of Mathlib this project uses except \lean{Mathlib.NumberTheory}, so that those
+definitions come into our review.
+
+\section{Targets and who reads what}
+
+\begin{tabular}{@{}lll@{}}
+\toprule
+Target & Read by & Also \\
+\midrule
+\lean{flt\_regular} & Alice & \lean{IsRegularPrime}, \lean{IsRegularNumber} \\
+\lean{eq\_pow\_prime\_of\_unit\_of\_congruent} & Charlie & Kummer's lemma; Hilbert 92, 94 \\
+\lean{FltRegular.caseII} & Bob & Mathlib's definitions \\
+\bottomrule
+\end{tabular}
+
+Everyone approves or comments in VisualProof itself, on the version they read. Alice's AI
+assistant gives advice there too: it is shown apart and never counts as an approval.
+
+\section{Schedule}
+
+\begin{itemize}
+\item 7--16 September: first reading, at commit \lean{faae830}.
+\item 17 September: meeting; settle the trusted list and the open comments.
+\item After each Mathlib bump: rebuild, read what went stale (VisualProof's \emph{What changed}),
+  approve again or comment.
+\item October: a PDF of the statement and its definitions, from a view made for printing.
+\end{itemize}
+
+\section{References}
+
+\begin{itemize}
+\item L.\,C.~Washington, \emph{Introduction to Cyclotomic Fields}, 2nd ed., Springer GTM 83:
+  regular primes, Kummer's lemma, and the two cases of the proof.
+\item D.~Hilbert, \emph{Die Theorie der algebraischen Zahlkörper} (the \emph{Zahlbericht}, 1897),
+  Theorems 92 and 94, after which the project's \lean{Hilbert92} and \lean{Hilbert94} are named.
+\item A.\,J.~Best, C.~Birkbeck, R.~Brasca, E.~Rodriguez Boidi, R.~Van de Velde, A.~Yang,
+  \emph{Fermat's Last Theorem for regular primes}, the paper of the flt-regular project.
+\end{itemize}
+
+\fictional
+\end{document}
