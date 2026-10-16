@@ -5,7 +5,7 @@
 import { historyAnswer } from "./historyapi.ts";
 import { gitSource } from "./history.ts";
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -48,6 +48,7 @@ import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
+import { sendMedia, TIP_PATH, TIPS_DIR, tipClips } from "./media.ts";
 import { FROM_PACKAGE, PACKAGE_ROOT, UPDATE_MODES, Updates } from "./updates.ts";
 import type { UpdateMode } from "./updates.ts";
 import { RESTART_STATUS, supervise } from "./supervise.ts";
@@ -834,7 +835,7 @@ export class App {
       if (FONT_PATH.test(path)) return sendFile(req, res, join(WEBFONTS, path.slice("/fonts/".length)));
       // the tips' clips and their key frames (GuideSpec decision 6), and which there are
       if (path === "/tips/index.json") return sendJson(res, { clips: tipClips() });
-      if (TIP_PATH.test(path)) return sendMedia(req, res, join(TIPS, path.slice("/tips/".length)));
+      if (TIP_PATH.test(path) && !refused.has(res)) return sendMedia(req, res, join(TIPS_DIR, path.slice("/tips/".length)));
       // the page, and its workers: the one that lays out the Time Machine's past graphs
       // (web/src/layoutworker.ts), the one that chooses the overview's edges (web/src/edgeworker.ts),
       // and pdf.js's, which reads the library's PDFs for the reference window (AttachmentSpec decision 11)
@@ -1073,57 +1074,6 @@ export class App {
 
 /** an artwork's font file (assets/webfonts/) */
 const FONT_PATH = /^\/fonts\/(source-sans-3|source-serif-4|jost)-[a-z-]+\.woff2$/;
-
-/** the tips' clips (GuideSpec decision 6): assets/tips/<clip>.<light|dark>.mp4, their key frames .webp */
-const TIPS = join(dirname(WEBFONTS), "tips");
-const TIP_PATH = /^\/tips\/[a-z0-9]+(?:-[a-z0-9]+)*\.(?:light|dark)\.(?:mp4|webp)$/;
-
-/** The clips there are, in both themes. */
-function tipClips(): string[] {
-  let files: string[];
-  try {
-    files = readdirSync(TIPS);
-  } catch {
-    return [];
-  }
-  const has = new Set(files);
-  return files.flatMap((f) => {
-    const m = /^([a-z0-9-]+)\.light\.mp4$/.exec(f);
-    return m && has.has(`${m[1]}.dark.mp4`) ? [m[1]] : [];
-  });
-}
-
-/** A clip or its key frame, as it is (it is compressed already), with byte ranges: Safari plays a
- *  video only from a server that answers them. */
-function sendMedia(req: IncomingMessage, res: ServerResponse, file: string): void {
-  if (refused.has(res)) return;
-  let size: number, mtime: number;
-  try {
-    ({ size, mtimeMs: mtime } = statSync(file));
-  } catch {
-    return sendJson(res, { error: "not found" }, 404);
-  }
-  const etag = `"${size.toString(36)}-${Math.round(mtime).toString(36)}"`;
-  const head = { "content-type": file.endsWith(".mp4") ? "video/mp4" : "image/webp", "cache-control": "no-cache", etag, "accept-ranges": "bytes" };
-  if (fresh(req, etag)) {
-    res.writeHead(304, head);
-    return void res.end();
-  }
-  const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range ?? "").trim());
-  let start = 0, end = size - 1;
-  if (m && (m[1] || m[2])) {
-    // from a byte to another (or to the end), or the last so many
-    if (m[1]) [start, end] = [Number(m[1]), m[2] ? Math.min(Number(m[2]), size - 1) : size - 1];
-    else start = Math.max(0, size - Number(m[2]));
-    if (start > end) {
-      res.writeHead(416, { "content-range": `bytes */${size}` });
-      return void res.end();
-    }
-    res.writeHead(206, { ...head, "content-range": `bytes ${start}-${end}/${size}`, "content-length": end - start + 1 });
-  } else res.writeHead(200, { ...head, "content-length": size });
-  if (req.method === "HEAD" || size === 0) return void res.end();
-  createReadStream(file, { start, end }).pipe(res);
-}
 
 const TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
