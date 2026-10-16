@@ -79,6 +79,16 @@ export class Talk {
   private frame: HTMLElement | null;
   private sized: ResizeObserver | null = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => this.atEnd && this.scrollEnd());
 
+  /** The drafts not empty, kept across a reload into a new version (web/src/reload.ts). */
+  get keptDrafts(): [string, string][] {
+    return [...this.drafts].filter(([, v]) => v.trim() !== "");
+  }
+
+  /** The drafts kept by the reload that made this page (UpdateSpec decision 8). */
+  restoreDrafts(kept: [string, string][]): void {
+    for (const [k, v] of kept) if (!this.drafts.has(k)) this.drafts.set(k, v);
+  }
+
   constructor(box: HTMLElement, hooks: TalkHooks) {
     this.box = box;
     this.hooks = hooks;

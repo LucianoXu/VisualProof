@@ -16,6 +16,7 @@ import type { LayoutMemory } from "../shared/layout.ts";
 import type { Project } from "./project.ts";
 import { buildViewOffThread } from "./view.ts";
 import { cacheHome } from "./dirs.ts";
+import { packageVersion } from "./version.ts";
 import type { Dirs } from "./dirs.ts";
 
 /** the tool's own folder, `src/`; the repository is above it */
@@ -191,6 +192,8 @@ export async function bundlePage(outdir: string, sourcemap = true): Promise<void
     // the owner reads in Safari: what Safari 16 lacks of the syntax (pdf.js's class static blocks; a
     // regular expression's lookbehind, read at run time instead) is lowered
     target: ["es2022", "safari16"],
+    // the version the page is of, which it compares with its server's (UpdateSpec decision 8)
+    define: { __VP_VERSION__: JSON.stringify(packageVersion()) },
     sourcemap,
     outdir,
     logLevel: "warning",

@@ -41,7 +41,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute } from "node:path";
 import { createInterface } from "node:readline";
 
-const VERSION = "0.5.0";
+// the version of the VisualProof server it came from: the server writes its own here as it serves
+// the file (GET /api/agent/mcp)
+const VERSION = "0.0.0";
 /** the MCP revisions this server speaks, newest first; a client asking for another (a newer one,
  *  2026-07-28 among them, whose changes it does not make) is answered with the newest of these */
 const REVISIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];

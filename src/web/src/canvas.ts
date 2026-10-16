@@ -586,6 +586,11 @@ export class GraphCanvas {
   fitExtra: ((k: number, cards: boolean) => FitBox[]) | null = null;
 
   /** The canvas element: what is laid over it sends it the wheel. */
+  /** Whether the pointer is down on the board (a drag, a pan): no moment to reload in (web/src/reload.ts). */
+  get pressed(): boolean {
+    return this.pressing;
+  }
+
   get element(): HTMLCanvasElement {
     return this.canvas;
   }

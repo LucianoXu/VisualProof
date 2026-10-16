@@ -108,16 +108,21 @@ export interface ViewsApi {
   post(action: string, body: Record<string, unknown>): Promise<ViewAnswer>;
 }
 
+/** The graph version a page asks for, and the server process that counted it (UpdateSpec decision 8). */
+const graphQuery = (v: number | undefined, i: string | undefined, first: "?" | "&"): string =>
+  v ? `${first}v=${v}${i ? `&i=${encodeURIComponent(i)}` : ""}` : "";
+
 export interface DataSource {
   /** set for a snapshot: when and what it was taken from */
   snapshot: { createdAt: string; label: string } | null;
   status(): Promise<Status>;
-  /** `version`: the graph version the page was told about; an older one is refused */
-  meta(version?: number): Promise<ViewMeta>;
+  /** `version`: the graph version the page was told about, counted by the server process `instance`
+   *  (UpdateSpec decision 8); an older one, or another server's, is refused */
+  meta(version?: number, instance?: string): Promise<ViewMeta>;
   /** the project's git source and commit as git says them now (an artwork's foot); a snapshot's, as
    *  it was taken; null where it is no git repository, or they cannot be read */
   git(): Promise<GitSource | null>;
-  edges(version?: number): Promise<ArrayBuffer>;
+  edges(version?: number, instance?: string): Promise<ArrayBuffer>;
   source(module: string): Promise<Source | null>;
   /** forget fetched sources: a new graph means the files may have changed */
   forget(): void;
@@ -503,15 +508,15 @@ function serverSource(): DataSource {
     },
     status: () => fetch("/api/status").then((r) => r.json()),
     forget: () => cache.clear(),
-    meta: (v) => fetch(`/api/meta${v ? `?v=${v}` : ""}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`)))),
+    meta: (v, i) => fetch(`/api/meta${graphQuery(v, i, "?")}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`)))),
     git: () =>
       fetch("/api/git")
         .then((r) => (r.ok ? (r.json() as Promise<{ git?: GitSource | null }>) : null))
         .then((b) => b?.git ?? null)
         .catch(() => null),
     // packed for the way (shared/edgecodec.ts): a quarter of the bytes
-    edges: (v) =>
-      fetch(`/api/edges?pack=2${v ? `&v=${v}` : ""}`)
+    edges: (v, i) =>
+      fetch(`/api/edges?pack=2${graphQuery(v, i, "&")}`)
         .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`edges ${r.status}`))))
         .then((b) => (isPackedEdges(new Uint8Array(b)) ? unpackEdges(new Uint8Array(b)).buffer : b)),
     review: () =>

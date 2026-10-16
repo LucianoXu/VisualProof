@@ -9,6 +9,7 @@
 // export's notes say so.
 
 import { spawn, spawnSync } from "node:child_process";
+import { tracked } from "./children.ts";
 import { closeSync, mkdtempSync, openSync, readFileSync, readSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -126,7 +127,7 @@ async function toPng(path: string, type: string): Promise<Buffer> {
   const out = join(dir, "out.png");
   try {
     await new Promise<void>((ok, no) => {
-      const p = spawn(t, ["-limit", "memory", "256MiB", "-limit", "disk", "1GiB", `${type}:${path}[0]`, "-depth", "8", `png:${out}`], { stdio: ["ignore", "ignore", "ignore"] });
+      const p = tracked(spawn(t, ["-limit", "memory", "256MiB", "-limit", "disk", "1GiB", `${type}:${path}[0]`, "-depth", "8", `png:${out}`], { stdio: ["ignore", "ignore", "ignore"] }));
       const timer = setTimeout(() => p.kill("SIGKILL"), CONVERT_MS);
       p.on("error", (e) => {
         clearTimeout(timer);

@@ -459,6 +459,9 @@ export interface StreamHello {
   id: string;
   token: string;
   private?: true;
+  /** which server answers (UpdateSpec decision 8): the VisualProof version it runs, and its process —
+   *  a page of another version reloads; one of another process reads the graph again */
+  server?: { version: string; instance: string };
 }
 
 /** How many private readers are on the server (CollabSpec decision 8), as every page is told it

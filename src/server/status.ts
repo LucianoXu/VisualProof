@@ -11,6 +11,7 @@
 //     changes, not when the mtime does, so "stale" here compares the same hash (`lakeTextHash`).
 
 import { execFile } from "node:child_process";
+import { tracked } from "./children.ts";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { BuildStatus, FileState, FileStatus } from "../shared/build.ts";
@@ -93,19 +94,21 @@ export function scanModules(p: Project): Map<string, ModuleInfo> {
 /** Modules a lean process is compiling right now, for this project's build directory. */
 export function compiling(p: Project): Promise<Set<string>> {
   return new Promise((resolve) => {
-    execFile("ps", ["axo", "command"], { maxBuffer: 16 << 20 }, (err, stdout) => {
-      const out = new Set<string>();
-      if (err) return resolve(out);
-      const marker = ` -o ${p.libDir}/`;
-      for (const line of stdout.split("\n")) {
-        const at = line.indexOf(marker);
-        if (at < 0) continue;
-        const rest = line.slice(at + marker.length);
-        const path = rest.slice(0, rest.indexOf(".olean"));
-        if (path) out.add(path.split("/").join("."));
-      }
-      resolve(out);
-    });
+    tracked(
+      execFile("ps", ["axo", "command"], { maxBuffer: 16 << 20 }, (err, stdout) => {
+        const out = new Set<string>();
+        if (err) return resolve(out);
+        const marker = ` -o ${p.libDir}/`;
+        for (const line of stdout.split("\n")) {
+          const at = line.indexOf(marker);
+          if (at < 0) continue;
+          const rest = line.slice(at + marker.length);
+          const path = rest.slice(0, rest.indexOf(".olean"));
+          if (path) out.add(path.split("/").join("."));
+        }
+        resolve(out);
+      }),
+    );
   });
 }
 

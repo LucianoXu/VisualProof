@@ -58,6 +58,8 @@ import { join } from "node:path";
 import { PROJECT, viewTitle } from "../shared/views.ts";
 import { boardSet } from "../shared/board.ts";
 import { derivesOn, existsIn } from "../shared/noteplace.ts";
+import { packageVersion } from "./version.ts";
+import type { UpdateStatus } from "./updates.ts";
 
 const TICK = 1000;
 /** outputs quiet this long, and no compile running: the build is over */
@@ -97,11 +99,11 @@ interface Stream {
   readOnly: string | null;
 }
 
-/** What a stream's page alone is told of it (`hello`). */
-const helloOf = (st: Stream): StreamHello => ({ id: st.id, token: st.token, ...(st.private ? { private: true as const } : {}) });
-
 export interface GraphInfo {
   version: number;
+  /** the server's process the version is counted by (UpdateSpec decision 8): a page told of a
+   *  graph by another reads it again, whatever its number */
+  instance?: string;
   fingerprint: string;
   at: string;
   /** modules left out because they, or something under them, could not be imported */
@@ -138,6 +140,14 @@ export class Live {
   /** review changes not yet sent: those made in one turn of the event loop go out as one */
   private reviewPending: ReviewChange[] = [];
   private version = 0;
+  /** this server's process, as its pages know it (UpdateSpec decision 8): the graph's versions are
+   *  counted again by another */
+  readonly instance = randomBytes(6).toString("base64url");
+  /** the VisualProof version this server runs, read as it started */
+  readonly toolVersion = packageVersion();
+  /** what a page is told of VisualProof's releases (server/updates.ts): everything, or the version
+   *  alone (`full` false: a read-only reader); null where nobody follows them (a test's server) */
+  updateStatus: ((full: boolean) => UpdateStatus) | null = null;
 
   /** the review's logs (ReviewSpec.md, server/review.ts) */
   readonly review: ReviewStore;
@@ -348,7 +358,7 @@ export class Live {
     s.private = priv;
     // a private reader cannot be followed: what they asked is withdrawn
     if (priv) this.asks.withdraw(s.token);
-    this.write(s.res, "hello", helloOf(s));
+    this.write(s.res, "hello", this.helloOf(s));
     if (s.session) {
       if (priv) this.views.hold(s.session, was ? [...(was.view ? [was.view] : []), ...was.tabs] : []);
       else this.views.release(s.session);
@@ -686,7 +696,7 @@ export class Live {
         written = found.written;
         return found;
       };
-      const r = this.history.record(ex.graph, { at: buildTime(this.project), fingerprint: ex.fingerprint, commit, toolchain: this.project.toolchain, missing, sources });
+      const r = this.history.record(ex.graph, { at: buildTime(this.project), fingerprint: ex.fingerprint, commit, toolchain: this.project.toolchain, missing, sources, tool: this.toolVersion });
       if (!r.written) return renamed;
       const s = r.info;
       if (r.before) {
@@ -960,7 +970,45 @@ export class Live {
   graphInfo(): GraphInfo | null {
     if (!this.graph) return null;
     const { prep: _, ...info } = this.graph;
-    return info;
+    return { ...info, instance: this.instance };
+  }
+
+  /** What a stream's page alone is told of it (`hello`), and which server it is (UpdateSpec
+   *  decision 8): its version, and its process. */
+  private helloOf(st: Stream): StreamHello {
+    return { id: st.id, token: st.token, ...(st.private ? { private: true as const } : {}), server: { version: this.toolVersion, instance: this.instance } };
+  }
+
+  /** How many pages are open on the server (their event streams), read-only readers' too. */
+  get pages(): number {
+    return this.streams.size;
+  }
+
+  /** Whether the server is working on the build (an extraction, a re-layout, the usage pass):
+   *  no moment to restart in (UpdateSpec decision 6). */
+  get busy(): boolean {
+    return this.extracting || this.usage.status.state === "running";
+  }
+
+  /** What is known of VisualProof's releases changed: each page is told what it may know of it. */
+  updatesChanged(): void {
+    const status = this.updateStatus;
+    if (!status) return;
+    const full = `event: updates\ndata: ${JSON.stringify(status(true))}\n\n`;
+    const slim = `event: updates\ndata: ${JSON.stringify(status(false))}\n\n`;
+    for (const st of [...this.streams.values()]) this.push(st, st.readOnly === null ? full : slim);
+  }
+
+  /** The server stops (UpdateSpec decision 9): every page is told why — a restart into another
+   *  version (`update`), or a stop (`bye`) — and its stream ended, so that it comes back to the
+   *  server that answers next. */
+  end(why: { update: { from: string; to: string } } | { stopped: true }): void {
+    const text = "update" in why ? `event: update\ndata: ${JSON.stringify(why.update)}\n\n` : `event: bye\ndata: ${JSON.stringify({ why: "stopped" })}\n\n`;
+    for (const st of [...this.streams.values()]) {
+      this.streams.delete(st.res);
+      this.byToken.delete(st.token);
+      st.res.end(text);
+    }
   }
 
   /** What /api/status says: enough for the loader and for a page that just connected. */
@@ -1011,7 +1059,8 @@ export class Live {
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
     res.on("close", () => this.close(st));
-    this.write(res, "hello", helloOf(st));
+    this.write(res, "hello", this.helloOf(st));
+    if (this.updateStatus) this.write(res, "updates", this.updateStatus(st.readOnly === null));
     this.write(res, "presence", this.presence.list());
     this.write(res, "private", { count: this.presence.privateCount() } satisfies PrivateCount);
     this.write(res, "people", this.invites.people());

@@ -68,6 +68,9 @@ export interface SnapshotInfo {
   /** the source texts its build was compiled from, kept (server/sourcestore.ts): absent until they
    *  are, for a snapshot made before the history kept them and not backfilled yet */
   sources?: SourcesSummary;
+  /** the VisualProof version that read it, last (UpdateSpec decision 10): absent for a snapshot
+   *  read before 0.4 */
+  tool?: string;
 }
 
 /** A unit as a snapshot keeps it: what a card shows, the versions' parts, its axioms by name. */
@@ -381,6 +384,13 @@ export class History {
     return this.infos.get(id) ?? null;
   }
 
+  /** The VisualProof version that read the snapshot read last, where one says it. */
+  lastVersion(): string | null {
+    let last: SnapshotInfo | null = null;
+    for (const i of this.infos.values()) if (i.tool && (!last || i.read > last.read)) last = i;
+    return last?.tool ?? null;
+  }
+
   /** The latest build's snapshot. */
   latest(): SnapshotInfo | null {
     const l = this.list();
@@ -416,7 +426,7 @@ export class History {
    *  written now took: asked only where the snapshot is written; a build read again keeps the text
    *  it was found to have before for a module whose file was edited since, its Lake hash being the
    *  same. */
-  record(g: RawGraph, o: { at: number; fingerprint: string; commit: SnapshotInfo["commit"]; toolchain: string; missing: string[]; imported?: boolean; approx?: boolean; read?: string; sources?: () => { map: SourceMap; written: number } }): { info: SnapshotInfo; fresh: boolean; written: boolean; before: SnapGraph | null } {
+  record(g: RawGraph, o: { at: number; fingerprint: string; commit: SnapshotInfo["commit"]; toolchain: string; missing: string[]; imported?: boolean; approx?: boolean; read?: string; sources?: () => { map: SourceMap; written: number }; tool?: string }): { info: SnapshotInfo; fresh: boolean; written: boolean; before: SnapGraph | null } {
     mkdirSync(this.modDir, { recursive: true });
     mkdirSync(this.snapDir, { recursive: true });
     const at = new Date(o.at).toISOString();
@@ -481,6 +491,7 @@ export class History {
       ...(o.imported || same?.imported ? { imported: true as const } : {}),
       ...(same?.renames ? { renames: same.renames } : {}),
       ...(texts ? { sources: texts } : {}),
+      ...(o.tool ? { tool: o.tool } : {}),
     };
     this.save(info);
     this.readOf(id).add(o.fingerprint);
