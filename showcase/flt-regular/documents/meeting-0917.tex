@@ -1,0 +1,37 @@
+\input{preamble}
+\title{\bfseries Review meeting, 17 September 2026}
+\author{Minutes: Alice}
+\date{}
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\vspace{-2em}
+Present: Alice, Bob, Charlie, at one screen. Build read: \lean{faae830}.
+
+\section{Decisions}
+\begin{enumerate}
+\item \textbf{Trust.} Mathlib stays trusted except \lean{Mathlib.NumberTheory}, as Bob set it on
+  7 September. The review sets are now small enough to finish: \lean{flt\_regular} has eight
+  declarations to read.
+\item \textbf{\lean{IsRegularNumber}.} Charlie's comment (a definition for every $n$, while
+  regularity is classically about primes) is answered: only \lean{IsRegularPrime} reaches the main
+  theorem, and for a prime the definition is Kummer's. Charlie approved it at the meeting;
+  Alice recorded his approval for him.
+\item \textbf{\lean{flt\_regular}.} Bob approved the statement; Alice recorded it for him.
+\item \textbf{Key declarations} of \lean{flt\_regular}, the ones the printed document leads with:
+  \lean{FermatLastTheoremFor} and \lean{IsRegularPrime}.
+\end{enumerate}
+
+\section{Open}
+\begin{itemize}
+\item The instances in the review set (\lean{CyclotomicField.instField},
+  \lean{NumberField.instCommRingRingOfIntegers}): Bob reads them.
+\item Kummer's lemma: Charlie finishes the class-group side.
+\end{itemize}
+
+\section{Next}
+The project moves to Lean \lean{v4.35.0-rc2} and a new Mathlib soon. When it does we rebuild,
+read the Time Machine's list of what changed, and approve again what went stale.
+
+\fictional
+\end{document}

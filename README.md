@@ -11,6 +11,9 @@
 
 ## Try it
 
+**[Live demo](https://visualproof-demo.yingte.io)**: flt-regular in the middle of a review by
+three people and an AI assistant, read-only ([how it was made](showcase/flt-regular/)).
+
 Prompt to your coding agent in your Lean codebase:
 ```text
 Set up VisualProof (https://github.com/LucianoXu/VisualProof) for this Lean project, and give me the address to open.
