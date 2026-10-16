@@ -34,6 +34,7 @@ import type { LastHad, LostAnswer } from "../shared/lostfound.ts";
 import type { Identity } from "./versions.ts";
 import { spawnSync } from "node:child_process";
 import { packageVersion } from "./version.ts";
+import { withoutReasons } from "../shared/timeline.ts";
 import { childEnv } from "./children.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -2100,7 +2101,7 @@ export class AgentApi {
         // the operations themselves are the server's business: what moved, and whether it was undone
         const { ops, undo: _u, ...rest } = e;
         out.push({ ...rest, ...who, moved: ops.flatMap((o) => (o.op === "clear" ? [] : [o.key])).slice(0, 100), undoneBy: undone.get(e.id) ?? null });
-      } else out.push({ ...e, ...who });
+      } else out.push({ ...withoutReasons(e), ...who });
     }
     const about = (a.query.get("name") ?? "").trim();
     // a note is about the declarations it names; a link, about the declaration it is on, or was on

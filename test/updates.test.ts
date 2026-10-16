@@ -19,6 +19,7 @@ import { childEnv, DETACH, grouped, stopChildren } from "../src/server/children.
 import { keep, Reloader, takeKept } from "../src/web/src/reload.ts";
 import type { Kept, KeptStorage } from "../src/web/src/reload.ts";
 import { site, stream } from "./site.ts";
+import type { Json } from "./site.ts";
 
 const tmp = mkdtempSync(join(tmpdir(), "vp-updates-"));
 after(() => rmSync(tmp, { recursive: true, force: true }));
@@ -535,6 +536,15 @@ test("which server answers: hello names its version and process, the graph its p
     assert.deepEqual([st.log, st.review.folder, typeof st.state], [undefined, undefined, "string"]);
     const full = (await S.ask("GET", "/api/status", undefined, { authorization: `Bearer ${"k".repeat(43)}` })).json!;
     assert.ok(Array.isArray(full.log) && typeof full.review.folder === "string");
+    // a version set aside, in Activity: why, to those told all alone
+    S.live.timeline.add({ kind: "tool", from: "0.4.0", to: "0.4.0", setAside: { version: "0.4.1", why: "exited with status 1 before it served (/home/x/.cache)" } });
+    const aside = (r: Json) => (r.events as Json[]).find((e) => e.kind === "tool")!.setAside;
+    assert.deepEqual(aside((await S.ask("GET", "/api/activity")).json!), { version: "0.4.1" });
+    assert.match(aside((await S.ask("GET", "/api/activity", undefined, { authorization: `Bearer ${"k".repeat(43)}` })).json!).why, /before it served/);
+    const agentActivity = (await S.ask("GET", "/api/agent/activity", undefined, { authorization: `Bearer ${"k".repeat(43)}`, "x-visualproof-kind": "agent", "x-visualproof-name": "Claude" })).json!;
+    assert.deepEqual(aside(agentActivity), { version: "0.4.1" });
+    await reader.until(() => reader.events.some((e) => e.event === "activity" && e.data.kind === "tool"));
+    assert.deepEqual(reader.events.find((e) => e.event === "activity" && e.data.kind === "tool")!.data.setAside, { version: "0.4.1" });
     // an agent's stream is told the version alone, as GET /api/updates tells it
     const agent = stream(S.port, "/api/events?session=aaaaaaaa3333", { authorization: `Bearer ${"k".repeat(43)}`, "x-visualproof-kind": "agent", "x-visualproof-name": "Claude" });
     await agent.until(() => !!agent.last("updates"));

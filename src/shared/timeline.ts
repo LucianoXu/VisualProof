@@ -83,7 +83,13 @@ export type StoredEvent =
   /** the VisualProof version that serves the site, where it is another than the one recorded before
    *  (UpdateSpec decision 10): `from` null where none was; `setAside`, a version the supervisor set
    *  aside before this one started (decision 7) */
-  | { id: number; at: string; kind: "tool"; from: string | null; to: string; setAside?: { version: string; why: string } };
+  | { id: number; at: string; kind: "tool"; from: string | null; to: string; setAside?: { version: string; why?: string } };
+
+/** An event as a read-only reader and an agent are told it (UpdateSpec decision 11): a version set
+ *  aside without why (what this machine and its servers said of it). */
+export function withoutReasons<E extends StoredEvent>(e: E): E {
+  return e.kind === "tool" && e.setAside ? { ...e, setAside: { version: e.setAside.version } } : e;
+}
 
 /** An event without the id and time the server gives it. */
 export type NewEvent = StoredEvent extends infer E ? (E extends StoredEvent ? Omit<E, "id" | "at"> : never) : never;

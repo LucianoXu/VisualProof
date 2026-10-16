@@ -48,6 +48,7 @@ import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
+import { withoutReasons } from "../shared/timeline.ts";
 import { FROM_PACKAGE, PACKAGE_ROOT, UPDATE_MODES, Updates } from "./updates.ts";
 import type { UpdateMode } from "./updates.ts";
 import { RESTART_STATUS, supervise } from "./supervise.ts";
@@ -962,7 +963,10 @@ export class App {
       }
       // what happened (CollabSpec decision 5): what the server stored; the review's own history the
       // page reads from the review
-      if (path === "/api/activity") return sendJson(res, { events: live.timeline.events.slice(-2000) });
+      if (path === "/api/activity") {
+        const events = live.timeline.events.slice(-2000);
+        return sendJson(res, { events: this.toldAll(req) ? events : events.map(withoutReasons) });
+      }
       // a layout batch an agent made, undone (AgentSpec decision 4): from a page's Activity, by anyone;
       // by a private reader, without their name (CollabSpec decision 8)
       if (path === "/api/layout/undo" && req.method === "POST") {

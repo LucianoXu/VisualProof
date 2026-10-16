@@ -60,6 +60,8 @@ import { boardSet } from "../shared/board.ts";
 import { derivesOn, existsIn } from "../shared/noteplace.ts";
 import { packageVersion } from "./version.ts";
 import type { UpdateStatus } from "./updates.ts";
+import { withoutReasons } from "../shared/timeline.ts";
+import type { StoredEvent } from "../shared/timeline.ts";
 
 const TICK = 1000;
 /** outputs quiet this long, and no compile running: the build is over */
@@ -209,7 +211,7 @@ export class Live {
     this.editor = editor;
     this.usage = new UsagePass(project, dirs, saved ? 0 : jobs, (l) => this.say(l));
     this.tracker = new BuildTracker(project);
-    this.timeline = new Timeline(dirs.site, (e) => this.send("activity", e));
+    this.timeline = new Timeline(dirs.site, (e) => this.sendActivity(e));
     this.tokens = new AgentTokens(dirs.site);
     this.invites = new Invites(dirs.site);
     // every page knows the names the people invited by a link go by, so that what each did shows
@@ -992,6 +994,15 @@ export class Live {
    *  no moment to restart in (UpdateSpec decision 6). */
   get busy(): boolean {
     return this.extracting || this.usage.status.state === "running";
+  }
+
+  /** What happened, to every page: a version set aside, without why, to those not told all
+   *  (UpdateSpec decision 11). */
+  private sendActivity(e: StoredEvent): void {
+    if (e.kind !== "tool" || !e.setAside) return this.send("activity", e);
+    const full = `event: activity\ndata: ${JSON.stringify(e)}\n\n`;
+    const slim = `event: activity\ndata: ${JSON.stringify(withoutReasons(e))}\n\n`;
+    for (const st of [...this.streams.values()]) this.push(st, st.toldAll ? full : slim);
   }
 
   /** What is known of VisualProof's releases changed: each page is told what it may know of it

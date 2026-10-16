@@ -612,7 +612,7 @@ ${tip}">${title(name)}</button>`
         // the VisualProof that serves the site (UpdateSpec decision 10): what reads the builds and
         // works out each TCB, so that a change it brings is seen beside the TCBs it changed
         const v = (x: string) => `<b>VisualProof ${escapeHtml(x)}</b>`;
-        const aside = e.setAside ? `${v(e.setAside.version)} was set aside: it ${escapeHtml(e.setAside.why)}. ` : "";
+        const aside = e.setAside ? `${v(e.setAside.version)} was set aside${e.setAside.why ? `: it ${escapeHtml(e.setAside.why)}` : ""}. ` : "";
         const what = e.from === null || e.from === e.to ? `${v(e.to)} serves the site` : `Updated from ${escapeHtml(e.from)} to ${v(e.to)}`;
         out.push({ ...base, by: null, cat: "build", html: `${aside}${what}` });
       }
