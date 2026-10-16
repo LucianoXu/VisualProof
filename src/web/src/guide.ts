@@ -49,6 +49,9 @@ interface Step {
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel);
 
+/** VisualProof's repository, which the help sheet links to (the owner's decision of 2026-10-16). */
+const REPO = "https://github.com/LucianoXu/VisualProof";
+
 /** The rectangle around the elements found, or null when none is shown. */
 function around(...sels: string[]): DOMRect | null {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -444,6 +447,10 @@ export class Guide {
       `<div class="help-note" data-help-editor-now>${this.editorNow()}</div></div>`) +
       `<div class="help-about"><div class="help-h">About ${escapeHtml(this.hooks.project())}</div>` +
       `<div class="help-note">${escapeHtml(this.hooks.about())}</div></div>` +
+      // where the tool itself is: its documentation, its code, and where an issue is reported
+      `<div class="help-about"><div class="help-h">About VisualProof</div>` +
+      `<div class="help-note">Open source: its documentation, its code and its issues are at ` +
+      `<a class="help-repo" href="${REPO}" target="_blank" rel="noopener noreferrer">${REPO.replace("https://", "")}</a>.</div></div>` +
       `<div class="modal-actions"><button class="rv-btn" data-help-tour>Take the tour again</button><button class="rv-btn primary" data-help-close>Close</button></div></div>`;
     this.help.hidden = false;
     this.help.querySelector<HTMLElement>(".help-box")?.focus();

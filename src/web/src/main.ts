@@ -951,11 +951,20 @@ async function boot(): Promise<void> {
     frozenDrag: () => say(frozenWhy()),
   });
 
+  /** a read-only reader's notes opened or collapsed, by id (CollabSpec decision 11, the owner's
+   *  decision of 2026-10-16): theirs alone, over the state everyone shares, in this page and gone on
+   *  reload, as their folds are */
+  const ownOpen = new Map<string, boolean>();
+  /** Notes as this page shows them: each open or collapsed as its reader left it, where it is theirs
+   *  alone (`ownOpen`), else by its own state. */
+  const asOpenHere = <T extends { id: string; open: boolean }>(ns: T[]): T[] =>
+    ownOpen.size ? ns.map((n) => (ownOpen.has(n.id) && ownOpen.get(n.id) !== n.open ? { ...n, open: ownOpen.get(n.id)! } : n)) : ns;
+
   // the notes on the board on show (web/src/sticky.ts): the project's that the board holds and the
   // view's own, placed again every frame the canvas draws; what is done to one goes to everyone, as
   // the view's operations or the project's notes' (AttachmentSpec decisions 13–19)
   const stickies: Stickies = new Stickies($("#stickies"), canvas, {
-    notes: () => ({ project: projectNotes.list, view: nav.board?.rec.notes ?? [] }),
+    notes: () => ({ project: asOpenHere(projectNotes.list), view: asOpenHere(nav.board?.rec.notes ?? []) }),
     // the Project holds every note of the project; another board what its scope gives and its
     // view's lists (the owner's decision of 2026-10-11), the links read as the board reads the review
     items: () => ({ all: !nav.board || fixedScope(nav.board.rec), items: nav.board?.rec.items, links: boardReview().links ?? [] }),
@@ -970,7 +979,7 @@ async function boot(): Promise<void> {
       if (i !== undefined) go(i);
     },
     moves: (h) => !frozen() && dragMoves(locked, h),
-    setOpen: (id, kind, open) => void (kind === "project" ? projectOps([{ op: "pnote-open", id, open }]) : noteOps([{ op: "note-open", id, open }])),
+    setOpen: (id, _kind, open) => setNoteOpen(id, open),
     moved: (id, to) => void moveNote(id, to),
     // where a card hangs from its icon is shared as its state is, and is no edit
     card: (id, kind, card) => void (kind === "project" ? projectOps([{ op: "pnote-card", id, card }]) : noteOps([{ op: "note-card", id, card }])),
@@ -1008,13 +1017,8 @@ async function boot(): Promise<void> {
     edges: () => S.showEdges,
     moveNote: (id, key, world, detach) => stickies.moveInto(id, key, world, detach),
     noteText: (id) => noteOf(id)?.note.text ?? null,
-    noteOpen: (id) => !!noteOf(id)?.note.open,
-    toggleNote: (id) => {
-      const n = noteOf(id);
-      if (frozen()) return say(frozenWhy());
-      if (n?.kind === "project") void projectOps([{ op: "pnote-open", id: n.note.id, open: !n.note.open }]);
-      else if (n) noteOps([{ op: "note-open", id: n.note.id, open: !n.note.open }]);
-    },
+    noteOpen: (id) => noteOpenHere(id),
+    toggleNote: (id) => setNoteOpen(id, !noteOpenHere(id)),
     // the board's menu on what a row is; Fold and Fit are the form's (menuAct)
     menu: (on, x, y, spot) => {
       if (on?.kind === "note") openNoteMenu(on.id, x, y);
@@ -3393,6 +3397,19 @@ async function boot(): Promise<void> {
     const p = projectNotes.get(id);
     return p ? { kind: "project", note: p } : null;
   };
+  /** Whether note `id` is open on this page: as its reader left it, where it is theirs alone. */
+  const noteOpenHere = (id: string): boolean => ownOpen.get(id) ?? !!noteOf(id)?.note.open;
+  /** Open note `id`, or collapse it: for everyone, as its own state; on a read-only reader's page for
+   *  them alone, which shares nothing (CollabSpec decision 11). */
+  const setNoteOpen = (id: string, open: boolean) => {
+    const n = noteOf(id);
+    if (!n) return;
+    if (reader) {
+      ownOpen.set(id, open);
+      stickies.render();
+    } else if (n.kind === "project") void projectOps([{ op: "pnote-open", id, open }]);
+    else noteOps([{ op: "note-open", id, open }]);
+  };
   /** A note let go somewhere: attached to a declaration — its place under every clustering, its
    *  places beside it where it falls back to — or detached from the one it was attached to and put
    *  at its place under the board's clustering, or its view note's place (the owner's decision of
@@ -3545,8 +3562,9 @@ async function boot(): Promise<void> {
     if (!n) return;
     const t: MenuTarget = {
       kind: "note",
-      open: n.note.open,
+      open: noteOpenHere(id),
       view: n.kind === "view",
+      ...(reader ? { own: true } : {}),
       carries: (n.note.carries ?? []).map(carryLabel),
       attach: !data.snapshot && !reader,
       ...(n.kind === "project" ? { items: noteViews(n.note as ProjectNote) } : {}),
@@ -3820,12 +3838,9 @@ async function boot(): Promise<void> {
       case "note-edit":
         if (on.note) await editNote(on.note, on.at);
         return;
-      case "note-toggle": {
-        const n = on.note ? noteOf(on.note) : null;
-        if (n?.kind === "project") void projectOps([{ op: "pnote-open", id: n.note.id, open: !n.note.open }]);
-        else if (n) noteOps([{ op: "note-open", id: n.note.id, open: !n.note.open }]);
+      case "note-toggle":
+        if (on.note) setNoteOpen(on.note, !noteOpenHere(on.note));
         return;
-      }
       case "note-kind":
         if (on.note) await switchNote(on.note);
         return;

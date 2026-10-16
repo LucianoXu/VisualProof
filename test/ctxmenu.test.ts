@@ -77,11 +77,13 @@ test("on a cluster: fold, hide its level, the view, trust, a note; on the empty 
   // included: left out, not greyed (ViewSpec decision 21)
   assert.deepEqual(acts(menuItems({ kind: "cluster", key: "A.B", folded: false, folder: false, trust: null }, ctx({ arrange: false }))), ["fold"]);
   // a note: its own state says Collapse or Expand, its kind the other one it can be made (AttachmentSpec
-  // decision 14); where the board cannot be changed, no menu
+  // decision 14); where the board cannot be changed, no menu, but for a read-only reader's own opening
+  // and collapsing (CollabSpec decision 11)
   assert.deepEqual(menuItems({ kind: "note", open: true, view: false }, ctx()).map((it) => [it.act, it.label]), [["note-edit", "Edit"], ["note-toggle", "Collapse"], ["note-kind", "Only in this view"], ["note-delete", "Delete…"]]);
   assert.equal(menuItems({ kind: "note", open: false, view: false }, ctx())[1].label, "Expand");
   assert.equal(menuItems({ kind: "note", open: true, view: true }, ctx())[2].label, "In every view", "a view's own note: back to every view");
   assert.deepEqual(menuItems({ kind: "note", open: true, view: false }, ctx({ arrange: false })), []);
+  assert.deepEqual(menuItems({ kind: "note", open: false, view: false, own: true }, ctx({ arrange: false })).map((it) => [it.act, it.label]), [["note-toggle", "Expand"]]);
 });
 
 test("in the artwork mode with its names by selection (ExportSpec decision 19): first, the name shown in the picture or hidden, on a declaration or a cluster; elsewhere nothing of it", () => {

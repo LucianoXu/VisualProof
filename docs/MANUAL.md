@@ -350,7 +350,8 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   `Home` / `End` the first or the last), `Shift F10` (or the ContextMenu key) the menu on the
   selection, `?` every key and gesture.
 - **The first visit** starts a short tour of the page on the project itself; the `?` sheet's
-  **Take the tour again** replays it.
+  **Take the tour again** replays it. The sheet ends with what the project's graph holds, and
+  VisualProof's repository: its documentation, its code and its issues.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
@@ -824,8 +825,9 @@ what each one looks at stays their own.
   started with `--access-key-file`: **Create link** makes a link that shows the project and lets
   whoever has it change nothing that is shared — the review, pins, notes, views, the library — nor
   be seen: they are not listed, not counted, and cannot be followed or asked to follow, though they
-  may follow you. What they do stays in their page: the selection, the camera, folds, the windows,
-  the build browsed in the Time Machine, sources and Lean's hovers, Export. The link lasts until
+  may follow you. What they do stays in their page: the selection, the camera, folds, the notes
+  they open or collapse, the windows, the build browsed in the Time Machine, sources and Lean's
+  hovers, Export. The link lasts until
   revoked, and anyone it is passed on to comes in the same way; anyone let in may make one, and
   show it again from the list. A read-only reader's Share has this tab alone, with the link they
   came by. Started with `--public` too, the address alone is read-only: whoever comes without the
