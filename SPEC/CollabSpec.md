@@ -109,12 +109,15 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       everyone who comes without the key or a link of their own a read-only reader, where decision 7
       answers 404; the read-only link is then the address alone. Without `--public` no address shows
       the project to someone not given a link, so no reader can make a private project public.
-    - **What they do stays theirs**: the selection, the tool, the camera, folds, windows, the build
-      browsed in the Time Machine, search, sources and Lean's hovers, the library's files and links.
-      What a guest's page would share (folds, the views it opens) stays in the page and is gone on
-      reload. Pins, notes, the review (opinions, targets, key marks, trust), views (made, renamed or
-      changed), re-layout, undo, uploads, fetching by URL and talking to agents are not offered, and
-      the server refuses them (403) whatever the page sends.
+    - **What they do stays theirs**: the selection, the tool, the camera, folds, notes opened or
+      collapsed, windows, the build browsed in the Time Machine, search, sources and Lean's hovers,
+      the library's files and links. What a guest's page would share (folds, a note's open state,
+      the views it opens) stays in the page and is gone on reload: opening a note to read it changes
+      nothing (the owner's decision of 2026-10-16), and the reader's own choice holds over the
+      shared state until then. Pins, notes (written, edited, moved or deleted), the review
+      (opinions, targets, key marks, trust), views (made, renamed or changed), re-layout, undo,
+      uploads, fetching by URL and talking to agents are not offered, and the server refuses them
+      (403) whatever the page sends.
     - **What costs the server is bounded.** Lean's hovers are answered from a cache per build where
       they can be, and within bounds per address and in all (429 beyond). The printed document is of
       the view as it is shared, never of a reader's folds, so the export's cache answers most

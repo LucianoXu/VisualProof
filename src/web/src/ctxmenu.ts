@@ -51,13 +51,15 @@ export type MenuTarget =
       art?: boolean;
     }
   | { kind: "canvas" }
-  /** a note on the board: `open`, its own state; `view`, a view's own note (shared/sticky.ts), else
-   *  the project's (shared/projectnotes.ts); `carries`, what it carries, each in a few words; `attach`,
-   *  whether a file can be attached to it here (not in a snapshot, which has no library); `items`,
-   *  for a note of the project, the views it can be added to (as a declaration's Add to view lists
-   *  them, `holds` where one shows it already) and whether it can be taken out of this one — not on
-   *  the Project, which holds every note (the owner's decision of 2026-10-11) */
-  | { kind: "note"; open: boolean; view: boolean; carries?: string[]; attach?: boolean; items?: { views: MenuContext["views"]; remove: boolean } };
+  /** a note on the board: `open`, whether it is open on this page; `view`, a view's own note
+   *  (shared/sticky.ts), else the project's (shared/projectnotes.ts); `own`, opened and collapsed by
+   *  this page's reader alone, a read-only reader (CollabSpec decision 11); `carries`, what it carries,
+   *  each in a few words; `attach`, whether a file can be attached to it here (not in a snapshot,
+   *  which has no library); `items`, for a note of the project, the views it can be added to (as a
+   *  declaration's Add to view lists them, `holds` where one shows it already) and whether it can be
+   *  taken out of this one — not on the Project, which holds every note (the owner's decision of
+   *  2026-10-11) */
+  | { kind: "note"; open: boolean; view: boolean; own?: boolean; carries?: string[]; attach?: boolean; items?: { views: MenuContext["views"]; remove: boolean } };
 
 /** Where the menu is opened, and what the reader may do there. */
 export interface MenuContext {
@@ -142,7 +144,9 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
    *  the Project and the views it belongs to, or this view's own (AttachmentSpec decisions 13–17) */
   const note: MenuItem[] = ctx.arrange ? [{ act: "note", label: "Add a note here", sep: true }, { act: "note-view", label: "Add a note for this view" }] : [];
   if (t.kind === "note") {
-    if (!ctx.arrange) return [];
+    const toggle: MenuItem = { act: "note-toggle", label: t.open ? "Collapse" : "Expand", key: "click" };
+    // where nothing is arranged, a read-only reader still opens and collapses it, for them alone
+    if (!ctx.arrange) return t.own ? [toggle] : [];
     // what it carries (AttachmentSpec decision 12): a file of the library or a clip of one attached,
     // and each it carries taken off by itself
     const carries = t.carries ?? [];
@@ -155,7 +159,7 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
     if (t.items?.remove) items.push({ act: "item-remove", label: "Remove from this view", ...(items.length ? {} : { sep: true }) });
     return [
       { act: "note-edit", label: "Edit", key: "double-click" },
-      { act: "note-toggle", label: t.open ? "Collapse" : "Expand", key: "click" },
+      toggle,
       ...attach,
       // the other kind, keeping its text, its author, what it carries and where it is on this board
       { act: "note-kind", label: t.view ? "In every view" : "Only in this view", sep: true },
