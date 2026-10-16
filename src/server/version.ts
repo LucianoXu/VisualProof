@@ -84,14 +84,17 @@ function partial(text: string): Partial | null {
 /** The comparator `op v` of a desugared range: `v` the bound, `op` how a version stands to it. */
 type Bound = [">=" | ">" | "<=" | "<" | "=", Full];
 
-const lower = (x: Partial): Full => ({ v: [x.p[0] ?? 0, x.p[1] ?? 0, x.p[2] ?? 0], pre: x.pre });
-/** the first release past what a partial version covers (`1.2` covers 1.2.x: 1.3.0); null for `*` */
+/** the least version a partial one covers: a version written whole is itself; one with a wild part
+ *  (`22`, `22.18.x`) starts at its first prerelease (`22.0.0-0`), as npm's includePrerelease has it */
+const lower = (x: Partial): Full => ({ v: [x.p[0] ?? 0, x.p[1] ?? 0, x.p[2] ?? 0], pre: x.pre.length ? x.pre : x.p[2] === null ? [0] : [] });
+/** the first version past what a partial version covers (`1.2` covers 1.2.x: up to 1.3.0's first
+ *  prerelease, 1.3.0-0); null for `*` */
 function past(x: Partial): Full | null {
   const [a, b, c] = x.p;
   if (a === null) return null;
-  if (b === null) return { v: [a + 1, 0, 0], pre: [] };
-  if (c === null) return { v: [a, b + 1, 0], pre: [] };
-  return { v: [a, b, c + 1], pre: [] };
+  if (b === null) return { v: [a + 1, 0, 0], pre: [0] };
+  if (c === null) return { v: [a, b + 1, 0], pre: [0] };
+  return { v: [a, b, c + 1], pre: [0] };
 }
 
 /** One comparator as npm reads it (node-semver's desugaring), as bounds; null where it is no comparator. */
@@ -120,14 +123,14 @@ function bounds(op: string, text: string): Bound[] | null {
       // patches of the minor given (of the major, where only it is)
       const [a, b] = x.p;
       if (a === null) return [];
-      return [[">=", lo], ["<", { v: b === null ? [a + 1, 0, 0] : [a, b + 1, 0], pre: [] }]];
+      return [[">=", lo], ["<", { v: b === null ? [a + 1, 0, 0] : [a, b + 1, 0], pre: [0] }]];
     }
     case "^": {
       // the same leftmost part that is not zero
       const [a, b, c] = x.p;
       if (a === null) return [];
       const top: Version = a > 0 || b === null ? [a + 1, 0, 0] : b > 0 || c === null ? [0, b + 1, 0] : [0, 0, c + 1];
-      return [[">=", lo], ["<", { v: top, pre: [] }]];
+      return [[">=", lo], ["<", { v: top, pre: [0] }]];
     }
   }
   return null;
@@ -161,13 +164,14 @@ function alternative(text: string): Bound[] | null {
   return out;
 }
 
-/** Whether `version` meets a range as package.json's `engines` writes one, as npm reads it:
- *  alternatives joined by `||`, each a hyphen range (`22.18.0 - 24`) or comparators joined by spaces
- *  — `>=`, `>`, `<=`, `<`, `=`, `^`, `~`, a version, an x-range (`22`, `22.x`, `22.18.*`, `*`) —
- *  an operator apart from its version or not. An empty range, or one of spaces alone, is any
- *  version; one npm could not read, in any of its alternatives, none. Prereleases as npm takes them:
- *  22.18.0 is past 22.18.0-rc.1 (so `<=22.18.0-rc.1` excludes it), and a prerelease version meets an
- *  alternative only where one of its comparators is a prerelease of the same three numbers. */
+/** Whether `version` meets a range as package.json's `engines` writes one, as npm checks a Node
+ *  against engines (npm-install-checks: semver with includePrerelease): alternatives joined by
+ *  `||`, each a hyphen range (`22.18.0 - 24`) or comparators joined by spaces — `>=`, `>`, `<=`,
+ *  `<`, `=`, `^`, `~`, a version, an x-range (`22`, `22.x`, `22.18.*`, `*`) — an operator apart from
+ *  its version or not. An empty range, or one of spaces alone, is any version; one npm could not
+ *  read, in any of its alternatives, none. Prereleases in npm's order — 22.18.0 is past
+ *  22.18.0-rc.1, so `<=22.18.0-rc.1` excludes it — and a prerelease Node is taken as any version
+ *  (`24.0.0-rc.1` meets `>=22`; `22.0.0-rc.1` meets `22`, which starts at `22.0.0-0`). */
 export function satisfies(version: string, range: string | undefined | null): boolean {
   const m = /^v?(\d+)\.(\d+)\.(\d+)(?:-([^+]+))?(?:\+.*)?$/.exec(version.trim());
   const pre = m ? prerelease(m[4]) : null;
@@ -176,12 +180,10 @@ export function satisfies(version: string, range: string | undefined | null): bo
   if (range === undefined || range === null || !range.trim()) return true;
   const alts = range.split("||").map(alternative);
   if (alts.some((a) => a === null)) return false;
-  return (alts as Bound[][]).some(
-    (bs) =>
-      bs.every(([op, w]) => {
-        const c = order(v, w);
-        return op === ">=" ? c >= 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : op === "<" ? c < 0 : c === 0;
-      }) &&
-      (!v.pre.length || bs.some(([, w]) => w.pre.length > 0 && cmp(w.v, v.v) === 0)),
+  return (alts as Bound[][]).some((bs) =>
+    bs.every(([op, w]) => {
+      const c = order(v, w);
+      return op === ">=" ? c >= 0 : op === ">" ? c > 0 : op === "<=" ? c <= 0 : op === "<" ? c < 0 : c === 0;
+    }),
   );
 }

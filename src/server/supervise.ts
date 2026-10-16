@@ -39,6 +39,9 @@ export interface SuperviseOptions {
   /** --updates: under notify, the installed package alone */
   mode?: UpdateMode;
   log?: (line: string) => void;
+  /** how long to wait before starting a version again after the `n`th uncounted kill in a row (a
+   *  test gives none) */
+  backoff?: (n: number) => number;
   /** runs a server's code: a test gives its own */
   run?: (main: string, argv: string[], env: NodeJS.ProcessEnv) => ChildProcess;
   now?: () => number;
@@ -82,6 +85,10 @@ export function supervise(o: SuperviseOptions): Promise<number> {
   const site = o.site ?? null;
   const versions = new Versions(o.cacheRoot);
   const starts: number[] = [];
+  const backoff = o.backoff ?? ((n: number) => Math.min(300_000, 5000 * 2 ** (n - 1)));
+  /** kills in a row that do not count (out of memory): each start after one waits longer, and is
+   *  not one of the starts that make the supervisor give up */
+  let kills = 0;
   /** failures soon after it served, by version, and when the last one was */
   const strikes = new Map<string, { n: number; at: number }>();
   /** versions set aside whose record could not be written (a full disk): set aside all the same */
@@ -110,18 +117,34 @@ export function supervise(o: SuperviseOptions): Promise<number> {
       if (versions.pause(site, v, why)) log(`this site's patches up to ${v} are not taken until a newer one is out (${why}): the installed package runs`);
       else log(`this site's patches could not be paused (${versions.root} cannot be written): ${why}`);
     };
-    const start = (): void => {
+    const start = (uncounted = false): void => {
       if (stopping) return done(0);
       const t = now();
-      starts.push(t);
+      if (!uncounted) starts.push(t);
       while (starts.length && t - starts[0] > RESTART_WINDOW) starts.shift();
-      const code = codeToRun(o.installedRoot, versions, { mode: o.mode, site, also: unrecorded });
+      let code = codeToRun(o.installedRoot, versions, { mode: o.mode, site, also: unrecorded });
+      // marked before it is started, so that no prune removes it meanwhile; chosen again where one
+      // did just before the mark
+      if (code.cached) {
+        versions.markRunning(code.version, process.pid);
+        if (!versions.ready().includes(code.version)) {
+          versions.unmarkRunning(code.version, process.pid);
+          code = codeToRun(o.installedRoot, versions, { mode: o.mode, site, also: unrecorded });
+          if (code.cached) versions.markRunning(code.version, process.pid);
+        }
+      }
       if (starts.length > MAX_STARTS) {
         log(`the server was started ${starts.length} times in ten minutes: giving up`);
-        if (code.cached) pause(code.version, `VisualProof ${code.version} was started ${starts.length} times in ten minutes`);
+        if (code.cached) {
+          versions.unmarkRunning(code.version, process.pid);
+          pause(code.version, `VisualProof ${code.version} was started ${starts.length} times in ten minutes`);
+        }
         return done(1);
       }
       const env: NodeJS.ProcessEnv = { ...process.env, VISUALPROOF_SUPERVISED: "1", VISUALPROOF_INSTALLED: o.installedRoot };
+      // what it set aside without a record (a full disk): the server never restarts into it
+      if (unrecorded.size) env.VISUALPROOF_UNRECORDED = JSON.stringify([...unrecorded]);
+      else delete env.VISUALPROOF_UNRECORDED;
       // the version set aside just before this one started: told to it (the timeline), and taken
       // back if this one fails as soon
       const after = setAside;
@@ -136,10 +159,16 @@ export function supervise(o: SuperviseOptions): Promise<number> {
       // a version of the cache's, which no other server removes while this one runs it: marked as
       // it starts, by its process
       const pid = c.pid;
-      if (code.cached && pid) versions.markRunning(code.version, pid);
+      if (code.cached) {
+        if (pid) versions.markRunning(code.version, pid);
+        versions.unmarkRunning(code.version, process.pid);
+      }
       c.on("message", (m: unknown) => {
         const said = m && typeof m === "object" ? (m as { vp?: unknown }).vp : null;
-        if (said === "listening") listened = now();
+        if (said === "listening") {
+          listened = now();
+          kills = 0;
+        }
         else if (said === "environment") environment = true;
       });
       c.once("error", (e) => {
@@ -174,8 +203,12 @@ export function supervise(o: SuperviseOptions): Promise<number> {
           start();
         };
         if (!counts) {
-          log(`VisualProof ${code.version} ${how}${listened === null ? " as it started" : " soon after it started"} (out of memory?): started again`);
-          return start();
+          kills++;
+          const wait = backoff(kills);
+          log(`VisualProof ${code.version} ${how}${listened === null ? " as it started" : " soon after it started"} (out of memory?): started again${wait ? ` in ${Math.round(wait / 1000)} s` : ""}`);
+          if (!wait) return start(true);
+          setTimeout(() => start(true), wait);
+          return;
         }
         if (listened === null) return aside(`${how} before it served`, null);
         const was = strikes.get(code.version);
