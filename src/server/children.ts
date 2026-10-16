@@ -66,7 +66,7 @@ export function childCount(): number {
 }
 
 /** Ask every tracked program to end (SIGTERM), and end those still there after `graceMs`
- *  (SIGKILL). Resolves once none runs, or at the end of the grace. */
+ *  (SIGKILL). Resolves once none runs, or at the end of the grace; the process waits for it. */
 export function stopChildren(graceMs = 2000): Promise<void> {
   if (!running.size) return Promise.resolve();
   for (const c of running) end(c, "SIGTERM");
@@ -84,6 +84,5 @@ export function stopChildren(graceMs = 2000): Promise<void> {
         resolve();
       }
     }, 50);
-    tick.unref();
   });
 }
