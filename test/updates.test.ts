@@ -174,9 +174,10 @@ test("npm's script found where Node's layouts keep it: beside the binary, Homebr
   // the prefix's bin/node, a link into the Cellar; bin/npm a link to the script
   mkdirSync(join(brew, "bin"));
   symlinkSync(join(keg, "bin", "node"), join(brew, "bin", "node"));
-  assert.deepEqual(npmCommand(join(brew, "bin", "node")).args, [cli]);
+  // found through the link's own folder: compared resolved (macOS's /var is /private/var)
+  assert.deepEqual(npmCommand(join(brew, "bin", "node")).args.map((p) => realpathSync(p)), [realpathSync(cli)]);
   symlinkSync(join("..", "libexec", "lib", "node_modules", "npm", "bin", "npm-cli.js"), join(keg, "bin", "npm"));
-  assert.deepEqual(npmCommand(join(keg, "bin", "node")).args, [realpathSync(cli)]);
+  assert.deepEqual(npmCommand(join(keg, "bin", "node")).args.map((p) => realpathSync(p)), [realpathSync(cli)]);
   // nvm's, the installers': lib/node_modules beside the binary
   const nvm = fresh("nvm");
   mkdirSync(join(nvm, "bin"));
