@@ -166,8 +166,11 @@ day; `--updates` (or `VISUALPROOF_UPDATES`) says what it does with what it finds
   The log, `visualproof doctor` and the help's About part say it is out, with the command that
   installs it where this one was installed (`npm install --global visualproof@0.5.0`) and its
   release notes. Once it is installed, the server restarts into it by itself, within ten minutes.
-- A release its publisher deprecated (`npm deprecate`) is neither taken nor told of: that is how a
-  broken patch is withdrawn from the servers that have not taken it yet.
+- A release its publisher deprecated (`npm deprecate`) is neither taken nor told of, and a server
+  running it from the cache steps back at a quiet moment (to the newest ready patch that is not,
+  else the installed package): that is how a broken patch is withdrawn. Each check asks of the
+  version it runs and the patches the cache holds too; what one server found is kept for the
+  others in `updates.json`, until npm answers otherwise.
 - **notify**: told of, never downloaded. **off**: the registry is never asked (a machine kept
   offline), and the server runs as one process. `VISUALPROOF_UPDATES=off` keeps `visualproof
   doctor` from asking it too.
@@ -178,9 +181,13 @@ every server of the user, one that fails twice soon after it served for that sit
 once two sites saw it), with why (`~/.cache/visualproof/versions/bad.json`; the log, the doctor and
 the help say it), and the version before it runs again; a SIGKILL never counts, nor running out of
 memory once it served. Where the version before it fails as soon, the fault was not the patch's: it
-is taken back, and that site's server runs the installed package until a newer patch is out (so it
-does after six starts in ten minutes). One set aside is tried again a day on, and kept aside for
-good after its third failure. Under `--updates notify` the installed package runs, whatever the
+is taken back, and that site's patches are paused: its server runs the installed package for a
+day, or until a newer patch is out (so it does after six starts in ten minutes; out-of-memory kills
+are started again after a growing wait, and do not count). The pause is
+`~/.cache/visualproof/versions/paused.json`, one entry per site; the log, the doctor and the help
+say it. To lift it sooner, remove the site's entry (or the file) and restart the server. One set
+aside is tried again a day on, and kept aside for good after its third failure; the records are
+`versions/bad.json`, which may be removed as well. Under `--updates notify` the installed package runs, whatever the
 cache holds. The servers of one user share `versions/`: none removes a version another runs. Where the Node a server runs on is gone (upgraded by Homebrew), it keeps running and
 says why. `visualproof --version` says the installed package; the server's first lines, `GET
 /api/updates` and the help say the version it runs. Activity records each version that serves the
