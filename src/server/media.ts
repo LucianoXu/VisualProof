@@ -1,6 +1,8 @@
-// The tips' clips and their key frames (GuideSpec decision 6): assets/tips/<clip>.<light|dark>.mp4
-// and .webp, served as they are (they are compressed already) and with byte ranges, which Safari
-// needs to play a video at all; and which clips there are.
+// What the sheet's tips play (GuideSpec decision 6): the tour film, assets/tips/tour.light.mp4, its
+// poster and each chapter's key frame (tour-<chapter>.light.webp), where its chapters are
+// (tour.chapters.json), and the phone's gestures (phone-fingers.light.mp4) — served as they are
+// (they are compressed already) and with byte ranges, which Safari needs to play a video at all;
+// and which clips there are.
 
 import { closeSync, createReadStream, fstatSync, openSync, readdirSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -11,10 +13,12 @@ import { WEBFONTS } from "./pipeline.ts";
 /** where the clips are: beside the artworks' fonts, in the checkout's src/assets or the package's dist/assets */
 export const TIPS_DIR = join(dirname(WEBFONTS), "tips");
 
-/** a clip's or a key frame's address */
-export const TIP_PATH = /^\/tips\/[a-z0-9]+(?:-[a-z0-9]+)*\.(?:light|dark)\.(?:mp4|webp)$/;
+/** a clip's, a key frame's or the chapters' address */
+export const TIP_PATH = /^\/tips\/(?:[a-z0-9]+(?:-[a-z0-9]+)*\.(?:light|dark)\.(?:mp4|webp)|tour\.chapters\.json)$/;
 
-/** The clips there are, in both themes. */
+const TYPES: Record<string, string> = { mp4: "video/mp4", webp: "image/webp", json: "application/json" };
+
+/** The clips there are: those recorded in the light theme (the film is light only). */
 export function tipClips(dir = TIPS_DIR): string[] {
   let files: string[];
   try {
@@ -22,10 +26,9 @@ export function tipClips(dir = TIPS_DIR): string[] {
   } catch {
     return [];
   }
-  const has = new Set(files);
   return files.flatMap((f) => {
     const m = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.light\.mp4$/.exec(f);
-    return m && has.has(`${m[1]}.dark.mp4`) ? [m[1]] : [];
+    return m ? [m[1]] : [];
   });
 }
 
@@ -59,7 +62,7 @@ export function sendMedia(req: IncomingMessage, res: ServerResponse, file: strin
     return answer(res, 404);
   }
   const etag = `"${size.toString(36)}-${Math.round(mtime).toString(36)}"`;
-  const head = { "content-type": file.endsWith(".mp4") ? "video/mp4" : "image/webp", "cache-control": "no-cache", etag, "accept-ranges": "bytes" };
+  const head = { "content-type": TYPES[file.slice(file.lastIndexOf(".") + 1)] ?? "application/octet-stream", "cache-control": "no-cache", etag, "accept-ranges": "bytes" };
   const done = (code: number, headers: Record<string, string | number>) => {
     closeSync(fd);
     answer(res, code, headers);

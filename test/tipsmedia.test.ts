@@ -85,17 +85,30 @@ test("a reader gone in the middle of a clip leaves no file open; a file that can
   }
 });
 
-test("the clips there are: both themes of each; the addresses of clips and key frames alone", () => {
+test("the clips there are: those in the light theme; the addresses of clips, key frames and the film's chapters alone", () => {
   const dir = mkdtempSync(join(tmpdir(), "vp-tips-"));
   try {
-    for (const f of ["tcb.light.mp4", "tcb.dark.mp4", "tcb.light.webp", "used-by.light.mp4", "notes.txt"]) writeFileSync(join(dir, f), "x");
-    assert.deepEqual(tipClips(dir), ["tcb"]);
+    for (const f of ["tour.light.mp4", "tour.light.webp", "tour-tcb.light.webp", "tour.chapters.json", "phone-fingers.light.mp4", "notes.txt"]) writeFileSync(join(dir, f), "x");
+    assert.deepEqual(tipClips(dir).sort(), ["phone-fingers", "tour"]);
     assert.deepEqual(tipClips(join(dir, "none")), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  for (const p of ["/tips/tcb.light.mp4", "/tips/used-by.dark.webp"]) assert.ok(TIP_PATH.test(p), p);
-  for (const p of ["/tips/../package.json", "/tips/tcb.mp4", "/tips/TCB.light.mp4", "/tips/a/b.light.mp4", "/tips/tcb.light.mp4.map"]) assert.ok(!TIP_PATH.test(p), p);
+  for (const p of ["/tips/tour.light.mp4", "/tips/tour-tcb.light.webp", "/tips/tour.chapters.json", "/tips/phone-fingers.light.webp"]) assert.ok(TIP_PATH.test(p), p);
+  for (const p of ["/tips/../package.json", "/tips/tcb.mp4", "/tips/TCB.light.mp4", "/tips/a/b.light.mp4", "/tips/tcb.light.mp4.map", "/tips/other.chapters.json", "/tips/tour.chapters.json.bak"]) assert.ok(!TIP_PATH.test(p), p);
+});
+
+test("the film's chapters are served as JSON", async () => {
+  const C = await clips({ "tour.chapters.json": 0 });
+  try {
+    writeFileSync(join(C.dir, "tour.chapters.json"), JSON.stringify({ duration: 10, chapters: [] }));
+    const r = await fetch(`${C.base}/tour.chapters.json`);
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get("content-type"), "application/json");
+    assert.deepEqual(await r.json(), { duration: 10, chapters: [] });
+  } finally {
+    await C.close();
+  }
 });
 
 test("the server lists its clips at /tips/index.json, and lets a read-only reader read them", async () => {
