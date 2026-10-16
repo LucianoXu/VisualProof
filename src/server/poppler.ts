@@ -11,6 +11,7 @@
 // most two at once.
 
 import { execFile } from "node:child_process";
+import { tracked } from "./children.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -63,10 +64,12 @@ async function run(cmd: string, args: string[], ms: number): Promise<Buffer> {
   running++;
   try {
     return await new Promise<Buffer>((ok, no) => {
-      execFile(cmd, args, { timeout: ms, maxBuffer: MAX_OUT, encoding: "buffer", windowsHide: true }, (err, out, errOut) => {
-        if (err) no(new Error(`${cmd} failed: ${(errOut?.toString("utf8").trim().split("\n").pop() ?? "") || err.message}`));
-        else ok(out);
-      });
+      tracked(
+        execFile(cmd, args, { timeout: ms, maxBuffer: MAX_OUT, encoding: "buffer", windowsHide: true }, (err, out, errOut) => {
+          if (err) no(new Error(`${cmd} failed: ${(errOut?.toString("utf8").trim().split("\n").pop() ?? "") || err.message}`));
+          else ok(out);
+        }),
+      );
     });
   } finally {
     running--;

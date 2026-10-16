@@ -91,7 +91,7 @@ export const TIPS: Tip[] = [
     since: "0.4.0",
     about: ["#help"],
     showMe: "help-about",
-    manual: "run",
+    manual: "updates",
   },
 
   // ─────────────────────────────────────────────────────────────── seeing

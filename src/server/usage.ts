@@ -19,6 +19,7 @@
 // notation edges; the others are not held back by it.
 
 import { spawn } from "node:child_process";
+import { tracked } from "./children.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -134,7 +135,7 @@ export function traceOptions(p: Project, module: string): string[] {
  *  Asked once per pass, and every worker started with it, rather than through `lake env` each. */
 function lakeEnv(root: string): Promise<NodeJS.ProcessEnv> {
   return new Promise((resolveP, reject) => {
-    const child = spawn("lake", ["env", "env", "-0"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] });
+    const child = tracked(spawn("lake", ["env", "env", "-0"], { cwd: root, stdio: ["ignore", "pipe", "pipe"] }));
     const out: Buffer[] = [];
     let err = "";
     child.stdout.on("data", (b: Buffer) => out.push(b));

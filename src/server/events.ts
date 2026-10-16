@@ -83,6 +83,16 @@ export class Timeline {
   }
 
   /** Record an event, and tell every page. */
+  /** The VisualProof version the timeline last recorded as serving the site (UpdateSpec decision
+   *  10), or null where none is kept. */
+  lastVersion(): string | null {
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const e = this.events[i];
+      if (e.kind === "tool") return e.to;
+    }
+    return null;
+  }
+
   add(e: NewEvent): StoredEvent {
     const full = { ...e, id: (this.events[this.events.length - 1]?.id ?? 0) + 1, at: new Date().toISOString() } as StoredEvent;
     this.events.push(full);

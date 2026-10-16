@@ -79,7 +79,11 @@ export type StoredEvent =
    *  back — or not — taken out): `name` as it is after, `was` before a rename or a deletion, `scope`
    *  its query's text (after a rescoping); `by` null for someone without a name (a private reader,
    *  CollabSpec decision 8) */
-  | { id: number; at: string; kind: "view"; by: string | null; agent?: true; person?: string; what: "created" | "renamed" | "scope" | "deleted" | "relayout" | "version" | "linked" | "items"; view: string; name: string | null; was?: string | null; target?: string; targets?: string[]; scope: string; snapshot?: number | null; built?: string; note?: string; text?: string; shown?: boolean };
+  | { id: number; at: string; kind: "view"; by: string | null; agent?: true; person?: string; what: "created" | "renamed" | "scope" | "deleted" | "relayout" | "version" | "linked" | "items"; view: string; name: string | null; was?: string | null; target?: string; targets?: string[]; scope: string; snapshot?: number | null; built?: string; note?: string; text?: string; shown?: boolean }
+  /** the VisualProof version that serves the site, where it is another than the one recorded before
+   *  (UpdateSpec decision 10): `from` null where none was; `setAside`, a version the supervisor set
+   *  aside before this one started (decision 7) */
+  | { id: number; at: string; kind: "tool"; from: string | null; to: string; setAside?: { version: string; why: string } };
 
 /** An event without the id and time the server gives it. */
 export type NewEvent = StoredEvent extends infer E ? (E extends StoredEvent ? Omit<E, "id" | "at"> : never) : never;

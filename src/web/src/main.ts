@@ -20,7 +20,7 @@
 // the build on show.
 
 import type { BuildStatus } from "../../shared/build.ts";
-import type { ChatMessage, Invited, PresenceView, PrivateCount } from "../../shared/collab.ts";
+import type { ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../../shared/collab.ts";
 import { artNameId } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout, ViewMeta } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_GRAMMAR, SITE_PROOF, SITE_STMT } from "../../shared/graph.ts";
@@ -90,6 +90,8 @@ import type { KeysOf, Pick, Root, Shown, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
 import { routeKey, Sources } from "./sources.ts";
+import { PAGE_VERSION, Reloader, takeKept } from "./reload.ts";
+import type { Kept } from "./reload.ts";
 import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
@@ -159,6 +161,8 @@ const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap
 
 interface GraphInfo {
   version: number;
+  /** the server's process that counts the versions (UpdateSpec decision 8) */
+  instance?: string;
   at: string;
   missing: string[];
   /** the usage pass on this graph's build (server/live.ts) */
@@ -197,7 +201,7 @@ async function boot(): Promise<void> {
   let graphInfo = ready.graph;
   // the graph's two parts, and the review, at once: a page far from the server waits on each
   const reviewing = data.review().catch((): ReviewState => ({ epoch: "", rev: 0, data: emptyReview(), problems: [], error: "The review could not be loaded." }));
-  const [meta0, edges0] = await Promise.all([data.meta(graphInfo?.version), data.edges(graphInfo?.version)]);
+  const [meta0, edges0] = await Promise.all([data.meta(graphInfo?.version, graphInfo?.instance), data.edges(graphInfo?.version, graphInfo?.instance)]);
   let meta: ViewMeta = meta0;
   /** the graph on show: the latest build's */
   let present = new Graph(meta, new Int32Array(edges0));
@@ -205,6 +209,8 @@ async function boot(): Promise<void> {
   let g = present;
   const store = new Store(meta.project.root);
   const S = store.data;
+  /** what this page held before it reloaded into its server's new version (web/src/reload.ts) */
+  const kept: Kept | null = data.snapshot ? null : takeKept(meta.project.root);
   /** a read-only reader's page (CollabSpec decision 11): how it was let in, known before anything is
    *  set up; null for any other page. It changes nothing that is shared and offers nothing that would. */
   const reader: "link" | "public" | null = data.snapshot ? null : ((await data.identity()).readOnly?.by ?? null);
@@ -252,6 +258,10 @@ async function boot(): Promise<void> {
   let updating = false;
   let extractError: string | null = null;
   let offline = false;
+  /** the version the server restarts into (`update`), until the page is back with it */
+  let updatingTo: string | null = null;
+  /** the version the page waits to reload into, while a reload would cut something short */
+  let reloadOffered: string | null = null;
   /** the depth stepper's label (defined with the side panel below) */
   let showLevel = () => {};
   /** draw the edges, or not (defined with the eyes below) */
@@ -552,6 +562,7 @@ async function boot(): Promise<void> {
     go: (i) => go(i),
     openSource: (name, from, to, quoted, root) => openSourceAt(name, from, to, quoted, root),
   });
+  if (kept) reviewBox.restoreDrafts(kept.review);
   /** What declaration `i` of the board's graph is called now: on a past graph, the name a rename
    *  since gave it, which the review, the views' records and their scopes speak (HistorySpec decision
    *  8); else its name. */
@@ -968,7 +979,7 @@ async function boot(): Promise<void> {
   /** a read-only reader's notes opened or collapsed, by id (CollabSpec decision 11, the owner's
    *  decision of 2026-10-16): theirs alone, over the state everyone shares, in this page and gone on
    *  reload, as their folds are */
-  const ownOpen = new Map<string, boolean>();
+  const ownOpen = new Map<string, boolean>(reader && kept ? kept.notes : []);
   /** Notes as this page shows them: each open or collapsed as its reader left it, where it is theirs
    *  alone (`ownOpen`), else by its own state. */
   const asOpenHere = <T extends { id: string; open: boolean }>(ns: T[]): T[] =>
@@ -1498,6 +1509,7 @@ async function boot(): Promise<void> {
     },
     replied: () => chatWin.replied(),
   });
+  if (kept) talk.restoreDrafts(kept.talk);
   /** A reader's place in words: "Review ★fermatLastTheoremFour, looking at not_fermat_42". */
   const describePlace = (v: PresenceView): string => {
     const name = (m: string) => (TOOLS.includes(m as Tool) ? toolName(m as Tool) : m);
@@ -2869,9 +2881,14 @@ async function boot(): Promise<void> {
     let cls = "ok";
     let text = "Built";
     const c = build?.counts;
-    if (offline) {
+    if (offline && updatingTo) {
+      cls = "building";
+      text = `Updating to ${updatingTo}…`;
+    } else if (offline) {
       cls = "off";
       text = "Offline";
+    } else if (reloadOffered) {
+      text = "Updated — reload";
     } else if (build?.active) {
       cls = "building";
       const p = build.progress;
@@ -2970,16 +2987,68 @@ async function boot(): Promise<void> {
   // the views as they are, sent on every (re)connection: the first is what the page loaded with
   let reconnected = false;
   /** Follow the server: what it sends goes to the view on show, so it starts once one is. */
+  // the page follows its server into another version (UpdateSpec decision 8, web/src/reload.ts): it
+  // reloads where it is, unless that would cut short what the reader is doing; the pill offers it
+  // meanwhile, and a click on it reloads at once
+  const reloader = new Reloader({
+    busy: () => {
+      const a = document.activeElement;
+      if ((a instanceof HTMLTextAreaElement || (a instanceof HTMLInputElement && (a.type === "text" || a.type === "search"))) && a.value.trim()) return "text being typed";
+      if (a instanceof HTMLElement && a.isContentEditable) return "text being typed";
+      if (stickies.editing) return "a note being written";
+      if (canvas.pressed) return "a drag";
+      if (exportModal.isOpen) return "the export window";
+      if (artLook) return "the artwork mode";
+      if (linear.shown) return "the linear form";
+      return null;
+    },
+    kept: () => ({
+      root: meta.project.root,
+      at: Date.now(),
+      sources: {
+        following: sources.following ? { name: sources.following.name, collapsed: sources.following.collapsed } : null,
+        pinned: sources.pinned.map((p) => ({ name: p.name, collapsed: p.collapsed })),
+      },
+      review: reviewBox.keptDrafts,
+      talk: talk.keptDrafts,
+      notes: reader ? [...ownOpen] : [],
+    }),
+    offer: (v) => {
+      reloadOffered = v;
+      renderBuild();
+    },
+    reload: () => location.reload(),
+  });
+  pill.addEventListener(
+    "click",
+    (e) => {
+      if (!reloadOffered) return;
+      e.stopImmediatePropagation();
+      reloader.go();
+    },
+    true,
+  );
   const listen = () => {
     if (data.snapshot) return;
     // the server names the stream, and tells this page alone the secret its heartbeats carry: the
     // others see the page go when it closes
     const es = new EventSource(`/api/events?session=${people.session}`);
-    es.addEventListener("hello", (e) => people.connected(JSON.parse((e as MessageEvent).data)));
-    // the release the server runs (UpdateSpec): What's new, once (GuideSpec decision 11)
     es.addEventListener("hello", (e) => {
-      const release = (JSON.parse((e as MessageEvent).data) as { server?: { version?: unknown } }).server?.version;
-      if (typeof release === "string") hearRelease(release);
+      const hello = JSON.parse((e as MessageEvent).data) as StreamHello;
+      people.connected(hello);
+      updatingTo = null;
+      reloader.hello(hello.server);
+      // the release this page's code is of, once it is the server's (GuideSpec decision 11): a page
+      // about to reload into another tells nothing, so that What's new waits for the new code
+      const release = hello.server?.version;
+      if (release && (!PAGE_VERSION || release === PAGE_VERSION)) hearRelease(release);
+      renderBuild();
+    });
+    // the server restarts into another version (UpdateSpec decision 8): the pill says so while it is
+    // away, and the page reloads into it when it is back
+    es.addEventListener("update", (e) => {
+      updatingTo = (JSON.parse((e as MessageEvent).data) as { to?: string }).to ?? null;
+      renderBuild();
     });
     es.addEventListener("presence", (e) => people.setPeers(JSON.parse((e as MessageEvent).data)));
     es.addEventListener("private", (e) => people.setPrivateCount((JSON.parse((e as MessageEvent).data) as PrivateCount).count));
@@ -3068,9 +3137,10 @@ async function boot(): Promise<void> {
     es.addEventListener("graph", async (e) => {
       const info: GraphInfo = JSON.parse((e as MessageEvent).data);
       extractError = null;
-      if (graphInfo && info.version === graphInfo.version) return;
+      // the same version of the same server's: nothing new (a server restarted counts again)
+      if (graphInfo && info.version === graphInfo.version && info.instance === graphInfo.instance) return;
       try {
-        const [next, edges] = await Promise.all([data.meta(info.version), data.edges(info.version)]);
+        const [next, edges] = await Promise.all([data.meta(info.version, info.instance), data.edges(info.version, info.instance)]);
         graphInfo = info;
         await install(next, edges);
       } catch {
@@ -4097,6 +4167,17 @@ async function boot(): Promise<void> {
   people.renderMe();
   reviewChanged();
   renderBuild();
+  // the source windows the page had before it reloaded into its server's new version, on the
+  // declarations found by name (web/src/reload.ts)
+  if (kept && (kept.sources.following || kept.sources.pinned.length)) {
+    const on = (w: { name: string; collapsed: boolean }) => {
+      const decl = present.byName.get(w.name);
+      return decl === undefined ? null : { decl, collapsed: w.collapsed };
+    };
+    const f = kept.sources.following && on(kept.sources.following);
+    sources.mirror({ following: f, pinned: kept.sources.pinned.map(on).filter((w) => w !== null) });
+    sources.release();
+  }
   $("#loader").classList.add("gone");
   // the guide (GuideSpec): the tour on a first visit, the ? sheet at any time, its tips; tips in place
   /** The declaration the tour shows things on (GuideSpec decision 3): the selection; a target with

@@ -13,6 +13,10 @@ into the latest release only.
   the usage pass elaborates each module again, which runs the project's macros and elaborators.
   Serve only a project you would build yourself.
 - **The project's toolchain**, which elan installs, and Lean's own kernel and language server.
+- **The npm registry and VisualProof's publisher**, as at the first install: with `--updates auto`
+  (the default) a server downloads the patch releases of the version it runs, through npm, which
+  checks each against the registry's integrity, and restarts into them by itself (SPEC/UpdateSpec.md).
+  `--updates notify` downloads nothing; `--updates off` asks the registry nothing.
 
 ## What a running server exposes
 
@@ -60,6 +64,13 @@ into the latest release only.
   link-local, reserved or the server's own, checked on every address the name resolves to, on the
   connection itself (against DNS rebinding) and again at every redirect (at most 5); at most 50 MB,
   within 60 s.
+- **Its own updates.** At start and once a day the server runs `npm view visualproof versions`
+  (and the `engines` of the newest releases): npm's own requests to the registry npm is configured
+  with, which carry nothing of the project. Under auto it then runs `npm install --prefix
+  <cache>/versions/<version> --ignore-scripts visualproof@<version>` for a patch, and runs that
+  version's server once to check it says its version. `GET /api/updates` tells a read-only reader
+  and an agent the running version alone; those let in fully, also what is newer and the command
+  that installs it.
 - **Uploads.** PDFs and images of at most 50 MB each, the library at most `--library-limit` (2 GB
   by default). The server reads PDFs with Poppler: keep it up to date. Pages draw them with pdf.js,
   whose script engine is never served, so a PDF's JavaScript does not run.
@@ -80,4 +91,7 @@ folder up as you would any secret, and never commit it.
 - Give it `--access-key-file`, or an authenticating proxy that is the only way in; `--public` only
   for a project meant to be public.
 - Put TLS in front of anything that leaves a trusted network.
-- Keep the project's toolchain, Poppler and Node up to date.
+- Keep the project's toolchain, Poppler and Node up to date. A server takes VisualProof's patches
+  by itself (`--updates auto`); a newer minor version is told of in its log, `visualproof doctor`
+  and the page's help, and installed by hand. On a machine that must not reach the network, give
+  `--updates off`.

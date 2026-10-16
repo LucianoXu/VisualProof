@@ -158,6 +158,16 @@ export class ReviewBox {
     return f && f !== this.hooks.review().reviewer?.trim() ? f : null;
   }
 
+  /** The drafts not empty, kept across a reload into a new version (web/src/reload.ts). */
+  get keptDrafts(): [string, string][] {
+    return [...this.drafts].filter(([, v]) => v.trim() !== "");
+  }
+
+  /** The drafts kept by the reload that made this page (UpdateSpec decision 8). */
+  restoreDrafts(kept: [string, string][]): void {
+    for (const [k, v] of kept) if (!this.drafts.has(k)) this.drafts.set(k, v);
+  }
+
   /** Keep what is typed into a comment box: the other boxes of the declaration show it too. Whom
    *  one speaks for, typed into any box, is every box's. */
   input(t: HTMLElement, i: number): void {

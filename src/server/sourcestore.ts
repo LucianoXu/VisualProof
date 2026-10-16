@@ -25,6 +25,7 @@
 // already. Nothing is ever written into the project or its `.git`.
 
 import { spawn, spawnSync } from "node:child_process";
+import { tracked } from "./children.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -202,7 +203,7 @@ function gitSync(root: string, args: string[]): string | null {
 /** The same, off the event loop, with `input` on its standard input: its output as bytes, or null. */
 function git(root: string, args: string[], input?: string): Promise<Buffer | null> {
   return new Promise((ok) => {
-    const p = spawn("git", ["-C", root, ...args], { env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, stdio: ["pipe", "pipe", "ignore"] });
+    const p = tracked(spawn("git", ["-C", root, ...args], { env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, stdio: ["pipe", "pipe", "ignore"] }));
     const out: Buffer[] = [];
     p.stdout.on("data", (b: Buffer) => out.push(b));
     p.on("error", () => ok(null));
