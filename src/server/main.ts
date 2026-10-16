@@ -1288,13 +1288,20 @@ function packedGz(edgesGz: Buffer, format: 1 | 2): Buffer {
   return p;
 }
 
+/** What a stop signal does to a server: end it at once, until it can stop gracefully (serve). */
+let stopNow: () => void = () => process.exit(0);
+
 async function main(): Promise<void> {
   const o = parseArgs(process.argv.slice(2));
   // an installed package's server runs under the supervisor, which stays while it restarts into
   // another version (UpdateSpec decision 5); `--updates off`, and a checkout, run it as they are
-  if (o.cmd === "serve" && FROM_PACKAGE && o.updates !== "off" && !process.env.VISUALPROOF_SUPERVISED) {
-    process.exit(await supervise({ installedRoot: PACKAGE_ROOT, cacheRoot: o.cache ? resolve(o.cache) : cacheHome(), argv: process.argv.slice(2) }));
+  if (o.cmd === "serve" && FROM_PACKAGE && o.updates !== "off" && process.env.VISUALPROOF_SUPERVISED !== "1") {
+    const site = projectDirs(resolve(o.path), o.site, o.cache).site;
+    process.exit(await supervise({ installedRoot: PACKAGE_ROOT, cacheRoot: o.cache ? resolve(o.cache) : cacheHome(), argv: process.argv.slice(2), site, mode: o.updates }));
   }
+  // a stop asked before the server can stop gracefully (it reads the project, takes the site) ends
+  // it at once, with status 0; once it can, the graceful stop does (`stopNow`, below)
+  if (o.cmd === "serve") for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => stopNow());
   if (o.cmd === "doctor") {
     const report = doctor({ path: o.path || null, roots: o.roots, site: o.site, cache: o.cache });
     console.log(printReport(report, o.path || null));
@@ -1442,10 +1449,11 @@ async function main(): Promise<void> {
     running: version,
     // the supervisor's word, believed only from it
     installedRoot: (supervised && process.env.VISUALPROOF_INSTALLED) || PACKAGE_ROOT,
+    site: dirs.site,
   });
   live.updateStatus = (full) => updates.status(full);
   app.updates = updates;
-  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => stop(0, { stopped: true }));
+  stopNow = () => stop(0, { stopped: true });
   // the supervisor went: this server goes with it rather than serve on alone
   if (supervised) process.on("disconnect", () => stop(0, { stopped: true }));
   server.on("error", (e: NodeJS.ErrnoException) => {

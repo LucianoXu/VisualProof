@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { constants as osConstants } from "node:os";
 import type { ChildProcess } from "node:child_process";
 import { codeToRun, Versions } from "./updates.ts";
+import type { UpdateMode } from "./updates.ts";
 
 /** the status a server ends with to be started again, in another version */
 export const RESTART_STATUS = 75;
@@ -33,6 +34,10 @@ export interface SuperviseOptions {
   cacheRoot: string;
   /** the arguments the server is run with (`serve …`) */
   argv: string[];
+  /** the site it serves: failures soon after a version served, and paused patches, are this site's */
+  site?: string | null;
+  /** --updates: under notify, the installed package alone */
+  mode?: UpdateMode;
   log?: (line: string) => void;
   /** runs a server's code: a test gives its own */
   run?: (main: string, argv: string[], env: NodeJS.ProcessEnv) => ChildProcess;
@@ -49,22 +54,38 @@ export function signalStatus(signal: NodeJS.Signals): number {
   return 128 + (osConstants.signals[signal] ?? 0);
 }
 
-/** A signal that ends a process for what it took, not for what its code did: the kernel's when
- *  memory runs out (and an operator's kill -9). A version is never set aside for it. */
-const RESOURCE: ReadonlySet<string> = new Set(["SIGKILL"]);
+/** How a version's failure counts (UpdateSpec decision 7): a SIGKILL never (the kernel's when
+ *  memory runs out, an operator's kill -9); a SIGABRT — V8's when the heap reaches its limit — only
+ *  before the version served: a version that runs out of memory as it starts, where the one before
+ *  it did not, is the version's fault; one that runs out once it serves may be a reader's request.
+ *  Either way it is started again (a version killed at every start ends in the too-many-starts stop
+ *  below, which pauses it). */
+function resource(signal: NodeJS.Signals | null, listened: boolean): boolean {
+  return signal === "SIGKILL" || (signal === "SIGABRT" && listened);
+}
 
-/** Run the server until it ends for good; the status it ended with. A version from the cache is set
- *  aside (UpdateSpec decision 7) where it fails before it serves, or fails twice soon after it
- *  started (a SIGKILL never counting); where the version started after one was set aside fails as
- *  soon, the fault was not the first one's: it is taken back, and the supervisor ends. */
+/** failures soon after it served are counted for a day after the last one */
+const STRIKES_FOR = 24 * 3600_000;
+
+/** Run the server until it ends for good; the status it ended with — 0 once a stop was asked,
+ *  whatever the server does meanwhile. A version from the cache is set aside (UpdateSpec decision 7)
+ *  where it fails before it serves (for every site: it is about the version), or twice soon after it
+ *  served (for this site: it may be about its project; a second site's sets it aside for all);
+ *  where the version started after one was set aside fails as soon, the fault was not the first
+ *  one's: it is taken back (what was recorded kept), this site's patches up to it are paused — it
+ *  runs the installed package until a newer patch is out — and the supervisor ends. So does it
+ *  after too many starts, pausing the patch it was starting. */
 export function supervise(o: SuperviseOptions): Promise<number> {
   const log = o.log ?? ((l: string) => console.error(`visualproof: ${l}`));
   const run = o.run ?? defaultRun;
   const now = o.now ?? Date.now;
+  const site = o.site ?? null;
   const versions = new Versions(o.cacheRoot);
   const starts: number[] = [];
-  /** failures soon after it served, by version, while this supervisor runs */
-  const strikes = new Map<string, number>();
+  /** failures soon after it served, by version, and when the last one was */
+  const strikes = new Map<string, { n: number; at: number }>();
+  /** versions set aside whose record could not be written (a full disk): set aside all the same */
+  const unrecorded = new Set<string>();
   let child: ChildProcess | null = null;
   let stopping = false;
   /** the version set aside last, which the next child is told of */
@@ -75,19 +96,31 @@ export function supervise(o: SuperviseOptions): Promise<number> {
   };
   for (const s of SIGNALS) process.on(s, forward);
   return new Promise((resolve) => {
+    let ended = false;
     const done = (status: number) => {
+      if (ended) return;
+      ended = true;
       for (const s of SIGNALS) process.off(s, forward);
-      resolve(status);
+      // a stop was asked: whatever the server did meanwhile (a restart, a signal before its own
+      // handlers), the stop is what happened
+      resolve(stopping ? 0 : status);
     };
-    const start = () => {
+    const pause = (v: string, why: string) => {
+      if (!site) return;
+      if (versions.pause(site, v, why)) log(`this site's patches up to ${v} are not taken until a newer one is out (${why}): the installed package runs`);
+      else log(`this site's patches could not be paused (${versions.root} cannot be written): ${why}`);
+    };
+    const start = (): void => {
+      if (stopping) return done(0);
       const t = now();
       starts.push(t);
       while (starts.length && t - starts[0] > RESTART_WINDOW) starts.shift();
+      const code = codeToRun(o.installedRoot, versions, { mode: o.mode, site, also: unrecorded });
       if (starts.length > MAX_STARTS) {
         log(`the server was started ${starts.length} times in ten minutes: giving up`);
+        if (code.cached) pause(code.version, `VisualProof ${code.version} was started ${starts.length} times in ten minutes`);
         return done(1);
       }
-      const code = codeToRun(o.installedRoot, versions);
       const env: NodeJS.ProcessEnv = { ...process.env, VISUALPROOF_SUPERVISED: "1", VISUALPROOF_INSTALLED: o.installedRoot };
       // the version set aside just before this one started: told to it (the timeline), and taken
       // back if this one fails as soon
@@ -100,6 +133,10 @@ export function supervise(o: SuperviseOptions): Promise<number> {
       let environment = false;
       const c = run(code.main, o.argv, env);
       child = c;
+      // a version of the cache's, which no other server removes while this one runs it: marked as
+      // it starts, by its process
+      const pid = c.pid;
+      if (code.cached && pid) versions.markRunning(code.version, pid);
       c.on("message", (m: unknown) => {
         const said = m && typeof m === "object" ? (m as { vp?: unknown }).vp : null;
         if (said === "listening") listened = now();
@@ -111,32 +148,40 @@ export function supervise(o: SuperviseOptions): Promise<number> {
       });
       c.once("exit", (status, signal) => {
         child = null;
-        const ended = status ?? (signal ? signalStatus(signal) : 1);
-        if (stopping) return done(ended);
+        if (code.cached && pid) versions.unmarkRunning(code.version, pid);
+        const ends = status ?? (signal ? signalStatus(signal) : 1);
+        if (stopping) return done(0);
         if (status === RESTART_STATUS) return start();
-        if (status === 0 || environment) return done(ended);
+        if (status === 0 || environment) return done(ends);
         const how = signal ? `was ended by ${signal}` : `exited with status ${status}`;
         const soon = listened === null || now() - listened < FAILS_WITHIN;
-        if (after && soon) {
+        const counts = !resource(signal, listened !== null);
+        if (after && soon && counts) {
+          // the version before it fails as soon: the fault was not the one set aside's
           versions.unmarkBad(after.version);
+          unrecorded.delete(after.version);
           log(`VisualProof ${code.version} ${how} as well: ${after.version} is taken back from those set aside (the fault is not its); stopping`);
-          return done(ended);
+          pause(after.version, `${after.version}, and the version before it, failed as they started`);
+          return done(ends);
         }
-        if (!code.cached || !soon) return done(ended);
-        const aside = (why: string) => {
-          versions.markBad(code.version, why);
+        if (!code.cached || !soon) return done(ends);
+        const aside = (why: string, where: string | null) => {
+          if (!versions.markBad(code.version, why, where)) {
+            unrecorded.add(code.version);
+            log(`VisualProof ${code.version} ${why}: set aside, though ${versions.root} could not record it (a full disk?)`);
+          } else log(`VisualProof ${code.version} ${why}: set aside${where ? " for this site" : ""}; starting the version before it`);
           setAside = { version: code.version, why };
-          log(`VisualProof ${code.version} ${why}: set aside; starting the version before it`);
           start();
         };
-        if (listened === null) return aside(`${how} before it served`);
-        if (signal && RESOURCE.has(signal)) {
-          log(`VisualProof ${code.version} ${how} soon after it started (out of memory?): started again`);
+        if (!counts) {
+          log(`VisualProof ${code.version} ${how}${listened === null ? " as it started" : " soon after it started"} (out of memory?): started again`);
           return start();
         }
-        const n = (strikes.get(code.version) ?? 0) + 1;
-        strikes.set(code.version, n);
-        if (n >= 2) return aside(`${how} twice soon after it started`);
+        if (listened === null) return aside(`${how} before it served`, null);
+        const was = strikes.get(code.version);
+        const n = was && now() - was.at < STRIKES_FOR ? was.n + 1 : 1;
+        strikes.set(code.version, { n, at: now() });
+        if (n >= 2) return aside(`${how} twice soon after it started`, site ?? "");
         log(`VisualProof ${code.version} ${how} soon after it started: started again`);
         start();
       });

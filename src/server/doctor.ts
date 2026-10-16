@@ -107,12 +107,18 @@ export interface DoctorOptions {
 /** What the registry says of the releases beyond this one, in a line (UpdateSpec decisions 1–4, 7):
  *  asked through npm under this Node, unless updates are off (VISUALPROOF_UPDATES=off); with what
  *  this machine's servers set aside. */
-function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: string, mode: string | undefined): string {
+function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: string, mode: string | undefined, site: string | null): string {
   const running = packageVersion();
   if (!fromPackage) return "a checkout: its updates are git's, not npm's";
   if (mode === "off") return "not asked (VISUALPROOF_UPDATES=off)";
-  const bad = new Versions(cacheRoot).bad();
-  const aside = bad.size ? `; set aside here: ${[...bad].map(([v, e]) => `${v} (${e.why})`).join(", ")}` : "";
+  // what is set aside now (for the project's site, where one is checked), and where its patches are paused
+  const kept = new Versions(cacheRoot);
+  const held = kept.reasons(Date.now(), site);
+  const paused = kept.paused(site);
+  const bad = new Map(held.map((h) => [h.version, h]));
+  const aside =
+    (held.length ? `; set aside here: ${held.map((h) => `${h.version} (${h.why})`).join(", ")}` : "") +
+    (paused ? `; this site's patches up to ${paused.upTo} are not taken (${paused.why})` : "");
   const { cmd, args } = npmCommand();
   // run where no project's .npmrc applies: the caches' root, else the temporary folder
   const cwd = existsSync(cacheRoot) ? cacheRoot : tmpdir();
@@ -141,10 +147,13 @@ function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: s
     engines.set(c, info.engines);
     if (info.deprecated) deprecated.add(c);
   }
-  const { patch, release } = choose(running, versions, { node, bad: new Set(bad.keys()), engines: (x) => engines.get(x), deprecated });
+  // only versions npm said the engines and deprecation of are named: one it could not say of is not
+  const { patch, release } = choose(running, versions.filter((x) => engines.has(x)), { node, bad: new Set(bad.keys()), engines: (x) => engines.get(x), deprecated });
   const skipped = newest(versions.filter((x) => newerThan(x, running)));
+  const unsaid = [first.patch, first.release].find((c) => c && !engines.has(c));
   if (release && !sameMinor(release, running)) return `${release} is out: ${installCommand(PACKAGE_ROOT, release)} (${notesOf(release)}); a server restarts into it by itself${aside}`;
   if (patch) return `${patch} is out: a server takes it by itself (--updates auto), or ${installCommand(PACKAGE_ROOT, patch)}${aside}`;
+  if (unsaid) return `${unsaid} is out, but npm could not say what it needs: not checked${aside}`;
   if (skipped && deprecated.has(skipped)) return `${skipped} is out, but deprecated by its publisher${aside}`;
   if (skipped && engines.has(skipped)) return `${skipped} is out, but needs Node ${engines.get(skipped)}; this is ${node}${aside}`;
   return `the latest release${aside}`;
@@ -192,7 +201,7 @@ export function doctor(o: DoctorOptions): Report {
     checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them" });
   }
 
-  const updates = updatesLine(exec, node, o.fromPackage ?? FROM_PACKAGE, o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES);
+  const updates = updatesLine(exec, node, o.fromPackage ?? FROM_PACKAGE, o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES, o.path === null ? null : projectDirs(resolve(o.path), o.site, o.cache).site);
   if (o.path === null) return { checks, updates, ready: null };
 
   let project;
