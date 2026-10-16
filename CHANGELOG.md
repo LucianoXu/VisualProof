@@ -11,6 +11,9 @@ What changed in each release of VisualProof, newest first. How releases are made
 - Add artwork recipes for agents and a batch export script.
 - Add recording an opinion for another reviewer at the same screen (**Speaking for**).
 - Refine artwork export.
+- Allow read-only readers to open and collapse notes, for themselves alone.
+- Add a link to the GitHub repository in the help.
+- Add the flt-regular showcase, served as the live demo at https://visualproof-demo.yingte.io.
 
 ## 0.2.0
 

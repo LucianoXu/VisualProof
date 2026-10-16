@@ -38,7 +38,7 @@ keep a record of the review.
 
 On [flt-regular](https://github.com/leanprover-community/flt-regular), Fermat's Last Theorem for
 regular primes. Of the project's
-297 declarations, two light up besides the theorem, `IsRegularPrime` and `IsRegularNumber`: with
+273 declarations, two light up besides the theorem, `IsRegularPrime` and `IsRegularNumber`: with
 the Mathlib definitions they use, they are what you need to read to believe what it says.
 
 ## What it does
