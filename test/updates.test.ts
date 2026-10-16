@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { after, test } from "node:test";
 import { choose, codeToRun, installCommand, newerThan, notesOf, registryEngines, registryVersions, sameMinor, stable, Updates, Versions } from "../src/server/updates.ts";
 import type { Npm } from "../src/server/updates.ts";
-import { RESTART_STATUS, supervise } from "../src/server/supervise.ts";
+import { RESTART_STATUS, signalStatus, supervise } from "../src/server/supervise.ts";
 import { satisfies } from "../src/server/version.ts";
 import { keep, Reloader, takeKept } from "../src/web/src/reload.ts";
 import type { Kept, KeptStorage } from "../src/web/src/reload.ts";
@@ -195,7 +195,7 @@ test("a server under auto downloads the patch it may take, restarts into it at a
   // the fetch runs npm, then the package's --version: here a stand-in that is ready already
   u.versions.fetch = async (v) => (ready(cache, v), null);
   await u.check();
-  assert.ok(logs.some((l) => /VisualProof 0\.5\.0 is out \(this is 0\.4\.0\): it is installed by npm install --prefix .* visualproof@0\.5\.0, which this server then restarts into/.test(l)), logs.join("\n"));
+  assert.ok(logs.some((l) => /VisualProof 0\.5\.0 is out \(this is 0\.4\.0; https:\/\/github\.com\/LucianoXu\/VisualProof\/releases\/tag\/v0\.5\.0\): it is installed by npm install --prefix .* visualproof@0\.5\.0, which this server then restarts into/.test(l)), logs.join("\n"));
   assert.ok(logs.some((l) => /0\.4\.1 is ready/.test(l)), logs.join("\n"));
   const full = u.status(true);
   assert.deepEqual([full.running, full.mode, full.newer?.version, full.newer?.taken, full.newer?.command], ["0.4.0", "auto", "0.5.0", false, installCommand(root, "0.5.0")]);
@@ -274,10 +274,90 @@ test("the supervisor: a restart starts the newest code again; a patch that fails
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(started[2], { main: join(root, "dist", "server", "main.js"), aside: "0.4.1" });
   assert.match(versions.bad().get("0.4.1")!.why, /exited with status 1 before it served/);
-  // the installed one ends: so does the supervisor, with its status
+  // the one before it fails as soon: the fault was not 8.0.1's, which is taken back; the supervisor ends
   children[2].listen();
   children[2].exit(3);
   assert.equal(await done, 3);
+  assert.equal(versions.bad().size, 0);
+});
+
+test("the supervisor: a patch failing once after it served is started again, set aside the second time; a SIGKILL never counts; statuses as shells say them", async () => {
+  const root = pkg(fresh("strikes"), "0.4.0");
+  const cache = fresh("strikes-cache");
+  ready(cache, "0.4.1");
+  const versions = new Versions(cache);
+  const started: string[] = [];
+  const children: ReturnType<typeof fakeChild>[] = [];
+  const done = supervise({ installedRoot: root, cacheRoot: cache, argv: ["serve"], log: () => {}, run: (main) => (started.push(main), children.push(fakeChild()), children.at(-1)!) });
+  const tick = () => new Promise((r) => setImmediate(r));
+  children[0].listen();
+  children[0].exit(null, "SIGKILL");
+  await tick();
+  children[1].listen();
+  children[1].exit(1);
+  await tick();
+  assert.equal(versions.bad().size, 0, "a SIGKILL, then one failure: not set aside yet");
+  children[2].listen();
+  children[2].exit(null, "SIGSEGV");
+  await tick();
+  assert.match(versions.bad().get("0.4.1")!.why, /was ended by SIGSEGV twice soon after it started/);
+  assert.deepEqual(started.map((m) => m.includes("versions")), [true, true, true, false]);
+  // the installed one serves; a SIGINT passed on ends it; its status is the child's
+  children[3].listen();
+  process.emit("SIGINT", "SIGINT");
+  children[3].exit(null, "SIGINT");
+  assert.equal(await done, 130);
+  assert.deepEqual([signalStatus("SIGTERM"), signalStatus("SIGSEGV")], [143, 139]);
+});
+
+test("a version set aside is tried again a day on, and for good after the third time", () => {
+  const cache = fresh("aside");
+  const versions = new Versions(cache);
+  versions.markBad("0.4.1", "exited with status 1 before it served");
+  const t = Date.now();
+  assert.ok(versions.setAside(t).has("0.4.1"));
+  assert.ok(!versions.setAside(t + 25 * 3600_000).has("0.4.1"));
+  versions.markBad("0.4.1", "again");
+  versions.markBad("0.4.1", "and again");
+  assert.equal(versions.bad().get("0.4.1")!.times, 3);
+  assert.ok(versions.setAside(t + 25 * 3600_000).has("0.4.1"));
+  versions.unmarkBad("0.4.1");
+  assert.equal(versions.bad().size, 0);
+});
+
+test("a server never restarts into what the supervisor would not run, nor where its Node is gone; a check that throws does not end the checks", async () => {
+  const root = pkg(fresh("guard"), "0.4.0");
+  const cache = fresh("guard-cache");
+  // the registry said it runs here; the download says it needs another Node
+  ready(cache, "0.4.1", ">=99");
+  writeFileSync(join(cache, "updates.json"), JSON.stringify({ checked: new Date().toISOString(), versions: ["0.4.0", "0.4.1"], engines: { "0.4.1": "" } }));
+  const logs: string[] = [];
+  const restarts: string[] = [];
+  const o = { mode: "auto" as const, cacheRoot: cache, canRestart: true, check: false, quiet: () => true, restart: (to: string) => restarts.push(to), log: (l: string) => logs.push(l), running: "0.4.0", installedRoot: root };
+  const u = new Updates(o);
+  u.start();
+  u.stop();
+  await u.look();
+  assert.deepEqual(restarts, []);
+  assert.ok(logs.some((l) => /0\.4\.1 is downloaded, but the supervisor would run 0\.4\.0: not restarted/.test(l)), logs.join("\n"));
+  // the download fits: but the Node binary is gone
+  ready(cache, "0.4.1");
+  const v = new Updates({ ...o, execPath: "/nowhere/bin/node" });
+  v.start();
+  v.stop();
+  await v.look();
+  await v.look();
+  assert.deepEqual(restarts, []);
+  assert.equal(logs.filter((l) => /\/nowhere\/bin\/node is gone/.test(l)).length, 1);
+  // npm throwing: the check says so, and the next one is set
+  const w = new Updates({ ...o, check: true, npm: async () => { throw new Error("spawn EACCES"); } });
+  await (w as unknown as { checkLoop(): Promise<void> }).checkLoop();
+  w.stop();
+  assert.ok(logs.some((l) => /the check failed: spawn EACCES; asked again in a day/.test(l)), logs.join("\n"));
+  // what full readers are told of what is set aside
+  new Versions(cache).markBad("0.4.1", "exited with status 1 before it served");
+  assert.deepEqual(u.status(true).setAside?.map((x) => [x.version, x.why]), [["0.4.1", "exited with status 1 before it served"]]);
+  assert.equal(u.status(false).setAside, undefined);
 });
 
 test("the supervisor never sets aside a patch for what is not its code: the site busy, the port taken", async () => {
@@ -347,6 +427,16 @@ test("which server answers: hello names its version and process, the graph its p
     assert.deepEqual(reader.last("updates"), { running: "0.4.0" });
     // GET /api/updates: a read-only reader too, the version alone; the meta of another process is superseded
     assert.deepEqual((await S.ask("GET", "/api/updates")).json, { running: S.live.toolVersion });
+    // the status, without the log and where the review is kept
+    const st = (await S.ask("GET", "/api/status")).json!;
+    assert.deepEqual([st.log, st.review.folder, typeof st.state], [undefined, undefined, "string"]);
+    const full = (await S.ask("GET", "/api/status", undefined, { authorization: `Bearer ${"k".repeat(43)}` })).json!;
+    assert.ok(Array.isArray(full.log) && typeof full.review.folder === "string");
+    // an agent's stream is told the version alone, as GET /api/updates tells it
+    const agent = stream(S.port, "/api/events?session=aaaaaaaa3333", { authorization: `Bearer ${"k".repeat(43)}`, "x-visualproof-kind": "agent", "x-visualproof-name": "Claude" });
+    await agent.until(() => !!agent.last("updates"));
+    assert.deepEqual(agent.last("updates"), { running: "0.4.0" });
+    agent.close();
     const meta = await S.ask("GET", `/api/meta?v=1&i=another`, undefined, { authorization: `Bearer ${"k".repeat(43)}` });
     assert.deepEqual([meta.status, meta.json!.instance], [409, S.live.instance]);
     // the server stops into another version: every page is told, and its stream ended

@@ -97,6 +97,9 @@ interface Stream {
   /** a read-only reader's (CollabSpec decision 11): the read-only link it came by, whose revoking
    *  ends the stream, or "public" (--public); null for anyone else */
   readOnly: string | null;
+  /** told all of the server's own releases (UpdateSpec decision 11): someone let in fully, not a
+   *  read-only reader nor an agent */
+  toldAll: boolean;
 }
 
 export interface GraphInfo {
@@ -146,7 +149,8 @@ export class Live {
   /** the VisualProof version this server runs, read as it started */
   readonly toolVersion = packageVersion();
   /** what a page is told of VisualProof's releases (server/updates.ts): everything, or the version
-   *  alone (`full` false: a read-only reader); null where nobody follows them (a test's server) */
+   *  alone (`full` false: a read-only reader, an agent); null where nobody follows them (a test's
+   *  server) */
   updateStatus: ((full: boolean) => UpdateStatus) | null = null;
 
   /** the review's logs (ReviewSpec.md, server/review.ts) */
@@ -990,13 +994,14 @@ export class Live {
     return this.extracting || this.usage.status.state === "running";
   }
 
-  /** What is known of VisualProof's releases changed: each page is told what it may know of it. */
+  /** What is known of VisualProof's releases changed: each page is told what it may know of it
+   *  (`toldAll`, as GET /api/updates says it). */
   updatesChanged(): void {
     const status = this.updateStatus;
     if (!status) return;
     const full = `event: updates\ndata: ${JSON.stringify(status(true))}\n\n`;
     const slim = `event: updates\ndata: ${JSON.stringify(status(false))}\n\n`;
-    for (const st of [...this.streams.values()]) this.push(st, st.readOnly === null ? full : slim);
+    for (const st of [...this.streams.values()]) this.push(st, st.toldAll ? full : slim);
   }
 
   /** The server stops (UpdateSpec decision 9): every page is told why — a restart into another
@@ -1035,7 +1040,7 @@ export class Live {
    *  it), `person` the personal link it came by. The stream is named by the server: the page is
    *  told its id, which everyone sees, and a secret for its heartbeats (`hello`); it is gone from
    *  presence when its stream closes. */
-  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null): void {
+  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null): void {
     if (session) {
       // a page that opens one more than a page needs (a reload whose old stream lingers) loses
       // its oldest
@@ -1054,13 +1059,13 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
     res.on("close", () => this.close(st));
     this.write(res, "hello", this.helloOf(st));
-    if (this.updateStatus) this.write(res, "updates", this.updateStatus(st.readOnly === null));
+    if (this.updateStatus) this.write(res, "updates", this.updateStatus(st.toldAll));
     this.write(res, "presence", this.presence.list());
     this.write(res, "private", { count: this.presence.privateCount() } satisfies PrivateCount);
     this.write(res, "people", this.invites.people());

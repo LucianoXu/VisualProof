@@ -14,6 +14,7 @@
 // busy, the port taken).
 
 import { spawn } from "node:child_process";
+import { constants as osConstants } from "node:os";
 import type { ChildProcess } from "node:child_process";
 import { codeToRun, Versions } from "./updates.ts";
 
@@ -43,15 +44,30 @@ const SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
 const defaultRun = (main: string, argv: string[], env: NodeJS.ProcessEnv): ChildProcess =>
   spawn(process.execPath, [main, ...argv], { stdio: ["inherit", "inherit", "inherit", "ipc"], env });
 
-/** Run the server until it ends for good; the status it ended with. */
+/** The status a process ended by `signal` is said to end with, as shells say it: 128 + its number. */
+export function signalStatus(signal: NodeJS.Signals): number {
+  return 128 + (osConstants.signals[signal] ?? 0);
+}
+
+/** A signal that ends a process for what it took, not for what its code did: the kernel's when
+ *  memory runs out (and an operator's kill -9). A version is never set aside for it. */
+const RESOURCE: ReadonlySet<string> = new Set(["SIGKILL"]);
+
+/** Run the server until it ends for good; the status it ended with. A version from the cache is set
+ *  aside (UpdateSpec decision 7) where it fails before it serves, or fails twice soon after it
+ *  started (a SIGKILL never counting); where the version started after one was set aside fails as
+ *  soon, the fault was not the first one's: it is taken back, and the supervisor ends. */
 export function supervise(o: SuperviseOptions): Promise<number> {
   const log = o.log ?? ((l: string) => console.error(`visualproof: ${l}`));
   const run = o.run ?? defaultRun;
   const now = o.now ?? Date.now;
   const versions = new Versions(o.cacheRoot);
   const starts: number[] = [];
+  /** failures soon after it served, by version, while this supervisor runs */
+  const strikes = new Map<string, number>();
   let child: ChildProcess | null = null;
   let stopping = false;
+  /** the version set aside last, which the next child is told of */
   let setAside: { version: string; why: string } | null = null;
   const forward = (sig: NodeJS.Signals) => {
     stopping = true;
@@ -73,7 +89,10 @@ export function supervise(o: SuperviseOptions): Promise<number> {
       }
       const code = codeToRun(o.installedRoot, versions);
       const env: NodeJS.ProcessEnv = { ...process.env, VISUALPROOF_SUPERVISED: "1", VISUALPROOF_INSTALLED: o.installedRoot };
-      if (setAside) env.VISUALPROOF_SET_ASIDE = JSON.stringify(setAside);
+      // the version set aside just before this one started: told to it (the timeline), and taken
+      // back if this one fails as soon
+      const after = setAside;
+      if (after) env.VISUALPROOF_SET_ASIDE = JSON.stringify(after);
       else delete env.VISUALPROOF_SET_ASIDE;
       setAside = null;
       let listened: number | null = null;
@@ -92,19 +111,34 @@ export function supervise(o: SuperviseOptions): Promise<number> {
       });
       c.once("exit", (status, signal) => {
         child = null;
-        if (stopping) return done(status ?? 0);
+        const ended = status ?? (signal ? signalStatus(signal) : 1);
+        if (stopping) return done(ended);
         if (status === RESTART_STATUS) return start();
-        // a patch from the cache that failed as it started, or soon after: set aside, and the
-        // version before it started instead
+        if (status === 0 || environment) return done(ended);
+        const how = signal ? `was ended by ${signal}` : `exited with status ${status}`;
         const soon = listened === null || now() - listened < FAILS_WITHIN;
-        if (code.cached && soon && status !== 0 && !environment) {
-          const why = `${signal ? `ended by ${signal}` : `exited with status ${status}`} ${listened === null ? "before it served" : "soon after it started"}`;
+        if (after && soon) {
+          versions.unmarkBad(after.version);
+          log(`VisualProof ${code.version} ${how} as well: ${after.version} is taken back from those set aside (the fault is not its); stopping`);
+          return done(ended);
+        }
+        if (!code.cached || !soon) return done(ended);
+        const aside = (why: string) => {
           versions.markBad(code.version, why);
           setAside = { version: code.version, why };
           log(`VisualProof ${code.version} ${why}: set aside; starting the version before it`);
+          start();
+        };
+        if (listened === null) return aside(`${how} before it served`);
+        if (signal && RESOURCE.has(signal)) {
+          log(`VisualProof ${code.version} ${how} soon after it started (out of memory?): started again`);
           return start();
         }
-        done(status ?? (signal ? 128 + (signal === "SIGKILL" ? 9 : signal === "SIGTERM" ? 15 : 1) : 1));
+        const n = (strikes.get(code.version) ?? 0) + 1;
+        strikes.set(code.version, n);
+        if (n >= 2) return aside(`${how} twice soon after it started`);
+        log(`VisualProof ${code.version} ${how} soon after it started: started again`);
+        start();
       });
     };
     start();

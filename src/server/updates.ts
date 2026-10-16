@@ -43,6 +43,8 @@ export interface UpdateStatus {
   /** a newer release: `taken` where this server takes it by itself (a patch, under auto), else the
    *  command that installs it; `notes`, its release notes */
   newer?: { version: string; taken: boolean; command?: string; notes: string };
+  /** the versions set aside on this machine (UpdateSpec decision 7): when, and why */
+  setAside?: { version: string; at: string; why: string }[];
 }
 
 /** The package's own folder, holding package.json: the one this code was loaded from. */
@@ -284,17 +286,29 @@ export class Versions {
     });
   }
 
-  /** The versions set aside, each with when and why (UpdateSpec decision 7). */
-  bad(): Map<string, { at: string; why: string }> {
+  /** The versions set aside, each with when, why and how many times (UpdateSpec decision 7). */
+  bad(): Map<string, { at: string; why: string; times: number }> {
     try {
-      const raw = JSON.parse(readFileSync(join(this.root, "bad.json"), "utf8")) as Record<string, { at?: unknown; why?: unknown }>;
-      return new Map(Object.entries(raw).filter(([v, e]) => stable(v) && e && typeof e.why === "string").map(([v, e]) => [v, { at: String(e.at ?? ""), why: String(e.why) }]));
+      const raw = JSON.parse(readFileSync(join(this.root, "bad.json"), "utf8")) as Record<string, { at?: unknown; why?: unknown; times?: unknown }>;
+      return new Map(
+        Object.entries(raw)
+          .filter(([v, e]) => stable(v) && e && typeof e.why === "string")
+          .map(([v, e]) => [v, { at: String(e.at ?? ""), why: String(e.why), times: Number.isInteger(e.times) && (e.times as number) > 0 ? (e.times as number) : 1 }]),
+      );
     } catch {
       return new Map();
     }
   }
 
-  private writeBad(all: Record<string, { at: string; why: string }>): void {
+  /** The versions set aside now: each for a day after it failed, and for good once it failed
+   *  SET_ASIDE_TIMES times; tried again otherwise. */
+  setAside(now = Date.now()): Set<string> {
+    const out = new Set<string>();
+    for (const [v, e] of this.bad()) if (e.times >= SET_ASIDE_TIMES || now - Date.parse(e.at) < SET_ASIDE_FOR || !Number.isFinite(Date.parse(e.at))) out.add(v);
+    return out;
+  }
+
+  private writeBad(all: Record<string, { at: string; why: string; times: number }>): void {
     if (this.ensure()) return;
     const f = join(this.root, "bad.json");
     writeFileSync(`${f}.tmp-${process.pid}`, JSON.stringify(all, null, 1));
@@ -302,7 +316,9 @@ export class Versions {
   }
 
   markBad(v: string, why: string): void {
-    this.writeBad({ ...Object.fromEntries(this.bad()), [v]: { at: new Date().toISOString(), why } });
+    const all = Object.fromEntries(this.bad());
+    all[v] = { at: new Date().toISOString(), why, times: (all[v]?.times ?? 0) + 1 };
+    this.writeBad(all);
   }
 
   /** Take a version back from those set aside (a mark made in error, or one to try again). */
@@ -416,7 +432,7 @@ export class Versions {
  *  version downloaded of its minor that is newer, ready, runs on this Node and is not set aside. */
 export function codeToRun(installedRoot: string, versions: Versions, node = process.versions.node): { main: string; version: string; cached: boolean } {
   const installed = versionAt(installedRoot) ?? "0.0.0";
-  const bad = versions.bad();
+  const bad = versions.setAside();
   let best: string | null = null;
   for (const v of versions.ready()) {
     if (!sameMinor(v, installed) || !newerThan(v, installed) || bad.has(v)) continue;
@@ -436,8 +452,10 @@ export function codeToRun(installedRoot: string, versions: Versions, node = proc
 // ---------------------------------------------------------------- a server following its releases
 
 /** VISUALPROOF_UPDATE_TEST_MS, for the tests of the update path alone (scripts/test-updates.mjs):
- *  every wait below that many milliseconds, the longest five times it */
-const TEST_MS = Number(process.env.VISUALPROOF_UPDATE_TEST_MS) > 0 ? Number(process.env.VISUALPROOF_UPDATE_TEST_MS) : 0;
+ *  every wait below that many milliseconds, the longest five times it. Honoured only where npm's
+ *  registry is one on this machine (npm_config_registry a loopback address), as the test's is and a
+ *  server's never is. */
+const TEST_MS = Number(process.env.VISUALPROOF_UPDATE_TEST_MS) > 0 && /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(process.env.npm_config_registry ?? "") ? Number(process.env.VISUALPROOF_UPDATE_TEST_MS) : 0;
 /** a day between checks, and up to two hours more, so that servers started together do not ask together */
 export const CHECK_EVERY = TEST_MS || 24 * 3600_000;
 const JITTER = TEST_MS ? 0 : 2 * 3600_000;
@@ -450,6 +468,9 @@ export const PATCH_WAIT = TEST_MS * 5 || 24 * 3600_000;
 /** the longest a package changed under the running server waits: its files are not the ones it
  *  started with */
 export const INSTALLED_WAIT = TEST_MS * 5 || 10 * 60_000;
+/** a version that failed is set aside for a day, then tried again; for good after three times */
+export const SET_ASIDE_FOR = TEST_MS * 600 || 24 * 3600_000;
+export const SET_ASIDE_TIMES = 3;
 
 interface Saved {
   checked: string;
@@ -479,6 +500,8 @@ export interface UpdatesOptions {
   installedRoot?: string;
   npm?: Npm;
   node?: string;
+  /** the Node binary this server runs on, which the supervisor starts the next one with */
+  execPath?: string;
   now?: () => number;
 }
 
@@ -502,6 +525,8 @@ export class Updates {
   private npm: Npm;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private restarting = false;
+  /** said once: the Node this server runs on is gone */
+  private nodeGone = false;
 
   constructor(o: UpdatesOptions) {
     this.o = o;
@@ -525,7 +550,7 @@ export class Updates {
   private found(): { patch: string | null; release: string | null } {
     if (!this.saved) return { patch: null, release: null };
     const e = this.saved.engines;
-    return choose(this.running, this.saved.versions, { bad: new Set(this.versions.bad().keys()), engines: (v) => (Object.hasOwn(e, v) ? e[v] : undefined), node: this.o.node });
+    return choose(this.running, this.saved.versions, { bad: this.versions.setAside(this.now()), engines: (v) => (Object.hasOwn(e, v) ? e[v] : undefined), node: this.o.node });
   }
 
   /** What a page is told (UpdateSpec decision 11): the version alone where `full` is not. */
@@ -537,6 +562,9 @@ export class Updates {
     // a newer minor, which needs someone, is told before a patch this server takes by itself
     if (release && !sameMinor(release, this.running)) s.newer = { version: release, taken: false, command: installCommand(this.installedRoot, release), notes: notesOf(release, this.installedRoot) };
     else if (patch) s.newer = this.mode === "auto" && this.o.canRestart ? { version: patch, taken: true, notes: notesOf(patch, this.installedRoot) } : { version: patch, taken: false, command: installCommand(this.installedRoot, patch), notes: notesOf(patch, this.installedRoot) };
+    const aside = this.versions.setAside(this.now());
+    const bad = [...this.versions.bad()].filter(([v]) => aside.has(v)).map(([version, e]) => ({ version, at: e.at, why: e.why }));
+    if (bad.length) s.setAside = bad;
     return s;
   }
 
@@ -570,9 +598,15 @@ export class Updates {
     this.timers.push(t);
   }
 
+  /** A check, then the next a day on, whatever this one met. */
   private async checkLoop(): Promise<void> {
-    await this.check();
-    this.later(() => void this.checkLoop(), CHECK_EVERY + Math.random() * JITTER);
+    try {
+      await this.check();
+    } catch (e) {
+      this.o.log(`updates: the check failed: ${e instanceof Error ? e.message : String(e)}; asked again in a day`);
+    } finally {
+      this.later(() => void this.checkLoop(), CHECK_EVERY + Math.random() * JITTER);
+    }
   }
 
   /** Ask the registry (UpdateSpec decision 1): the versions, and the engines of the newest beyond
@@ -585,7 +619,7 @@ export class Updates {
       return;
     }
     const engines: Record<string, string> = { ...(this.saved?.engines ?? {}) };
-    const bad = new Set(this.versions.bad().keys());
+    const bad = this.versions.setAside(this.now());
     // the newest beyond this one, in its minor and beyond it: what their Node needs
     const beyond = r.versions.filter((v) => newerThan(v, this.running));
     for (const v of [newest(beyond.filter((x) => sameMinor(x, this.running) && !bad.has(x))), newest(beyond)]) {
@@ -602,10 +636,11 @@ export class Updates {
       // kept in memory: asked again at the next start
     }
     const { patch, release } = this.found();
-    if (release && !sameMinor(release, this.running)) this.o.log(`updates: VisualProof ${release} is out (this is ${this.running}): it is installed by ${installCommand(this.installedRoot, release)}, which this server then restarts into by itself`);
+    if (release && !sameMinor(release, this.running)) this.o.log(`updates: VisualProof ${release} is out (this is ${this.running}; ${notesOf(release, this.installedRoot)}): it is installed by ${installCommand(this.installedRoot, release)}, which this server then restarts into by itself`);
     else if (!patch) {
       const out = newest(beyond);
-      this.o.log(out ? `updates: VisualProof ${out} is out, but needs Node ${engines[out] ?? "another"}; this is ${process.versions.node}` : `updates: VisualProof ${this.running} is the latest`);
+      const why = out ? (bad.has(out) ? `set aside here: ${this.versions.bad().get(out)?.why ?? "it failed"}` : `it needs Node ${engines[out] ?? "another"}; this is ${this.o.node ?? process.versions.node}`) : "";
+      this.o.log(out ? `updates: VisualProof ${out} is out, not taken: ${why}` : `updates: VisualProof ${this.running} is the latest`);
     }
     if (patch) {
       if (this.mode === "auto" && this.o.canRestart) await this.download(patch);
@@ -637,20 +672,45 @@ export class Updates {
   }
 
   /** Every minute: the installed package changed on disk (an `npm install` while this ran), or a
-   *  patch is ready; restart into it at a quiet moment, or once it waited its longest. */
+   *  patch is ready; restart into it at a quiet moment, or once it waited its longest — where the
+   *  supervisor would run it (codeToRun says the same), and where this Node is still there to run it. */
   async look(): Promise<void> {
     if (this.restarting || !this.o.canRestart) return;
     const now = this.now();
     const installed = versionAt(this.installedRoot);
     if (installed !== this.installedAtStart) this.installedChanged ??= now;
     else this.installedChanged = null;
+    const runs = (): string => codeToRun(this.installedRoot, this.versions, this.o.node).version;
     let to: string | null = null;
     if (this.installedChanged !== null) {
-      if (installed && (this.o.quiet() || now - this.installedChanged >= INSTALLED_WAIT)) to = codeToRun(this.installedRoot, this.versions, this.o.node).version;
+      if (!installed || !(this.o.quiet() || now - this.installedChanged >= INSTALLED_WAIT)) return;
+      to = runs();
+      // a package changed under the server, which runs a patch from the cache it still runs: its
+      // files are not those that changed, and nothing changes for it
+      if (to === this.running && PACKAGE_ROOT !== this.installedRoot) {
+        this.installedAtStart = installed;
+        this.installedChanged = null;
+        return;
+      }
     } else if (this.pending && this.mode === "auto") {
-      if (this.o.quiet() || now - this.pending.since >= PATCH_WAIT) to = this.pending.version;
+      if (!(this.o.quiet() || now - this.pending.since >= PATCH_WAIT)) return;
+      to = this.pending.version;
+      // what the supervisor would run is another (it reads the download's own engines, set aside
+      // or not): no restart, which would start this one again
+      const would = runs();
+      if (would !== to) {
+        this.o.log(`updates: VisualProof ${to} is downloaded, but the supervisor would run ${would}: not restarted`);
+        this.pending = null;
+        return;
+      }
     }
     if (to === null) return;
+    // the Node this server runs on is gone (an upgrade of it removed it): nothing could start again
+    if (!existsSync(this.o.execPath ?? process.execPath)) {
+      if (!this.nodeGone) this.o.log(`updates: ${this.o.execPath ?? process.execPath} is gone (Node upgraded?): this server keeps running VisualProof ${this.running}; restart it to take ${to}`);
+      this.nodeGone = true;
+      return;
+    }
     this.restarting = true;
     this.o.log(`updates: restarting into VisualProof ${to}`);
     this.o.restart(to);
