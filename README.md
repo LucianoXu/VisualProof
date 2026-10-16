@@ -11,14 +11,13 @@
 
 [![VisualProof on flt-regular, from the live demo: the TCB of flt_regular, its key declarations approved, an approval recorded at a meeting, the review plan pinned beside it](docs/images/board.webp)](https://visualproof-demo.yingte.io)
 
+<p align="center"><b>Live demo: <a href="https://visualproof-demo.yingte.io">https://visualproof-demo.yingte.io</a></b><br><sub>flt-regular in the middle of a review by three people and an AI assistant, read-only</sub></p>
+
 ## Try it
 
-**[Live demo](https://visualproof-demo.yingte.io)**: flt-regular in the middle of a review by
-three people and an AI assistant, read-only ([how it was made](showcase/flt-regular/)).
-
-Prompt to your coding agent in your Lean codebase:
+Set up in your Lean codebase with agent prompt:
 ```text
-Set up VisualProof (https://github.com/LucianoXu/VisualProof) for this Lean project, and give me the address to open.
+Set up VisualProof (https://github.com/LucianoXu/VisualProof) for my Lean project, and give me the address to open.
 ```
 
 Set up manually:
