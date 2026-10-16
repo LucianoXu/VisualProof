@@ -19,9 +19,14 @@ The owner's decisions of 2026-10-16.
    as for any `npm install`: the versions of `visualproof` (`npm view visualproof versions`), and the
    Node range of the newest beyond the running one (`engines`, read as npm reads ranges; an empty
    one runs anywhere) and whether its publisher deprecated it: a deprecated release is neither taken
-   nor told of, so that a broken patch is withdrawn by `npm deprecate`. A version npm could not
-   say these of is not taken: it is asked again at the next check. Nothing of the project is
-   sent. At start (half a minute after
+   nor told of, so that a broken patch is withdrawn by `npm deprecate`; each check also asks of the
+   version the server runs and the patches of its minor the cache holds, and a server running a
+   deprecated patch steps back at a quiet moment (to the newest ready one that is not, else the
+   installed package). What a check found deprecated is merged into `updates.json`, shared by the
+   servers of the cache: never dropped for a version not asked or not answered, cleared only by an
+   answer that it is not. A version npm could not say these of is not taken: it is asked again at
+   the next check. Engines are checked as npm checks a Node (includePrerelease): a prerelease Node
+   is taken as any version. Nothing of the project is sent. At start (half a minute after
    the server listens, unless it asked within the hour) and then once a day, with up to two hours
    more so that servers started together do not ask together. Releases only: never a release
    candidate (npm's `next`). A release whose Node range this Node does not meet is neither taken nor
@@ -83,17 +88,20 @@ The owner's decisions of 2026-10-16.
      did not. Not counted, the version is started again;
    - where the version started after one was set aside fails as soon, the fault was not the first
      one's: it is taken back, what was recorded of it kept and counted; that site's patches up to it
-     are paused — its server runs the installed package until a newer patch is out
+     are paused — its server runs the installed package for a day, or until a newer patch is out
      (`versions/paused.json`) — and the supervisor ends. So it does after six starts in ten minutes,
      pausing the patch it was starting: under systemd's `Restart=on-failure`, the next start runs
-     the installed package, and stays there;
+     the installed package, and stays there. A start after a kill that does not count waits — 5 s,
+     doubling, at most five minutes — and is not one of the six, so that kills at boot (out of
+     memory) do not pause a good patch;
    - one set aside is tried again a day later, and kept aside for good after its third failure;
    - a record that cannot be written (a full disk) sets the version aside all the same, for as long
-     as the supervisor runs, and says so.
+     as the supervisor runs (its server is told, VISUALPROOF_UNRECORDED, and never restarts into
+     it), and says so.
 
    What ends a server that is not its code — the site held by another server, the port taken, the
-   project unreadable — sets nothing aside. What is set aside now, and why, is said in the log, by
-   the doctor and to full readers (decision 11).
+   project unreadable — sets nothing aside. What is set aside now, and why, and where a site's
+   patches are paused, is said in the log, by the doctor and to full readers (decision 11).
 
 ### The pages, and stopping
 
@@ -162,6 +170,18 @@ The owner's decisions of 2026-10-16.
 - `server/children.ts`: the programs the server runs, tracked to be stopped; `grouped` (spawned
   detached, ended with `kill(-pid)`) for those that start programs of their own; `childEnv`, their
   environment without `VISUALPROOF_*`.
+- Known limits, left as they are:
+  - `bad.json` and `paused.json` are read, changed and written by each supervisor without a lock
+    between the supervisors sharing a cache: two writing at once may lose one's change. Each write
+    is whole (a file moved into place), so a record is never half written, and what is lost is one
+    failure's count or one pause — the version is set aside or paused again at its next failure.
+  - A take-back is global: it clears a version's records for every site, though the site whose
+    step-back failed may be the only one whose environment is at fault.
+  - A signal sent to the server alone (not the supervisor), before its handlers are set at its very
+    start, ends it by the signal's default; the supervisor counts that as the version's failure.
+  - Between a version chosen and its mark written, another server's prune may still remove it:
+    the supervisor marks before it starts it and chooses again where the version went meanwhile,
+    leaving the window between prune's look and its removal.
 - The supervisor's variables are read only by a supervised server. `VISUALPROOF_UPDATE_TEST_MS`
   shortens every wait for `npm run test:updates`, honoured only where npm's registry is a loopback
   address (`npm_config_registry`), as the test's is and a server's never is.

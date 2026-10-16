@@ -48,6 +48,8 @@ export interface UpdateStatus {
   /** a checkout's server (UpdateSpec decision 13): its updates are git's; nothing is asked, so
    *  there is no mode */
   checkout?: true;
+  /** this site's patches up to `upTo` are not taken, for a day or until a newer one (decision 7) */
+  paused?: { upTo: string; at: string; why: string };
 }
 
 /** The package's own folder, holding package.json: the one this code was loaded from. */
@@ -254,6 +256,17 @@ interface Failures {
   takenBack?: string;
 }
 
+/** A JSON object kept in a file, as a record of the versions' folder: anything else (no file, a
+ *  file cut short, `null`, a list) reads as none. */
+function readObject(file: string): Record<string, unknown> {
+  try {
+    const v = JSON.parse(readFileSync(file, "utf8")) as unknown;
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Whether process `pid` lives (EPERM: it does, another user's). */
 function alive(pid: number): boolean {
   try {
@@ -346,12 +359,7 @@ export class Versions {
    *  (`sites`: by the site that saw it, which may be about that project alone), and when it was taken
    *  back (the fault was found elsewhere). What was recorded is kept, taken back or not. */
   records(): Map<string, Failures> {
-    let raw: Record<string, unknown>;
-    try {
-      raw = JSON.parse(readFileSync(join(this.root, "bad.json"), "utf8")) as Record<string, unknown>;
-    } catch {
-      return new Map();
-    }
+    const raw = readObject(join(this.root, "bad.json"));
     const strikes = (e: unknown): Strikes | undefined => {
       const x = e as { at?: unknown; why?: unknown; times?: unknown } | null;
       if (!x || typeof x !== "object" || typeof x.why !== "string") return undefined;
@@ -453,28 +461,24 @@ export class Versions {
 
   /** Where a site's server stopped taking patches (UpdateSpec decision 7): its versions up to
    *  `upTo` are not run for it, so that it runs the installed package until a newer patch is out. */
-  paused(site: string | null): { upTo: string; at: string; why: string } | null {
+  paused(site: string | null, now = Date.now()): { upTo: string; at: string; why: string } | null {
     if (site === null) return null;
-    try {
-      const all = JSON.parse(readFileSync(join(this.root, "paused.json"), "utf8")) as Record<string, { upTo?: unknown; at?: unknown; why?: unknown }>;
-      const p = Object.hasOwn(all, site) ? all[site] : null;
-      return p && typeof p.upTo === "string" && stable(p.upTo) ? { upTo: p.upTo, at: String(p.at ?? ""), why: String(p.why ?? "") } : null;
-    } catch {
-      return null;
-    }
+    const all = readObject(join(this.root, "paused.json"));
+    const p = (Object.hasOwn(all, site) ? all[site] : null) as { upTo?: unknown; at?: unknown; why?: unknown } | null;
+    if (!p || typeof p !== "object" || typeof p.upTo !== "string" || !stable(p.upTo)) return null;
+    // a pause lasts a day: its patches are tried again then (a newer patch is taken at once)
+    const at = Date.parse(String(p.at ?? ""));
+    if (Number.isFinite(at) && now - at >= SET_ASIDE_FOR) return null;
+    return { upTo: p.upTo, at: String(p.at ?? ""), why: String(p.why ?? "") };
   }
 
   /** Stop taking `site`'s patches up to `upTo` (they failed, and so did the version before them):
-   *  it runs the installed package until a newer patch is out. False where it cannot be written. */
+   *  it runs the installed package for a day, or until a newer patch is out. False where it cannot
+   *  be written. */
   pause(site: string, upTo: string, why: string, now = Date.now()): boolean {
     if (this.ensure()) return false;
     const f = join(this.root, "paused.json");
-    let all: Record<string, unknown> = {};
-    try {
-      all = JSON.parse(readFileSync(f, "utf8")) as Record<string, unknown>;
-    } catch {
-      // none yet
-    }
+    const all = readObject(f);
     all[site] = { upTo, at: new Date(now).toISOString(), why };
     try {
       writeFileSync(`${f}.tmp-${process.pid}`, JSON.stringify(all, null, 1));
@@ -488,12 +492,8 @@ export class Versions {
   /** The versions the last check found deprecated by their publisher (updates.json, in the caches'
    *  root): never run. */
   deprecated(): Set<string> {
-    try {
-      const d = (JSON.parse(readFileSync(join(dirname(this.root), "updates.json"), "utf8")) as { deprecated?: unknown }).deprecated;
-      return new Set(d && typeof d === "object" ? Object.keys(d) : []);
-    } catch {
-      return new Set();
-    }
+    const d = readObject(join(dirname(this.root), "updates.json")).deprecated;
+    return new Set(d && typeof d === "object" ? Object.keys(d) : []);
   }
 
   /** Mark version `v` as run by process `pid` (the supervisor, as it starts it); false where it
@@ -693,6 +693,8 @@ export interface UpdatesOptions {
   installedRoot?: string;
   /** the site this server serves: what is set aside or paused for it (UpdateSpec decision 7) */
   site?: string | null;
+  /** versions its supervisor set aside without a record of it (a full disk): never restarted into */
+  also?: Set<string>;
   npm?: Npm;
   node?: string;
   /** the Node binary this server runs on, which the supervisor starts the next one with */
@@ -711,7 +713,7 @@ export class Updates {
   private saved: Saved | null = null;
   private now: () => number;
   /** a patch downloaded and ready, and when it was */
-  private pending: { version: string; since: number } | null = null;
+  private pending: { version: string; since: number; back?: true } | null = null;
   /** the installed package as it was when this server started, and since when it is another */
   private installedAtStart: string | null;
   private installedChanged: number | null = null;
@@ -748,9 +750,10 @@ export class Updates {
   private found(): { patch: string | null; release: string | null } {
     if (!this.saved) return { patch: null, release: null };
     const e = this.saved.engines;
-    const paused = this.versions.paused(this.o.site ?? null);
+    const paused = this.versions.paused(this.o.site ?? null, this.now());
     const known = this.saved.versions.filter((v) => Object.hasOwn(e, v));
-    const r = choose(this.running, known, { bad: this.versions.setAside(this.now(), this.o.site ?? null), engines: (v) => e[v], deprecated: new Set(Object.keys(this.saved.deprecated ?? {})), node: this.o.node });
+    const bad = new Set([...this.versions.setAside(this.now(), this.o.site ?? null), ...(this.o.also ?? [])]);
+    const r = choose(this.running, known, { bad, engines: (v) => e[v], deprecated: new Set(Object.keys(this.saved.deprecated ?? {})), node: this.o.node });
     return { ...r, patch: r.patch && paused && !newerThan(r.patch, paused.upTo) ? null : r.patch };
   }
 
@@ -766,6 +769,8 @@ export class Updates {
     else if (patch) s.newer = this.mode === "auto" && this.o.canRestart ? { version: patch, taken: true, notes: notesOf(patch, this.installedRoot) } : { version: patch, taken: false, command: installCommand(this.installedRoot, patch), notes: notesOf(patch, this.installedRoot) };
     const bad = this.versions.reasons(this.now(), this.o.site ?? null);
     if (bad.length) s.setAside = bad;
+    const paused = this.versions.paused(this.o.site ?? null, this.now());
+    if (paused) s.paused = paused;
     return s;
   }
 
@@ -784,6 +789,8 @@ export class Updates {
     // a patch downloaded by this server before it restarted for another reason is taken as well
     const kept = this.found().patch;
     if (kept && this.mode === "auto" && this.versions.ready().includes(kept)) this.pending = { version: kept, since: this.now() };
+    // and a patch it runs that was deprecated meanwhile is stepped back from
+    else this.stepBack();
   }
 
   stop(): void {
@@ -842,7 +849,33 @@ export class Updates {
         if (!Object.hasOwn(deprecated, v) && satisfies(this.o.node ?? process.versions.node, engines[v])) break;
       }
     }
-    this.saved = { checked: new Date(this.now()).toISOString(), versions: r.versions, engines, ...(Object.keys(deprecated).length ? { deprecated } : {}) };
+    // what this server runs, and the patches of its minor the cache holds: a deprecation of a
+    // version already taken withdraws it (a server running it steps back)
+    for (const v of [this.running, ...this.versions.ready().filter((x) => sameMinor(x, this.running))]) {
+      if (Object.hasOwn(engines, v) || unknown.has(v) || !stable(v)) continue;
+      const info = await registryInfo(v, ask);
+      if (info === null) {
+        unknown.add(v);
+        continue;
+      }
+      engines[v] = info.engines;
+      if (info.deprecated) deprecated[v] = info.deprecated;
+    }
+    // merged with what the cache's updates.json says, as another server may have written it: a
+    // deprecation stays until an answer says otherwise, never dropped for a version not asked or
+    // not answered
+    const was = readObject(this.file);
+    const kept: Record<string, string> = {};
+    for (const [v, m] of Object.entries(was.deprecated && typeof was.deprecated === "object" ? (was.deprecated as Record<string, unknown>) : {})) {
+      if (typeof m === "string" && stable(v) && !(Object.hasOwn(engines, v) && !Object.hasOwn(deprecated, v))) kept[v] = m;
+    }
+    for (const [v, m] of Object.entries(this.saved?.deprecated ?? {})) if (!Object.hasOwn(kept, v) && !(Object.hasOwn(engines, v) && !Object.hasOwn(deprecated, v))) kept[v] = m;
+    Object.assign(kept, deprecated);
+    const wasEngines = was.engines && typeof was.engines === "object" ? (was.engines as Record<string, unknown>) : {};
+    const allEngines: Record<string, string> = {};
+    for (const [v, x] of Object.entries(wasEngines)) if (typeof x === "string" && stable(v)) allEngines[v] = x;
+    Object.assign(allEngines, engines);
+    this.saved = { checked: new Date(this.now()).toISOString(), versions: r.versions, engines: allEngines, ...(Object.keys(kept).length ? { deprecated: kept } : {}) };
     try {
       mkdirSync(dirname(this.file), { recursive: true });
       writeFileSync(`${this.file}.tmp-${process.pid}`, JSON.stringify(this.saved));
@@ -854,9 +887,12 @@ export class Updates {
     if (release && !sameMinor(release, this.running)) this.o.log(`updates: VisualProof ${release} is out (this is ${this.running}; ${notesOf(release, this.installedRoot)}): it is installed by ${installCommand(this.installedRoot, release)}, which this server then restarts into by itself`);
     else if (!patch) {
       const out = newest(beyond);
+      const paused = this.versions.paused(this.o.site ?? null, this.now());
       const why = !out
         ? ""
-        : bad.has(out)
+        : paused && sameMinor(out, this.running) && !newerThan(out, paused.upTo)
+          ? `this site's patches up to ${paused.upTo} are paused (${paused.why}), for a day or until a newer one`
+          : bad.has(out)
           ? `set aside here: ${this.versions.heldWhy(out, this.o.site ?? null, this.now()) ?? "it failed"}`
           : unknown.has(out) || !Object.hasOwn(engines, out)
             ? "npm could not say what it needs; asked again at the next check"
@@ -868,8 +904,20 @@ export class Updates {
     if (patch) {
       if (this.mode === "auto" && this.o.canRestart) await this.download(patch);
       else this.o.log(`updates: VisualProof ${patch} is out (this is ${this.running}): ${installCommand(this.installedRoot, patch)}`);
-    }
+    } else this.stepBack();
     this.o.changed?.();
+  }
+
+  /** A patch this server runs from the cache, deprecated by its publisher since: it steps back at a
+   *  quiet moment — to the newest ready version of its minor that is not, else the installed
+   *  package (UpdateSpec decision 1). */
+  private stepBack(): void {
+    const why = this.saved?.deprecated?.[this.running];
+    if (why === undefined || !this.o.canRestart || versionAt(this.installedRoot) === this.running || this.pending) return;
+    const to = codeToRun(this.installedRoot, this.versions, { node: this.o.node, mode: this.mode, site: this.o.site ?? null, also: this.o.also }).version;
+    if (to === this.running) return;
+    this.o.log(`updates: VisualProof ${this.running}, which this server runs, is deprecated by its publisher (${why}): it steps back to ${to} at a quiet moment`);
+    this.pending = { version: to, since: this.now(), back: true };
   }
 
   /** Download patch `v` into the cache, unless it is there; once ready, it waits for a quiet moment. */
@@ -903,7 +951,7 @@ export class Updates {
     const installed = versionAt(this.installedRoot);
     if (installed !== this.installedAtStart) this.installedChanged ??= now;
     else this.installedChanged = null;
-    const runs = (): string => codeToRun(this.installedRoot, this.versions, { node: this.o.node, mode: this.mode, site: this.o.site ?? null }).version;
+    const runs = (): string => codeToRun(this.installedRoot, this.versions, { node: this.o.node, mode: this.mode, site: this.o.site ?? null, also: this.o.also }).version;
     let to: string | null = null;
     if (this.installedChanged !== null) {
       if (!installed || !(this.o.quiet() || now - this.installedChanged >= INSTALLED_WAIT)) return;
@@ -913,6 +961,14 @@ export class Updates {
       if (to === this.running && PACKAGE_ROOT !== this.installedRoot) {
         this.installedAtStart = installed;
         this.installedChanged = null;
+        return;
+      }
+    } else if (this.pending?.back) {
+      // stepping back from a deprecated patch: to what the supervisor would run now
+      if (!(this.o.quiet() || now - this.pending.since >= PATCH_WAIT)) return;
+      to = runs();
+      if (to === this.running) {
+        this.pending = null;
         return;
       }
     } else if (this.pending && this.mode === "auto") {

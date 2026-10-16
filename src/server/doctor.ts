@@ -152,6 +152,8 @@ function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: s
   const skipped = newest(versions.filter((x) => newerThan(x, running)));
   const unsaid = [first.patch, first.release].find((c) => c && !engines.has(c));
   if (release && !sameMinor(release, running)) return `${release} is out: ${installCommand(PACKAGE_ROOT, release)} (${notesOf(release)}); a server restarts into it by itself${aside}`;
+  // the pause is said in `aside`: no server here takes this one
+  if (patch && paused && !newerThan(patch, paused.upTo)) return `${patch} is out, not taken${aside}, for a day or until a newer patch`;
   if (patch) return `${patch} is out: a server takes it by itself (--updates auto), or ${installCommand(PACKAGE_ROOT, patch)}${aside}`;
   if (unsaid) return `${unsaid} is out, but npm could not say what it needs: not checked${aside}`;
   if (skipped && deprecated.has(skipped)) return `${skipped} is out, but deprecated by its publisher${aside}`;

@@ -70,10 +70,17 @@ test("Node ranges as npm reads them: every operator, x-ranges, hyphens, alternat
   yes("22.18.0", "22.18.0-rc.1 - 22.18.0");
   no("22.18.0", "=22.18.0-rc.1");
   yes("22.18.0-rc.2", ">=22.18.0-rc.1");
-  no("22.18.0-rc.2", ">=22.17.0");
   no("22.18.0-rc.1", ">=22.18.0-rc.2");
   yes("22.18.0-rc.10", ">22.18.0-rc.9");
   yes("22.18.0-rc.1", ">22.18.0-beta");
+  // a prerelease Node, as npm checks engines (includePrerelease): taken as any version
+  yes("24.0.0-rc.1", ">=22");
+  yes("22.18.0-rc.2", ">=22.17.0");
+  yes("22.0.0-rc.1", "22");
+  no("24.0.0-nightly20260901", "^22.18.0 || >=24.2.0");
+  yes("24.3.0-nightly20260901", "^22.18.0 || >=24.2.0");
+  no("23.0.0-rc.1", "^22");
+  no("24.2.0-rc.1", ">=24.2.0");
   // node-semver's desugaring at zero: ^0.2.3 is <0.3.0, ^0.0.3 is <0.0.4
   yes("0.2.9", "^0.2.3");
   no("0.3.0", "^0.2.3");
@@ -136,7 +143,7 @@ test("a release its publisher deprecated is neither taken nor told of: npm's thr
   const logs: string[] = [];
   const u = new Updates({ mode: "notify", cacheRoot: cache, canRestart: true, check: true, quiet: () => false, restart: () => {}, log: (l) => logs.push(l), running: "0.4.0", installedRoot: root, npm: ask });
   await u.check();
-  assert.deepEqual(asked, ["visualproof", "visualproof@0.4.2", "visualproof@0.4.1"]);
+  assert.deepEqual(asked, ["visualproof", "visualproof@0.4.2", "visualproof@0.4.1", "visualproof@0.4.0"], "the newest, the next, and the one it runs");
   assert.equal(u.status(true).newer?.version, "0.4.1");
 });
 
@@ -153,7 +160,7 @@ test("a version npm could not say the engines or deprecation of is not taken now
   const logs: string[] = [];
   const u = new Updates({ mode: "notify", cacheRoot: cache, canRestart: false, check: true, quiet: () => false, restart: () => {}, log: (l) => logs.push(l), running: "0.4.0", installedRoot: root, npm: ask });
   await u.check();
-  assert.deepEqual(asked, ["visualproof", "visualproof@0.4.1"], "asked once");
+  assert.deepEqual(asked, ["visualproof", "visualproof@0.4.1", "visualproof@0.4.0"], "each asked once: the newest, and the one it runs");
   assert.equal(u.status(true).newer, undefined);
   assert.ok(logs.some((l) => /0\.4\.1 is out, not taken: npm could not say what it needs/.test(l)), logs.join("\n"));
   fail = false;
@@ -348,8 +355,8 @@ test("a patch waits at most a day for a quiet moment; a package installed under 
 function fakeChild(): ChildProcess & { listen(): void; exit(status: number | null, signal?: NodeJS.Signals): void } {
   const c = new EventEmitter() as unknown as ChildProcess & { listen(): void; exit(status: number | null, signal?: NodeJS.Signals): void };
   c.kill = () => true;
-  // a living process's id, as a child's would be
-  Object.defineProperty(c, "pid", { value: process.pid });
+  // a living process's id, as a child's would be, and not the supervisor's own
+  Object.defineProperty(c, "pid", { value: process.ppid });
   c.listen = () => c.emit("message", { vp: "listening", version: "x" });
   c.exit = (status, signal) => c.emit("exit", status, signal ?? null);
   return c;
@@ -363,7 +370,7 @@ function supervised(root: string, cache: string, o: { site?: string; mode?: "aut
   const children: ReturnType<typeof fakeChild>[] = [];
   const logs: string[] = [];
   const done = supervise({
-    installedRoot: root, cacheRoot: cache, argv: ["serve", "."], log: (l) => logs.push(l), ...o,
+    installedRoot: root, cacheRoot: cache, argv: ["serve", "."], log: (l) => logs.push(l), backoff: () => 0, ...o,
     run: (main, _argv, env) => {
       started.push({ main, ...(env.VISUALPROOF_SET_ASIDE ? { aside: JSON.parse(env.VISUALPROOF_SET_ASIDE).version } : {}) });
       assert.equal(env.VISUALPROOF_SUPERVISED, "1");
@@ -499,6 +506,92 @@ test("the supervisor: SIGABRT before it served sets a patch aside; a mark that c
   // deprecated by its publisher, as the last check found: never run
   writeFileSync(join(cache, "updates.json"), JSON.stringify({ checked: new Date().toISOString(), versions: ["0.4.2"], engines: { "0.4.2": "" }, deprecated: { "0.4.2": "broken" } }));
   assert.equal(codeToRun(root, versions, { mode: "auto" }).version, "0.4.0");
+});
+
+test("npm deprecate withdraws a patch servers took: one server's finding is kept by the others, a server running it steps back, only an answer undeprecates", async () => {
+  const root = pkg(fresh("withdraw"), "0.4.0");
+  const cache = fresh("withdraw-cache");
+  ready(cache, "0.4.1");
+  let answer: "deprecated" | "fine" | "fail" = "deprecated";
+  const ask: Npm = async (args) => {
+    if (args[1] === "visualproof") return { ok: true, out: JSON.stringify(["0.4.0", "0.4.1"]) };
+    if (args[1] === "visualproof@0.4.1") return answer === "fail" ? { ok: false, why: "ETIMEDOUT" } : { ok: true, out: answer === "deprecated" ? '{ "engines": { "node": ">=22" }, "deprecated": "broken" }' : '{ "node": ">=22" }' };
+    return { ok: true, out: '{ "node": ">=22" }' };
+  };
+  const versions = new Versions(cache);
+  const logs: string[] = [];
+  const restarts: string[] = [];
+  const o = { mode: "auto" as const, cacheRoot: cache, canRestart: true, check: true, quiet: () => true, restart: (to: string) => restarts.push(to), log: (l: string) => logs.push(l), installedRoot: root, npm: ask, site: "/sites/a" };
+  // A runs the installed 0.4.0, and finds 0.4.1 deprecated
+  const A = new Updates({ ...o, running: "0.4.0" });
+  await A.check();
+  assert.equal(codeToRun(root, versions).version, "0.4.0");
+  // B runs 0.4.1 from the cache: its check asks of the version it runs, keeps A's finding, and steps back
+  const B = new Updates({ ...o, running: "0.4.1" });
+  await B.check();
+  assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(cache, "updates.json"), "utf8")).deprecated), ["0.4.1"]);
+  assert.equal(codeToRun(root, versions).version, "0.4.0");
+  assert.ok(logs.some((l) => /0\.4\.1, which this server runs, is deprecated by its publisher \(broken\): it steps back to 0\.4\.0/.test(l)), logs.join("\n"));
+  await B.look();
+  assert.deepEqual(restarts, ["0.4.0"]);
+  // a check that gets no answer drops nothing
+  answer = "fail";
+  await new Updates({ ...o, running: "0.4.0" }).check();
+  assert.equal(codeToRun(root, versions).version, "0.4.0");
+  // an answer that it is not deprecated (any more) clears it
+  answer = "fine";
+  await new Updates({ ...o, running: "0.4.0" }).check();
+  assert.equal(codeToRun(root, versions).version, "0.4.1");
+});
+
+test("what the supervisor set aside without a record is never restarted into; records that are not objects read as none; a pause is told, and lasts a day", async () => {
+  const root = pkg(fresh("unrec"), "0.4.0");
+  const cache = fresh("unrec-cache");
+  ready(cache, "0.4.1");
+  writeFileSync(join(cache, "updates.json"), JSON.stringify({ checked: new Date().toISOString(), versions: ["0.4.0", "0.4.1"], engines: { "0.4.1": "" } }));
+  const restarts: string[] = [];
+  const o = { mode: "auto" as const, cacheRoot: cache, canRestart: true, check: false, quiet: () => true, restart: (to: string) => restarts.push(to), log: () => {}, running: "0.4.0", installedRoot: root, site: "/sites/a" };
+  const u = new Updates({ ...o, also: new Set(["0.4.1"]) });
+  u.start();
+  u.stop();
+  await u.look();
+  assert.deepEqual(restarts, []);
+  assert.equal(u.status(true).newer, undefined);
+  // null, a list: no record, no pause; a pause written over it
+  const versions = new Versions(cache);
+  writeFileSync(join(versions.root, "bad.json"), "null");
+  writeFileSync(join(versions.root, "paused.json"), "[1]");
+  assert.equal(versions.records().size, 0);
+  assert.equal(versions.paused("/sites/a"), null);
+  const t = Date.now();
+  assert.ok(versions.pause("/sites/a", "0.4.1", "0.4.1, and the version before it, failed as they started", t));
+  // told to full readers, and by the log of a check; gone a day on
+  const logs: string[] = [];
+  const p = new Updates({ ...o, check: true, npm: async (args) => ({ ok: true, out: args[1] === "visualproof" ? '["0.4.0", "0.4.1"]' : '{ "node": ">=22" }' }), log: (l) => logs.push(l) });
+  await p.check();
+  assert.equal(p.status(true).paused?.upTo, "0.4.1");
+  assert.equal(p.status(false).paused, undefined);
+  assert.ok(logs.some((l) => /0\.4\.1 is out, not taken: this site's patches up to 0\.4\.1 are paused/.test(l)), logs.join("\n"));
+  assert.equal(versions.paused("/sites/a", t + 25 * 3600_000), null);
+  assert.equal(codeToRun(root, versions, { site: "/sites/a", now: t + 25 * 3600_000 }).version, "0.4.0", "the clock of codeToRun is the set-asides'; the pause reads the real one");
+});
+
+test("out-of-memory kills at boot are started again after a wait, and never make the supervisor give up nor pause the patch", async () => {
+  const root = pkg(fresh("oom"), "0.4.0");
+  const cache = fresh("oom-cache");
+  ready(cache, "0.4.1");
+  const S = supervised(root, cache, { site: "/sites/a" });
+  for (let i = 0; i < 8; i++) {
+    S.last().exit(null, "SIGKILL");
+    await tick();
+  }
+  assert.equal(S.started.length, 9);
+  assert.ok(S.started.every((x) => x.main.includes("0.4.1")), "the patch, every time");
+  assert.equal(new Versions(cache).paused("/sites/a"), null);
+  S.last().listen();
+  process.emit("SIGTERM", "SIGTERM");
+  S.last().exit(0);
+  assert.equal(await S.done, 0);
 });
 
 test("a version set aside is tried again a day on, and for good after the third time; taking it back keeps what was recorded", () => {

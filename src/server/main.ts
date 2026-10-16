@@ -1454,6 +1454,8 @@ async function main(): Promise<void> {
     // the supervisor's word, believed only from it
     installedRoot: (supervised && process.env.VISUALPROOF_INSTALLED) || PACKAGE_ROOT,
     site: dirs.site,
+    // what the supervisor set aside without a record of it (a full disk), believed only from it
+    also: new Set(supervised ? unrecordedOf(process.env.VISUALPROOF_UNRECORDED) : []),
   });
   live.updateStatus = (full) => updates.status(full);
   app.updates = updates;
@@ -1491,6 +1493,16 @@ function updatesInWords(mode: UpdateMode, version: string, supervised: boolean):
   const minor = version.split(".").slice(0, 2).join(".");
   if (mode === "notify") return `notify — newer versions told of, never downloaded${supervised ? "; one installed meanwhile is restarted into" : ""}`;
   return supervised ? `auto — a patch of ${minor} taken by itself at a quiet moment; a newer version told of` : "auto, but without the supervisor: newer versions told of";
+}
+
+/** The versions the supervisor says it set aside without a record (VISUALPROOF_UNRECORDED). */
+function unrecordedOf(text: string | undefined): string[] {
+  try {
+    const v = JSON.parse(text ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The version that serves the site, recorded in the timeline where it is another than the last one
