@@ -422,7 +422,7 @@ test("the page reloads into its server's new version, keeping what it holds, onc
   let busy: string | null = "text being typed";
   const offered: (string | null)[] = [];
   let reloads = 0;
-  const r = new Reloader({ busy: () => busy, kept: () => kept, offer: (v) => offered.push(v), reload: () => reloads++, storage }, "0.4.0");
+  const r = new Reloader({ busy: () => busy, kept: () => kept, offer: (v) => offered.push(v), reload: () => reloads++, storage }, "0.4.0", 0);
   r.hello({ version: "0.4.0", instance: "a" });
   assert.deepEqual([offered, reloads], [[], 0]);
   // another version: offered while the reader types, reloaded once they stop
@@ -448,6 +448,30 @@ test("the page reloads into its server's new version, keeping what it holds, onc
   // a bundle without a version (a test's) never reloads
   new Reloader({ busy: () => null, kept: () => kept, offer: () => {}, reload: () => reloads++ }, null).hello({ version: "9.9.9", instance: "e" });
   assert.equal(reloads, 1);
+});
+
+test("a tab whose storage is refused keeps what it reloaded for in its name, and reloads once; pages back from a restart reload apart", async () => {
+  const refused: KeptStorage = { getItem: () => { throw new Error("SecurityError"); }, setItem: () => { throw new Error("SecurityError"); }, removeItem: () => {} };
+  const g = globalThis as { name?: string };
+  const before = g.name;
+  try {
+    let reloads = 0;
+    const page = () => new Reloader({ busy: () => null, kept: () => ({ root: "/p", at: 0, sources: { following: null, pinned: [] }, review: [], talk: [], notes: [] }), offer: () => {}, reload: () => reloads++, storage: refused }, "0.4.0", 0);
+    page().hello({ version: "0.4.1", instance: "a" });
+    assert.equal(reloads, 1);
+    assert.equal(g.name, "visualproof-reloaded-for:0.4.1");
+    // the reloaded page is still of 0.4.0 (a bundle that says another version): no second reload
+    page().hello({ version: "0.4.1", instance: "a" });
+    assert.equal(reloads, 1);
+    // spread: not at once, within the spread
+    const spread = new Reloader({ busy: () => null, kept: () => ({ root: "/p", at: 0, sources: { following: null, pinned: [] }, review: [], talk: [], notes: [] }), offer: () => {}, reload: () => reloads++, storage: memory() }, "0.4.0", 300);
+    spread.hello({ version: "0.4.2", instance: "b" });
+    assert.equal(reloads, 1);
+    await new Promise((ok) => setTimeout(ok, 350));
+    assert.equal(reloads, 2);
+  } finally {
+    g.name = before;
+  }
 });
 
 test("which server answers: hello names its version and process, the graph its process; the version alone to a read-only reader", async () => {
