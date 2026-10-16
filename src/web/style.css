@@ -2016,7 +2016,8 @@ kbd {
 @keyframes tip-flash { from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent); } to { box-shadow: 0 0 0 3px transparent; } }
 @media (prefers-reduced-motion: reduce) { .tip-card.flash { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); } }
 .tip-media { position: relative; aspect-ratio: 16 / 10; background: var(--canvas); border-bottom: 1px solid var(--line); }
-.tip-clip { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* a phone's clip is upright: shown whole, the board's colour beside it */
+.tip-clip { display: block; width: 100%; height: 100%; object-fit: contain; }
 .tip-play {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 42px; height: 42px; border-radius: 50%;
   border: none; background: color-mix(in srgb, var(--surface-solid) 88%, transparent); color: var(--text); font-size: 15px;

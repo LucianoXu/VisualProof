@@ -286,7 +286,7 @@ export const TIPS: Tip[] = [
     id: "zoom-in-view",
     group: "arranging",
     title: "A view of what is lit",
-    text: "<b>Zoom in</b>, above the panel, opens exactly what is lit as a view of its own, laid out by itself, in a tab.",
+    text: "<b>Zoom in</b>, above the panel, opens exactly what is lit as a view of its own, laid out by itself, in a tab: the view that holds just that, where there is one already.",
     who: "full",
     where: "both",
     since: "0.1.0",
