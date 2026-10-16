@@ -33,7 +33,8 @@ name (a private reader's; their opinions, targets, key marks and trust keep thei
   `note` its id, `text` then, `shown` whether the view shows it by it), `note` (`what` created,
   edited or deleted; `view`, `title` for a view's own note, "" for a project note; `note` its id;
   `text` after, or before a deletion; `carried` `{mode, from, to}` where a build carried a project
-  note to the cluster its declarations moved to, an edit by VisualProof).
+  note to the cluster its declarations moved to, an edit by VisualProof), `tool` (the VisualProof
+  version serving the site changed: `from`, `to`; `setAside`, a version that failed).
 
 ## History
 
@@ -51,7 +52,7 @@ on a saved graph (`--graph`): 404. MCP: `history` (`snapshots`, `diff`, `moves`,
   "current": 2, "diskBytes": 415893 }
 ```
 
-Oldest first. `at`: when the build finished (newest `.olean`); `approx`: only an extraction made
+Oldest first. `tool`: the VisualProof version that read it. `at`: when the build finished (newest `.olean`); `approx`: only an extraction made
 before the history dates it. `commit`: checked out when read (`dirty`: `.lean` files differed;
 `guessed`: imported, the last commit before it). `missing`: modules not read (unknown at that
 build, not gone). `bytes`: `new` written to keep it, `all` its files. `renames`: found against the

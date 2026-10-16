@@ -23,6 +23,10 @@ Environment=PATH=%h/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
 # readable by the server's user alone (create it first, owned by that user). Without --site it is
 # under ~/.local/share/visualproof/sites/; given here so that the backup knows where it is. The
 # caches go in ~/.cache/visualproof unless --cache names another place; a rebuild makes them again.
+# --updates auto (the default): the server takes VisualProof's patch releases by itself, restarting
+# into them at a quiet moment, and tells of newer versions in its log (install those by hand: the
+# server then restarts into them). The visualproof command is a small supervisor that stays while the
+# server restarts, so systemd sees one service throughout; --updates off for a machine kept offline.
 ExecStart=<directory of node>/visualproof serve <path to the Lean project> --port 4173 --host 0.0.0.0 --access-key-file <key file> --site /var/lib/visualproof/<name> --jobs 8 --public-url https://<host>
 Restart=on-failure
 RestartSec=10

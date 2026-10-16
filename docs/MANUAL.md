@@ -144,6 +144,34 @@ The README says how to install the `visualproof` command. A checkout also runs a
   bands, in 2 GB at most but three times as long (16,384 pixels a side: 3½ minutes). Notes are not
   drawn yet.
 
+### Updates
+
+A server follows VisualProof's own releases (SPEC/UpdateSpec.md). It asks the npm registry, through
+the npm beside its Node (so npm's registry, proxy and certificates hold), at start and once a day;
+`--updates` says what it does with what it finds:
+
+- **auto** (the default): a **patch** of the version it runs (0.4.1 for 0.4.0) is downloaded into
+  the cache (`<cache>/versions/0.4.1/`), checked to run, and taken at a quiet moment — nobody on a
+  page and nothing running (an extraction, the usage pass, a document being typeset), within a day.
+  Open pages reload where they were: the view, the selection, the camera, the source windows and
+  what was being typed come back; a page that is in the middle of something (typing, a drag, the
+  export window, the artwork mode) waits, its build pill saying "Updated — reload". While the
+  server restarts, the pill says "Updating to 0.4.1…".
+- A **newer minor** (0.5.0) is never taken by itself: it may change the command line or the site.
+  The log, `visualproof doctor` and the help's About part say it is out, with the command that
+  installs it where this one was installed (`npm install --global visualproof@0.5.0`) and its
+  release notes. Once it is installed, the server restarts into it by itself, within ten minutes.
+- **notify**: told of, never downloaded. **off**: the registry is never asked (a machine kept
+  offline), and the server runs as one process.
+
+`visualproof serve` from an installed package is a small supervisor that runs the server as its
+child and starts it again in the new version; a patch that fails as it starts is set aside
+(`<cache>/versions/bad.json`) and the version before it runs again. `visualproof --version` says the
+installed package; the server's first lines, `GET /api/updates` and the help say the version it
+runs. Activity records each version that serves the site ("Updated from 0.4.0 to 0.4.1"), and each
+build's snapshot the version that read it. A checkout never asks the registry. 0.3.0 has no
+updater: upgrade it by hand (`npm install --global visualproof`, then restart the server).
+
 ## Supported Lean versions
 
 Lean v4.28.0 to v4.35.0. The extractor and the usage pass are compiled with each project's own
