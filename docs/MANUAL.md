@@ -348,10 +348,28 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   (for everyone on it), `g` edges, `l` the lock, `c` colours by kind or status, `b` build status,
   `p` a frame meter, `a` / `m` approve, comment (see Review), `k` mark as key for the focus, `t` the Time Machine (`←` / `→` a build before or after,
   `Home` / `End` the first or the last), `Shift F10` (or the ContextMenu key) the menu on the
-  selection, `?` every key and gesture.
-- **The first visit** starts a short tour of the page on the project itself; the `?` sheet's
-  **Take the tour again** replays it. The sheet ends with what the project's graph holds, and
-  VisualProof's repository: its documentation, its code and its issues.
+  selection, `?` the tips, and every key and gesture.
+- **The first visit** starts a short tour of the page on the project itself, ten steps on a real
+  theorem ([GuideSpec.md](../SPEC/GuideSpec.md)). One step shows what the theorem rests on in three
+  views: the theorem alone, its statement in the panel; its TCB; its key declarations — each with
+  its counts. A read-only reader is told what they can do there. The tour leaves your tool as it
+  found it; the `?` sheet's **Take the tour again** replays it.
+- **The `?` sheet** opens on **Tips**: a card for each thing the page does, in groups (Start,
+  Seeing, Reviewing, Arranging, Together, Agents, Export, History), each with a few seconds' clip
+  of the page doing it, in your theme, **Show me**, which does it on your page (the control ringed,
+  the tour's theorem selected where it helps; nothing anyone else sees), and **More**, its part of
+  this manual. A field finds a tip by its words. With reduced motion a clip is still until you play
+  it. **Keys** lists every key and gesture, the "Open in editor" template, what the project's graph
+  holds, which VisualProof the server runs (and a newer release, to those let in fully), and
+  VisualProof's repository: its documentation, its code and its issues. The ⓘ beside the panel's
+  **Its TCB** opens the tip on what a TCB is.
+- **Tips in place**: now and then, when you are about to need it, a small card beside a control
+  says what it does — the first time you select a theorem's TCB, the Time Machine opened, Export
+  opened, … At most one in a page's visit, none in the visit of the tour, none while you follow
+  someone. **Got it** ends it for good, and so does doing what it says; the Tips tab turns them
+  off. What you have seen, and the release you last saw, are kept in this browser for every
+  project: when the server runs a newer one, the page says **What's new** once, and the tips new
+  in it are marked.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
@@ -368,7 +386,8 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
   drawer.
 - **The panel** is a sheet from the bottom: a tap on its handle gives it the whole screen or half of
   it, ✕ closes it. A declaration's source, Activity and the lost-and-found take the whole screen.
-- No window is pinned, and the help (`?` in ⋯) lists the gestures instead of the keys.
+- No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of
+  the keys. The tour is the phone's own, in the words of fingers.
 
 ## Views
 
