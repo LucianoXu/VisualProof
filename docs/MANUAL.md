@@ -350,7 +350,8 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   `Home` / `End` the first or the last), `Shift F10` (or the ContextMenu key) the menu on the
   selection, `?` every key and gesture.
 - **The first visit** starts a short tour of the page on the project itself; the `?` sheet's
-  **Take the tour again** replays it.
+  **Take the tour again** replays it. The sheet ends with what the project's graph holds, and
+  VisualProof's repository: its documentation, its code and its issues.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
