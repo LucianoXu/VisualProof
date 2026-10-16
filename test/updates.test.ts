@@ -15,6 +15,7 @@ import { choose, codeToRun, installCommand, newerThan, notesOf, registryEngines,
 import type { Npm } from "../src/server/updates.ts";
 import { RESTART_STATUS, signalStatus, supervise } from "../src/server/supervise.ts";
 import { satisfies } from "../src/server/version.ts";
+import { childEnv, DETACH, grouped, stopChildren } from "../src/server/children.ts";
 import { keep, Reloader, takeKept } from "../src/web/src/reload.ts";
 import type { Kept, KeptStorage } from "../src/web/src/reload.ts";
 import { site, stream } from "./site.ts";
@@ -371,6 +372,43 @@ test("the supervisor never sets aside a patch for what is not its code: the site
   assert.equal(await done, 1);
   assert.equal(new Versions(cache).bad().size, 0);
 });
+
+test("stopping ends what the server's programs started: a group is ended whole; they are given none of the server's own variables", { skip: process.platform === "win32" }, async () => {
+  process.env.VISUALPROOF_SECRET_TEST = "1";
+  try {
+    assert.equal(childEnv().VISUALPROOF_SECRET_TEST, undefined);
+    assert.equal(childEnv({ X: "y" }).X, "y");
+  } finally {
+    delete process.env.VISUALPROOF_SECRET_TEST;
+  }
+  const dir = fresh("group");
+  const pidFile = join(dir, "grandchild");
+  // a program that starts another and waits on it, as lake starts lean
+  const leader = grouped(spawn("sh", ["-c", `sleep 60 & echo $! > ${pidFile}; wait`], { detached: DETACH, stdio: "ignore", env: childEnv() }));
+  await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8").trim() !== "");
+  const grandchild = Number(readFileSync(pidFile, "utf8").trim());
+  const lives = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  assert.ok(lives(grandchild));
+  await stopChildren(2000);
+  await until(() => !lives(grandchild));
+  assert.equal(leader.signalCode ?? "SIGTERM", "SIGTERM");
+});
+
+/** wait for `f`, a few seconds at most */
+async function until(f: () => boolean, ms = 5000): Promise<void> {
+  const t0 = Date.now();
+  while (!f()) {
+    if (Date.now() - t0 > ms) throw new Error("timed out");
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 /** sessionStorage as a test keeps it */
 const memory = (): KeptStorage & { m: Map<string, string> } => {

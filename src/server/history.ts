@@ -29,6 +29,7 @@
 
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { childEnv } from "./children.ts";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -160,7 +161,7 @@ export function buildTime(p: Project): number {
 
 /** Git, read-only and taking no lock: its answer, or null where git or the repository is not there. */
 function git(root: string, ...args: string[]): string | null {
-  const r = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, stdio: ["ignore", "pipe", "ignore"] });
+  const r = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 5000, env: childEnv({ GIT_OPTIONAL_LOCKS: "0" }), stdio: ["ignore", "pipe", "ignore"] });
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
