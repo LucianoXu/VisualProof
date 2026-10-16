@@ -93,13 +93,14 @@ export function newest(vs: Iterable<string>): string | null {
  *  under auto (UpdateSpec decision 3); `release`, the newest release beyond it that runs here,
  *  which it tells of (decision 4). `engines` says each version's Node range, where known (unknown:
  *  taken as running here). */
-export function choose(running: string, versions: string[], o: { bad?: Set<string>; engines?: (v: string) => string | undefined; node?: string } = {}): { patch: string | null; release: string | null } {
+export function choose(running: string, versions: string[], o: { bad?: Set<string>; engines?: (v: string) => string | undefined; deprecated?: Set<string>; node?: string } = {}): { patch: string | null; release: string | null } {
   const node = o.node ?? process.versions.node;
   const runs = (v: string) => {
     const e = o.engines?.(v);
     return e === undefined || satisfies(node, e);
   };
-  const beyond = versions.filter((v) => newerThan(v, running) && runs(v));
+  // a release its publisher deprecated (`npm deprecate`) is neither taken nor told of
+  const beyond = versions.filter((v) => newerThan(v, running) && runs(v) && !o.deprecated?.has(v));
   return {
     patch: newest(beyond.filter((v) => sameMinor(v, running) && !o.bad?.has(v))),
     release: newest(beyond),
@@ -153,14 +154,34 @@ export async function registryVersions(ask: Npm): Promise<{ versions: string[] }
 
 /** The Node range a version of visualproof runs on (its `engines.node`), or null when npm cannot say. */
 export async function registryEngines(v: string, ask: Npm): Promise<string | null> {
-  const r = await ask(["view", `visualproof@${v}`, "engines", "--json"], 60_000);
-  if (!r.ok) return null;
+  return (await registryInfo(v, ask))?.engines ?? null;
+}
+
+/** What npm says of a version's `engines` and `deprecated` (`npm view visualproof@<v> engines
+ *  deprecated --json`), as it says it: the engines object alone where the version is not deprecated,
+ *  the message alone where it has no engines, both by name where it has both. The Node range ("":
+ *  anywhere), and the deprecation's message or null. */
+export function readInfo(out: string): { engines: string; deprecated: string | null } | null {
+  let v: unknown;
   try {
-    const e = JSON.parse(r.out || "{}") as { node?: unknown };
-    return typeof e?.node === "string" ? e.node : "";
+    v = out.trim() ? JSON.parse(out) : {};
   } catch {
     return null;
   }
+  const node = (e: unknown) => (e && typeof e === "object" && typeof (e as { node?: unknown }).node === "string" ? (e as { node: string }).node : "");
+  if (typeof v === "string") return { engines: "", deprecated: v };
+  if (!v || typeof v !== "object") return null;
+  if ("engines" in v || "deprecated" in v) {
+    const d = (v as { deprecated?: unknown }).deprecated;
+    return { engines: node((v as { engines?: unknown }).engines), deprecated: typeof d === "string" && d ? d : null };
+  }
+  return { engines: node(v), deprecated: null };
+}
+
+/** A version's Node range and deprecation, or null when npm cannot say. */
+export async function registryInfo(v: string, ask: Npm): Promise<{ engines: string; deprecated: string | null } | null> {
+  const r = await ask(["view", `visualproof@${v}`, "engines", "deprecated", "--json"], 60_000);
+  return r.ok ? readInfo(r.out) : null;
 }
 
 /** The command that installs version `v` where the package at `root` is installed: npm's global
@@ -476,6 +497,8 @@ interface Saved {
   checked: string;
   versions: string[];
   engines: Record<string, string>;
+  /** the versions found deprecated, with the publisher's message */
+  deprecated?: Record<string, string>;
 }
 
 export interface UpdatesOptions {
@@ -540,7 +563,7 @@ export class Updates {
     this.npm = o.npm ?? npmIn(this.versions.ensure() === null ? this.versions.root : o.cacheRoot);
     try {
       const s = JSON.parse(readFileSync(this.file, "utf8")) as Partial<Saved>;
-      if (typeof s.checked === "string" && Array.isArray(s.versions)) this.saved = { checked: s.checked, versions: s.versions.filter((v) => typeof v === "string"), engines: s.engines && typeof s.engines === "object" ? s.engines : {} };
+      if (typeof s.checked === "string" && Array.isArray(s.versions)) this.saved = { checked: s.checked, versions: s.versions.filter((v) => typeof v === "string"), engines: s.engines && typeof s.engines === "object" ? s.engines : {}, ...(s.deprecated && typeof s.deprecated === "object" ? { deprecated: s.deprecated } : {}) };
     } catch {
       // never checked here, or the file is unreadable: asked again
     }
@@ -550,7 +573,7 @@ export class Updates {
   private found(): { patch: string | null; release: string | null } {
     if (!this.saved) return { patch: null, release: null };
     const e = this.saved.engines;
-    return choose(this.running, this.saved.versions, { bad: this.versions.setAside(this.now()), engines: (v) => (Object.hasOwn(e, v) ? e[v] : undefined), node: this.o.node });
+    return choose(this.running, this.saved.versions, { bad: this.versions.setAside(this.now()), engines: (v) => (Object.hasOwn(e, v) ? e[v] : undefined), deprecated: new Set(Object.keys(this.saved.deprecated ?? {})), node: this.o.node });
   }
 
   /** What a page is told (UpdateSpec decision 11): the version alone where `full` is not. */
@@ -618,16 +641,25 @@ export class Updates {
       this.o.log(`updates: the registry could not be asked (${r.why}); asked again in a day`);
       return;
     }
-    const engines: Record<string, string> = { ...(this.saved?.engines ?? {}) };
+    const engines: Record<string, string> = {};
+    const deprecated: Record<string, string> = {};
     const bad = this.versions.setAside(this.now());
-    // the newest beyond this one, in its minor and beyond it: what their Node needs
+    // the newest beyond this one, in its minor and beyond it: what their Node needs, and whether
+    // their publisher deprecated them — asked afresh, newest first, until one is fit (a few at most)
     const beyond = r.versions.filter((v) => newerThan(v, this.running));
-    for (const v of [newest(beyond.filter((x) => sameMinor(x, this.running) && !bad.has(x))), newest(beyond)]) {
-      if (!v || Object.hasOwn(engines, v)) continue;
-      const e = await registryEngines(v, ask);
-      if (e !== null) engines[v] = e;
+    const descending = (vs: string[]) => [...vs].sort((a, b) => (newerThan(a, b) ? -1 : newerThan(b, a) ? 1 : 0));
+    for (const list of [descending(beyond.filter((x) => sameMinor(x, this.running) && !bad.has(x))), descending(beyond)]) {
+      for (const v of list.slice(0, 5)) {
+        if (!Object.hasOwn(engines, v)) {
+          const info = await registryInfo(v, ask);
+          if (info === null) break;
+          engines[v] = info.engines;
+          if (info.deprecated) deprecated[v] = info.deprecated;
+        }
+        if (!Object.hasOwn(deprecated, v) && satisfies(this.o.node ?? process.versions.node, engines[v])) break;
+      }
     }
-    this.saved = { checked: new Date(this.now()).toISOString(), versions: r.versions, engines };
+    this.saved = { checked: new Date(this.now()).toISOString(), versions: r.versions, engines, ...(Object.keys(deprecated).length ? { deprecated } : {}) };
     try {
       mkdirSync(dirname(this.file), { recursive: true });
       writeFileSync(`${this.file}.tmp-${process.pid}`, JSON.stringify(this.saved));
@@ -639,7 +671,7 @@ export class Updates {
     if (release && !sameMinor(release, this.running)) this.o.log(`updates: VisualProof ${release} is out (this is ${this.running}; ${notesOf(release, this.installedRoot)}): it is installed by ${installCommand(this.installedRoot, release)}, which this server then restarts into by itself`);
     else if (!patch) {
       const out = newest(beyond);
-      const why = out ? (bad.has(out) ? `set aside here: ${this.versions.bad().get(out)?.why ?? "it failed"}` : `it needs Node ${engines[out] ?? "another"}; this is ${this.o.node ?? process.versions.node}`) : "";
+      const why = out ? (bad.has(out) ? `set aside here: ${this.versions.bad().get(out)?.why ?? "it failed"}` : Object.hasOwn(deprecated, out) ? `deprecated: ${deprecated[out]}` : `it needs Node ${engines[out] ?? "another"}; this is ${this.o.node ?? process.versions.node}`) : "";
       this.o.log(out ? `updates: VisualProof ${out} is out, not taken: ${why}` : `updates: VisualProof ${this.running} is the latest`);
     }
     if (patch) {

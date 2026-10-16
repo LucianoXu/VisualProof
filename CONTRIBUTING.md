@@ -116,6 +116,9 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   themselves, unattended (`--updates auto`, SPEC/UpdateSpec.md), so a patch is fixes alone: no option
   gone or changed, no new form of the site, no change to the agents' API — and no change of the Node
   versions it runs on (`engines`). Anything else waits for the next minor, which servers only tell of.
+  A patch found broken is withdrawn by the owner with `npm deprecate visualproof@<version> "<why>"`:
+  servers neither take nor tell of a deprecated release (one that took it already sets it aside only
+  if it fails), and the next patch replaces it.
 - Releasing, by the owner: update `CHANGELOG.md` (the owner's own file, a `## ` heading naming the
   version), the version in `package.json` and `CITATION.cff`, merge, then tag `main` and push the
   tag. `.github/workflows/release.yml` takes it from there: it checks that the tag, both files and

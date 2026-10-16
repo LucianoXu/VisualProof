@@ -166,6 +166,8 @@ day; `--updates` (or `VISUALPROOF_UPDATES`) says what it does with what it finds
   The log, `visualproof doctor` and the help's About part say it is out, with the command that
   installs it where this one was installed (`npm install --global visualproof@0.5.0`) and its
   release notes. Once it is installed, the server restarts into it by itself, within ten minutes.
+- A release its publisher deprecated (`npm deprecate`) is neither taken nor told of: that is how a
+  broken patch is withdrawn from the servers that have not taken it yet.
 - **notify**: told of, never downloaded. **off**: the registry is never asked (a machine kept
   offline), and the server runs as one process. `VISUALPROOF_UPDATES=off` keeps `visualproof
   doctor` from asking it too.

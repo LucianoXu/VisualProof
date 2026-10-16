@@ -17,7 +17,9 @@ The owner's decisions of 2026-10-16.
    folder (no project's `.npmrc` applies), so that the user's registry, proxy and certificates hold
    as for any `npm install`: the versions of `visualproof` (`npm view visualproof versions`), and the
    Node range of the newest beyond the running one (`engines`, read as npm reads ranges; an empty
-   one runs anywhere). Nothing of the project is sent. At start (half a minute after
+   one runs anywhere) and whether its publisher deprecated it: a deprecated release is neither taken
+   nor told of, so that a broken patch is withdrawn by `npm deprecate`. Nothing of the project is
+   sent. At start (half a minute after
    the server listens, unless it asked within the hour) and then once a day, with up to two hours
    more so that servers started together do not ask together. Releases only: never a release
    candidate (npm's `next`). A release whose Node range this Node does not meet is neither taken nor

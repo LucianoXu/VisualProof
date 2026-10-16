@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { cacheHome, projectDirs, siteHolder } from "./dirs.ts";
 import { cmp, packageVersion, parseVersion, satisfies } from "./version.ts";
-import { choose, FROM_PACKAGE, installCommand, newerThan, newest, notesOf, npmCommand, PACKAGE_ROOT, sameMinor, Versions } from "./updates.ts";
+import { choose, FROM_PACKAGE, installCommand, newerThan, newest, notesOf, npmCommand, PACKAGE_ROOT, readInfo, sameMinor, Versions } from "./updates.ts";
 
 export { packageVersion, satisfies };
 import { ProjectError, openProject, targetsInWords } from "./project.ts";
@@ -131,16 +131,21 @@ function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: s
   const versions = (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === "string");
   // the engines of the newest beyond this one: those the doctor would name
   const engines = new Map<string, string>();
+  const deprecated = new Set<string>();
   const first = choose(running, versions, { bad: new Set(bad.keys()) });
   for (const c of [first.patch, first.release]) {
     if (!c || engines.has(c)) continue;
-    const e = json(ask(["view", `visualproof@${c}`, "engines", "--json"]), /\{[^}]*\}/) as { node?: unknown } | undefined;
-    if (e !== undefined) engines.set(c, typeof e.node === "string" ? e.node : "");
+    const out = ask(["view", `visualproof@${c}`, "engines", "deprecated", "--json"]);
+    const info = out === null ? null : readInfo(/^[\s\S]*?(\{[\s\S]*\}|"[^"\n]*")/.exec(out)?.[1] ?? "");
+    if (!info) continue;
+    engines.set(c, info.engines);
+    if (info.deprecated) deprecated.add(c);
   }
-  const { patch, release } = choose(running, versions, { node, bad: new Set(bad.keys()), engines: (x) => engines.get(x) });
+  const { patch, release } = choose(running, versions, { node, bad: new Set(bad.keys()), engines: (x) => engines.get(x), deprecated });
   const skipped = newest(versions.filter((x) => newerThan(x, running)));
   if (release && !sameMinor(release, running)) return `${release} is out: ${installCommand(PACKAGE_ROOT, release)} (${notesOf(release)}); a server restarts into it by itself${aside}`;
   if (patch) return `${patch} is out: a server takes it by itself (--updates auto), or ${installCommand(PACKAGE_ROOT, patch)}${aside}`;
+  if (skipped && deprecated.has(skipped)) return `${skipped} is out, but deprecated by its publisher${aside}`;
   if (skipped && engines.has(skipped)) return `${skipped} is out, but needs Node ${engines.get(skipped)}; this is ${node}${aside}`;
   return `the latest release${aside}`;
 }

@@ -11,7 +11,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, st
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { choose, codeToRun, installCommand, newerThan, notesOf, registryEngines, registryVersions, sameMinor, stable, Updates, Versions } from "../src/server/updates.ts";
+import { choose, codeToRun, installCommand, newerThan, notesOf, readInfo, registryEngines, registryVersions, sameMinor, stable, Updates, Versions } from "../src/server/updates.ts";
 import type { Npm } from "../src/server/updates.ts";
 import { RESTART_STATUS, signalStatus, supervise } from "../src/server/supervise.ts";
 import { satisfies } from "../src/server/version.ts";
@@ -98,6 +98,29 @@ test("the registry, read through npm: the versions, a version's engines; npm fai
   // one version only: npm says it bare
   assert.deepEqual(await registryVersions(async () => ({ ok: true, out: '"0.1.0"' })), { versions: ["0.1.0"] });
   assert.deepEqual(await registryVersions(async () => ({ ok: false, why: "ENOTFOUND registry.npmjs.org" })), { why: "ENOTFOUND registry.npmjs.org" });
+});
+
+test("a release its publisher deprecated is neither taken nor told of: npm's three shapes of an answer read", async () => {
+  assert.deepEqual(readInfo('{\n  "node": ">=24"\n}\n'), { engines: ">=24", deprecated: null });
+  assert.deepEqual(readInfo('{ "engines": { "node": ">= 6" }, "deprecated": "broken: use 0.4.3" }'), { engines: ">= 6", deprecated: "broken: use 0.4.3" });
+  assert.deepEqual(readInfo('"broken"'), { engines: "", deprecated: "broken" });
+  assert.deepEqual(readInfo(""), { engines: "", deprecated: null });
+  assert.equal(readInfo("not json"), null);
+  assert.deepEqual(choose("0.4.0", ["0.4.1", "0.4.2", "0.5.0"], { deprecated: new Set(["0.4.2", "0.5.0"]) }), { patch: "0.4.1", release: "0.4.1" });
+  // a server asks the newest first, and the next once that one is deprecated
+  const root = pkg(fresh("deprecated"), "0.4.0");
+  const cache = fresh("deprecated-cache");
+  const asked: string[] = [];
+  const ask: Npm = async (args) => {
+    asked.push(args[1]);
+    if (args[1] === "visualproof") return { ok: true, out: JSON.stringify(["0.4.0", "0.4.1", "0.4.2"]) };
+    return { ok: true, out: args[1] === "visualproof@0.4.2" ? '{ "engines": { "node": ">=22" }, "deprecated": "broken" }' : '{ "node": ">=22" }' };
+  };
+  const logs: string[] = [];
+  const u = new Updates({ mode: "notify", cacheRoot: cache, canRestart: true, check: true, quiet: () => false, restart: () => {}, log: (l) => logs.push(l), running: "0.4.0", installedRoot: root, npm: ask });
+  await u.check();
+  assert.deepEqual(asked, ["visualproof", "visualproof@0.4.2", "visualproof@0.4.1"]);
+  assert.equal(u.status(true).newer?.version, "0.4.1");
 });
 
 test("the command that installs a release where this one is installed; its notes", () => {
