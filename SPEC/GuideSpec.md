@@ -37,33 +37,49 @@ what each part does in full; a tip links to it.
 
 ### Tips
 
-5. **A tip is a card**: a title of a few words, one or two sentences, for most of them a
-   demonstration, and where it helps **Show me** and **More** (the manual's section on GitHub). Tips are grouped by what one
-   does — Start, Seeing, Reviewing, Arranging, Together, Agents, Export, History — never by how
-   expert a reader is (ViewSpec decision 18).
-6. **A demonstration is a short clip of the page itself** (the owner's decision): the real page on
-   a real project (the flt-regular showcase), the pointer's moves, clicks and keys drawn over it, the
-   camera framed on the focus or around the pointer; a few seconds, looping, no sound; one for each
-   theme, shown in the page's own. Clips are recorded by rendering, frame by frame, from a script of
-   each (`npm run tips:record`), so that they are made again when the page changes; together they
-   weigh at most 6 MB. With reduced motion, a clip is its key frame, played only when asked. A tip
-   without a clip, and every tip in a snapshot, is its words alone.
-7. **Show me** does it on the reader's own page: the sheet closes and the tour's spotlight rings
-   the real control, with the tip's words beside it; where it helps, it first does something
-   harmless on what is the reader's own — the tour's theorem selected in a mode, a popover opened —
-   and never a change anyone else sees. What it did stays, as one step in the history.
-8. **Every tip is in the `?` sheet**: its first tab, *Tips*, before *Keys* (*Gestures* on a phone:
-   every key and gesture, the "Open in editor" setting, and what the project and VisualProof are).
-   A filter narrows the tips by their words.
+5. **The Tips tab is one film of a review** (the owner's decision of 2026-10-16, night): a review on a
+   real project (Sphere-Packing-Lean) told in eleven scenes, in order — *Mark a target*, *A view of
+   what it uses*, *Read the source*, *Key declarations*, *Its TCB, reviewed*, *Back to the
+   Project*, *Share*, *Work with an agent*, *Papers and notes*, *A typeset document*, *Artwork*. On a
+   larger screen the player (about 960 px wide, 16:10) has the chapters beside it, on a phone above
+   them; under it a bar of one segment per chapter, the one playing filling. Each chapter is a card
+   of one row; the one playing is open, with its words (two sentences at most), **Show me** and
+   **More** (the manual's section on GitHub); the first is open when the sheet opens. No grid of
+   clips: one film.
+6. **The film**: the real page on a real project, the pointer's moves, clicks and keys drawn over
+   it, the camera framed on the focus; the agent's lines played through the agents' API. Light
+   theme only, in the Kind palette; in the dark theme it sits in a thin frame of the theme's, so
+   that it does not glare. It is recorded by rendering, frame by frame, from a script
+   (`npm run tips:record`), so that it is made again when the page changes, with a key frame at each
+   chapter's start; the recording says where each chapter starts and ends
+   (`tour.chapters.json`). It plays muted and inline from the chapter asked for (the first, by
+   default) and stops at its last frame — a replay control then — and the open card follows it; a
+   card, or a segment of the bar, goes to its chapter and plays it. With reduced motion nothing
+   plays by itself: a card shows its chapter's key frame with a button that plays from there.
+   Without the film (not recorded) and in a snapshot, the cards are their words alone.
+7. **The reference tips** are what the film does not show — the phone's gestures, the Time
+   Machine, the linear form, lost and found, trust, updates, read-only links, and the rest — under
+   the film, one row each: its title and its first line; a click opens it (its words, Show me,
+   More), one at a time. They are grouped by what one does — Start, Seeing, Reviewing, Arranging,
+   Together, Export, History — never by how expert a reader is (ViewSpec decision 18). Only the
+   phone's gestures keep a clip, on a phone, light only, in its row when it is open. A filter
+   narrows the rows by their words.
+8. **Show me** does it on the reader's own page: the sheet closes and the tour's spotlight rings
+   the real control, with the words beside it; where it helps, it first does something harmless on
+   what is the reader's own — the tour's theorem selected in a mode, a popover opened — and never a
+   change anyone else sees. What it did stays, as one step in the history. The sheet's first tab is
+   *Tips*, before *Keys* (*Gestures* on a phone: every key and gesture, the "Open in editor"
+   setting, and what the project and VisualProof are).
 9. **One tip at a time, in place, when it helps** (as TipKit does): a small card at the control a
-   tip is about, shown when the reader is about to need it, by a rule of its own — at most eight
-   rules. At most one in a page's session; none in the session of a tour (it has just taught the
+   tip or a chapter of the film is about, shown when the reader is about to need it, by a rule of
+   its own — at most eight rules; a chapter's card has **Watch**, which opens the sheet at that
+   chapter, playing from its start. At most one in a page's session; none in the session of a tour (it has just taught the
    basics), while the sheet shows, while following someone, or in a snapshot. *Got it* ends it for
    good; so does doing what it teaches; Esc puts it away for the session. The reader turns in-place
    tips off in the sheet.
 10. **Each tip says who and where it is for**: every reader, or those who can change the review
     (none about reviewing or arranging for a read-only reader); a larger screen, a phone, or both.
-11. **What's new**: each tip names the release its feature came in. A page that finds the server
+11. **What's new**: each reference tip names the release its feature came in. A page that finds the server
     on a newer release than this browser last saw says so once, quietly ("What's new in 0.4.1"),
     and the tips newer than the release seen before are marked *New* until the reader has looked at
     them. A first visit only records the release.
@@ -77,14 +93,16 @@ what each part does in full; a tip links to it.
 
 15. **The TCB list is "Its TCB"** (the owner's decision): "trusted" says *trusted without review*
     everywhere else (Trusted, the status), so the list of what a statement rests on is not called
-    trusted. Its part in the panel has an ⓘ that opens the tip on what a TCB is.
+    trusted. Its part in the panel has an ⓘ that opens the film at its chapter on the TCB.
 
 ## Implementation notes
 
-- The catalogue is `web/src/tips.ts` (one entry per tip: id, group, words, who, where, since, the
-  controls it is about, its Show me, its clip, its in-place rule, its manual anchor);
-  `test/tips.test.ts` holds it to its budgets and to the page's surfaces.
-- The sheet and the tour: `web/src/guide.ts`; the cards and the clip player: `web/src/tipcards.ts`;
-  in-place tips: `web/src/intip.ts`; what the browser keeps: `web/src/tipstate.ts`.
-- Clips are `assets/tips/<clip>.<light|dark>.mp4` with their key frame as `.webp`, served at
-  `/tips/` with byte ranges (Safari plays a video only so); `/tips/index.json` lists those present.
+- The film's chapters (`TOUR`) and the reference tips (`TIPS`) are `web/src/tips.ts`;
+  `test/tips.test.ts` holds both to their budgets and to the page's surfaces.
+- The sheet and the tour: `web/src/guide.ts`; the film and its cards: `web/src/tourfilm.ts`; the
+  reference rows: `web/src/tipcards.ts`; in-place tips: `web/src/intip.ts`; what the browser keeps:
+  `web/src/tipstate.ts`.
+- The film is `assets/tips/tour.light.mp4`, its poster `tour.light.webp`, each chapter's key frame
+  `tour-<chapter>.light.webp`, its chapters `tour.chapters.json` (`{ duration, chapters: [{ id,
+  start, end }] }`); the phone's gestures `phone-fingers.light.mp4`. Served at `/tips/` with byte
+  ranges (Safari plays a video only so); `/tips/index.json` lists the clips present.

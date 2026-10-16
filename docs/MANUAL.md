@@ -407,20 +407,25 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   is trusted and assumed, what the proofs alone use besides, what is key. A read-only reader is told
   what they can do there. The tour leaves the page as it found it — your tool, your selection, the
   camera, and no step in the history; the `?` sheet's **Take the tour again** replays it.
-- **The `?` sheet** opens on **Tips**: a card for each thing the page does, in groups (Start,
-  Seeing, Reviewing, Arranging, Together, Agents, Export, History), most with a few seconds' clip
-  of the page doing it, in your theme, **Show me**, which does it on your page (the control ringed,
-  the tour's theorem selected where it helps; nothing anyone else sees), and **More**, its part of
-  this manual. A field finds a tip by its words. With reduced motion a clip is still until you play
-  it. **Keys** lists every key and gesture, the "Open in editor" template, what the project's graph
-  holds, which VisualProof the server runs (and a newer release, to those let in fully), and
+- **The `?` sheet** opens on **Tips**: a film of a review in eleven scenes — marking a target,
+  a view of what it uses, its source, its key declarations, its TCB reviewed, the Project, Share,
+  an agent, papers and notes, a typeset document, an artwork — beside its chapters, one row each
+  (under it on a phone), with a bar of one segment per chapter under the player. The film plays
+  from the first chapter, muted, and the chapter playing opens its card: its words, **Show me**,
+  which does it on your page (the control ringed, the tour's theorem selected where it helps;
+  nothing anyone else sees), and **More**, its part of this manual; a click on a card, or Enter, plays
+  from its start. The film is in the light theme (in a thin frame in the dark one); with reduced
+  motion a chapter shows its key frame until you play it. Under the film, **More tips**: what it
+  does not show, one row each — a click opens one — and a field to find one by its words. **Keys**
+  lists every key and gesture, the "Open in editor" template, what the project's graph holds,
+  which VisualProof the server runs (and a newer release, to those let in fully), and
   VisualProof's repository: its documentation, its code and its issues. The ⓘ beside the panel's
-  **Its TCB** opens the tip on what a TCB is.
+  **Its TCB** opens the film at its chapter on the TCB.
 - **Tips in place**: now and then, when you are about to need it, a small card beside a control
   says what it does — the first time you select a theorem's TCB, the Time Machine opened, Export
-  opened, … At most one in a page's visit, none in the visit of the tour, none while you follow
-  someone. **Got it** ends it for good, and so does doing what it says; the Tips tab turns them
-  off. What you have seen, and the release you last saw, are kept in this browser for every
+  opened, … — and, where the film shows it, **Watch** plays its chapter. At most one in a page's
+  visit, none in the visit of the tour, none while you follow someone. **Got it** ends it for good,
+  and so does doing what it says; the Tips tab turns them off. What you have seen, and the release you last saw, are kept in this browser for every
   project: when the server runs a newer one, the page says **What's new** once, and the tips new
   in it are marked.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
