@@ -13,10 +13,16 @@ into the latest release only.
   the usage pass elaborates each module again, which runs the project's macros and elaborators.
   Serve only a project you would build yourself.
 - **The project's toolchain**, which elan installs, and Lean's own kernel and language server.
-- **The npm registry and VisualProof's publisher**, as at the first install: with `--updates auto`
-  (the default) a server downloads the patch releases of the version it runs, through npm, which
-  checks each against the registry's integrity, and restarts into them by itself (SPEC/UpdateSpec.md).
-  `--updates notify` downloads nothing; `--updates off` asks the registry nothing.
+- **The npm registry and VisualProof's publisher**, as at the first install, and unattended: with
+  `--updates auto` (the default) a server downloads the patch releases of the version it runs,
+  through npm, and restarts into them by itself, nobody looking (SPEC/UpdateSpec.md). What it
+  takes is what the registry serves for `visualproof@<version>`: npm checks the tarball against the
+  registry's own hash (its `integrity`); the package's provenance and the registry's signatures are
+  not checked. Its dependencies are resolved again at each patch (no lock file: `--no-package-lock`),
+  within the ranges its package.json allows. The trust root is VisualProof's publishing path: a
+  release is a tag on `main` published by the repository's release workflow, in its `npm`
+  environment, which only the owner approves (CONTRIBUTING.md). `--updates notify` downloads
+  nothing; `--updates off` asks the registry nothing.
 
 ## What a running server exposes
 
@@ -65,12 +71,18 @@ into the latest release only.
   connection itself (against DNS rebinding) and again at every redirect (at most 5); at most 50 MB,
   within 60 s.
 - **Its own updates.** At start and once a day the server runs `npm view visualproof versions`
-  (and the `engines` of the newest releases): npm's own requests to the registry npm is configured
-  with, which carry nothing of the project. Under auto it then runs `npm install --prefix
-  <cache>/versions/<version> --ignore-scripts visualproof@<version>` for a patch, and runs that
-  version's server once to check it says its version. `GET /api/updates` tells a read-only reader
-  and an agent the running version alone; those let in fully, also what is newer and the command
-  that installs it.
+  (and the `engines` of the newest releases), as `visualproof doctor` does once (unless
+  `VISUALPROOF_UPDATES=off`): npm's own requests to the registry npm is configured with, which carry
+  nothing of the project. npm runs under the server's own Node, in the versions' folder (so no
+  project's `.npmrc` applies), without the server's `VISUALPROOF_*` variables. Under auto it then
+  runs, for a patch, `npm install --prefix=<root>/versions/.<version>.tmp-<pid> --ignore-scripts
+  --omit=dev --no-package-lock visualproof@<version>` (`<root>` the caches' root, `--cache`); checks
+  the package's `engines` against this Node; runs the downloaded server once, `--version`, to check
+  it says its version — the downloaded code runs there, before it is marked ready; and renames the
+  folder into `<root>/versions/<version>/`. `GET /api/updates` tells a read-only reader and an
+  agent the running version alone; those let in fully, also what is newer, the command that
+  installs it, and what was set aside. A read-only reader's `GET /api/status` has no log and no
+  review folder; the updates' lines go to the server's console alone.
 - **Uploads.** PDFs and images of at most 50 MB each, the library at most `--library-limit` (2 GB
   by default). The server reads PDFs with Poppler: keep it up to date. Pages draw them with pdf.js,
   whose script engine is never served, so a PDF's JavaScript does not run.
@@ -84,6 +96,13 @@ The site folder (`--site`) holds the agents' tokens and the read-only links in f
 them again), and the personal links' digests; the access key is
 wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
 folder up as you would any secret, and never commit it.
+
+## Code at rest
+
+The caches' root (`--cache`, by default `~/.cache/visualproof/`) holds, in `versions/`, the patches
+a server downloaded, which the supervisor runs: it is code, as the installed package is. `versions/`
+is made `0700`; a folder in it that another user owns, or that its group or others may write, is
+refused and its patch never run. Keep the caches' root the server's user's alone, as the site.
 
 ## Deploying
 

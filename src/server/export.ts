@@ -20,7 +20,7 @@
 // .tex names them too.
 
 import { spawn, spawnSync } from "node:child_process";
-import { tracked } from "./children.ts";
+import { childEnv, DETACH, end, grouped } from "./children.ts";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -305,16 +305,17 @@ export class Exporter {
   private xetex(cwd: string, timeoutMs: number): Promise<number | "timeout"> {
     return new Promise((ok) => {
       if (timeoutMs <= 0) return ok("timeout");
-      const p = tracked(spawn(this.xelatex, ["-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode", "doc.tex"], {
+      const p = grouped(spawn(this.xelatex, ["-no-shell-escape", "-halt-on-error", "-interaction=nonstopmode", "doc.tex"], {
         cwd,
         // TeX's paranoid file access; and a log whose lines are not wrapped, so that it reads back
-        env: { ...process.env, openin_any: "p", openout_any: "p", shell_escape: "f", max_print_line: "10000" },
+        env: childEnv({ openin_any: "p", openout_any: "p", shell_escape: "f", max_print_line: "10000" }),
         stdio: ["ignore", "ignore", "ignore"],
+        detached: DETACH,
       }));
       let killed = false;
       const timer = setTimeout(() => {
         killed = true;
-        p.kill("SIGKILL");
+        end(p, "SIGKILL");
       }, timeoutMs);
       p.on("error", () => {
         clearTimeout(timer);

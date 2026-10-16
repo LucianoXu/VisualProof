@@ -130,7 +130,9 @@ function usage(code = 2): never {
   --cache  the root of the caches, which a rebuild makes again: the project's (extractions, the
            usage pass's results, prepared views, typeset documents, Lean's language server's
            folder) in projects/<project>-<hash>/, the Lean programs compiled per toolchain in
-           lean/, the page's bundle in web/. Default: ${cacheHome()}
+           lean/, the page's bundle in web/, VisualProof's own releases in updates.json and the
+           patches downloaded in versions/ (code the servers run: keep the root yours alone).
+           Default: ${cacheHome()}
            (XDG_DATA_HOME and XDG_CACHE_HOME move both homes, on any platform)
 
   --graph  use a saved extraction (a projects/*/extract/*.json of the cache) instead of reading
@@ -344,6 +346,12 @@ export class App {
     this.publicUrl = publicUrl;
     this.publicRead = publicRead && access !== null;
     this.bounds = new ReadOnlyBounds((id) => this.exporter?.job(id)?.state === "running");
+  }
+
+  /** Whether a request is told all of the server's own releases (UpdateSpec decision 11): someone
+   *  let in fully; not a read-only reader, nor an agent. */
+  private toldAll(req: IncomingMessage): boolean {
+    return this.readOnlyOf.get(req) === undefined && this.ids.kind(req) !== "agent";
   }
 
   /** The exported document (ExportSpec decisions 5–16): POST /api/export starts typesetting the
@@ -842,13 +850,18 @@ export class App {
       if (/^\/(app|layout|edges|pdfworker)\.js(\.map)?$/.test(path)) return sendFile(req, res, join(bundleDir(), path.slice(1)));
       if (path.startsWith("/pdfjs/")) return pdfjsAsset(res, path);
       // with Lean's language server as it is (server/hover.ts): what is open, what crashed
-      if (path === "/api/status") return sendJson(res, { ...live.status(), lean: this.hover.state() });
+      // a read-only reader is told how the server is, not its log nor where its review is kept
+      if (path === "/api/status") {
+        const st: Record<string, unknown> = { ...(live.status() as Record<string, unknown>), lean: this.hover.state() };
+        if (this.readOnlyOf.get(req) !== undefined) {
+          delete st.log;
+          st.review = { ...(st.review as object), folder: undefined };
+        }
+        return sendJson(res, st);
+      }
       // VisualProof's own version, and what of its releases those let in fully are told (UpdateSpec
       // decision 11): a read-only reader and an agent are told the version alone
-      if (path === "/api/updates") {
-        const full = this.readOnlyOf.get(req) === undefined && this.ids.kind(req) !== "agent";
-        return sendJson(res, this.updates?.status(full) ?? { running: packageVersion() });
-      }
+      if (path === "/api/updates") return sendJson(res, this.updates?.status(this.toldAll(req)) ?? { running: packageVersion() });
       // the link that lets someone in, for a page that shares where it is (web/src/share.ts); a
       // request gets here only once it is in
       // a read-only reader shares the link they came by, or the address alone (--public)
@@ -949,7 +962,7 @@ export class App {
       }
       if (path === "/api/events") {
         const session = url.searchParams.get("session");
-        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null);
+        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null, this.toldAll(req));
       }
       // what happened (CollabSpec decision 5): what the server stored; the review's own history the
       // page reads from the review
@@ -1387,19 +1400,26 @@ async function main(): Promise<void> {
    *  supervisor to start it again in another version. A second signal meanwhile changes nothing;
    *  whatever still waits, it ends within 5 s. */
   let stopping = false;
+  /** the status the process ends with: a stop asked during a restart makes it a stop (0), so that
+   *  the supervisor does not start it again */
+  let exitStatus = 0;
   const stop = (status: number, why: { update: { from: string; to: string } } | { stopped: true }) => {
-    if (stopping) return;
+    if (stopping) {
+      if ("stopped" in why) exitStatus = 0;
+      return;
+    }
     stopping = true;
+    exitStatus = status;
     updates.stop();
     server.close();
     live.end(why);
     hover.stop();
     live.usage.cancel();
     server.closeIdleConnections();
-    setTimeout(() => process.exit(status), 5000);
+    setTimeout(() => process.exit(exitStatus), 5000);
     void stopChildren(2000).then(() => {
       server.closeAllConnections();
-      process.exit(status);
+      process.exit(exitStatus);
     });
   };
   const cacheRoot = o.cache ? resolve(o.cache) : cacheHome();
@@ -1408,16 +1428,20 @@ async function main(): Promise<void> {
     cacheRoot,
     canRestart: supervised && FROM_PACKAGE,
     check: FROM_PACKAGE,
+    checkout: !FROM_PACKAGE,
     // nobody on a page, nothing running that a restart would cut short (UpdateSpec decision 6)
     quiet: () => live.pages === 0 && !live.busy && !exporter.busy,
     restart: (to) => {
       process.send?.({ vp: "restart", to });
       stop(RESTART_STATUS, { update: { from: version, to } });
     },
-    log: (l) => live.say(l),
+    // the server's console alone: the log pages read (GET /api/status) is no place for paths and
+    // commands of this machine
+    log: (l) => console.log(l),
     changed: () => live.updatesChanged(),
     running: version,
-    installedRoot: process.env.VISUALPROOF_INSTALLED || PACKAGE_ROOT,
+    // the supervisor's word, believed only from it
+    installedRoot: (supervised && process.env.VISUALPROOF_INSTALLED) || PACKAGE_ROOT,
   });
   live.updateStatus = (full) => updates.status(full);
   app.updates = updates;
@@ -1441,7 +1465,7 @@ async function main(): Promise<void> {
       `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : "anyone who reaches the port"}`,
     );
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
-    recordVersion(live, version);
+    recordVersion(live, version, supervised);
     process.send?.({ vp: "listening", version });
     updates.start();
   });
@@ -1459,10 +1483,10 @@ function updatesInWords(mode: UpdateMode, version: string, supervised: boolean):
 
 /** The version that serves the site, recorded in the timeline where it is another than the last one
  *  recorded (UpdateSpec decision 10), with what the supervisor set aside before this one started. */
-function recordVersion(live: Live, version: string): void {
+function recordVersion(live: Live, version: string, supervised: boolean): void {
   let setAside: { version: string; why: string } | undefined;
   try {
-    const raw = JSON.parse(process.env.VISUALPROOF_SET_ASIDE ?? "null") as { version?: unknown; why?: unknown } | null;
+    const raw = JSON.parse((supervised && process.env.VISUALPROOF_SET_ASIDE) || "null") as { version?: unknown; why?: unknown } | null;
     if (raw && typeof raw.version === "string" && typeof raw.why === "string") setAside = { version: raw.version, why: raw.why };
   } catch {
     // nothing set aside that can be read

@@ -5,10 +5,11 @@
 
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { projectDirs, siteHolder } from "./dirs.ts";
+import { cacheHome, projectDirs, siteHolder } from "./dirs.ts";
 import { cmp, packageVersion, parseVersion, satisfies } from "./version.ts";
-import { choose, FROM_PACKAGE, installCommand, notesOf, npmPath, PACKAGE_ROOT, sameMinor } from "./updates.ts";
+import { choose, FROM_PACKAGE, installCommand, newerThan, newest, notesOf, npmCommand, PACKAGE_ROOT, readInfo, sameMinor, Versions } from "./updates.ts";
 
 export { packageVersion, satisfies };
 import { ProjectError, openProject, targetsInWords } from "./project.ts";
@@ -31,11 +32,12 @@ export interface Report {
   ready: string | null;
 }
 
-/** What the doctor asks of the machine: a program's output, or null when it cannot be run. */
-export type Run = (cmd: string, args: string[]) => string | null;
+/** What the doctor asks of the machine: a program's output (run in `cwd`, where one is said), or
+ *  null when it cannot be run. */
+export type Run = (cmd: string, args: string[], cwd?: string) => string | null;
 
-export const run: Run = (cmd, args) => {
-  const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
+export const run: Run = (cmd, args, cwd) => {
+  const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"], ...(cwd ? { cwd } : {}) });
   return r.error || r.status !== 0 ? null : `${r.stdout}${r.stderr}`;
 };
 
@@ -98,27 +100,54 @@ export interface DoctorOptions {
   platform?: NodeJS.Platform;
   /** whether this is an installed package's doctor, whose releases are npm's (a test says) */
   fromPackage?: boolean;
+  /** the updates' mode, as VISUALPROOF_UPDATES says it (off: the registry is not asked) */
+  updates?: string;
 }
 
-/** What the registry says of the releases beyond this one, in a line (UpdateSpec decisions 1–4). */
-function updatesLine(exec: Run, node: string, fromPackage: boolean): string {
+/** What the registry says of the releases beyond this one, in a line (UpdateSpec decisions 1–4, 7):
+ *  asked through npm under this Node, unless updates are off (VISUALPROOF_UPDATES=off); with what
+ *  this machine's servers set aside. */
+function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: string, mode: string | undefined): string {
   const running = packageVersion();
   if (!fromPackage) return "a checkout: its updates are git's, not npm's";
+  if (mode === "off") return "not asked (VISUALPROOF_UPDATES=off)";
+  const bad = new Versions(cacheRoot).bad();
+  const aside = bad.size ? `; set aside here: ${[...bad].map(([v, e]) => `${v} (${e.why})`).join(", ")}` : "";
+  const { cmd, args } = npmCommand();
+  // run where no project's .npmrc applies: the caches' root, else the temporary folder
+  const cwd = existsSync(cacheRoot) ? cacheRoot : tmpdir();
+  const ask = (more: string[]) => exec(cmd, [...args, ...more, "--fetch-timeout=15000", "--fetch-retries=1"], cwd);
   // npm's own warnings come after its answer: the answer alone is read
-  const out = exec(npmPath(), ["view", "visualproof", "versions", "--json", "--fetch-timeout=15000", "--fetch-retries=1"]);
-  const json = out === null ? null : /\[[^\]]*\]|"[^"\n]*"/.exec(out)?.[0];
-  let versions: string[] | null = null;
-  try {
-    const v = json ? (JSON.parse(json) as unknown) : null;
-    if (v !== null) versions = (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === "string");
-  } catch {
-    versions = null;
+  const json = (out: string | null, re: RegExp): unknown => {
+    const m = out === null ? null : re.exec(out)?.[0];
+    try {
+      return m ? JSON.parse(m) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const v = json(ask(["view", "visualproof", "versions", "--json"]), /\[[^\]]*\]|"[^"\n]*"/);
+  if (v === undefined) return `the npm registry could not be asked (offline, or npm not found): not checked${aside}`;
+  const versions = (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === "string");
+  // the engines of the newest beyond this one: those the doctor would name
+  const engines = new Map<string, string>();
+  const deprecated = new Set<string>();
+  const first = choose(running, versions, { bad: new Set(bad.keys()) });
+  for (const c of [first.patch, first.release]) {
+    if (!c || engines.has(c)) continue;
+    const out = ask(["view", `visualproof@${c}`, "engines", "deprecated", "--json"]);
+    const info = out === null ? null : readInfo(/^[\s\S]*?(\{[\s\S]*\}|"[^"\n]*")/.exec(out)?.[1] ?? "");
+    if (!info) continue;
+    engines.set(c, info.engines);
+    if (info.deprecated) deprecated.add(c);
   }
-  if (!versions) return "the npm registry could not be asked (offline, or npm not found): not checked";
-  const { patch, release } = choose(running, versions, { node });
-  if (release && !sameMinor(release, running)) return `${release} is out: ${installCommand(PACKAGE_ROOT, release)} (${notesOf(release)}); a server restarts into it by itself`;
-  if (patch) return `${patch} is out: a server takes it by itself (--updates auto), or ${installCommand(PACKAGE_ROOT, patch)}`;
-  return "the latest release";
+  const { patch, release } = choose(running, versions, { node, bad: new Set(bad.keys()), engines: (x) => engines.get(x), deprecated });
+  const skipped = newest(versions.filter((x) => newerThan(x, running)));
+  if (release && !sameMinor(release, running)) return `${release} is out: ${installCommand(PACKAGE_ROOT, release)} (${notesOf(release)}); a server restarts into it by itself${aside}`;
+  if (patch) return `${patch} is out: a server takes it by itself (--updates auto), or ${installCommand(PACKAGE_ROOT, patch)}${aside}`;
+  if (skipped && deprecated.has(skipped)) return `${skipped} is out, but deprecated by its publisher${aside}`;
+  if (skipped && engines.has(skipped)) return `${skipped} is out, but needs Node ${engines.get(skipped)}; this is ${node}${aside}`;
+  return `the latest release${aside}`;
 }
 
 export function doctor(o: DoctorOptions): Report {
@@ -163,7 +192,7 @@ export function doctor(o: DoctorOptions): Report {
     checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them" });
   }
 
-  const updates = updatesLine(exec, node, o.fromPackage ?? FROM_PACKAGE);
+  const updates = updatesLine(exec, node, o.fromPackage ?? FROM_PACKAGE, o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES);
   if (o.path === null) return { checks, updates, ready: null };
 
   let project;

@@ -161,7 +161,9 @@ export async function ensureBundle(): Promise<void> {
   const dist = bundleDir();
   const out = join(dist, "app.js");
   let newest = 0;
-  for (const f of [...readdirRec(join(WEB, "src")), ...readdirRec(join(SRC, "shared"))]) newest = Math.max(newest, statSync(f).mtimeMs);
+  // package.json too: the page is bundled with its version (UpdateSpec decision 8), which a page
+  // compares with its server's — a bundle of another version would have every new tab reload
+  for (const f of [...readdirRec(join(WEB, "src")), ...readdirRec(join(SRC, "shared")), join(REPO, "package.json")]) newest = Math.max(newest, statSync(f).mtimeMs);
   const beside = ["layout.js", "edges.js", "pdfworker.js"].every((f) => existsSync(join(dist, f)));
   if (existsSync(out) && beside && statSync(out).mtimeMs >= newest) return;
   mkdirSync(dirname(dist), { recursive: true });

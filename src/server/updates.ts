@@ -1,22 +1,29 @@
 // VisualProof's own releases, as a running server follows them (UpdateSpec.md): which versions npm
 // has, which of them this server may take by itself (a patch of the minor it runs, UpdateSpec
 // decision 3) and which it only tells of (a newer minor, decision 4), the patches downloaded beside
-// the installed package (`<cache>/versions/`, decision 5), and the quiet moment a server restarts
+// the installed package (`versions/` in the caches' root, decision 5), and the quiet moment a server restarts
 // into one (decision 6).
 //
 // The registry is asked through npm itself, the npm beside the Node that runs the server, so that
 // the user's registry, proxy and certificates hold as for any `npm install` (decision 1). What npm
 // is asked: the versions of `visualproof` and the engines of the newest ones; nothing of the project.
 //
-//   <cache>/updates.json          the last check: when, the versions found, the engines asked
-//   <cache>/versions/<v>/         a patch downloaded: an npm prefix holding visualproof@<v>
-//   <cache>/versions/<v>/ready    written once it was checked to run (`--version` says <v>)
-//   <cache>/versions/bad.json     versions set aside (decision 7): each with when and why
+// In the root of the caches (`--cache`, else the cache home), which every server of the user may
+// share — so that each folder below is one server's to make and every server's to read:
+//
+//   updates.json                   the last check: when, the versions found, the engines asked
+//   versions/                      this user's alone (0700): it holds code the servers run
+//   versions/<v>/                  a patch downloaded: an npm prefix holding visualproof@<v>
+//   versions/<v>/ready             written once it was checked to run (`--version` says <v>) on a
+//                                  Node its engines allow
+//   versions/<v>/running-<pid>     a server running it: never removed while that process lives
+//   versions/.<v>.tmp-<pid>        a download under way (that process's; removed once it is gone)
+//   versions/bad.json              versions set aside (decision 7): each with when and why
 
-import { execFile, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { tracked } from "./children.ts";
+import { childEnv, tracked } from "./children.ts";
 import { packageVersion, satisfies } from "./version.ts";
 
 export type UpdateMode = "auto" | "notify" | "off";
@@ -36,6 +43,11 @@ export interface UpdateStatus {
   /** a newer release: `taken` where this server takes it by itself (a patch, under auto), else the
    *  command that installs it; `notes`, its release notes */
   newer?: { version: string; taken: boolean; command?: string; notes: string };
+  /** the versions set aside on this machine (UpdateSpec decision 7): when, and why */
+  setAside?: { version: string; at: string; why: string }[];
+  /** a checkout's server (UpdateSpec decision 13): its updates are git's; nothing is asked, so
+   *  there is no mode */
+  checkout?: true;
 }
 
 /** The package's own folder, holding package.json: the one this code was loaded from. */
@@ -84,13 +96,14 @@ export function newest(vs: Iterable<string>): string | null {
  *  under auto (UpdateSpec decision 3); `release`, the newest release beyond it that runs here,
  *  which it tells of (decision 4). `engines` says each version's Node range, where known (unknown:
  *  taken as running here). */
-export function choose(running: string, versions: string[], o: { bad?: Set<string>; engines?: (v: string) => string | undefined; node?: string } = {}): { patch: string | null; release: string | null } {
+export function choose(running: string, versions: string[], o: { bad?: Set<string>; engines?: (v: string) => string | undefined; deprecated?: Set<string>; node?: string } = {}): { patch: string | null; release: string | null } {
   const node = o.node ?? process.versions.node;
   const runs = (v: string) => {
     const e = o.engines?.(v);
     return e === undefined || satisfies(node, e);
   };
-  const beyond = versions.filter((v) => newerThan(v, running) && runs(v));
+  // a release its publisher deprecated (`npm deprecate`) is neither taken nor told of
+  const beyond = versions.filter((v) => newerThan(v, running) && runs(v) && !o.deprecated?.has(v));
   return {
     patch: newest(beyond.filter((v) => sameMinor(v, running) && !o.bad?.has(v))),
     release: newest(beyond),
@@ -103,27 +116,34 @@ export type NpmResult = { ok: true; out: string } | { ok: false; why: string };
 /** npm, asked something: what it printed, or why it failed. */
 export type Npm = (args: string[], timeoutMs?: number) => Promise<NpmResult>;
 
-/** The npm beside the Node that runs this server, which installed it; else the one on the PATH. */
-export function npmPath(execPath = process.execPath): string {
-  const beside = join(dirname(execPath), "npm");
-  return existsSync(beside) ? beside : "npm";
+/** npm as the Node that runs this server runs it: npm's own script (`lib/node_modules/npm/bin/
+ *  npm-cli.js` beside it, as Node's installers, nvm and Homebrew lay it out) under this Node, not the
+ *  `npm` command, which runs under whatever Node is first on the PATH; else that command. */
+export function npmCommand(execPath = process.execPath): { cmd: string; args: string[] } {
+  const cli = join(dirname(execPath), "..", "lib", "node_modules", "npm", "bin", "npm-cli.js");
+  return existsSync(cli) ? { cmd: execPath, args: [cli] } : { cmd: "npm", args: [] };
 }
 
-/** npm as a child of this server (server/children.ts), without its own nags. */
-export const npm: Npm = (args, timeoutMs = 120_000) =>
-  new Promise((resolve) => {
-    const env = { ...process.env, npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false" };
-    tracked(
-      execFile(npmPath(), args, { timeout: timeoutMs, maxBuffer: 16 << 20, env, encoding: "utf8" }, (err, stdout, stderr) => {
-        if (!err) return resolve({ ok: true, out: stdout });
-        const said = `${stderr}`.split("\n").find((l) => /npm (error|ERR!)/.test(l) && !/A complete log/.test(l));
-        resolve({ ok: false, why: said?.replace(/^npm (error|ERR!)\s*/, "").trim() || (err.killed ? "npm took too long" : err.message.split("\n")[0]) });
-      }),
-    );
-  });
+/** npm as a child of this server (server/children.ts), run in `cwd` (the versions' folder, so that
+ *  no `.npmrc` of the project's folder, nor of wherever the server was started, applies), without
+ *  its own nags and without the server's own variables. */
+export function npmIn(cwd: string): Npm {
+  return (args, timeoutMs = 120_000) =>
+    new Promise((resolve) => {
+      const { cmd, args: pre } = npmCommand();
+      const env = childEnv({ npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false" });
+      tracked(
+        execFile(cmd, [...pre, ...args], { cwd, timeout: timeoutMs, maxBuffer: 16 << 20, env, encoding: "utf8" }, (err, stdout, stderr) => {
+          if (!err) return resolve({ ok: true, out: stdout });
+          const said = `${stderr}`.split("\n").find((l) => /npm (error|ERR!)/.test(l) && !/A complete log/.test(l));
+          resolve({ ok: false, why: said?.replace(/^npm (error|ERR!)\s*/, "").trim() || (err.killed ? "npm took too long" : err.message.split("\n")[0]) });
+        }),
+      );
+    });
+}
 
 /** The versions of visualproof npm has: every release, or why npm could not say. */
-export async function registryVersions(ask: Npm = npm): Promise<{ versions: string[] } | { why: string }> {
+export async function registryVersions(ask: Npm): Promise<{ versions: string[] } | { why: string }> {
   const r = await ask(["view", "visualproof", "versions", "--json"], 60_000);
   if (!r.ok) return { why: r.why };
   try {
@@ -136,15 +156,35 @@ export async function registryVersions(ask: Npm = npm): Promise<{ versions: stri
 }
 
 /** The Node range a version of visualproof runs on (its `engines.node`), or null when npm cannot say. */
-export async function registryEngines(v: string, ask: Npm = npm): Promise<string | null> {
-  const r = await ask(["view", `visualproof@${v}`, "engines", "--json"], 60_000);
-  if (!r.ok) return null;
+export async function registryEngines(v: string, ask: Npm): Promise<string | null> {
+  return (await registryInfo(v, ask))?.engines ?? null;
+}
+
+/** What npm says of a version's `engines` and `deprecated` (`npm view visualproof@<v> engines
+ *  deprecated --json`), as it says it: the engines object alone where the version is not deprecated,
+ *  the message alone where it has no engines, both by name where it has both. The Node range ("":
+ *  anywhere), and the deprecation's message or null. */
+export function readInfo(out: string): { engines: string; deprecated: string | null } | null {
+  let v: unknown;
   try {
-    const e = JSON.parse(r.out || "{}") as { node?: unknown };
-    return typeof e?.node === "string" ? e.node : "";
+    v = out.trim() ? JSON.parse(out) : {};
   } catch {
     return null;
   }
+  const node = (e: unknown) => (e && typeof e === "object" && typeof (e as { node?: unknown }).node === "string" ? (e as { node: string }).node : "");
+  if (typeof v === "string") return { engines: "", deprecated: v };
+  if (!v || typeof v !== "object") return null;
+  if ("engines" in v || "deprecated" in v) {
+    const d = (v as { deprecated?: unknown }).deprecated;
+    return { engines: node((v as { engines?: unknown }).engines), deprecated: typeof d === "string" && d ? d : null };
+  }
+  return { engines: node(v), deprecated: null };
+}
+
+/** A version's Node range and deprecation, or null when npm cannot say. */
+export async function registryInfo(v: string, ask: Npm): Promise<{ engines: string; deprecated: string | null } | null> {
+  const r = await ask(["view", `visualproof@${v}`, "engines", "deprecated", "--json"], 60_000);
+  return r.ok ? readInfo(r.out) : null;
 }
 
 /** The command that installs version `v` where the package at `root` is installed: npm's global
@@ -183,12 +223,63 @@ export function versionAt(root: string): string | null {
 
 // ---------------------------------------------------------------- the patches kept
 
-/** The versions downloaded beside the installed package (UpdateSpec decision 5). */
+/** Whether process `pid` lives (EPERM: it does, another user's). */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Whether a folder is this user's alone to write: owned by them, neither group nor others may write
+ *  it (UpdateSpec decision 12). Where there are no users (Windows), any. */
+function private_(dir: string): boolean {
+  try {
+    const st = statSync(dir);
+    if (typeof process.getuid !== "function") return st.isDirectory();
+    return st.isDirectory() && st.uid === process.getuid() && (st.mode & 0o022) === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Run the server's code at `main` with `--version`, as a child the server stops with itself: what
+ *  it says, or why it said nothing. */
+function versionOf(node: string, main: string): Promise<{ out: string } | { why: string }> {
+  return new Promise((resolve) => {
+    tracked(
+      execFile(node, [main, "--version"], { timeout: 30_000, encoding: "utf8", env: childEnv() }, (err, stdout, stderr) => {
+        if (!err) return resolve({ out: stdout.trim() });
+        resolve({ why: (stderr || stdout || err.message).trim().split("\n")[0] || (err.killed ? "it took too long" : "it failed") });
+      }),
+    );
+  });
+}
+
+/** The versions downloaded beside the installed package (UpdateSpec decision 5), in a folder every
+ *  server of the user may share: each one downloads into a folder of its own and moves it into
+ *  place only where none is there yet, marks the version it runs, and removes only what no living
+ *  server runs, of its own minor, older than the one it would step back to. */
 export class Versions {
   readonly root: string;
 
   constructor(cacheRoot: string) {
     this.root = join(cacheRoot, "versions");
+  }
+
+  /** The folder made where it is not, this user's alone (0700); why it cannot be used, else null. */
+  ensure(): string | null {
+    try {
+      if (!existsSync(this.root)) {
+        mkdirSync(this.root, { recursive: true, mode: 0o700 });
+        chmodSync(this.root, 0o700);
+      }
+    } catch (e) {
+      return `${this.root} cannot be made: ${(e as Error).message}`;
+    }
+    return private_(this.root) ? null : `${this.root} is not this user's alone (another owns it, or others may write it): no patch is taken from it`;
   }
 
   /** the package of version `v`, as npm installed it into its prefix */
@@ -200,8 +291,9 @@ export class Versions {
     return join(this.packageOf(v), "dist", "server", "main.js");
   }
 
-  /** The versions downloaded and checked to run. */
+  /** The versions downloaded and checked to run, in folders this user alone may write. */
   ready(): string[] {
+    if (!private_(this.root)) return [];
     let names: string[] = [];
     try {
       names = readdirSync(this.root);
@@ -209,7 +301,7 @@ export class Versions {
       return [];
     }
     return names.filter((v) => {
-      if (!stable(v)) return false;
+      if (!stable(v) || !private_(join(this.root, v))) return false;
       try {
         return readFileSync(join(this.root, v, "ready"), "utf8").trim() === v && existsSync(this.mainOf(v));
       } catch {
@@ -218,60 +310,145 @@ export class Versions {
     });
   }
 
-  /** The versions set aside, each with when and why (UpdateSpec decision 7). */
-  bad(): Map<string, { at: string; why: string }> {
+  /** The versions set aside, each with when, why and how many times (UpdateSpec decision 7). */
+  bad(): Map<string, { at: string; why: string; times: number }> {
     try {
-      const raw = JSON.parse(readFileSync(join(this.root, "bad.json"), "utf8")) as Record<string, { at?: unknown; why?: unknown }>;
-      return new Map(Object.entries(raw).filter(([v, e]) => stable(v) && e && typeof e.why === "string").map(([v, e]) => [v, { at: String(e.at ?? ""), why: String(e.why) }]));
+      const raw = JSON.parse(readFileSync(join(this.root, "bad.json"), "utf8")) as Record<string, { at?: unknown; why?: unknown; times?: unknown }>;
+      return new Map(
+        Object.entries(raw)
+          .filter(([v, e]) => stable(v) && e && typeof e.why === "string")
+          .map(([v, e]) => [v, { at: String(e.at ?? ""), why: String(e.why), times: Number.isInteger(e.times) && (e.times as number) > 0 ? (e.times as number) : 1 }]),
+      );
     } catch {
       return new Map();
     }
   }
 
-  markBad(v: string, why: string): void {
-    const all = Object.fromEntries(this.bad());
-    all[v] = { at: new Date().toISOString(), why };
-    mkdirSync(this.root, { recursive: true });
+  /** The versions set aside now: each for a day after it failed, and for good once it failed
+   *  SET_ASIDE_TIMES times; tried again otherwise. */
+  setAside(now = Date.now()): Set<string> {
+    const out = new Set<string>();
+    for (const [v, e] of this.bad()) if (e.times >= SET_ASIDE_TIMES || now - Date.parse(e.at) < SET_ASIDE_FOR || !Number.isFinite(Date.parse(e.at))) out.add(v);
+    return out;
+  }
+
+  private writeBad(all: Record<string, { at: string; why: string; times: number }>): void {
+    if (this.ensure()) return;
     const f = join(this.root, "bad.json");
     writeFileSync(`${f}.tmp-${process.pid}`, JSON.stringify(all, null, 1));
     renameSync(`${f}.tmp-${process.pid}`, f);
   }
 
+  markBad(v: string, why: string): void {
+    const all = Object.fromEntries(this.bad());
+    all[v] = { at: new Date().toISOString(), why, times: (all[v]?.times ?? 0) + 1 };
+    this.writeBad(all);
+  }
+
+  /** Take a version back from those set aside (a mark made in error, or one to try again). */
+  unmarkBad(v: string): void {
+    const all = Object.fromEntries(this.bad());
+    if (!Object.hasOwn(all, v)) return;
+    delete all[v];
+    this.writeBad(all);
+  }
+
+  /** Mark version `v` as run by this process, until it ends; the mark goes with the process. */
+  markRunning(v: string, pid = process.pid): void {
+    const f = join(this.root, v, `running-${pid}`);
+    try {
+      writeFileSync(f, `${pid}\n`);
+      process.once("exit", () => {
+        try {
+          unlinkSync(f);
+        } catch {
+          // gone already
+        }
+      });
+    } catch {
+      // not a version of the cache's: nothing to keep it for
+    }
+  }
+
+  /** Whether a living server runs version `v`, or downloads it. */
+  inUse(v: string): boolean {
+    let names: string[] = [];
+    try {
+      names = readdirSync(join(this.root, v));
+    } catch {
+      return false;
+    }
+    return names.some((n) => {
+      const m = /^running-(\d+)$/.exec(n);
+      return !!m && alive(Number(m[1]));
+    });
+  }
+
   /** Download version `v` (npm checks what it downloads against the registry's integrity), check
-   *  that it runs and says it is `v`, and mark it ready: into a folder of its own first, moved into
-   *  place once whole, so that a supervisor never runs one half there. Null when done, else why not. */
-  async fetch(v: string, ask: Npm = npm, node = process.execPath): Promise<string | null> {
+   *  that it runs on this Node (its engines) and says it is `v`, and mark it ready: into a folder of
+   *  its own first, moved into place only where no other server put one meanwhile (whose finished
+   *  copy is as good). Null when it is ready, else why not. */
+  async fetch(v: string, ask: Npm, node = process.execPath, nodeVersion = process.versions.node): Promise<string | null> {
     if (!stable(v)) return `${v} is not a release`;
-    mkdirSync(this.root, { recursive: true });
+    const bad = this.ensure();
+    if (bad) return bad;
+    if (this.ready().includes(v)) return null;
+    this.sweep();
     const work = join(this.root, `.${v}.tmp-${process.pid}`);
     rmSync(work, { recursive: true, force: true });
-    mkdirSync(work, { recursive: true });
+    mkdirSync(work, { mode: 0o700 });
     try {
-      const r = await ask(["install", "--prefix", work, "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--no-package-lock", `visualproof@${v}`], 600_000);
+      const r = await ask(["install", `--prefix=${work}`, "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund", "--no-package-lock", `visualproof@${v}`], 600_000);
       if (!r.ok) return `npm could not install it: ${r.why}`;
-      const main = join(work, "node_modules", "visualproof", "dist", "server", "main.js");
+      const pkg = join(work, "node_modules", "visualproof");
+      const main = join(pkg, "dist", "server", "main.js");
       if (!existsSync(main)) return "npm installed it without its server";
-      const says = spawnSync(node, [main, "--version"], { encoding: "utf8", timeout: 30_000 });
-      if (says.status !== 0 || says.stdout.trim() !== v) return `it does not run here (${(says.stderr || says.stdout || String(says.error ?? "")).trim().split("\n")[0] || `status ${says.status}`})`;
+      let engines: string | undefined;
+      try {
+        engines = (JSON.parse(readFileSync(join(pkg, "package.json"), "utf8")) as { engines?: { node?: string } }).engines?.node;
+      } catch {
+        return "its package.json cannot be read";
+      }
+      if (!satisfies(nodeVersion, engines)) return `it needs Node ${engines}; this is ${nodeVersion}`;
+      const says = await versionOf(node, main);
+      if ("why" in says || says.out !== v) return `it does not run here (${"why" in says ? says.why : `it says it is ${says.out || "nothing"}`})`;
       writeFileSync(join(work, "ready"), `${v}\n`);
-      rmSync(join(this.root, v), { recursive: true, force: true });
-      renameSync(work, join(this.root, v));
+      try {
+        renameSync(work, join(this.root, v));
+      } catch {
+        // another server's copy is there: as good, once it is whole
+        if (!this.ready().includes(v)) return `${join(this.root, v)} is there, and not ready`;
+      }
       return null;
     } finally {
       rmSync(work, { recursive: true, force: true });
     }
   }
 
-  /** Keep the versions named (the running one and the one before it), and remove the others. */
-  prune(keep: Iterable<string>): void {
-    const kept = new Set(keep);
+  /** Remove the downloads left by servers that died midway. */
+  sweep(): void {
     let names: string[] = [];
     try {
       names = readdirSync(this.root);
     } catch {
       return;
     }
-    for (const v of names) if (stable(v) && !kept.has(v)) rmSync(join(this.root, v), { recursive: true, force: true });
+    for (const n of names) {
+      const m = /^\.(.+)\.tmp-(\d+)$/.exec(n);
+      if (m && !alive(Number(m[2]))) rmSync(join(this.root, n), { recursive: true, force: true });
+    }
+  }
+
+  /** Remove the versions of `running`'s minor older than the one it would step back to (the newest
+   *  ready one before it), that no living server runs; other minors are other servers' to keep. */
+  prune(running: string): void {
+    this.sweep();
+    const mine = this.ready().filter((v) => sameMinor(v, running));
+    const before = newest(mine.filter((v) => newerThan(running, v)));
+    for (const v of mine) {
+      if (!newerThan(running, v) || v === before || this.inUse(v)) continue;
+      rmSync(join(this.root, v), { recursive: true, force: true });
+    }
   }
 }
 
@@ -279,7 +456,7 @@ export class Versions {
  *  version downloaded of its minor that is newer, ready, runs on this Node and is not set aside. */
 export function codeToRun(installedRoot: string, versions: Versions, node = process.versions.node): { main: string; version: string; cached: boolean } {
   const installed = versionAt(installedRoot) ?? "0.0.0";
-  const bad = versions.bad();
+  const bad = versions.setAside();
   let best: string | null = null;
   for (const v of versions.ready()) {
     if (!sameMinor(v, installed) || !newerThan(v, installed) || bad.has(v)) continue;
@@ -299,8 +476,10 @@ export function codeToRun(installedRoot: string, versions: Versions, node = proc
 // ---------------------------------------------------------------- a server following its releases
 
 /** VISUALPROOF_UPDATE_TEST_MS, for the tests of the update path alone (scripts/test-updates.mjs):
- *  every wait below that many milliseconds, the longest five times it */
-const TEST_MS = Number(process.env.VISUALPROOF_UPDATE_TEST_MS) > 0 ? Number(process.env.VISUALPROOF_UPDATE_TEST_MS) : 0;
+ *  every wait below that many milliseconds, the longest five times it. Honoured only where npm's
+ *  registry is one on this machine (npm_config_registry a loopback address), as the test's is and a
+ *  server's never is. */
+const TEST_MS = Number(process.env.VISUALPROOF_UPDATE_TEST_MS) > 0 && /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(process.env.npm_config_registry ?? "") ? Number(process.env.VISUALPROOF_UPDATE_TEST_MS) : 0;
 /** a day between checks, and up to two hours more, so that servers started together do not ask together */
 export const CHECK_EVERY = TEST_MS || 24 * 3600_000;
 const JITTER = TEST_MS ? 0 : 2 * 3600_000;
@@ -313,11 +492,16 @@ export const PATCH_WAIT = TEST_MS * 5 || 24 * 3600_000;
 /** the longest a package changed under the running server waits: its files are not the ones it
  *  started with */
 export const INSTALLED_WAIT = TEST_MS * 5 || 10 * 60_000;
+/** a version that failed is set aside for a day, then tried again; for good after three times */
+export const SET_ASIDE_FOR = TEST_MS * 600 || 24 * 3600_000;
+export const SET_ASIDE_TIMES = 3;
 
 interface Saved {
   checked: string;
   versions: string[];
   engines: Record<string, string>;
+  /** the versions found deprecated, with the publisher's message */
+  deprecated?: Record<string, string>;
 }
 
 export interface UpdatesOptions {
@@ -329,6 +513,8 @@ export interface UpdatesOptions {
   canRestart: boolean;
   /** whether the registry is asked at all: only from a package (UpdateSpec decision 13) */
   check: boolean;
+  /** a checkout's server, which follows no releases (UpdateSpec decision 13) */
+  checkout?: boolean;
   /** nobody on a page, nothing running: a moment to restart in (decision 6) */
   quiet: () => boolean;
   /** restart into version `to` (the server tells its pages, stops, and its supervisor starts it) */
@@ -342,6 +528,8 @@ export interface UpdatesOptions {
   installedRoot?: string;
   npm?: Npm;
   node?: string;
+  /** the Node binary this server runs on, which the supervisor starts the next one with */
+  execPath?: string;
   now?: () => number;
 }
 
@@ -361,8 +549,12 @@ export class Updates {
   private installedAtStart: string | null;
   private installedChanged: number | null = null;
   private downloading = false;
+  /** npm, run in the versions' folder (else the caches' root, where that folder cannot be used) */
+  private npm: Npm;
   private timers: ReturnType<typeof setTimeout>[] = [];
   private restarting = false;
+  /** said once: the Node this server runs on is gone */
+  private nodeGone = false;
 
   constructor(o: UpdatesOptions) {
     this.o = o;
@@ -373,9 +565,10 @@ export class Updates {
     this.file = join(o.cacheRoot, "updates.json");
     this.now = o.now ?? Date.now;
     this.installedAtStart = versionAt(this.installedRoot);
+    this.npm = o.npm ?? npmIn(this.versions.ensure() === null ? this.versions.root : o.cacheRoot);
     try {
       const s = JSON.parse(readFileSync(this.file, "utf8")) as Partial<Saved>;
-      if (typeof s.checked === "string" && Array.isArray(s.versions)) this.saved = { checked: s.checked, versions: s.versions.filter((v) => typeof v === "string"), engines: s.engines && typeof s.engines === "object" ? s.engines : {} };
+      if (typeof s.checked === "string" && Array.isArray(s.versions)) this.saved = { checked: s.checked, versions: s.versions.filter((v) => typeof v === "string"), engines: s.engines && typeof s.engines === "object" ? s.engines : {}, ...(s.deprecated && typeof s.deprecated === "object" ? { deprecated: s.deprecated } : {}) };
     } catch {
       // never checked here, or the file is unreadable: asked again
     }
@@ -385,24 +578,30 @@ export class Updates {
   private found(): { patch: string | null; release: string | null } {
     if (!this.saved) return { patch: null, release: null };
     const e = this.saved.engines;
-    return choose(this.running, this.saved.versions, { bad: new Set(this.versions.bad().keys()), engines: (v) => (Object.hasOwn(e, v) ? e[v] : undefined), node: this.o.node });
+    return choose(this.running, this.saved.versions, { bad: this.versions.setAside(this.now()), engines: (v) => (Object.hasOwn(e, v) ? e[v] : undefined), deprecated: new Set(Object.keys(this.saved.deprecated ?? {})), node: this.o.node });
   }
 
   /** What a page is told (UpdateSpec decision 11): the version alone where `full` is not. */
   status(full: boolean): UpdateStatus {
     if (!full) return { running: this.running };
+    if (this.o.checkout) return { running: this.running, checkout: true };
     const installed = versionAt(this.installedRoot);
     const { patch, release } = this.found();
     const s: UpdateStatus = { running: this.running, mode: this.mode, ...(installed && installed !== this.running ? { installed } : {}), ...(this.saved ? { checked: this.saved.checked } : {}) };
     // a newer minor, which needs someone, is told before a patch this server takes by itself
     if (release && !sameMinor(release, this.running)) s.newer = { version: release, taken: false, command: installCommand(this.installedRoot, release), notes: notesOf(release, this.installedRoot) };
     else if (patch) s.newer = this.mode === "auto" && this.o.canRestart ? { version: patch, taken: true, notes: notesOf(patch, this.installedRoot) } : { version: patch, taken: false, command: installCommand(this.installedRoot, patch), notes: notesOf(patch, this.installedRoot) };
+    const aside = this.versions.setAside(this.now());
+    const bad = [...this.versions.bad()].filter(([v]) => aside.has(v)).map(([version, e]) => ({ version, at: e.at, why: e.why }));
+    if (bad.length) s.setAside = bad;
     return s;
   }
 
   /** Begin: the first check soon after the server listens (unless one was made in the last hour),
    *  then one a day; the quiet moment looked for every minute. */
   start(): void {
+    // a version of the cache's, which no other server removes while this one runs it
+    if (PACKAGE_ROOT === this.versions.packageOf(this.running)) this.versions.markRunning(this.running);
     if (this.mode === "off") return;
     if (this.o.check) {
       const last = this.saved ? Date.parse(this.saved.checked) : NaN;
@@ -428,30 +627,45 @@ export class Updates {
     this.timers.push(t);
   }
 
+  /** A check, then the next a day on, whatever this one met. */
   private async checkLoop(): Promise<void> {
-    await this.check();
-    this.later(() => void this.checkLoop(), CHECK_EVERY + Math.random() * JITTER);
+    try {
+      await this.check();
+    } catch (e) {
+      this.o.log(`updates: the check failed: ${e instanceof Error ? e.message : String(e)}; asked again in a day`);
+    } finally {
+      this.later(() => void this.checkLoop(), CHECK_EVERY + Math.random() * JITTER);
+    }
   }
 
   /** Ask the registry (UpdateSpec decision 1): the versions, and the engines of the newest beyond
    *  this one; then, under auto, download the patch this server may take. */
   async check(): Promise<void> {
-    const ask = this.o.npm ?? npm;
+    const ask = this.npm;
     const r = await registryVersions(ask);
     if ("why" in r) {
       this.o.log(`updates: the registry could not be asked (${r.why}); asked again in a day`);
       return;
     }
-    const engines: Record<string, string> = { ...(this.saved?.engines ?? {}) };
-    const bad = new Set(this.versions.bad().keys());
-    // the newest beyond this one, in its minor and beyond it: what their Node needs
+    const engines: Record<string, string> = {};
+    const deprecated: Record<string, string> = {};
+    const bad = this.versions.setAside(this.now());
+    // the newest beyond this one, in its minor and beyond it: what their Node needs, and whether
+    // their publisher deprecated them — asked afresh, newest first, until one is fit (a few at most)
     const beyond = r.versions.filter((v) => newerThan(v, this.running));
-    for (const v of [newest(beyond.filter((x) => sameMinor(x, this.running) && !bad.has(x))), newest(beyond)]) {
-      if (!v || Object.hasOwn(engines, v)) continue;
-      const e = await registryEngines(v, ask);
-      if (e !== null) engines[v] = e;
+    const descending = (vs: string[]) => [...vs].sort((a, b) => (newerThan(a, b) ? -1 : newerThan(b, a) ? 1 : 0));
+    for (const list of [descending(beyond.filter((x) => sameMinor(x, this.running) && !bad.has(x))), descending(beyond)]) {
+      for (const v of list.slice(0, 5)) {
+        if (!Object.hasOwn(engines, v)) {
+          const info = await registryInfo(v, ask);
+          if (info === null) break;
+          engines[v] = info.engines;
+          if (info.deprecated) deprecated[v] = info.deprecated;
+        }
+        if (!Object.hasOwn(deprecated, v) && satisfies(this.o.node ?? process.versions.node, engines[v])) break;
+      }
     }
-    this.saved = { checked: new Date(this.now()).toISOString(), versions: r.versions, engines };
+    this.saved = { checked: new Date(this.now()).toISOString(), versions: r.versions, engines, ...(Object.keys(deprecated).length ? { deprecated } : {}) };
     try {
       mkdirSync(dirname(this.file), { recursive: true });
       writeFileSync(`${this.file}.tmp-${process.pid}`, JSON.stringify(this.saved));
@@ -460,10 +674,11 @@ export class Updates {
       // kept in memory: asked again at the next start
     }
     const { patch, release } = this.found();
-    if (release && !sameMinor(release, this.running)) this.o.log(`updates: VisualProof ${release} is out (this is ${this.running}): it is installed by ${installCommand(this.installedRoot, release)}, which this server then restarts into by itself`);
+    if (release && !sameMinor(release, this.running)) this.o.log(`updates: VisualProof ${release} is out (this is ${this.running}; ${notesOf(release, this.installedRoot)}): it is installed by ${installCommand(this.installedRoot, release)}, which this server then restarts into by itself`);
     else if (!patch) {
       const out = newest(beyond);
-      this.o.log(out ? `updates: VisualProof ${out} is out, but needs Node ${engines[out] ?? "another"}; this is ${process.versions.node}` : `updates: VisualProof ${this.running} is the latest`);
+      const why = out ? (bad.has(out) ? `set aside here: ${this.versions.bad().get(out)?.why ?? "it failed"}` : Object.hasOwn(deprecated, out) ? `deprecated: ${deprecated[out]}` : `it needs Node ${engines[out] ?? "another"}; this is ${this.o.node ?? process.versions.node}`) : "";
+      this.o.log(out ? `updates: VisualProof ${out} is out, not taken: ${why}` : `updates: VisualProof ${this.running} is the latest`);
     }
     if (patch) {
       if (this.mode === "auto" && this.o.canRestart) await this.download(patch);
@@ -479,7 +694,7 @@ export class Updates {
     try {
       if (!this.versions.ready().includes(v)) {
         this.o.log(`updates: VisualProof ${v} is out (this is ${this.running}): downloading it into ${this.versions.root}`);
-        const why = await this.versions.fetch(v, this.o.npm ?? npm);
+        const why = await this.versions.fetch(v, this.npm);
         if (why) {
           this.o.log(`updates: VisualProof ${v} could not be downloaded: ${why}; tried again at the next check`);
           return;
@@ -487,28 +702,53 @@ export class Updates {
       }
       this.pending = { version: v, since: this.now() };
       this.o.log(`updates: VisualProof ${v} is ready; this server restarts into it when nobody is on a page and nothing runs, within a day`);
-      // what is kept: the version that runs, and the one ready; the one before goes at the next restart
-      this.versions.prune([this.running, v]);
+      // what goes: this minor's versions older than the one this server would step back to
+      this.versions.prune(this.running);
     } finally {
       this.downloading = false;
     }
   }
 
   /** Every minute: the installed package changed on disk (an `npm install` while this ran), or a
-   *  patch is ready; restart into it at a quiet moment, or once it waited its longest. */
+   *  patch is ready; restart into it at a quiet moment, or once it waited its longest — where the
+   *  supervisor would run it (codeToRun says the same), and where this Node is still there to run it. */
   async look(): Promise<void> {
     if (this.restarting || !this.o.canRestart) return;
     const now = this.now();
     const installed = versionAt(this.installedRoot);
     if (installed !== this.installedAtStart) this.installedChanged ??= now;
     else this.installedChanged = null;
+    const runs = (): string => codeToRun(this.installedRoot, this.versions, this.o.node).version;
     let to: string | null = null;
     if (this.installedChanged !== null) {
-      if (installed && (this.o.quiet() || now - this.installedChanged >= INSTALLED_WAIT)) to = codeToRun(this.installedRoot, this.versions, this.o.node).version;
+      if (!installed || !(this.o.quiet() || now - this.installedChanged >= INSTALLED_WAIT)) return;
+      to = runs();
+      // a package changed under the server, which runs a patch from the cache it still runs: its
+      // files are not those that changed, and nothing changes for it
+      if (to === this.running && PACKAGE_ROOT !== this.installedRoot) {
+        this.installedAtStart = installed;
+        this.installedChanged = null;
+        return;
+      }
     } else if (this.pending && this.mode === "auto") {
-      if (this.o.quiet() || now - this.pending.since >= PATCH_WAIT) to = this.pending.version;
+      if (!(this.o.quiet() || now - this.pending.since >= PATCH_WAIT)) return;
+      to = this.pending.version;
+      // what the supervisor would run is another (it reads the download's own engines, set aside
+      // or not): no restart, which would start this one again
+      const would = runs();
+      if (would !== to) {
+        this.o.log(`updates: VisualProof ${to} is downloaded, but the supervisor would run ${would}: not restarted`);
+        this.pending = null;
+        return;
+      }
     }
     if (to === null) return;
+    // the Node this server runs on is gone (an upgrade of it removed it): nothing could start again
+    if (!existsSync(this.o.execPath ?? process.execPath)) {
+      if (!this.nodeGone) this.o.log(`updates: ${this.o.execPath ?? process.execPath} is gone (Node upgraded?): this server keeps running VisualProof ${this.running}; restart it to take ${to}`);
+      this.nodeGone = true;
+      return;
+    }
     this.restarting = true;
     this.o.log(`updates: restarting into VisualProof ${to}`);
     this.o.restart(to);

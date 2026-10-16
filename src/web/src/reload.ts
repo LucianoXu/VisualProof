@@ -103,6 +103,12 @@ export interface ReloadHooks {
 
 /** how often a reload waiting for a moment looks again */
 const RETRY_MS = 1000;
+/** the pages of a server back from a restart reload over this long, each at a moment of its own,
+ *  not all at once */
+export const SPREAD_MS = 5000;
+/** where the version a tab last reloaded for is kept where sessionStorage is refused: the tab's
+ *  own name, which a reload keeps */
+const NAME_PREFIX = "visualproof-reloaded-for:";
 
 export class Reloader {
   /** the version the server runs, where it is another than this page's; null: none waits */
@@ -111,9 +117,12 @@ export class Reloader {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private page: string | null;
 
-  constructor(hooks: ReloadHooks, page: string | null = PAGE_VERSION) {
+  private spread: number;
+
+  constructor(hooks: ReloadHooks, page: string | null = PAGE_VERSION, spread = SPREAD_MS) {
     this.hooks = hooks;
     this.page = page;
+    this.spread = spread;
   }
 
   /** The server said which it is, as a stream opened: of another version, the page reloads into
@@ -128,8 +137,12 @@ export class Reloader {
       }
       return;
     }
+    const fresh = this.wanted !== server.version;
     this.wanted = server.version;
-    this.attempt();
+    this.stopWaiting();
+    // a moment of its own, so that the server's pages do not all ask for it at once
+    if (fresh && this.spread > 0) this.timer = setTimeout(() => this.attempt(), Math.random() * this.spread);
+    else this.attempt();
   }
 
   /** Reload now, keeping what this page holds: the reader asked (the pill), or nothing waits. */
@@ -137,11 +150,7 @@ export class Reloader {
     this.stopWaiting();
     const storage = this.storage();
     keep(this.hooks.kept(), storage);
-    try {
-      if (this.wanted !== null) storage?.setItem(FOR_KEY, this.wanted);
-    } catch {
-      // refused: a reload that brings no new code may come again
-    }
+    if (this.wanted !== null) this.reloadedFor(this.wanted);
     this.hooks.reload();
   }
 
@@ -149,14 +158,41 @@ export class Reloader {
     return this.hooks.storage === undefined ? session() : this.hooks.storage;
   }
 
+  /** Keep the version this tab reloads for: in its sessionStorage, else, where that is refused, in
+   *  its name (window.name), which a reload keeps too — so that a page that cannot keep it never
+   *  reloads, and reloads, for ever. */
+  private reloadedFor(v: string): void {
+    try {
+      const st = this.storage();
+      if (!st) throw new Error("no storage");
+      st.setItem(FOR_KEY, v);
+      return;
+    } catch {
+      // refused: the tab's name instead
+    }
+    try {
+      (globalThis as { name?: string }).name = `${NAME_PREFIX}${v}`;
+    } catch {
+      // nothing keeps it here
+    }
+  }
+
+  private lastReloadedFor(): string | null {
+    try {
+      const st = this.storage();
+      if (!st) throw new Error("no storage");
+      const v = st.getItem(FOR_KEY);
+      if (v !== null) return v;
+    } catch {
+      // refused: the tab's name, below
+    }
+    const name = (globalThis as { name?: unknown }).name;
+    return typeof name === "string" && name.startsWith(NAME_PREFIX) ? name.slice(NAME_PREFIX.length) : null;
+  }
+
   private attempt(): void {
     if (this.wanted === null) return;
-    let done: string | null = null;
-    try {
-      done = this.storage()?.getItem(FOR_KEY) ?? null;
-    } catch {
-      // none known
-    }
+    const done = this.lastReloadedFor();
     // reloaded for this version already, and this page still is not of it: once is enough
     if (done === this.wanted) return;
     if (this.hooks.busy() === null) return this.go();
