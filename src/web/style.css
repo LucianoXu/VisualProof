@@ -1961,6 +1961,9 @@ a.link:hover { text-decoration: underline; }
 .tour-text { font-size: 13px; line-height: 1.5; color: var(--text); }
 .tour-actions { display: flex; align-items: center; gap: 6px; margin-top: 14px; }
 .tour-gap { flex: 1; }
+/* the TCB step's three views of one theorem (GuideSpec decision 2) */
+.tour-seg { display: inline-flex; margin: 0 0 8px; }
+@media (prefers-reduced-motion: reduce) { .tour-shade, .tour-spot, .tour-card { transition: none; } }
 #help { position: fixed; inset: 0; z-index: 45; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.22); }
 .help-box { width: min(660px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; outline: none; }
 .help-head { display: flex; justify-content: space-between; align-items: center; }
@@ -1989,6 +1992,66 @@ kbd {
   color: var(--text-2); font: 600 14px var(--font); cursor: pointer;
 }
 .help-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* the sheet's tabs: the tips first, then the keys (GuideSpec decision 8) */
+.help-tabs { display: inline-flex; }
+.help-tabs button { padding: 4px 14px; font-size: 13px; }
+.help-pane { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.help-pane[hidden] { display: none; }
+@media (min-width: 641px) { .help-box:has([data-help-pane="tips"]:not([hidden])) { width: min(780px, calc(100vw - 32px)); } }
+.tips-filter { font-family: var(--font); }
+.tips-group { display: flex; flex-direction: column; gap: 8px; }
+.tips-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+/* a tip: its clip, its words, Show me and More (GuideSpec decisions 5–7) */
+/* a part of the panel with the ⓘ of its tip beside its heading (GuideSpec decision 15) */
+.sec-row { display: flex; align-items: center; gap: 4px; }
+.sec-row > .sec-h { flex: 1; min-width: 0; }
+.p-info { flex: none; width: 22px; height: 22px; border: none; border-radius: 50%; background: none; color: var(--text-3); font-size: 14px; cursor: pointer; }
+.p-info:hover { color: var(--accent); background: var(--code-bg); }
+.tip-card {
+  display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+  background: var(--surface-solid);
+}
+.tip-card.flash { animation: tip-flash 1.6s ease-out; }
+@keyframes tip-flash { from { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent); } to { box-shadow: 0 0 0 3px transparent; } }
+@media (prefers-reduced-motion: reduce) { .tip-card.flash { animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); } }
+.tip-media { position: relative; aspect-ratio: 16 / 10; background: var(--canvas); border-bottom: 1px solid var(--line); }
+.tip-clip { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tip-play {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 42px; height: 42px; border-radius: 50%;
+  border: none; background: color-mix(in srgb, var(--surface-solid) 88%, transparent); color: var(--text); font-size: 15px;
+  box-shadow: var(--shadow); cursor: pointer;
+}
+.tip-body { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px 12px; }
+.tip-title { font-weight: 650; font-size: 13.5px; letter-spacing: -0.01em; }
+.tip-text { font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+.tip-text b { color: var(--text); font-weight: 600; }
+.tip-acts { display: flex; gap: 12px; margin-top: 2px; font-size: 12.5px; }
+.tip-acts a { color: var(--accent); text-decoration: none; }
+.tip-new { font-size: 10.5px; font-weight: 600; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 999px; padding: 0 6px; vertical-align: 1px; }
+.tips-off { display: flex; align-items: center; gap: 6px; }
+.help-update { margin-top: 6px; color: var(--text); }
+.help-about.flash { animation: tip-flash 1.6s ease-out; border-radius: 8px; }
+/* a tip in place, beside its control, its arrow pointing at it (GuideSpec decision 9) */
+#intip {
+  position: fixed; left: 0; top: 0; z-index: 44; width: min(280px, calc(100vw - 16px)); padding: 11px 13px 10px;
+  border-radius: 12px; background: var(--surface-solid); box-shadow: var(--shadow-lg);
+}
+#intip::before {
+  content: ""; position: absolute; left: calc(var(--arrow-x, 50%) - 6px); top: -6px; width: 12px; height: 12px;
+  background: var(--surface-solid); transform: rotate(45deg); border-left: 1px solid var(--line); border-top: 1px solid var(--line);
+}
+#intip.above::before { top: auto; bottom: -6px; border: none; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.intip-title { font-weight: 650; font-size: 13.5px; margin-bottom: 4px; }
+.intip-text { font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
+.intip-text b { color: var(--text); font-weight: 600; }
+.intip-acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+/* What's new, once: at the bottom, in the middle, quiet (GuideSpec decision 11) */
+#whatsnew {
+  position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%); z-index: 44; display: flex; align-items: center; gap: 4px;
+  padding: 4px 6px 4px 14px; border-radius: 999px; background: var(--surface-solid); box-shadow: var(--shadow);
+}
+.news-open { border: none; background: none; color: var(--accent); font: 600 13px var(--font); cursor: pointer; padding: 4px 0; }
 
 /* the zoom buttons: the bottom right of the canvas, beside the panel when it is open */
 #zoom {
@@ -2486,6 +2549,8 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #eyes-pop kbd { display: none; }
   .help-touch .help-row { grid-template-columns: 116px minmax(0, 1fr); font-size: 14px; padding: 5px 0; }
   .help-touch .help-g { color: var(--text); font-weight: 600; }
+  .tips-cards { grid-template-columns: 1fr; }
+  #whatsnew { bottom: calc(64px + env(safe-area-inset-bottom)); }
   #zoom #zoom-in, #zoom #zoom-out { display: none; }
   #foot { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   /* under the view bar, the review strip, then the selection bar (--strip-h: main.ts) */

@@ -1640,6 +1640,23 @@ export class GraphCanvas {
     this.moveTo(S.cwx[c], S.cwy[c], Math.min(ZOOM_MOST, Math.max(k, minPx / Math.max(S.drawnR[c], 1e-6))), true);
   }
 
+  /** Frame the declarations `set` marks (the board's numbering) in the room the bars and panels
+   *  leave, never nearer than a declaration is pointed at well: the tour's views of what a theorem
+   *  rests on (GuideSpec decision 2). */
+  fitTo(set: Uint8Array, animate = true): void {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < set.length; i++) {
+      if (!set[i]) continue;
+      const [x, y] = this.posOf(i);
+      [x0, y0, x1, y1] = [Math.min(x0, x), Math.min(y0, y), Math.max(x1, x), Math.max(y1, y)];
+    }
+    if (!isFinite(x0)) return;
+    const vw = this.w - this.insets.left - this.insets.right;
+    const vh = this.h - this.insets.top - this.insets.bottom;
+    const k = Math.min(vw / (x1 - x0 + 80), vh / (y1 - y0 + 80)) * 0.9;
+    this.moveTo((x0 + x1) / 2, (y0 + y1) / 2, Math.min(1.6, Math.max(ZOOM_LEAST, k)), animate);
+  }
+
   /** Bring world point (x, y) to the middle of the unobstructed area at zoom k. */
   private moveTo(px: number, py: number, k: number, animate: boolean, dur = 520): void {
     if (this.anim) cancelAnimationFrame(this.anim);

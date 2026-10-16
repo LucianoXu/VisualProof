@@ -23,12 +23,12 @@ import type { BuildStatus } from "../../shared/build.ts";
 import type { ChatMessage, Invited, PresenceView, PrivateCount } from "../../shared/collab.ts";
 import { artNameId } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout, ViewMeta } from "../../shared/graph.ts";
-import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
+import { SITE_BODY, SITE_GRAMMAR, SITE_PROOF, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
 import { evaluate, parseQuery, printQuery, readsReview, sameQuery, setOutside, withoutOutside } from "../../shared/query.ts";
 import { litKeyEdges } from "../../shared/keys.ts";
-import { keyMarked, under, validPrefix } from "../../shared/review.ts";
+import { keyMarked, keyMarks, under, validPrefix } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest } from "../../shared/review.ts";
@@ -76,6 +76,8 @@ import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
 import { FocusMenu, readerFocus } from "./focus.ts";
 import { Guide } from "./guide.ts";
+import type { RestsOn } from "./guide.ts";
+import { reducedMotion } from "./tipcards.ts";
 import { Legend } from "./legend.ts";
 import { applyTheme, themeChoices } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
@@ -207,6 +209,15 @@ async function boot(): Promise<void> {
    *  set up; null for any other page. It changes nothing that is shared and offers nothing that would. */
   const reader: "link" | "public" | null = data.snapshot ? null : ((await data.identity()).readOnly?.by ?? null);
   const editor = new Editor(store, ready.editor);
+  // tips in place (GuideSpec decision 9; web/src/intip.ts): the moments the page tells of, before the
+  // guide is made; and the release the server runs (UpdateSpec), as its event stream says it
+  let offerTip = (_rule: string): void => {};
+  let didTip = (_rule: string): void => {};
+  let countTip = (_name: string): number => 0;
+  let heardRelease: string | null = null;
+  let hearRelease = (v: string): void => void (heardRelease = v);
+  /** read-only links can be made on this server: the tip about them is for it alone */
+  let readOnlyLinks = false;
   document.title = `${meta.project.name} — VisualProof`;
   $("#project").textContent = meta.project.name;
   if (data.snapshot) {
@@ -416,6 +427,7 @@ async function boot(): Promise<void> {
     pastShown() ? Promise.resolve(PAST_REVIEW) : data.postReview(op).then(
       (c) => {
         if (c) takeChange(c);
+        tipsOnReview(op);
         return null;
       },
       (e: Error & { who?: boolean }) => {
@@ -845,6 +857,8 @@ async function boot(): Promise<void> {
     sources.redrawReviews();
     const k = i === null ? -1 : visitorOf(i);
     canvas.setLead(i !== null && toView(i) >= 0 ? { kind: "node", i: toView(i) } : k >= 0 ? { kind: "visitor", k } : null, leadEnd);
+    // an opinion given on an earlier version, its What changed closed (web/src/tips.ts, stale-opinion)
+    if ($("#panel details[data-rv-changes]:not([open])")) offerTip("stale-opinion");
     if (i !== null && editedNow(i) === null && !pastShown())
       void edited(i).then((e) => {
         if ((e || reviewBox.needsSource(i)) && selected() === i && !pastShown()) {
@@ -2265,11 +2279,45 @@ async function boot(): Promise<void> {
       say(`${pickWords(p)} is inside ${pickWords(r.covered)}, which is selected: nothing changed.`);
       return false;
     }
+    const before = picks.length;
     picks = r.picks;
     shown = r.shown;
     apply();
     commit();
+    tipsOnClick(p, shift, before);
     return true;
+  };
+
+  /** The tips in place a reader's click may be the moment of (GuideSpec decision 9; web/src/tips.ts
+   *  says each rule): under Selection, what was selected replaced three times in 20 s; under Rests
+   *  on · TCB, a theorem's TCB lit by the reader's own click, and the fifth such pick ever, no other
+   *  step having been chosen. */
+  let replaced: number[] = [];
+  const tipsOnClick = (p: Pick, shift: boolean, before: number) => {
+    const decl = p.root && "decl" in p.root ? p.root.decl : null;
+    if (S.mode === "plain") {
+      if (shift) return didTip("selection-replace");
+      if (!decl || !before) return;
+      const now = Date.now();
+      replaced = [...replaced.filter((t) => now - t < 20_000), now];
+      if (replaced.length >= 3) offerTip("selection-replace");
+    } else if (S.mode === "tcb" && decl) {
+      const i = g.byName.get(decl);
+      const q = selectionQuery(picks);
+      if (i !== undefined && g.nodes[i].kind === "theorem" && q && litOn(q).count > 1) offerTip("tcb-first");
+      if (countTip("tcb-picks") >= 5) offerTip("rests-only-tcb");
+    }
+  };
+  /** The tips in place what is recorded may be the moment of: a target's second declaration
+   *  approved on a view focused on it, while it has no key declaration; a key marked ends that. */
+  let approvedInFocus = 0;
+  const tipsOnReview = (op: ReviewRequest) => {
+    if (op.op === "key" && op.on) return didTip("key-in-target");
+    if (op.op !== "opinion" || op.verdict !== "approve") return;
+    const r = reviewRoot();
+    const i = g.byName.get(op.name);
+    if (r === null || i === undefined || !flow.inReview(r, i) || keyMarks(review.data, g.nodes[r].name).length) return;
+    if (++approvedInFocus >= 2) offerTip("key-in-target");
   };
 
   /** The tool in force: kept, with the step of Rests on it is (the step entering Rests on resumes,
@@ -2285,6 +2333,11 @@ async function boot(): Promise<void> {
    *  in the history. With nothing selected, only the tool changes, without a step. */
   const setMode = (m: Tool) => {
     if (m === S.mode) return;
+    // another step of Rests on than TCB: what two tips in place teach is done
+    if (m === "keys" || m === "deps" || m === "refs") {
+      didTip("tcb-first");
+      didTip("rests-only-tcb");
+    }
     useTool(m);
     syncTool();
     const r = retool(picks, shown, m, (root) => keysFor(root));
@@ -2476,6 +2529,7 @@ async function boot(): Promise<void> {
       return false;
     }
     if (!(await tm.open({ snapshot: at.snapshot }))) return false;
+    offerTip("first-time-machine");
     if (!at.name || goName(at.name)) return true;
     say(`${at.name} is not in the graph of that build.`);
     return true;
@@ -2922,6 +2976,11 @@ async function boot(): Promise<void> {
     // others see the page go when it closes
     const es = new EventSource(`/api/events?session=${people.session}`);
     es.addEventListener("hello", (e) => people.connected(JSON.parse((e as MessageEvent).data)));
+    // the release the server runs (UpdateSpec): What's new, once (GuideSpec decision 11)
+    es.addEventListener("hello", (e) => {
+      const release = (JSON.parse((e as MessageEvent).data) as { server?: { version?: unknown } }).server?.version;
+      if (typeof release === "string") hearRelease(release);
+    });
     es.addEventListener("presence", (e) => people.setPeers(JSON.parse((e as MessageEvent).data)));
     es.addEventListener("private", (e) => people.setPrivateCount((JSON.parse((e as MessageEvent).data) as PrivateCount).count));
     // the people invited by a personal link, as they are called now (CollabSpec decision 9): what
@@ -3989,6 +4048,7 @@ async function boot(): Promise<void> {
     } else if (tm.active && !e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
       tm.step(e.key === "ArrowLeft" ? -1 : 1);
+      didTip("first-time-machine");
     } else if (tm.active && (e.key === "Home" || e.key === "End")) {
       e.preventDefault();
       tm.end(e.key === "End");
@@ -4038,32 +4098,166 @@ async function boot(): Promise<void> {
   reviewChanged();
   renderBuild();
   $("#loader").classList.add("gone");
-  // the guide (CollabSpec, G1): the tour on a first visit, the ? sheet at any time
+  // the guide (GuideSpec): the tour on a first visit, the ? sheet at any time, its tips; tips in place
+  /** The declaration the tour shows things on (GuideSpec decision 3): the selection; a target with
+   *  key declarations, else a target; else a theorem whose TCB is worth a look and not a wall, one
+   *  whose proofs use more than its statement first, so that the TCB leaves something out. */
+  const tourExample = (): number | null => {
+    if (selected() !== null) return selected();
+    const targets = Object.keys(review.data.targets)
+      .map((n) => g.byName.get(n))
+      .filter((i): i is number => i !== undefined);
+    const keyed = targets.find((i) => keyMarks(review.data, g.nodes[i].name).length > 0);
+    if (keyed !== undefined) return keyed;
+    if (targets.length) return targets[0];
+    let fallback: number | null = null;
+    let tries = 0;
+    for (let i = 0; i < g.projectCount && tries < 400; i++) {
+      if (g.nodes[i].kind !== "theorem") continue;
+      tries++;
+      let n = 0, u = 0;
+      const tcb = g.reach([i], SITE_STMT | SITE_BODY, "out");
+      for (let j = 0; j < g.projectCount; j++) n += tcb[j];
+      if (n < 6 || n > 300) continue;
+      const uses = g.reach([i], SITE_STMT | SITE_BODY | SITE_PROOF | SITE_GRAMMAR, "out");
+      for (let j = 0; j < g.projectCount; j++) u += uses[j];
+      if (u > n) return i;
+      fallback ??= i;
+    }
+    return fallback;
+  };
+  /** What the tour's TCB step says of declaration `i` (GuideSpec decision 2): what each of its
+   *  views lights on the board on show, the theorem left out — and, but for its keys, what is
+   *  trusted, which is assumed. */
+  const restsOnOf = (i: number): RestsOn => {
+    const name = g.nodes[i].name;
+    const G = vg();
+    const trusted = boardReview().trusted;
+    const lit = (tool: Tool) => {
+      const q = selectionQuery([declPick(tool, name, keysFor({ decl: name }))]);
+      return q ? litOn(q).set : null;
+    };
+    const tcb = lit("tcb"), uses = lit("deps"), keys = lit("keys");
+    const self = toView(i);
+    let n = 0, m = 0, k = 0;
+    for (let j = 0; j < G.n; j++) {
+      if (j === self) continue;
+      if (keys?.[j]) k++;
+      if (trusted.some((t) => covers(t, G.nodes[j].name, G.nodes[j].module, G.isExt(j)))) continue;
+      if (tcb?.[j]) n++;
+      else if (uses?.[j]) m++;
+    }
+    return { name: g.nodes[i].display ?? name.split(".").pop()!, tcb: n, proofs: m, keys: k, target: isTarget(name) };
+  };
+  /** A tip's Show me (GuideSpec decision 7; web/src/tips.ts), done on the reader's own page: the tour's
+   *  theorem selected in a mode, a window or a popover opened, the linear form, the Time Machine —
+   *  never anything shared. What to ring after it; null when there is nothing to show here. */
+  const showMe = (action: string): string | null => {
+    const i = tourExample();
+    const pick = (m: Tool | null): boolean => {
+      if (i === null) return false;
+      if (m) setMode(m);
+      if (selected() !== i) go(i);
+      return true;
+    };
+    switch (action) {
+      case "ring-modes":
+        return isPhone() ? "#more-btn" : "#lightup";
+      case "rests-steps":
+        return pick("tcb") ? "#rests-steps" : null;
+      case "used-by": {
+        if (i === null) return null;
+        // the first of its TCB's definitions besides it, else itself
+        const tcb = g.reach([i], SITE_STMT | SITE_BODY, "out");
+        let d = i;
+        for (let j = 0; j < g.projectCount; j++) if (tcb[j] && j !== i && g.nodes[j].kind === "def") { d = j; break; }
+        setMode("apps");
+        if (selected() !== d) go(d);
+        return "#lightup [data-mode=apps]";
+      }
+      case "open-source":
+        if (!pick(null)) return null;
+        if (!sources.following) sources.toggle(selected());
+        return ".sw-win";
+      case "colour-status":
+        if (ownScheme() !== "status") chooseScheme("status");
+        $("#legend [data-lg-open]")?.click();
+        return "#legend";
+      case "ring-review":
+        return pick(null) ? "#panel .rv" : null;
+      case "ring-target":
+        return pick(null) ? "#panel [data-rv-target], #targets" : null;
+      case "ring-key":
+        return reviewRoot() !== null && pick(null) ? "#panel [data-rv-key]" : "#targets";
+      case "what-changed": {
+        const d = $("#panel details[data-rv-changes]") as HTMLDetailsElement | null;
+        if (!d) return null;
+        d.open = true;
+        return "#panel [data-rv-changes]";
+      }
+      case "ring-trusted":
+        return isPhone() ? "#side-btn" : "#trusted-btn";
+      case "library-pair":
+        return "#library-btn";
+      case "ring-lock":
+        if (!eyesPop.open) eyesPop.toggle(true);
+        return "#lock-btn";
+      case "ring-zoom":
+        return pick("tcb") ? "#selbar [data-zoom]" : null;
+      case "ring-board":
+        return "#board-btn";
+      case "ring-peers":
+        return "#peers";
+      case "share-readonly":
+      case "share-agent":
+        return "#share-btn";
+      case "linear":
+        if (!linear.asked) linear.toggle();
+        return "#linear";
+      case "ring-export":
+        return "#export-btn";
+      case "time-machine":
+        if (!tm.active) void openTimeMachine();
+        return "#tmbar";
+      case "ring-lost":
+        if ($("#build-pop").hidden) $("#build").click();
+        return "#build-pop [data-bp=lost]";
+    }
+    return null;
+  };
+  /** Whether a Show me has something to show on this page. */
+  const canShowMe = (action: string): boolean => {
+    if (["rests-steps", "used-by", "open-source", "ring-review", "ring-target", "ring-zoom", "tcb-three"].includes(action)) return tourExample() !== null;
+    if (action === "ring-peers") return !$("#peers").hidden;
+    if (action === "what-changed") return !!$("#panel details[data-rv-changes]");
+    if (action === "share-readonly") return readOnlyLinks;
+    if (action === "share-agent" || action === "ring-lock") return !reader;
+    if (action === "time-machine" || action === "ring-lost") return !data.snapshot;
+    return true;
+  };
   const guide = new Guide(store, {
     project: () => meta.project.name,
     about,
     snapshot: () => !!data.snapshot,
-    example: () => {
-      if (selected() !== null) return selected();
-      // a target, else a theorem whose TCB is worth a look and not a wall
-      for (const name of Object.keys(review.data.targets)) {
-        const i = g.byName.get(name);
-        if (i !== undefined) return i;
-      }
-      let tries = 0;
-      for (let i = 0; i < g.projectCount && tries < 400; i++) {
-        if (g.nodes[i].kind !== "theorem") continue;
-        tries++;
-        let n = 0;
-        const seen = g.reach([i], SITE_STMT | SITE_BODY, "out");
-        for (let j = 0; j < g.projectCount; j++) n += seen[j];
-        if (n >= 6 && n <= 300) return i;
-      }
-      return null;
-    },
+    readOnly: () => !!data.snapshot || !!reader,
+    following: () => people.followedName !== null,
+    busy: () => !!artLook,
+    example: tourExample,
     select: (i) => {
       if (selected() !== i) go(i);
     },
+    tool: () => S.mode,
+    setTool: (m) => setMode(m),
+    restsOn: restsOnOf,
+    frameLit: () => {
+      const q = selectionQuery(picks);
+      const lit = q && litOn(q);
+      if (lit?.count) canvas.fitTo(lit.set, !reducedMotion());
+    },
+    show: showMe,
+    canShow: canShowMe,
+    // the read-only link's tip on a server that makes them (web/src/share.ts)
+    applies: (t) => t.id !== "read-only-link" || readOnlyLinks,
     ended: () => {},
     editor: () => ({ server: editor.server, mine: editor.mine }),
     setEditor: (t) => {
@@ -4075,7 +4269,33 @@ async function boot(): Promise<void> {
       }
       return why;
     },
+    updates: () => (data.snapshot ? Promise.resolve(null) : data.updates()),
+    clips: () => (data.snapshot ? Promise.resolve(new Set<string>()) : data.tipClips()),
   });
+  offerTip = (rule) => guide.inPlace.offer(rule);
+  didTip = (rule) => guide.inPlace.did(rule);
+  countTip = (name) => guide.inPlace.count(name);
+  hearRelease = (v) => guide.serverIs(v);
+  if (heardRelease) guide.serverIs(heardRelease);
+  if (!data.snapshot && !reader) void data.shareInfo().then((i) => (readOnlyLinks = !!i.readOnlyLinks), () => {});
+  // the moments of tips in place that a press makes: Share opened again, Export opened; and what a
+  // tip teaches, done — the Read-only link tab opened, What changed opened
+  let shareOpened = 0;
+  $("#share-btn").addEventListener("click", () =>
+    setTimeout(() => {
+      if (!$("#share-pop").hidden && ++shareOpened >= 2 && readOnlyLinks) offerTip("share-twice");
+    }, 300),
+  );
+  $("#export-btn").addEventListener("click", () => setTimeout(() => exportModal.isOpen && offerTip("first-export"), 300));
+  document.addEventListener(
+    "click",
+    (e) => {
+      const t = e.target as HTMLElement;
+      if (t.closest("#share-pop [data-tab=readonly]")) didTip("share-twice");
+      else if (t.closest("#panel [data-rv-changes] > summary")) didTip("stale-opinion");
+    },
+    true,
+  );
   $("#help-btn").addEventListener("click", () => guide.toggleHelp());
   void data.activity().then((events) => activity.load(events));
   // who this page is, then the others are told where it is; the camera and the source window

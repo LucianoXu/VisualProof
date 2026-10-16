@@ -1,17 +1,52 @@
-// The guide (CollabSpec, stage G1): on a reader's first visit, a short tour of the page that lights
-// up one part at a time on the project itself — a real theorem selected, its TCB on the canvas —
-// and, at any time, a sheet of every key and gesture (the ? button, or ?) that can replay it.
+// The guide (GuideSpec): on a reader's first visit, a short tour of the page that lights up one part
+// at a time on the project itself — a real theorem selected, what it rests on in three views — and,
+// at any time, the `?` sheet: the tips first (web/src/tips.ts, each a card with its clip), then every
+// key and gesture, and a button that replays the tour. Show me rings a tip's control with the tour's
+// spotlight; What's new is said once when the server runs a newer release than this browser saw.
 //
-// The sheet also holds the one setting that is about the reader's machine rather than the page:
-// the URL that opens a declaration in their editor (web/src/editor.ts). It sits with the keys
-// because both are read once and then left alone, and the sheet is where a reader looks for how
-// the page works with what they have. At its foot is what the graph holds.
+// The sheet's Keys tab also holds the one setting that is about the reader's machine rather than
+// the page: the URL that opens a declaration in their editor (web/src/editor.ts). It sits with the
+// keys because both are read once and then left alone, and the sheet is where a reader looks for
+// how the page works with what they have. At its foot is what the graph holds, and which
+// VisualProof the server runs (GuideSpec decision 13).
 
 import { dragKeyName, MAC } from "./drag.ts";
 import { escapeHtml } from "./highlight.ts";
 import type { Store } from "./store.ts";
 import { isPhone } from "./phone.ts";
 import { typing } from "./typing.ts";
+import type { Tool } from "./selection.ts";
+import { TIPS } from "./tips.ts";
+import type { Tip } from "./tips.ts";
+import { cardsHtml, ClipPlayer, tipsFor } from "./tipcards.ts";
+import type { TipsContext } from "./tipcards.ts";
+import { TipState } from "./tipstate.ts";
+import { InTips } from "./intip.ts";
+
+/** What the server says of its release and a newer one (UpdateSpec; `GET /api/updates`): a
+ *  read-only reader is told `running` alone. */
+export interface UpdateStatus {
+  running: string;
+  /** the installed package's release, where the server runs another (a patch it took) */
+  installed?: string;
+  mode?: "auto" | "notify" | "off";
+  checked?: string;
+  newer?: { version: string; taken: boolean; command?: string; notes: string };
+}
+
+/** What the tour's TCB step says of its theorem (GuideSpec decision 2). */
+export interface RestsOn {
+  /** its name, as the panel heads it */
+  name: string;
+  /** the project's declarations its TCB holds, itself left out */
+  tcb: number;
+  /** the project's declarations its proofs use beyond its TCB */
+  proofs: number;
+  /** the key declarations Keys lights beside it */
+  keys: number;
+  /** it is a target */
+  target: boolean;
+}
 
 export interface GuideHooks {
   /** the project's name */
@@ -20,17 +55,50 @@ export interface GuideHooks {
   about(): string;
   /** a snapshot: no names, no others, no timeline */
   snapshot(): boolean;
-  /** the declaration the tour shows things on: the selection, a target, or a theorem with a
-   *  modest TCB; null when there is none */
+  /** a read-only reader (or a snapshot): nothing of the review is theirs to change */
+  readOnly(): boolean;
+  /** following someone: no tip shows in place (decision 9) */
+  following(): boolean;
+  /** the artwork mode: no tip shows in place */
+  busy(): boolean;
+  /** the declaration the tour shows things on (GuideSpec decision 3); null when there is none */
   example(): number | null;
   /** select it, as a click would, and bring it into view */
   select(i: number): void;
+  /** the reader's tool, and a change of it, as a mode button makes */
+  tool(): Tool;
+  setTool(m: Tool): void;
+  /** what the TCB step says of declaration `i` */
+  restsOn(i: number): RestsOn;
+  /** the camera frames what is lit (the TCB step's views; jumps with reduced motion) */
+  frameLit(): void;
+  /** whether a Show me can be done here (there is something to show: a theorem, someone else,
+   *  read-only links); a tip whose Show me cannot shows without it */
+  canShow(action: string): boolean;
+  /** whether a tip is about something this page has at all (read-only links on a server that makes
+   *  them) */
+  applies(t: Tip): boolean;
+  /** a Show me's action (GuideSpec decision 7) done on the reader's own page: the selector of what
+   *  to ring after it, or null when there is nothing to show here */
+  show(action: string): string | null;
   /** the tour ended (done or skipped) */
   ended(): void;
   /** the "Open in editor" templates: the server's, and the reader's own */
   editor(): { server: string | null; mine: string | null };
   /** set the reader's own template ("" goes back to the server's); why not, when refused */
   setEditor(t: string): string | null;
+  /** what the server says of its release (decision 13); null where it says nothing (a snapshot) */
+  updates(): Promise<UpdateStatus | null>;
+  /** the clips the server has (decision 6); none in a snapshot */
+  clips(): Promise<Set<string>>;
+}
+
+/** One view of a step: the TCB step shows its theorem three ways (GuideSpec decision 2). */
+interface View {
+  label: string;
+  text: () => string;
+  before: () => void;
+  at?: () => DOMRect | null;
 }
 
 interface Step {
@@ -45,12 +113,16 @@ interface Step {
   /** whether its place is shown now: a step whose place is not (the panel did not open) is
    *  passed over */
   when?: () => boolean;
+  /** views gone through one by one before the next step */
+  views?: View[];
 }
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel);
 
 /** VisualProof's repository, which the help sheet links to (the owner's decision of 2026-10-16). */
 const REPO = "https://github.com/LucianoXu/VisualProof";
+/** the manual, which a tip's More links into (GuideSpec decision 5) */
+const MANUAL = `${REPO}/blob/main/docs/MANUAL.md`;
 
 /** The rectangle around the elements found, or null when none is shown. */
 function around(...sels: string[]): DOMRect | null {
@@ -67,6 +139,20 @@ function around(...sels: string[]): DOMRect | null {
   }
   return isFinite(x0) ? new DOMRect(x0, y0, x1 - x0, y1 - y0) : null;
 }
+
+/** The board's part of the screen: right of the side panel, under the bars, left of the panel. */
+function board(): DOMRect {
+  const side = $("#side")?.getBoundingClientRect();
+  const panel = $("#panel.open")?.getBoundingClientRect();
+  const left = side && side.width && !isPhone() ? side.right + 8 : 12;
+  const right = panel && panel.width && !isPhone() ? panel.left - 8 : innerWidth - 12;
+  const top = isPhone() ? 104 : 108;
+  const bottom = isPhone() && panel && panel.height ? panel.top - 8 : innerHeight - 48;
+  return new DOMRect(left, top, Math.max(40, right - left), Math.max(40, bottom - top));
+}
+
+/** "1 declaration", "3 declarations" */
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** A row of the sheet: keys (drawn as keys), then a gesture in words, then what it does. */
 interface Row {
@@ -165,7 +251,7 @@ const KEYS: [string, Row[]][] = [
       { k: ["c"], what: "colour by kind or by status, for you" },
       { k: ["b"], what: "build status" },
       { k: ["p"], what: "frame meter" },
-      { k: ["?"], what: "this sheet" },
+      { k: ["?"], what: "this sheet: the tips, and the keys" },
     ],
   ],
   [
@@ -194,11 +280,29 @@ export class Guide {
   private hooks: GuideHooks;
   private steps: Step[] = [];
   private k = 0;
+  /** the view of a step with views */
+  private v = 0;
+  /** the tour as a whole, or one step for a tip's Show me (GuideSpec decision 7) */
+  private kind: "tour" | "show" = "tour";
+  /** the reader's tool when the tour began: theirs again when it ends (GuideSpec decision 3) */
+  private toolBefore: Tool | null = null;
   private el: HTMLElement;
   private spot: HTMLElement;
   private shades: HTMLElement[];
   private card: HTMLElement;
   private help: HTMLElement;
+  private news: HTMLElement;
+  readonly tips = new TipState();
+  readonly inPlace: InTips;
+  private player: ClipPlayer | null = null;
+  private tab: "tips" | "keys" = "tips";
+  private filter = "";
+  private clipsHad: Set<string> | null = null;
+  /** the release tips newer than which are New while the sheet shows (decision 11); undefined until
+   *  Tips is looked at in this showing of the sheet */
+  private newShown: string | null | undefined = undefined;
+  /** the release the server runs, as its event stream said (UpdateSpec); null until it says */
+  private running: string | null = null;
 
   constructor(store: Store, hooks: GuideHooks) {
     this.store = store;
@@ -208,11 +312,23 @@ export class Guide {
     this.shades = [...this.el.querySelectorAll<HTMLElement>(".tour-shade")];
     this.card = this.el.querySelector<HTMLElement>(".tour-card")!;
     this.help = $("#help")!;
+    this.news = $("#whatsnew")!;
+    this.inPlace = new InTips(this.tips, {
+      blocked: () => !this.el.hidden || !this.help.hidden || this.hooks.snapshot() || this.hooks.following() || this.hooks.busy(),
+      fits: (t) => tipsFor(this.context(new Set())).includes(t),
+      showMe: (t) => this.showTip(t),
+    });
     this.card.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
-      if (t.closest("[data-tour-next]")) this.go(this.k + 1);
-      else if (t.closest("[data-tour-back]")) this.go(this.k - 1);
+      const seg = t.closest<HTMLElement>("[data-tour-view]");
+      if (seg) this.view(Number(seg.dataset.tourView));
+      else if (t.closest("[data-tour-next]")) this.next();
+      else if (t.closest("[data-tour-back]")) this.back();
       else if (t.closest("[data-tour-skip]")) this.stop();
+      else if (t.closest("[data-tour-tips]")) {
+        this.stop();
+        this.openHelp("tips");
+      }
     });
     window.addEventListener(
       "keydown",
@@ -221,8 +337,8 @@ export class Guide {
         // the tour has the keys while it shows
         e.stopImmediatePropagation();
         if (e.key === "Escape") this.stop();
-        else if (e.key === "ArrowRight" || e.key === "Enter") this.go(this.k + 1);
-        else if (e.key === "ArrowLeft") this.go(this.k - 1);
+        else if (e.key === "ArrowRight" || e.key === "Enter") this.next();
+        else if (e.key === "ArrowLeft") this.back();
         e.preventDefault();
       },
       true,
@@ -232,14 +348,21 @@ export class Guide {
     });
     this.help.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
+      const tab = t.closest<HTMLElement>("[data-help-tab]");
+      const show = t.closest<HTMLElement>("[data-tip-show]");
       if (t === this.help || t.closest("[data-help-close]")) this.closeHelp();
-      else if (t.closest("[data-help-tour]")) {
+      else if (tab) this.showTab(tab.dataset.helpTab === "keys" ? "keys" : "tips");
+      else if (show) {
+        const tip = TIPS.find((x) => x.id === show.dataset.tipShow);
+        this.closeHelp();
+        if (tip) this.showTip(tip);
+      } else if (t.closest("[data-help-tour]")) {
         this.closeHelp();
         this.start();
       }
     });
     this.help.addEventListener("keydown", (e) => {
-      // a ? typed into the editor's field is part of a URL
+      // a ? typed into the editor's field is part of a URL, into the filter a word
       if (e.key === "Escape" || (e.key === "?" && !typing(e.target))) {
         e.stopPropagation();
         // Esc leaves the field as it was saved: it cancels, as everywhere
@@ -251,7 +374,12 @@ export class Guide {
     // the template is saved when the field is left or Enter pressed; while it is typed, an earlier
     // complaint goes away
     this.help.addEventListener("change", (e) => {
-      const field = (e.target as HTMLElement).closest<HTMLInputElement>("[data-help-editor]");
+      const el = e.target as HTMLElement;
+      if (el.closest("[data-tips-off]")) {
+        this.tips.off = !(el as HTMLInputElement).checked;
+        return;
+      }
+      const field = el.closest<HTMLInputElement>("[data-help-editor]");
       if (!field) return;
       const why = this.hooks.setEditor(field.value);
       const err = this.help.querySelector<HTMLElement>("[data-help-editor-err]")!;
@@ -260,7 +388,30 @@ export class Guide {
       if (!why) this.help.querySelector<HTMLElement>("[data-help-editor-now]")!.innerHTML = this.editorNow();
     });
     this.help.addEventListener("input", (e) => {
-      if ((e.target as HTMLElement).closest("[data-help-editor]")) this.help.querySelector<HTMLElement>("[data-help-editor-err]")!.hidden = true;
+      const el = e.target as HTMLElement;
+      if (el.closest("[data-help-editor]")) this.help.querySelector<HTMLElement>("[data-help-editor-err]")!.hidden = true;
+      else if (el.closest("[data-tips-filter]")) {
+        this.filter = (el as HTMLInputElement).value;
+        this.renderCards();
+      }
+    });
+    // an ⓘ anywhere on the page opens its tip in the sheet (the panel's TCB part: GuideSpec
+    // decision 15)
+    document.addEventListener(
+      "click",
+      (e) => {
+        const i = (e.target as HTMLElement).closest<HTMLElement>("[data-tip-open]");
+        if (!i) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.openHelp("tips", i.dataset.tipOpen);
+      },
+      true,
+    );
+    this.news.addEventListener("click", (e) => {
+      const t = e.target as HTMLElement;
+      this.news.hidden = true;
+      if (!t.closest("[data-news-close]")) this.openHelp("tips");
     });
   }
 
@@ -270,76 +421,230 @@ export class Guide {
     this.start();
   }
 
-  get showing(): boolean {
-    return !this.el.hidden || !this.help.hidden;
+  /** What the tips are shown against now. */
+  private context(clips: Set<string>): TipsContext {
+    const snapshot = this.hooks.snapshot();
+    return {
+      readOnly: this.hooks.readOnly(),
+      phone: isPhone(),
+      clips,
+      newSince: this.newShown ?? null,
+      manual: MANUAL,
+      applies: (t) => this.hooks.applies(t),
+      canShow: (a) => !snapshot && !this.hooks.following() && this.hooks.canShow(a),
+    };
+  }
+
+  // ---------------------------------------------------------------- the tour
+
+  /** The TCB step (GuideSpec decision 2): its theorem alone, its TCB, its key declarations, each
+   *  with the counts of what it lights, the camera framing what is lit. */
+  private restsOnStep(phone: boolean): Step | null {
+    const i = this.hooks.example();
+    if (i === null) return null;
+    const ro = this.hooks.readOnly();
+    let r = this.hooks.restsOn(i);
+    const ring = (step: string) => () => (phone ? around("#panel") : around(step)) ?? board();
+    // the mode's step at the top right, and the board it lights, together: nothing lit is shaded
+    const lit = (step: string) => () => {
+      const b = board();
+      const m = phone ? null : around(step);
+      if (!m) return b;
+      const l = Math.min(b.left, m.left), t = Math.min(b.top, m.top);
+      return new DOMRect(l, t, Math.max(b.right, m.right) - l, Math.max(b.bottom, m.bottom) - t);
+    };
+    const views: View[] = [
+      {
+        label: "Statement",
+        before: () => {
+          this.hooks.setTool("plain");
+          this.hooks.select(i);
+          r = this.hooks.restsOn(i);
+        },
+        text: () => `This is <b>${escapeHtml(r.name)}</b>. Lean checked its proof; whether it says what you mean is in the words of its statement, and they are defined elsewhere.`,
+        at: () => (phone ? around("#panel") : around("#panel .p-head", "#panel .p-name", "#panel .sig")) ?? board(),
+      },
+      {
+        label: "TCB",
+        before: () => {
+          this.hooks.setTool("tcb");
+          this.hooks.frameLit();
+        },
+        text: () => {
+          const proofs = r.proofs === 1 ? "the one it uses only in proofs is left out" : `the ${r.proofs} it uses only in proofs are left out`;
+          if (!r.tcb) return `Its <b>TCB</b> holds nothing to read but itself: its statement rests only on what is trusted.${r.proofs ? ` ${proofs[0].toUpperCase()}${proofs.slice(1)}.` : ""}`;
+          return `Its <b>TCB</b>: the ${count(r.tcb, "declaration")} its statement rests on — definitions, axioms, the project's notation. To trust it, read ${r.tcb === 1 ? "it" : "these"}; ${r.proofs ? `${proofs}, and ` : ""}what is trusted is assumed.`;
+        },
+        at: lit("#rests-steps [data-mode=tcb]"),
+      },
+      {
+        label: "Keys",
+        // no key declaration: the TCB stays lit, and the card says how keys are marked
+        before: () => {
+          this.hooks.setTool(r.keys ? "keys" : "tcb");
+          this.hooks.frameLit();
+        },
+        text: () =>
+          r.keys
+            ? r.keys === 1
+              ? "Of those, the one the review marked <b>key</b>: what carries its meaning. Read it first."
+              : `Of those, the ${r.keys} the review marked <b>key</b>: the few that carry its meaning. Read them first.`
+            : ro || this.hooks.snapshot()
+              ? "None is marked <b>key</b> yet: the review marks the few of a target's TCB that carry its meaning."
+              : phone
+                ? "None is marked <b>key</b> yet. On a target's view, its panel's ◇ Mark as key marks the few that carry its meaning."
+                : "None is marked <b>key</b> yet. On a view focused on a target, <kbd>k</kbd> marks the few of its TCB that carry its meaning.",
+        at: () => (r.keys ? lit("#rests-steps [data-mode=keys]")() : ring("#rests-steps [data-mode=keys]")()),
+      },
+    ];
+    return { title: "What it rests on", text: "", views };
   }
 
   start(): void {
+    this.kind = "tour";
+    this.toolBefore = this.hooks.tool();
+    this.inPlace.hush();
     const project = escapeHtml(this.hooks.project());
-    const live = () => !this.hooks.snapshot();
+    const snapshot = this.hooks.snapshot();
+    const live = () => !snapshot;
+    // a read-only reader's page, and a snapshot, change nothing shared (the texts for them)
+    const ro = this.hooks.readOnly();
+    const reader = ro && !snapshot;
+    const phone = isPhone();
+    const rests = this.restsOnStep(phone);
     const all: Step[] = [
-      {
-        title: "Welcome",
-        text: `${project}'s declarations as a map, and what each theorem rests on. A quick tour.`,
-      },
+      { title: "Welcome", text: `${project}'s declarations as a map, and what each theorem rests on. A quick tour.` },
       {
         title: "The map",
-        text: `Dots are declarations, circles namespaces. Scroll to zoom, drag to pan, double-click a circle to fold it. To move things, drag with <b>${dragKeyName()}</b> held, or let the lock go (<b>l</b>).`,
-        at: () => {
-          const side = $("#side")?.getBoundingClientRect();
-          const left = side && side.width ? side.right + 8 : 12;
-          return new DOMRect(left, 108, innerWidth - left - 12, innerHeight - 108 - 48);
-        },
+        text: phone
+          ? "Dots are declarations, circles namespaces. Drag to move around, pinch to zoom, tap to select; touch and hold for what can be done with what is under your finger."
+          : ro
+            ? `Dots are declarations, circles namespaces. Scroll to zoom, drag to pan, double-click a circle to fold it${reader ? ", for you alone" : ""}.`
+            : `Dots are declarations, circles namespaces. Scroll to zoom, drag to pan, double-click a circle to fold it. To move things, drag with <b>${dragKeyName()}</b> held, or let the lock go (<b>l</b>).`,
+        at: board,
       },
       {
         title: "Select",
-        text: "Click a declaration, or a circle for all of its declarations. <b>Mode</b> is how a click selects: just it, what it <b>rests on</b> (everything it uses, its TCB, the key declarations in it, or what it uses directly: <b>2</b> again for the next), or what uses it. Rest the pointer on a mode to read it. What you selected is listed above the panel.",
-        before: () => {
-          const i = this.hooks.example();
-          if (i !== null) this.hooks.select(i);
-        },
-        at: () => around("#lightup"),
+        text: phone
+          ? "Tap a declaration, or a circle for all of its declarations. How a tap selects is the mode, in <b>⋯</b> at the top: just it, what it rests on, or what uses it."
+          : "Click a declaration, or a circle for all of its declarations. <b>Mode</b> is how a click selects: just it (<kbd>1</kbd>), what it <b>rests on</b> (<kbd>2</kbd>), or what uses it (<kbd>3</kbd>). Rest the pointer on a mode to read it.",
+        at: () => around(phone ? "#more-btn" : "#lightup"),
       },
+      ...(rests ? [rests] : []),
       {
         title: "The board",
-        text: "The left panel: the targets under review, and this board's clusters. A board is shared with everyone on it: <b>⚙ Board</b> holds what is on it (its scope, as chips), the clustering, the depth. Tabs are the views you have open; <b>Views</b> makes and lists them. Your camera and what you select are yours alone.",
-        at: () => around("#side", "#tabs", ".views-wrap"),
+        text: phone
+          ? "<b>☰</b> opens the targets under review and this board's namespaces or folders."
+          : ro
+            ? "The left panel: the targets under review, and this board's clusters; <b>⚙ Board</b> shows what is on it. Tabs are the views you have open; <b>Views</b> lists them. Whatever you select, fold or open is yours alone."
+            : "The left panel: the targets under review, and this board's clusters. A board is shared with everyone on it: <b>⚙ Board</b> holds what is on it (its scope, as chips), the clustering, the depth. Tabs are the views you have open; <b>Views</b> makes and lists them. Your camera and what you select are yours alone.",
+        at: () => (phone ? around("#side-btn") : around("#side", "#tabs", ".views-wrap")),
       },
       {
         title: "The panel",
-        text: "All about what you clicked last; <b>Source</b> (Space) opens the code, and the parts with a ▸ open on a click. Above it, what is selected: <b>Zoom in</b> opens a view of it.",
-        at: () => around("#selbar", "#panel"),
+        text: phone
+          ? "The sheet is what you tapped last: a tap on its handle gives it the whole screen or half of it, ✕ closes it. <b>Source</b> shows its code."
+          : ro
+            ? "All about what you clicked last; <b>Source</b> (<kbd>Space</kbd>) opens the code, and the parts with a ▸ open on a click."
+            : "All about what you clicked last; <b>Source</b> (<kbd>Space</kbd>) opens the code, and the parts with a ▸ open on a click. Above it, what is selected: <b>Zoom in</b> opens a view of it.",
+        at: () => (phone ? around("#panel") : around("#selbar", "#panel")),
         when: () => !!$("#panel.open"),
       },
       {
         title: "Review",
-        text: live()
-          ? "<b>Approve</b> or <b>Comment</b> on what you have read. <b>Mark as target</b> to track a theorem's review."
-          : "Opinions as they were when this snapshot was taken.",
+        text: snapshot
+          ? "Opinions as they were when this snapshot was taken."
+          : ro
+            ? "The review as it stands, live: who approved, who commented, on which version. A read-only page records nothing."
+            : phone
+              ? "<b>Approve</b> or <b>Comment</b> on what you have read, under your name (⋯: your name)."
+              : "<b>Approve</b> or <b>Comment</b> on what you have read. <b>Mark as target</b> a theorem to follow its review.",
         at: () => around("#panel .rv"),
         when: () => !!$("#panel.open .rv"),
       },
       {
         title: "Together",
-        text: "Who else is here: click one to follow. <b>Activity</b> lists what happened.",
-        at: () => around("#activity-btn", "#peers", "#who"),
+        text: phone
+          ? `Who else is here: tap one's initials to follow${reader ? "; nobody sees you" : ""}. <b>⋯</b> holds Activity.`
+          : reader
+            ? "Who else is here: click one to follow; nobody sees you. <b>Activity</b> lists what happened."
+            : "Who else is here: click one to follow. <b>Activity</b> lists what happened.",
+        at: () => (phone ? around("#peers", "#more-btn") : reader ? around("#activity-btn", "#peers") : around("#activity-btn", "#peers", "#who")),
         only: live,
       },
       {
         title: "Colours",
-        text: "By kind, or by <b>status</b>: what reviewers said, what is trusted, what failed to build. The legend at the bottom left switches them (or <b>c</b>) and says what each colour means.",
+        text: phone
+          ? "By kind, or by <b>status</b>: what reviewers said, what is trusted, what failed to build. <b>Kind ▾</b> at the bottom left switches them and says what each colour means."
+          : "By kind, or by <b>status</b>: what reviewers said, what is trusted, what failed to build. The legend at the bottom left switches them (or <kbd>c</kbd>) and says what each colour means.",
         at: () => around("#legend"),
       },
       {
         title: "Getting around",
-        text: "Back, forward and links work as in a browser. <b>/</b> searches names, statements and docstrings; <b>?</b> lists every key.",
-        at: () => around(".brand .nav", ".search-wrap", "#help-btn"),
+        // the last step points at the tips (GuideSpec decision 1)
+        text: phone
+          ? "‹ goes back; <b>Search</b> finds names, statements and docstrings. <b>⋯</b> → Help holds the gestures and the <b>Tips</b>."
+          : "Back, forward and links work as in a browser; <kbd>/</kbd> searches names, statements and docstrings. <b>?</b> holds every key, and the <b>Tips</b>: how to do the rest, one at a time.",
+        at: () => (phone ? around(".brand .nav", ".search-wrap", "#more-btn") : around(".brand .nav", ".search-wrap", "#help-btn")),
       },
     ];
     this.steps = all.filter((s) => !s.only || s.only());
     this.k = 0;
+    this.v = 0;
     this.el.hidden = false;
     this.go(0);
+  }
+
+  /** A tip's Show me (GuideSpec decision 7): its control ringed, its words beside it, after what
+   *  its action does on the reader's own page. */
+  showTip(tip: Tip): void {
+    if (!tip.showMe || !this.hooks.canShow(tip.showMe)) return;
+    // the sheet's About: the sheet stays, on the tab that holds it
+    if (tip.showMe === "help-about") {
+      this.openHelp("keys");
+      const about = this.help.querySelector<HTMLElement>("[data-help-tool]");
+      about?.scrollIntoView({ block: "center" });
+      about?.parentElement?.classList.add("flash");
+      return;
+    }
+    let step: Step | null;
+    if (tip.showMe === "tcb-three") {
+      step = this.restsOnStep(isPhone());
+      if (step) step.title = tip.title;
+    } else {
+      const ring = this.hooks.show(tip.showMe);
+      step = ring === null ? null : { title: tip.title, text: tip.text, at: () => around(...ring.split(/\s*,\s*/)) };
+    }
+    if (!step) return;
+    this.tips.done(tip.id);
+    this.kind = "show";
+    this.toolBefore = null;
+    this.steps = [step];
+    this.k = 0;
+    this.v = 0;
+    this.el.hidden = false;
+    this.go(0);
+  }
+
+  private next(): void {
+    const s = this.steps[this.k];
+    if (s?.views && this.v < s.views.length - 1) this.view(this.v + 1);
+    else this.go(this.k + 1);
+  }
+
+  private back(): void {
+    const s = this.steps[this.k];
+    if (s?.views && this.v > 0) this.view(this.v - 1);
+    else this.go(this.k - 1, -1);
+  }
+
+  /** A view of the step shown: what it does done, its words, its place. */
+  private view(v: number): void {
+    const s = this.steps[this.k];
+    if (!s?.views?.[v]) return;
+    this.v = v;
+    s.views[v].before();
+    this.render();
   }
 
   private go(k: number, dir = k >= this.k ? 1 : -1): void {
@@ -350,13 +655,34 @@ export class Guide {
     // a step whose place is not shown (the panel did not open) is passed over, either way
     if (s.when && !s.when()) return this.go(k + dir, dir);
     this.k = k;
-    const last = k === this.steps.length - 1;
+    // a step of views is entered at its first going forward, at its last coming back
+    this.v = s.views ? (dir > 0 ? 0 : s.views.length - 1) : 0;
+    s.views?.[this.v].before();
+    this.render();
+  }
+
+  private render(): void {
+    const s = this.steps[this.k];
+    const k = this.k;
+    const show = this.kind === "show";
+    const lastView = !s.views || this.v === s.views.length - 1;
+    const last = k === this.steps.length - 1 && lastView;
+    const text = s.views ? s.views[this.v].text() : s.text;
+    const seg = s.views
+      ? `<div class="seg mini tour-seg" role="group" aria-label="${escapeHtml(s.title)}">${s.views
+          .map((v, j) => `<button data-tour-view="${j}" class="${j === this.v ? "on" : ""}" aria-pressed="${j === this.v}">${v.label}</button>`)
+          .join("")}</div>`
+      : "";
+    const next = k === 0 && this.v === 0 && !show ? "Show me" : last ? "Done" : "Next";
     this.card.innerHTML =
-      `<div class="tour-step">${k + 1} of ${this.steps.length}</div>` +
-      `<div class="tour-title">${s.title}</div><div class="tour-text">${s.text}</div>` +
-      `<div class="tour-actions"><button class="rv-btn" data-tour-skip>${last ? "Close" : "Skip"}</button><span class="tour-gap"></span>` +
-      (k > 0 ? `<button class="rv-btn" data-tour-back>Back</button>` : "") +
-      `<button class="rv-btn primary" data-tour-next>${k === 0 ? "Show me" : last ? "Done" : "Next"}</button></div>`;
+      (show ? "" : `<div class="tour-step">${k + 1} of ${this.steps.length}</div>`) +
+      `<div class="tour-title">${s.title}</div>${seg}<div class="tour-text">${text}</div>` +
+      `<div class="tour-actions">${show ? "" : `<button class="rv-btn" data-tour-skip>${last ? "Close" : "Skip"}</button>`}` +
+      // the last step points at the tips (GuideSpec decision 1)
+      (last && !show ? `<button class="rv-btn" data-tour-tips>Tips</button>` : "") +
+      `<span class="tour-gap"></span>` +
+      (k > 0 || this.v > 0 ? `<button class="rv-btn" data-tour-back>Back</button>` : "") +
+      `<button class="rv-btn primary" data-tour-next>${next}</button></div>`;
     // the panel slides in: place again once it has
     this.place();
     setTimeout(() => this.place(), 360);
@@ -367,7 +693,7 @@ export class Guide {
   private place(): void {
     const s = this.steps[this.k];
     if (!s) return;
-    const r = s.at?.() ?? null;
+    const r = (s.views ? s.views[this.v].at : s.at)?.() ?? null;
     const pad = 6;
     const card = this.card;
     const w = card.offsetWidth, h = card.offsetHeight;
@@ -393,8 +719,9 @@ export class Guide {
     else if (room.above >= h + gap + pad) [x, y] = [r.left, r.top - h - gap - pad];
     else if (room.left >= w + gap + pad) [x, y] = [r.left - w - gap - pad, r.top];
     else if (room.right >= w + gap + pad) [x, y] = [r.right + gap + pad, r.top];
-    // a large place (the map): the card inside it, near its top left
-    else [x, y] = [r.left + 24, r.top + 24];
+    // a large place (the map): the card inside it, at its bottom left, where it covers the least of
+    // what is lit around the theorem in the middle
+    else [x, y] = [r.left + 24, r.bottom - h - 24];
     x = Math.max(12, Math.min(x, innerWidth - w - 12));
     y = Math.max(12, Math.min(y, innerHeight - h - 12));
     card.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
@@ -403,9 +730,28 @@ export class Guide {
   stop(): void {
     if (this.el.hidden) return;
     this.el.hidden = true;
-    this.store.data.guided = true;
-    this.store.save();
-    this.hooks.ended();
+    if (this.kind === "tour") {
+      this.store.data.guided = true;
+      this.store.save();
+      // the reader's tool as it was (GuideSpec decision 3)
+      if (this.toolBefore && this.hooks.tool() !== this.toolBefore) this.hooks.setTool(this.toolBefore);
+      this.hooks.ended();
+    }
+    this.toolBefore = null;
+  }
+
+  // ---------------------------------------------------------------- What's new
+
+  /** The server's event stream said which release it runs (UpdateSpec): What's new is said once when
+   *  it is newer than the one this browser saw last (GuideSpec decision 11). */
+  serverIs(version: string): void {
+    this.running = version;
+    if (this.hooks.snapshot()) return;
+    const was = this.tips.meet(version);
+    if (was === null) return;
+    this.news.innerHTML = `<button class="news-open">What's new in ${escapeHtml(version)}</button><button class="icon" data-news-close title="Close" aria-label="Close">✕</button>`;
+    this.news.hidden = false;
+    setTimeout(() => (this.news.hidden = true), 15_000);
   }
 
   // ---------------------------------------------------------------- the sheet
@@ -422,14 +768,37 @@ export class Guide {
     );
   }
 
-  openHelp(): void {
+  /** Which VisualProof the server runs, and what it says of a newer one (GuideSpec decision 13). */
+  private aboutTool(u: UpdateStatus | null): string {
+    const running = u?.running ?? this.running;
+    const repo = `<a class="help-repo" href="${REPO}" target="_blank" rel="noopener noreferrer">${REPO.replace("https://", "")}</a>`;
+    let html = running ? `VisualProof ${escapeHtml(running)}${u?.installed && u.installed !== running ? ` (installed: ${escapeHtml(u.installed)})` : ""}. ` : "";
+    html += `Open source: its documentation, its code and its issues are at ${repo}.`;
+    const n = u?.newer;
+    if (n && u?.mode !== "off") {
+      const notes = `<a href="${escapeHtml(n.notes)}" target="_blank" rel="noopener noreferrer">what is new in it</a>`;
+      html += `<div class="help-update">${escapeHtml(n.version)} is out (${notes}): ${n.taken ? "this server takes it by itself, at a quiet moment." : n.command ? `<code>${escapeHtml(n.command)}</code> on the server takes it.` : "the server's owner takes it."}</div>`;
+    }
+    return html;
+  }
+
+  openHelp(tab: "tips" | "keys" = this.tab, tipId?: string): void {
     const { server, mine } = this.hooks.editor();
     // a phone: the fingers, not the keys; no editor on it to open a declaration in
     const phone = isPhone();
-    const title = phone ? "Gestures" : "Keys and gestures";
+    const keysTab = phone ? "Gestures" : "Keys";
+    this.tab = tab;
     this.help.innerHTML =
-      `<div class="modal-box glass help-box${phone ? " help-touch" : ""}" role="dialog" aria-label="${title}" tabindex="-1">` +
-      `<div class="help-head"><div class="modal-title">${title}</div><button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
+      `<div class="modal-box glass help-box${phone ? " help-touch" : ""}" role="dialog" aria-label="Help" tabindex="-1">` +
+      `<div class="help-head"><div class="seg help-tabs" role="tablist" aria-label="Help">` +
+      `<button role="tab" data-help-tab="tips">Tips</button><button role="tab" data-help-tab="keys">${keysTab}</button></div>` +
+      `<button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
+      `<div class="help-pane" data-help-pane="tips" role="tabpanel">` +
+      `<input class="help-input tips-filter" data-tips-filter type="search" placeholder="Find a tip" value="${escapeHtml(this.filter)}" spellcheck="false" autocomplete="off" aria-label="Find a tip">` +
+      `<div class="tips-list" data-tips-list></div>` +
+      (this.hooks.snapshot() ? "" : `<label class="help-note tips-off"><input type="checkbox" data-tips-off${this.tips.off ? "" : " checked"}> Show a tip beside a control when it helps, now and then</label>`) +
+      `</div>` +
+      `<div class="help-pane" data-help-pane="keys" role="tabpanel" hidden>` +
       `<div class="help-grid">${(phone ? TOUCH : KEYS).map(
         ([group, rows]) =>
           `<div class="help-group"><div class="help-h">${group}</div>${rows
@@ -447,19 +816,67 @@ export class Guide {
       `<div class="help-note" data-help-editor-now>${this.editorNow()}</div></div>`) +
       `<div class="help-about"><div class="help-h">About ${escapeHtml(this.hooks.project())}</div>` +
       `<div class="help-note">${escapeHtml(this.hooks.about())}</div></div>` +
-      // where the tool itself is: its documentation, its code, and where an issue is reported
+      // which VisualProof, and where it is: its documentation, its code, where an issue is reported
       `<div class="help-about"><div class="help-h">About VisualProof</div>` +
-      `<div class="help-note">Open source: its documentation, its code and its issues are at ` +
-      `<a class="help-repo" href="${REPO}" target="_blank" rel="noopener noreferrer">${REPO.replace("https://", "")}</a>.</div></div>` +
+      `<div class="help-note" data-help-tool>${this.aboutTool(null)}</div></div>` +
+      `</div>` +
       `<div class="modal-actions"><button class="rv-btn" data-help-tour>Take the tour again</button><button class="rv-btn primary" data-help-close>Close</button></div></div>`;
     this.help.hidden = false;
-    this.help.querySelector<HTMLElement>(".help-box")?.focus();
+    const box = this.help.querySelector<HTMLElement>(".help-box")!;
+    this.player = new ClipPlayer(this.help.querySelector<HTMLElement>("[data-tips-list]")!, box);
+    this.showTab(tab);
+    box.focus();
+    void this.hooks.updates().then((u) => {
+      const el = this.help.querySelector<HTMLElement>("[data-help-tool]");
+      if (u && el && !this.help.hidden) el.innerHTML = this.aboutTool(u);
+    });
+    // the clips the server has, read once: until then, and without them, the tips are their words
+    if (!this.clipsHad)
+      void this.hooks.clips().then((c) => {
+        this.clipsHad = c;
+        if (c.size && !this.help.hidden && this.tab === "tips") this.renderCards();
+      });
+    if (tipId) {
+      const card = this.help.querySelector<HTMLElement>(`[data-tip="${CSS.escape(tipId)}"]`);
+      if (card) {
+        card.scrollIntoView({ block: "center" });
+        card.classList.add("flash");
+      }
+    }
+  }
+
+  private showTab(tab: "tips" | "keys"): void {
+    this.tab = tab;
+    for (const b of this.help.querySelectorAll<HTMLElement>("[data-help-tab]")) {
+      const on = b.dataset.helpTab === tab;
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", String(on));
+    }
+    for (const p of this.help.querySelectorAll<HTMLElement>("[data-help-pane]")) p.hidden = p.dataset.helpPane !== tab;
+    // Tips looked at: what is New stays marked while the sheet shows, and is not the next time
+    if (tab === "tips" && this.newShown === undefined) {
+      this.newShown = this.tips.newSince;
+      this.tips.newLooked();
+    }
+    if (tab === "tips") this.renderCards();
+    else this.player?.stop();
+  }
+
+  /** The cards as the filter has them; New marked until Tips has been looked at. */
+  private renderCards(): void {
+    const list = this.help.querySelector<HTMLElement>("[data-tips-list]");
+    if (!list) return;
+    list.innerHTML = cardsHtml(this.context(this.clipsHad ?? new Set()), this.filter);
+    this.player?.start();
   }
 
   closeHelp(): void {
     // the editor's field lets go of the focus now, not at the next frame: a key pressed right after
     // Esc is a shortcut again, not text typed into a field no one sees
     if (this.help.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    this.player?.stop();
+    this.player = null;
+    this.newShown = undefined;
     this.help.hidden = true;
   }
 
