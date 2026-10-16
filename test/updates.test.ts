@@ -13,6 +13,7 @@ import { after, test } from "node:test";
 import { choose, codeToRun, installCommand, newerThan, notesOf, registryEngines, registryVersions, sameMinor, stable, Updates, Versions } from "../src/server/updates.ts";
 import type { Npm } from "../src/server/updates.ts";
 import { RESTART_STATUS, supervise } from "../src/server/supervise.ts";
+import { satisfies } from "../src/server/version.ts";
 import { keep, Reloader, takeKept } from "../src/web/src/reload.ts";
 import type { Kept, KeptStorage } from "../src/web/src/reload.ts";
 import { site, stream } from "./site.ts";
@@ -45,6 +46,26 @@ test("releases: only x.y.z; newer, and of one minor", () => {
   for (const v of ["0.0.0-stage", "0.5.0-rc.1", "v0.4.1", "0.4"]) assert.equal(stable(v), null, v);
   assert.ok(newerThan("0.4.10", "0.4.9") && !newerThan("0.4.1", "0.4.1") && !newerThan("0.5.0-rc.1", "0.4.1"));
   assert.ok(sameMinor("0.4.1", "0.4.7") && !sameMinor("0.4.1", "0.5.0") && !sameMinor("1.4.1", "0.4.1"));
+});
+
+test("Node ranges as npm reads them: every operator, x-ranges, hyphens, alternatives; empty is anywhere", () => {
+  const yes = (v: string, r: string) => assert.ok(satisfies(v, r), `${v} in ${JSON.stringify(r)}`);
+  const no = (v: string, r: string) => assert.ok(!satisfies(v, r), `${v} not in ${JSON.stringify(r)}`);
+  for (const r of ["", "  ", "*", "x", ">=22", ">= 22.0.0", ">=22.0", "22", "22.x", "22.18.*", "^22.18.0", "~22.18.0", "~22", "^22", ">22.17", ">=22 <23", "22.18.0 - 22.20.0", "22 - 24", "<23", "<=22", "<=22.18", "=22.18.0", "22.18.0", ">=20 || >=24.2.0", "^20 || ^22.18.0 || >=24.2.0", "v22.18.0"]) yes("22.18.0", r);
+  for (const r of [">=24", ">= 24", ">22", "23", "^24", "~22.19", "<22.18.0", "<22", "<=22.17", "22.19.0 - 24", "24 - 26", ">=24 || <20", "^22.19.0", "=22.18.1", "lots of nonsense", ">=x.y", ">*"]) no("22.18.0", r);
+  // node-semver's desugaring at zero: ^0.2.3 is <0.3.0, ^0.0.3 is <0.0.4
+  yes("0.2.9", "^0.2.3");
+  no("0.3.0", "^0.2.3");
+  no("0.0.4", "^0.0.3");
+  yes("0.0.9", "^0.0");
+  no("0.1.0", "^0.0");
+  // the engines this package writes, as the doctor reads them
+  yes("24.15.0", "^22.18.0 || >=24.2.0");
+  no("24.1.0", "^22.18.0 || >=24.2.0");
+  // an empty range, or none, is a release that runs anywhere: still taken, still told of
+  assert.deepEqual(choose("0.4.0", ["0.4.1", "0.5.0"], { engines: () => "", node: "22.18.0" }), { patch: "0.4.1", release: "0.5.0" });
+  assert.deepEqual(choose("0.4.0", ["0.4.1", "0.5.0"], { engines: (v) => (v === "0.5.0" ? ">=24" : ">= 22"), node: "24.15.0" }), { patch: "0.4.1", release: "0.5.0" });
+  assert.deepEqual(choose("0.4.0", ["0.4.1", "0.5.0"], { engines: (v) => (v === "0.5.0" ? ">=24" : ">= 22"), node: "22.18.0" }), { patch: "0.4.1", release: "0.4.1" });
 });
 
 test("what a server may take by itself (a patch of its minor) and what it tells of (any newer release)", () => {
