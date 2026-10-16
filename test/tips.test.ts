@@ -4,13 +4,14 @@
 // heading of the manual — and what decides who sees which tip, and when a release is newer.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { GROUPS, TIPS } from "../src/web/src/tips.ts";
 import { RULES } from "../src/web/src/intip.ts";
 import { matches, plain, tipsFor } from "../src/web/src/tipcards.ts";
 import { newer, TipState } from "../src/web/src/tipstate.ts";
-import { FOLLOWED, YOURS } from "../src/web/src/surfaces.ts";
+import { FOLLOWED, FRAMES, YOURS } from "../src/web/src/surfaces.ts";
+import { GUIDE_SHOWS } from "../src/web/src/guide.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
@@ -43,10 +44,56 @@ test("each tip names a release its feature came in, none after the one in making
   }
 });
 
-test("each control a tip is about is on the page and declared a surface; each key, bound", () => {
-  const html = read("src/web/index.html");
-  const ids = new Set([...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]));
-  const declared = [...FOLLOWED.flatMap((p) => ["changes" in p ? p.changes : "", "reads" in p ? p.reads : ""]), ...YOURS.map((y) => ("where" in y ? y.where : ""))].join(", ");
+/** Every element with an id in the page's skeleton, with the ids of the elements it is inside (as
+ *  test/surfaces.test.ts reads it). */
+function skeleton(): Map<string, string[]> {
+  const html = read("src/web/index.html").replace(/<script[^]*?<\/script>/g, "").replace(/<!--[^]*?-->/g, "");
+  const VOID = new Set(["meta", "link", "input", "br", "img", "hr", "source", "path", "circle", "rect"]);
+  const stack: (string | null)[] = [];
+  const out = new Map<string, string[]>();
+  for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)([^>]*?)(\/?)>/g)) {
+    const [, close, tag, attrs, self] = m;
+    if (close) {
+      stack.pop();
+      continue;
+    }
+    const id = /\bid="([^"]+)"/.exec(attrs)?.[1] ?? null;
+    if (id) out.set(id, stack.filter((x): x is string => x !== null));
+    if (!self && !VOID.has(tag.toLowerCase())) stack.push(id);
+  }
+  return out;
+}
+
+const declared = [...FOLLOWED.flatMap((p) => ["changes" in p ? p.changes : "", "reads" in p ? p.reads : ""]), ...YOURS.map((y) => ("where" in y ? y.where : ""))].join(", ");
+const named = (id: string) => new RegExp(`#${id}(?![\\w-])`).test(declared) || (FRAMES as readonly string[]).includes(`#${id}`);
+/** what the page's code and markup say: where an attribute, a class or an id a selector names is made */
+const page = [read("src/web/index.html"), read("src/web/style.css"), ...readdirSync(new URL("src/web/src/", root)).filter((f) => f.endsWith(".ts")).map((f) => read(`src/web/src/${f}`))].join("\n");
+
+/** Whether a selector names something of the page: its first part an element of the skeleton that
+ *  is a declared surface or inside one (web/src/surfaces.ts), or a window the page adds, declared by
+ *  its class; each attribute, value, class and id after it made by the page's code or markup. */
+function onPage(sel: string, ids: Map<string, string[]>): string | null {
+  for (const one of sel.split(",").map((x) => x.trim())) {
+    const head = /^([#.][\w-]+)/.exec(one)?.[1];
+    if (!head) return `${one}: no element first`;
+    if (head.startsWith("#")) {
+      const id = head.slice(1);
+      if (!ids.has(id)) return `${head} is not in index.html`;
+      if (!named(id) && !ids.get(id)!.some(named)) return `${head} is in no surface surfaces.ts declares`;
+    } else if (!new RegExp(`\\${head}(?![\\w-])`).test(declared)) return `${head} is declared in surfaces.ts by no window`;
+    const rest = one.slice(head.length);
+    for (const [, name, value] of rest.matchAll(/\[([\w-]+)(?:=["']?([\w-]+)["']?)?\]/g)) {
+      if (!page.includes(name)) return `${one}: [${name}] is made nowhere`;
+      if (value && !page.includes(`"${value}"`) && !page.includes(`${name}="${value}`)) return `${one}: ${name}=${value} is made nowhere`;
+    }
+    for (const [, cls] of rest.matchAll(/\.([\w-]+)/g)) if (!new RegExp(`[\\s"'\`]${cls}[\\s"'\`]|\\.${cls}\\b`).test(page)) return `${one}: .${cls} is made nowhere`;
+    for (const [, id] of rest.matchAll(/#([\w-]+)/g)) if (!ids.has(id) && !page.includes(`id="${id}"`)) return `${one}: #${id} is made nowhere`;
+  }
+  return null;
+}
+
+test("each control a tip is about, and each place a rule shows its tip at, is on the page in a declared surface; each key, bound", () => {
+  const ids = skeleton();
   const keys = new Set<string>([...FOLLOWED.flatMap((p) => ("keys" in p ? [...p.keys] : [])), ...YOURS.flatMap((y) => ("keys" in y ? [...y.keys] : []))]);
   for (const t of TIPS) {
     assert.ok(t.about.length, `${t.id}: about something`);
@@ -56,23 +103,23 @@ test("each control a tip is about is on the page and declared a surface; each ke
         assert.ok(keys.has(k), `${t.id}: the key ${a} is declared`);
         continue;
       }
-      // its first part: an element of the skeleton, or a window the page adds (declared by its class)
-      const head = /^([#.][\w-]+)/.exec(a)?.[1];
-      assert.ok(head, `${t.id}: ${a}`);
-      if (head.startsWith("#")) assert.ok(ids.has(head.slice(1)), `${t.id}: ${head} is in index.html`);
-      else assert.ok(new RegExp(`\\${head}(?![\\w-])`).test(declared), `${t.id}: ${head} is declared in surfaces.ts`);
+      const why = onPage(a, ids);
+      assert.equal(why, null, `${t.id}: ${why}`);
     }
   }
+  for (const [rule, r] of Object.entries(RULES))
+    for (const sel of [r.at, ...(r.phone ? [r.phone] : [])]) {
+      const why = onPage(sel, ids);
+      assert.equal(why, null, `rule ${rule}: ${why}`);
+    }
 });
 
 test("each Show me is done, each rule is one of at most eight and shows one tip, each More is a heading", () => {
-  const guide = read("src/web/src/guide.ts");
   const main = read("src/web/src/main.ts");
-  for (const t of TIPS) {
-    if (!t.showMe) continue;
-    const done = guide.includes(`"${t.showMe}"`) || main.includes(`case "${t.showMe}":`);
-    assert.ok(done, `${t.id}: Show me ${t.showMe} is done in guide.ts or main.ts`);
-  }
+  // the page's Show me actions: the cases of its showMe
+  const body = main.slice(main.indexOf("const showMe = (action: string)"), main.indexOf("const canShowMe = (action: string)"));
+  const done = new Set<string>([...GUIDE_SHOWS, ...[...body.matchAll(/case "([\w-]+)":/g)].map((m) => m[1])]);
+  for (const t of TIPS) if (t.showMe) assert.ok(done.has(t.showMe), `${t.id}: Show me ${t.showMe} is done by the guide or the page`);
   const rules = TIPS.flatMap((t) => (t.when ? [t.when] : []));
   assert.ok(Object.keys(RULES).length <= 8, "eight rules at most (GuideSpec decision 9)");
   assert.deepEqual([...rules].sort(), Object.keys(RULES).sort(), "each rule shows one tip, and each tip's rule is a rule");

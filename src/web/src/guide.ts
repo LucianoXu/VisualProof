@@ -129,6 +129,10 @@ interface Step {
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel);
 
+/** The Show me actions the guide does itself (GuideSpec decision 7): the TCB step's three views, and
+ *  the sheet's About; the page does the others (web/src/main.ts, `showMe`). */
+export const GUIDE_SHOWS = ["tcb-three", "help-about"] as const;
+
 /** VisualProof's repository, which the help sheet links to (the owner's decision of 2026-10-16). */
 const REPO = "https://github.com/LucianoXu/VisualProof";
 /** the manual, which a tip's More links into (GuideSpec decision 5) */
@@ -614,7 +618,7 @@ export class Guide {
   showTip(tip: Tip): void {
     if (!tip.showMe || !this.hooks.canShow(tip.showMe)) return;
     // the sheet's About: the sheet stays, on the tab that holds it
-    if (tip.showMe === "help-about") {
+    if (tip.showMe === GUIDE_SHOWS[1]) {
       this.openHelp("keys");
       const about = this.help.querySelector<HTMLElement>("[data-help-tool]");
       about?.scrollIntoView({ block: "center" });
@@ -622,7 +626,7 @@ export class Guide {
       return;
     }
     let step: Step | null;
-    if (tip.showMe === "tcb-three") {
+    if (tip.showMe === GUIDE_SHOWS[0]) {
       step = this.restsOnStep(isPhone());
       if (step) step.title = tip.title;
     } else {
