@@ -13,12 +13,14 @@ The owner's decisions of 2026-10-16.
 ### Knowing of a release
 
 1. **The registry is asked through npm**, npm's own script run by the Node that runs the server
-   (`lib/node_modules/npm/bin/npm-cli.js` beside it; else `npm` on the PATH), in the versions'
+   (where the `npm` beside it leads, else `lib/node_modules/npm/bin/npm-cli.js` beside it or, for
+   Homebrew's formula, its keg's `libexec/lib/node_modules/npm`; else `npm` on the PATH), in the versions'
    folder (no project's `.npmrc` applies), so that the user's registry, proxy and certificates hold
    as for any `npm install`: the versions of `visualproof` (`npm view visualproof versions`), and the
    Node range of the newest beyond the running one (`engines`, read as npm reads ranges; an empty
    one runs anywhere) and whether its publisher deprecated it: a deprecated release is neither taken
-   nor told of, so that a broken patch is withdrawn by `npm deprecate`. Nothing of the project is
+   nor told of, so that a broken patch is withdrawn by `npm deprecate`. A version npm could not
+   say these of is not taken: it is asked again at the next check. Nothing of the project is
    sent. At start (half a minute after
    the server listens, unless it asked within the hour) and then once a day, with up to two hours
    more so that servers started together do not ask together. Releases only: never a release
@@ -28,7 +30,8 @@ The owner's decisions of 2026-10-16.
    check that fails, however, leaves the next one a day on.
 2. **Three modes**, `--updates auto|notify|off` (or `VISUALPROOF_UPDATES`), auto by default:
    - **auto** — a patch is taken by itself (decision 3), a newer minor told of (decision 4);
-   - **notify** — any newer release is told of, with its command; nothing is downloaded;
+   - **notify** — any newer release is told of, with its command; nothing is downloaded, and the
+     installed package is what runs (not a patch an auto server sharing the cache downloaded);
    - **off** — the registry is never asked, and the server runs as it did before 0.4: one process,
      no supervisor (decision 5). For a machine kept offline.
 3. **What is taken unattended is a patch**: a release of the minor the server runs (0.4.1 for 0.4.0;
@@ -50,8 +53,8 @@ The owner's decisions of 2026-10-16.
    the server as a child: the newest of the installed package and the ready patches of its minor
    that runs on this Node and is not set aside. It passes signals on and ends with the server's
    status, unless the server asks to be started again (decision 9).
-   - `versions/` is shared by the user's servers: each marks the version it runs
-     (`running-<pid>`), moves a download into place only where none is (another's copy is as
+   - `versions/` is shared by the user's servers: each supervisor marks the version it starts, as
+     it starts it (`running-<pid>`), moves a download into place only where none is (another's copy is as
      good), and removes only versions of its own minor older than the one it would step back to
      that no living server runs, and the downloads of servers that died midway.
    - It is code the servers run: made `0700`; a folder another owns or others may write is
@@ -69,15 +72,28 @@ The owner's decisions of 2026-10-16.
    only into what the supervisor would run (the two read the same: the version, its engines, what
    is set aside), and not where the Node it runs on is gone (an upgrade removed it): it keeps
    running, and says why.
-7. **A version that fails is set aside**: a patch that ends before it serves, or fails twice within
-   ten minutes of serving, is recorded in `versions/bad.json` with why, and the version before it
-   started again; a SIGKILL (the kernel's when memory runs out) never counts, the patch is started
-   again. Where the version started after one was set aside fails as soon, the fault was not the
-   first one's: it is taken back, and the supervisor ends with the status. One set aside is tried
-   again a day later, and kept aside for good after its third failure. What ends a server that is
-   not its code — the site held by another server, the port taken, the project unreadable — sets
-   nothing aside. What is set aside, and why, is said in the log, by the doctor and to full readers
-   (decision 11).
+7. **A version that fails is set aside**, and the version before it started again:
+   - one that fails before it serves is set aside for every server sharing the cache (what fails
+     as it starts is the version's); one that fails twice within ten minutes of serving, for the
+     site that saw it alone (that may be its project's), and for every site once two sites saw it;
+     the failures soon after it served are counted for a day after the last;
+   - a SIGKILL never counts (the kernel's when memory runs out, an operator's kill -9), nor a
+     SIGABRT once it served (V8's when the heap reaches its limit: a reader's request, maybe); a
+     SIGABRT before it served counts, as a version that runs out of memory where the one before it
+     did not. Not counted, the version is started again;
+   - where the version started after one was set aside fails as soon, the fault was not the first
+     one's: it is taken back, what was recorded of it kept and counted; that site's patches up to it
+     are paused — its server runs the installed package until a newer patch is out
+     (`versions/paused.json`) — and the supervisor ends. So it does after six starts in ten minutes,
+     pausing the patch it was starting: under systemd's `Restart=on-failure`, the next start runs
+     the installed package, and stays there;
+   - one set aside is tried again a day later, and kept aside for good after its third failure;
+   - a record that cannot be written (a full disk) sets the version aside all the same, for as long
+     as the supervisor runs, and says so.
+
+   What ends a server that is not its code — the site held by another server, the port taken, the
+   project unreadable — sets nothing aside. What is set aside now, and why, is said in the log, by
+   the doctor and to full readers (decision 11).
 
 ### The pages, and stopping
 
@@ -99,7 +115,9 @@ The owner's decisions of 2026-10-16.
    Lean programs' build, XeLaTeX, ImageMagick, Poppler, git) — those that start programs of their
    own as a process group, with all they started — writes when tokens and links were last used, and
    lets the site go; within five seconds whatever still waits. Status 0 for a stop, 75 for a restart
-   into another version; a stop asked during a restart is a stop (0). A child ended by a signal
+   into another version. Once a stop was asked, the supervisor ends with 0, whatever the server
+   does meanwhile (a restart, a signal that reached it before its own handlers); a server ends at
+   once, with 0, at a stop asked before it can stop gracefully. A child ended by a signal otherwise
    ends the supervisor with 128 + its number. A supervised server whose supervisor went stops too.
 
 ### The record, and who is told
@@ -114,7 +132,8 @@ The owner's decisions of 2026-10-16.
     in fully (the version running, the installed one where it is another, the mode, when the
     registry was last asked, a newer release: whether this server takes it, else the command, and
     its notes; the versions set aside, and why); a read-only reader and an agent are told the version
-    alone, by one rule for both. The log of `GET /api/status`, and where the review is kept, are not
+    alone, by one rule for both, and Activity a version set aside without why. The log of `GET
+    /api/status`, and where the review is kept, are not
     a read-only reader's; the updates' own lines go to the server's console alone. The agents' API's
     entry names the version; the MCP server's file carries the version of the server it came from.
 12. **What it trusts, and sends** (SECURITY.md): under auto, the npm registry and the package's

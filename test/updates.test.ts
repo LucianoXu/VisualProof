@@ -7,11 +7,12 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, test } from "node:test";
-import { choose, codeToRun, installCommand, newerThan, notesOf, readInfo, registryEngines, registryVersions, sameMinor, stable, Updates, Versions } from "../src/server/updates.ts";
+import { choose, codeToRun, installCommand, newerThan, notesOf, npmCommand, readInfo, registryEngines, registryVersions, sameMinor, stable, Updates, Versions } from "../src/server/updates.ts";
+import { doctor } from "../src/server/doctor.ts";
 import type { Npm } from "../src/server/updates.ts";
 import { RESTART_STATUS, signalStatus, supervise } from "../src/server/supervise.ts";
 import { satisfies } from "../src/server/version.ts";
@@ -19,6 +20,7 @@ import { childEnv, DETACH, grouped, stopChildren } from "../src/server/children.
 import { keep, Reloader, takeKept } from "../src/web/src/reload.ts";
 import type { Kept, KeptStorage } from "../src/web/src/reload.ts";
 import { site, stream } from "./site.ts";
+import type { Json } from "./site.ts";
 
 const tmp = mkdtempSync(join(tmpdir(), "vp-updates-"));
 after(() => rmSync(tmp, { recursive: true, force: true }));
@@ -57,6 +59,21 @@ test("Node ranges as npm reads them: every operator, x-ranges, hyphens, alternat
   const no = (v: string, r: string) => assert.ok(!satisfies(v, r), `${v} not in ${JSON.stringify(r)}`);
   for (const r of ["", "  ", "*", "x", ">=22", ">= 22.0.0", ">=22.0", "22", "22.x", "22.18.*", "^22.18.0", "~22.18.0", "~22", "^22", ">22.17", ">=22 <23", "22.18.0 - 22.20.0", "22 - 24", "<23", "<=22", "<=22.18", "=22.18.0", "22.18.0", ">=20 || >=24.2.0", "^20 || ^22.18.0 || >=24.2.0", "v22.18.0"]) yes("22.18.0", r);
   for (const r of [">=24", ">= 24", ">22", "23", "^24", "~22.19", "<22.18.0", "<22", "<=22.17", "22.19.0 - 24", "24 - 26", ">=24 || <20", "^22.19.0", "=22.18.1", "lots of nonsense", ">=x.y", ">*"]) no("22.18.0", r);
+  // what npm cannot read is no range, whatever its other alternatives say; an operator is one word;
+  // numbers have no leading zero
+  for (const r of [">=22 || garbage", "> = 22", "< = 23", "022.18.0", ">=022", "22.018.0", "22.18-rc.1", "1.2.3-01"]) no("22.18.0", r);
+  // prereleases, as npm orders them
+  no("22.18.0", "<=22.18.0-rc.1");
+  no("22.18.0", "<22.18.0-rc.1");
+  yes("22.18.0", ">=22.18.0-rc.1");
+  yes("22.18.0", ">22.18.0-rc.1");
+  yes("22.18.0", "22.18.0-rc.1 - 22.18.0");
+  no("22.18.0", "=22.18.0-rc.1");
+  yes("22.18.0-rc.2", ">=22.18.0-rc.1");
+  no("22.18.0-rc.2", ">=22.17.0");
+  no("22.18.0-rc.1", ">=22.18.0-rc.2");
+  yes("22.18.0-rc.10", ">22.18.0-rc.9");
+  yes("22.18.0-rc.1", ">22.18.0-beta");
   // node-semver's desugaring at zero: ^0.2.3 is <0.3.0, ^0.0.3 is <0.0.4
   yes("0.2.9", "^0.2.3");
   no("0.3.0", "^0.2.3");
@@ -123,6 +140,67 @@ test("a release its publisher deprecated is neither taken nor told of: npm's thr
   assert.equal(u.status(true).newer?.version, "0.4.1");
 });
 
+test("a version npm could not say the engines or deprecation of is not taken now, and asked again at the next check, once per check", async () => {
+  const root = pkg(fresh("unknown"), "0.4.0");
+  const cache = fresh("unknown-cache");
+  let fail = true;
+  const asked: string[] = [];
+  const ask: Npm = async (args) => {
+    asked.push(args[1]);
+    if (args[1] === "visualproof") return { ok: true, out: JSON.stringify(["0.4.0", "0.4.1"]) };
+    return fail ? { ok: false, why: "ETIMEDOUT" } : { ok: true, out: '{ "node": ">=22" }' };
+  };
+  const logs: string[] = [];
+  const u = new Updates({ mode: "notify", cacheRoot: cache, canRestart: false, check: true, quiet: () => false, restart: () => {}, log: (l) => logs.push(l), running: "0.4.0", installedRoot: root, npm: ask });
+  await u.check();
+  assert.deepEqual(asked, ["visualproof", "visualproof@0.4.1"], "asked once");
+  assert.equal(u.status(true).newer, undefined);
+  assert.ok(logs.some((l) => /0\.4\.1 is out, not taken: npm could not say what it needs/.test(l)), logs.join("\n"));
+  fail = false;
+  await u.check();
+  assert.equal(u.status(true).newer?.version, "0.4.1");
+});
+
+test("npm's script found where Node's layouts keep it: beside the binary, Homebrew's keg (libexec) and its links", () => {
+  const brew = fresh("brew");
+  const keg = join(brew, "Cellar", "node", "24.1.0");
+  mkdirSync(join(keg, "bin"), { recursive: true });
+  writeFileSync(join(keg, "bin", "node"), "");
+  const cli = join(keg, "libexec", "lib", "node_modules", "npm", "bin", "npm-cli.js");
+  mkdirSync(dirname(cli), { recursive: true });
+  writeFileSync(cli, "");
+  // process.execPath in the Cellar: the keg's libexec
+  assert.deepEqual(npmCommand(join(keg, "bin", "node")), { cmd: join(keg, "bin", "node"), args: [cli] });
+  // the prefix's bin/node, a link into the Cellar; bin/npm a link to the script
+  mkdirSync(join(brew, "bin"));
+  symlinkSync(join(keg, "bin", "node"), join(brew, "bin", "node"));
+  // found through the link's own folder: compared resolved (macOS's /var is /private/var)
+  assert.deepEqual(npmCommand(join(brew, "bin", "node")).args.map((p) => realpathSync(p)), [realpathSync(cli)]);
+  symlinkSync(join("..", "libexec", "lib", "node_modules", "npm", "bin", "npm-cli.js"), join(keg, "bin", "npm"));
+  assert.deepEqual(npmCommand(join(keg, "bin", "node")).args.map((p) => realpathSync(p)), [realpathSync(cli)]);
+  // nvm's, the installers': lib/node_modules beside the binary
+  const nvm = fresh("nvm");
+  mkdirSync(join(nvm, "bin"));
+  writeFileSync(join(nvm, "bin", "node"), "");
+  const nvmCli = join(nvm, "lib", "node_modules", "npm", "bin", "npm-cli.js");
+  mkdirSync(dirname(nvmCli), { recursive: true });
+  writeFileSync(nvmCli, "");
+  assert.deepEqual(npmCommand(join(nvm, "bin", "node")).args, [nvmCli]);
+  // none: the npm on the PATH
+  assert.deepEqual(npmCommand(join(fresh("bare"), "node")), { cmd: "npm", args: [] });
+});
+
+test("the doctor says what is set aside now, not what expired", () => {
+  const cache = fresh("doctor-cache");
+  const versions = new Versions(cache);
+  versions.markBad("0.4.7", "exited with status 1 before it served", null, Date.now() - 2 * 24 * 3600_000);
+  versions.markBad("0.4.8", "exited with status 2 before it served");
+  const r = doctor({ path: null, roots: [], site: null, cache, run: () => null, node: "24.15.0", platform: "linux", fromPackage: true });
+  assert.match(r.updates, /set aside here: 0\.4\.8 \(exited with status 2 before it served\)/);
+  assert.doesNotMatch(r.updates, /0\.4\.7/);
+  assert.equal(doctor({ path: null, roots: [], site: null, cache, run: () => null, node: "24.15.0", platform: "linux", fromPackage: true, updates: "off" }).updates, "not asked (VISUALPROOF_UPDATES=off)");
+});
+
 test("the command that installs a release where this one is installed; its notes", () => {
   assert.equal(installCommand("/home/u/.nvm/versions/node/v24.15.0/lib/node_modules/visualproof", "0.5.0", "/home/u/.nvm/versions/node/v24.15.0/bin/node"), "npm install --global visualproof@0.5.0");
   assert.equal(installCommand("/usr/local/lib/node_modules/visualproof", "0.5.0", "/home/u/.nvm/versions/node/v24.15.0/bin/node"), "npm install --global --prefix /usr/local visualproof@0.5.0");
@@ -144,7 +222,7 @@ test("the code a supervisor runs: the newest ready patch of the installed minor,
   assert.deepEqual(codeToRun(root, versions), { main: versions.mainOf("0.4.2"), version: "0.4.2", cached: true });
   versions.markBad("0.4.2", "exited with status 1 before it served");
   assert.equal(codeToRun(root, versions).version, "0.4.0");
-  assert.equal(versions.bad().get("0.4.2")!.why, "exited with status 1 before it served");
+  assert.equal(versions.heldWhy("0.4.2", null), "exited with status 1 before it served");
   // a newer package installed meanwhile wins over the patches of the minor before
   pkg(root, "0.5.1");
   assert.deepEqual(codeToRun(root, versions), { main: join(root, "dist", "server", "main.js"), version: "0.5.1", cached: false });
@@ -240,7 +318,7 @@ test("a patch waits at most a day for a quiet moment; a package installed under 
   const root = pkg(fresh("wait"), "0.4.0");
   const cache = fresh("wait-cache");
   ready(cache, "0.4.1");
-  writeFileSync(join(cache, "updates.json"), JSON.stringify({ checked: "2026-10-20T09:00:00.000Z", versions: ["0.4.0", "0.4.1"], engines: {} }));
+  writeFileSync(join(cache, "updates.json"), JSON.stringify({ checked: "2026-10-20T09:00:00.000Z", versions: ["0.4.0", "0.4.1"], engines: { "0.4.1": "" } }));
   let t = Date.parse("2026-10-20T10:00:00Z");
   const restarts: string[] = [];
   const o = { cacheRoot: cache, canRestart: true, check: false, quiet: () => false, restart: (to: string) => restarts.push(to), log: () => {}, running: "0.4.0", installedRoot: root, now: () => t };
@@ -270,86 +348,174 @@ test("a patch waits at most a day for a quiet moment; a package installed under 
 function fakeChild(): ChildProcess & { listen(): void; exit(status: number | null, signal?: NodeJS.Signals): void } {
   const c = new EventEmitter() as unknown as ChildProcess & { listen(): void; exit(status: number | null, signal?: NodeJS.Signals): void };
   c.kill = () => true;
+  // a living process's id, as a child's would be
+  Object.defineProperty(c, "pid", { value: process.pid });
   c.listen = () => c.emit("message", { vp: "listening", version: "x" });
   c.exit = (status, signal) => c.emit("exit", status, signal ?? null);
   return c;
 }
 
-test("the supervisor: a restart starts the newest code again; a patch that fails as it starts is set aside, and the one before it runs", async () => {
-  const root = pkg(fresh("sup"), "0.4.0");
-  const cache = fresh("sup-cache");
+const tick = () => new Promise((r) => setImmediate(r));
+
+/** a supervisor over fake children: what it started, the children, and its end */
+function supervised(root: string, cache: string, o: { site?: string; mode?: "auto" | "notify" } = {}) {
   const started: { main: string; aside?: string }[] = [];
   const children: ReturnType<typeof fakeChild>[] = [];
-  const run = (main: string, _argv: string[], env: NodeJS.ProcessEnv) => {
-    started.push({ main, ...(env.VISUALPROOF_SET_ASIDE ? { aside: JSON.parse(env.VISUALPROOF_SET_ASIDE).version } : {}) });
-    assert.equal(env.VISUALPROOF_SUPERVISED, "1");
-    assert.equal(env.VISUALPROOF_INSTALLED, root);
-    const c = fakeChild();
-    children.push(c);
-    return c;
-  };
-  const done = supervise({ installedRoot: root, cacheRoot: cache, argv: ["serve", "."], run, log: () => {} });
+  const logs: string[] = [];
+  const done = supervise({
+    installedRoot: root, cacheRoot: cache, argv: ["serve", "."], log: (l) => logs.push(l), ...o,
+    run: (main, _argv, env) => {
+      started.push({ main, ...(env.VISUALPROOF_SET_ASIDE ? { aside: JSON.parse(env.VISUALPROOF_SET_ASIDE).version } : {}) });
+      assert.equal(env.VISUALPROOF_SUPERVISED, "1");
+      assert.equal(env.VISUALPROOF_INSTALLED, root);
+      children.push(fakeChild());
+      return children.at(-1)!;
+    },
+  });
+  return { started, children, logs, done, last: () => children.at(-1)! };
+}
+
+test("the supervisor: a restart starts the newest code again, marked as it starts; a patch that fails as it starts is set aside for every site, and the one before it runs", async () => {
+  const root = pkg(fresh("sup"), "0.4.0");
+  const cache = fresh("sup-cache");
+  const S = supervised(root, cache, { site: "/sites/a" });
   const versions = new Versions(cache);
-  children[0].listen();
-  // a patch is ready: the server asks to be started again, in it
+  S.children[0].listen();
+  // a patch is ready: the server asks to be started again, in it; the version is marked as it starts
   ready(cache, "0.4.1");
-  children[0].exit(RESTART_STATUS);
-  await new Promise((r) => setImmediate(r));
-  assert.equal(started[1].main, versions.mainOf("0.4.1"));
-  // it fails before it serves: set aside, and the installed one started, told so
-  children[1].exit(1);
-  await new Promise((r) => setImmediate(r));
-  assert.deepEqual(started[2], { main: join(root, "dist", "server", "main.js"), aside: "0.4.1" });
-  assert.match(versions.bad().get("0.4.1")!.why, /exited with status 1 before it served/);
-  // the one before it fails as soon: the fault was not 8.0.1's, which is taken back; the supervisor ends
-  children[2].listen();
-  children[2].exit(3);
-  assert.equal(await done, 3);
-  assert.equal(versions.bad().size, 0);
+  S.children[0].exit(RESTART_STATUS);
+  await tick();
+  assert.equal(S.started[1].main, versions.mainOf("0.4.1"));
+  assert.ok(versions.inUse("0.4.1"), "marked by the supervisor as the version starts");
+  // it fails before it serves: set aside for every site, the mark taken off, the installed one started, told so
+  S.children[1].exit(1);
+  await tick();
+  assert.ok(!versions.inUse("0.4.1"));
+  assert.deepEqual(S.started[2], { main: join(root, "dist", "server", "main.js"), aside: "0.4.1" });
+  assert.equal(versions.heldWhy("0.4.1", "/sites/other"), "exited with status 1 before it served");
+  S.children[2].listen();
+  process.emit("SIGTERM", "SIGTERM");
+  S.children[2].exit(0);
+  assert.equal(await S.done, 0);
 });
 
-test("the supervisor: a patch failing once after it served is started again, set aside the second time; a SIGKILL never counts; statuses as shells say them", async () => {
+test("the one before a patch set aside failing as soon: the patch taken back (its record kept), this site's patches paused, the installed package run from then on until a newer one", async () => {
+  const root = pkg(fresh("loop"), "0.4.0");
+  const cache = fresh("loop-cache");
+  ready(cache, "0.4.1");
+  const versions = new Versions(cache);
+  // systemd starts the supervisor: the patch fails as it starts (a full disk, say), so does the installed one
+  const first = supervised(root, cache, { site: "/sites/a" });
+  first.children[0].exit(1);
+  await tick();
+  first.children[1].exit(1);
+  assert.equal(await first.done, 1);
+  assert.equal(versions.heldWhy("0.4.1", "/sites/a"), null, "taken back");
+  assert.equal(versions.records().get("0.4.1")!.early!.times, 1, "its record kept");
+  assert.equal(versions.paused("/sites/a")!.upTo, "0.4.1");
+  // systemd starts it again: the installed package, not the patch; a stable state, whatever follows
+  const second = supervised(root, cache, { site: "/sites/a" });
+  assert.equal(second.started[0].main, join(root, "dist", "server", "main.js"));
+  second.children[0].listen();
+  // another site is not paused; a newer patch lifts the pause
+  assert.equal(codeToRun(root, versions, { site: "/sites/b" }).version, "0.4.1");
+  ready(cache, "0.4.2");
+  assert.equal(codeToRun(root, versions, { site: "/sites/a" }).version, "0.4.2");
+  process.emit("SIGTERM", "SIGTERM");
+  second.children[0].exit(null, "SIGTERM");
+  assert.equal(await second.done, 0);
+});
+
+test("the supervisor: a patch failing soon after it served is started again, set aside for its site the second time (for all once two sites saw it); SIGKILL never counts, SIGABRT only before it served", async () => {
   const root = pkg(fresh("strikes"), "0.4.0");
   const cache = fresh("strikes-cache");
   ready(cache, "0.4.1");
   const versions = new Versions(cache);
-  const started: string[] = [];
-  const children: ReturnType<typeof fakeChild>[] = [];
-  const done = supervise({ installedRoot: root, cacheRoot: cache, argv: ["serve"], log: () => {}, run: (main) => (started.push(main), children.push(fakeChild()), children.at(-1)!) });
-  const tick = () => new Promise((r) => setImmediate(r));
-  children[0].listen();
-  children[0].exit(null, "SIGKILL");
+  const S = supervised(root, cache, { site: "/sites/a" });
+  // killed as it starts, and once it served: started again, nothing recorded
+  S.last().exit(null, "SIGKILL");
   await tick();
-  children[1].listen();
-  children[1].exit(1);
+  S.last().listen();
+  S.last().exit(null, "SIGKILL");
   await tick();
-  assert.equal(versions.bad().size, 0, "a SIGKILL, then one failure: not set aside yet");
-  children[2].listen();
-  children[2].exit(null, "SIGSEGV");
+  // out of memory once it served (V8's SIGABRT): started again
+  S.last().listen();
+  S.last().exit(null, "SIGABRT");
   await tick();
-  assert.match(versions.bad().get("0.4.1")!.why, /was ended by SIGSEGV twice soon after it started/);
-  assert.deepEqual(started.map((m) => m.includes("versions")), [true, true, true, false]);
-  // the installed one serves; a SIGINT passed on ends it; its status is the child's
-  children[3].listen();
+  S.last().listen();
+  S.last().exit(1);
+  await tick();
+  assert.equal(versions.records().size, 0, "SIGKILL, SIGABRT after it served, one failure: nothing recorded");
+  S.last().listen();
+  S.last().exit(null, "SIGSEGV");
+  await tick();
+  assert.match(versions.heldWhy("0.4.1", "/sites/a")!, /was ended by SIGSEGV twice soon after it started/);
+  assert.equal(versions.heldWhy("0.4.1", "/sites/b"), null, "another site's project may not fail it");
+  assert.deepEqual(S.started.map((x) => x.main.includes("versions")), [true, true, true, true, true, false]);
+  versions.markBad("0.4.1", "exited with status 1 twice soon after it started", "/sites/b");
+  assert.match(versions.heldWhy("0.4.1", "/sites/c")!, /on 2 sites/);
+  // a stop asked while the server restarts: 0, whatever the child does then
+  S.last().listen();
   process.emit("SIGINT", "SIGINT");
-  children[3].exit(null, "SIGINT");
-  assert.equal(await done, 130);
-  assert.deepEqual([signalStatus("SIGTERM"), signalStatus("SIGSEGV")], [143, 139]);
+  S.last().exit(RESTART_STATUS);
+  assert.equal(await S.done, 0);
+  assert.equal(S.started.length, 6, "nothing started after the stop");
+  assert.deepEqual([signalStatus("SIGTERM"), signalStatus("SIGSEGV"), signalStatus("SIGINT")], [143, 139, 130]);
 });
 
-test("a version set aside is tried again a day on, and for good after the third time", () => {
+test("the supervisor: SIGABRT before it served sets a patch aside; a mark that cannot be written still steps back; under notify, the installed package alone; a deprecated patch never runs", async () => {
+  const root = pkg(fresh("abort"), "0.4.0");
+  const cache = fresh("abort-cache");
+  ready(cache, "0.4.1");
+  const versions = new Versions(cache);
+  const S = supervised(root, cache, { site: "/sites/a" });
+  S.last().exit(null, "SIGABRT");
+  await tick();
+  assert.match(versions.heldWhy("0.4.1", null)!, /was ended by SIGABRT before it served/);
+  S.last().listen();
+  process.emit("SIGTERM", "SIGTERM");
+  S.last().exit(0);
+  await S.done;
+  // a full disk: the record cannot be written, the patch is set aside all the same
+  ready(cache, "0.4.2");
+  chmodSync(versions.root, 0o500);
+  try {
+    const T = supervised(root, cache, { site: "/sites/a" });
+    assert.ok(T.started[0].main.includes("0.4.2"));
+    T.last().exit(1);
+    await tick();
+    assert.equal(T.started[1].main, join(root, "dist", "server", "main.js"));
+    assert.ok(T.logs.some((l) => /could not record it/.test(l)), T.logs.join("\n"));
+    T.last().listen();
+    process.emit("SIGTERM", "SIGTERM");
+    T.last().exit(0);
+    await T.done;
+  } finally {
+    chmodSync(versions.root, 0o700);
+  }
+  // notify: the installed package, the patch ready or not
+  assert.equal(codeToRun(root, versions, { mode: "notify" }).version, "0.4.0");
+  assert.equal(codeToRun(root, versions, { mode: "auto" }).version, "0.4.2");
+  // deprecated by its publisher, as the last check found: never run
+  writeFileSync(join(cache, "updates.json"), JSON.stringify({ checked: new Date().toISOString(), versions: ["0.4.2"], engines: { "0.4.2": "" }, deprecated: { "0.4.2": "broken" } }));
+  assert.equal(codeToRun(root, versions, { mode: "auto" }).version, "0.4.0");
+});
+
+test("a version set aside is tried again a day on, and for good after the third time; taking it back keeps what was recorded", () => {
   const cache = fresh("aside");
   const versions = new Versions(cache);
-  versions.markBad("0.4.1", "exited with status 1 before it served");
   const t = Date.now();
+  versions.markBad("0.4.1", "exited with status 1 before it served", null, t);
   assert.ok(versions.setAside(t).has("0.4.1"));
   assert.ok(!versions.setAside(t + 25 * 3600_000).has("0.4.1"));
-  versions.markBad("0.4.1", "again");
-  versions.markBad("0.4.1", "and again");
-  assert.equal(versions.bad().get("0.4.1")!.times, 3);
-  assert.ok(versions.setAside(t + 25 * 3600_000).has("0.4.1"));
-  versions.unmarkBad("0.4.1");
-  assert.equal(versions.bad().size, 0);
+  assert.deepEqual(versions.reasons(t + 25 * 3600_000), [], "expired: neither said nor held");
+  versions.unmarkBad("0.4.1", t + 1);
+  assert.ok(!versions.setAside(t + 2).has("0.4.1"));
+  versions.markBad("0.4.1", "again", null, t + 3);
+  versions.markBad("0.4.1", "and again", null, t + 4);
+  assert.equal(versions.records().get("0.4.1")!.early!.times, 3, "counted across the taking back");
+  assert.ok(versions.setAside(t + 25 * 3600_000).has("0.4.1"), "for good");
+  assert.deepEqual(versions.reasons(t + 5).map((r) => [r.version, r.why]), [["0.4.1", "and again"]]);
 });
 
 test("a server never restarts into what the supervisor would not run, nor where its Node is gone; a check that throws does not end the checks", async () => {
@@ -367,6 +533,16 @@ test("a server never restarts into what the supervisor would not run, nor where 
   await u.look();
   assert.deepEqual(restarts, []);
   assert.ok(logs.some((l) => /0\.4\.1 is downloaded, but the supervisor would run 0\.4\.0: not restarted/.test(l)), logs.join("\n"));
+  // a newer one ready meanwhile than the one pending: restarted into that
+  ready(cache, "0.4.1");
+  ready(cache, "0.4.2");
+  const n = new Updates(o);
+  n.start();
+  n.stop();
+  await n.look();
+  assert.deepEqual(restarts, ["0.4.2"]);
+  rmSync(join(cache, "versions", "0.4.2"), { recursive: true, force: true });
+  restarts.length = 0;
   // the download fits: but the Node binary is gone
   ready(cache, "0.4.1");
   const v = new Updates({ ...o, execPath: "/nowhere/bin/node" });
@@ -396,7 +572,7 @@ test("the supervisor never sets aside a patch for what is not its code: the site
   children[0].emit("message", { vp: "environment" });
   children[0].exit(1);
   assert.equal(await done, 1);
-  assert.equal(new Versions(cache).bad().size, 0);
+  assert.equal(new Versions(cache).records().size, 0);
 });
 
 test("stopping ends what the server's programs started: a group is ended whole; they are given none of the server's own variables", { skip: process.platform === "win32" }, async () => {
@@ -520,6 +696,15 @@ test("which server answers: hello names its version and process, the graph its p
     assert.deepEqual([st.log, st.review.folder, typeof st.state], [undefined, undefined, "string"]);
     const full = (await S.ask("GET", "/api/status", undefined, { authorization: `Bearer ${"k".repeat(43)}` })).json!;
     assert.ok(Array.isArray(full.log) && typeof full.review.folder === "string");
+    // a version set aside, in Activity: why, to those told all alone
+    S.live.timeline.add({ kind: "tool", from: "0.4.0", to: "0.4.0", setAside: { version: "0.4.1", why: "exited with status 1 before it served (/home/x/.cache)" } });
+    const aside = (r: Json) => (r.events as Json[]).find((e) => e.kind === "tool")!.setAside;
+    assert.deepEqual(aside((await S.ask("GET", "/api/activity")).json!), { version: "0.4.1" });
+    assert.match(aside((await S.ask("GET", "/api/activity", undefined, { authorization: `Bearer ${"k".repeat(43)}` })).json!).why, /before it served/);
+    const agentActivity = (await S.ask("GET", "/api/agent/activity", undefined, { authorization: `Bearer ${"k".repeat(43)}`, "x-visualproof-kind": "agent", "x-visualproof-name": "Claude" })).json!;
+    assert.deepEqual(aside(agentActivity), { version: "0.4.1" });
+    await reader.until(() => reader.events.some((e) => e.event === "activity" && e.data.kind === "tool"));
+    assert.deepEqual(reader.events.find((e) => e.event === "activity" && e.data.kind === "tool")!.data.setAside, { version: "0.4.1" });
     // an agent's stream is told the version alone, as GET /api/updates tells it
     const agent = stream(S.port, "/api/events?session=aaaaaaaa3333", { authorization: `Bearer ${"k".repeat(43)}`, "x-visualproof-kind": "agent", "x-visualproof-name": "Claude" });
     await agent.until(() => !!agent.last("updates"));

@@ -81,8 +81,9 @@ into the latest release only.
   it says its version — the downloaded code runs there, before it is marked ready; and renames the
   folder into `<root>/versions/<version>/`. `GET /api/updates` tells a read-only reader and an
   agent the running version alone; those let in fully, also what is newer, the command that
-  installs it, and what was set aside. A read-only reader's `GET /api/status` has no log and no
-  review folder; the updates' lines go to the server's console alone.
+  installs it, and what was set aside and why (Activity tells the others the version alone). A
+  read-only reader's `GET /api/status` has no log and no review folder; the updates' lines go to
+  the server's console alone.
 - **Uploads.** PDFs and images of at most 50 MB each, the library at most `--library-limit` (2 GB
   by default). The server reads PDFs with Poppler: keep it up to date. Pages draw them with pdf.js,
   whose script engine is never served, so a PDF's JavaScript does not run.

@@ -21,7 +21,7 @@
 //   versions/bad.json              versions set aside (decision 7): each with when and why
 
 import { execFile } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { childEnv, tracked } from "./children.ts";
 import { packageVersion, satisfies } from "./version.ts";
@@ -116,12 +116,29 @@ export type NpmResult = { ok: true; out: string } | { ok: false; why: string };
 /** npm, asked something: what it printed, or why it failed. */
 export type Npm = (args: string[], timeoutMs?: number) => Promise<NpmResult>;
 
-/** npm as the Node that runs this server runs it: npm's own script (`lib/node_modules/npm/bin/
- *  npm-cli.js` beside it, as Node's installers, nvm and Homebrew lay it out) under this Node, not the
- *  `npm` command, which runs under whatever Node is first on the PATH; else that command. */
+/** npm as the Node that runs this server runs it: npm's own script under this Node, not the `npm`
+ *  command, which runs under whatever Node is first on the PATH; else that command. The script is
+ *  where the `npm` beside this Node leads (a link to it, as every layout below makes one), else
+ *  where Node's own layouts keep it, beside this Node's binary or the one a link of it leads to:
+ *  `<prefix>/lib/node_modules/npm` (Node's installers, nvm, a Homebrew prefix), or the keg's
+ *  `<Cellar>/node/<version>/libexec/lib/node_modules/npm` (Homebrew's node formula, whose binary
+ *  `process.execPath` names in the Cellar). */
 export function npmCommand(execPath = process.execPath): { cmd: string; args: string[] } {
-  const cli = join(dirname(execPath), "..", "lib", "node_modules", "npm", "bin", "npm-cli.js");
-  return existsSync(cli) ? { cmd: execPath, args: [cli] } : { cmd: "npm", args: [] };
+  const real = (p: string): string | null => {
+    try {
+      return realpathSync(p);
+    } catch {
+      return null;
+    }
+  };
+  const bins = [...new Set([dirname(execPath), dirname(real(execPath) ?? execPath)])];
+  const tail = ["node_modules", "npm", "bin", "npm-cli.js"];
+  const candidates = [
+    ...bins.map((b) => real(join(b, "npm"))).filter((p): p is string => !!p && p.endsWith("npm-cli.js")),
+    ...bins.flatMap((b) => [join(b, "..", "lib", ...tail), join(b, "..", "libexec", "lib", ...tail)]),
+  ];
+  const cli = candidates.find((c) => existsSync(c));
+  return cli ? { cmd: execPath, args: [cli] } : { cmd: "npm", args: [] };
 }
 
 /** npm as a child of this server (server/children.ts), run in `cwd` (the versions' folder, so that
@@ -223,6 +240,20 @@ export function versionAt(root: string): string | null {
 
 // ---------------------------------------------------------------- the patches kept
 
+/** Failures of one kind recorded for a version: the last one's when and why, and how many. */
+interface Strikes {
+  at: string;
+  why: string;
+  times: number;
+}
+
+/** What is recorded of a version's failures (Versions.records). */
+interface Failures {
+  early?: Strikes;
+  sites?: Record<string, Strikes>;
+  takenBack?: string;
+}
+
 /** Whether process `pid` lives (EPERM: it does, another user's). */
 function alive(pid: number): boolean {
   try {
@@ -310,63 +341,178 @@ export class Versions {
     });
   }
 
-  /** The versions set aside, each with when, why and how many times (UpdateSpec decision 7). */
-  bad(): Map<string, { at: string; why: string; times: number }> {
+  /** What the servers sharing this folder recorded of each version's failures (UpdateSpec decision
+   *  7): before it served (`early`: about the version, whichever site saw it), soon after it served
+   *  (`sites`: by the site that saw it, which may be about that project alone), and when it was taken
+   *  back (the fault was found elsewhere). What was recorded is kept, taken back or not. */
+  records(): Map<string, Failures> {
+    let raw: Record<string, unknown>;
     try {
-      const raw = JSON.parse(readFileSync(join(this.root, "bad.json"), "utf8")) as Record<string, { at?: unknown; why?: unknown; times?: unknown }>;
-      return new Map(
-        Object.entries(raw)
-          .filter(([v, e]) => stable(v) && e && typeof e.why === "string")
-          .map(([v, e]) => [v, { at: String(e.at ?? ""), why: String(e.why), times: Number.isInteger(e.times) && (e.times as number) > 0 ? (e.times as number) : 1 }]),
-      );
+      raw = JSON.parse(readFileSync(join(this.root, "bad.json"), "utf8")) as Record<string, unknown>;
     } catch {
       return new Map();
     }
-  }
-
-  /** The versions set aside now: each for a day after it failed, and for good once it failed
-   *  SET_ASIDE_TIMES times; tried again otherwise. */
-  setAside(now = Date.now()): Set<string> {
-    const out = new Set<string>();
-    for (const [v, e] of this.bad()) if (e.times >= SET_ASIDE_TIMES || now - Date.parse(e.at) < SET_ASIDE_FOR || !Number.isFinite(Date.parse(e.at))) out.add(v);
+    const strikes = (e: unknown): Strikes | undefined => {
+      const x = e as { at?: unknown; why?: unknown; times?: unknown } | null;
+      if (!x || typeof x !== "object" || typeof x.why !== "string") return undefined;
+      return { at: String(x.at ?? ""), why: x.why, times: Number.isInteger(x.times) && (x.times as number) > 0 ? (x.times as number) : 1 };
+    };
+    const out = new Map<string, Failures>();
+    for (const [v, e] of Object.entries(raw)) {
+      if (!stable(v) || !e || typeof e !== "object") continue;
+      const r = e as { early?: unknown; sites?: unknown; takenBack?: unknown; why?: unknown };
+      // a record of before (one mark per version) reads as a failure before it served
+      const early = strikes(r.early) ?? (typeof r.why === "string" ? strikes(r) : undefined);
+      const sites: Record<string, Strikes> = {};
+      if (r.sites && typeof r.sites === "object") for (const [k, x] of Object.entries(r.sites)) if (strikes(x)) sites[k] = strikes(x)!;
+      out.set(v, { ...(early ? { early } : {}), ...(Object.keys(sites).length ? { sites } : {}), ...(typeof r.takenBack === "string" ? { takenBack: r.takenBack } : {}) });
+    }
     return out;
   }
 
-  private writeBad(all: Record<string, { at: string; why: string; times: number }>): void {
-    if (this.ensure()) return;
+  /** Whether `v` is set aside now for a server of `site` (null: whichever site; only what is
+   *  shared): a failure before it served, or soon after on this site, or soon after on two sites,
+   *  each for a day after it, and for good once recorded SET_ASIDE_TIMES times; nothing recorded
+   *  before it was taken back. Why, where it is; else null. */
+  heldWhy(v: string, site: string | null, now = Date.now(), r = this.records().get(v)): string | null {
+    if (!r) return null;
+    const back = r.takenBack ? Date.parse(r.takenBack) : -Infinity;
+    const holds = (x: Strikes | undefined) => {
+      if (!x) return false;
+      const at = Date.parse(x.at);
+      if (Number.isFinite(at) && at <= back) return false;
+      return x.times >= SET_ASIDE_TIMES || !Number.isFinite(at) || now - at < SET_ASIDE_FOR;
+    };
+    if (holds(r.early)) return r.early!.why;
+    const sites = Object.entries(r.sites ?? {}).filter(([, x]) => holds(x));
+    const mine = site === null ? undefined : sites.find(([k]) => k === site);
+    if (mine) return mine[1].why;
+    if (sites.length >= 2) return `${sites[0][1].why}, on ${sites.length} sites`;
+    return null;
+  }
+
+  /** The versions set aside now for a server of `site` (heldWhy). */
+  setAside(now = Date.now(), site: string | null = null): Set<string> {
+    const out = new Set<string>();
+    for (const [v, r] of this.records()) if (this.heldWhy(v, site, now, r) !== null) out.add(v);
+    return out;
+  }
+
+  /** What is set aside now for `site`, with when and why: what servers and the doctor say. */
+  reasons(now = Date.now(), site: string | null = null): { version: string; at: string; why: string }[] {
+    const out: { version: string; at: string; why: string }[] = [];
+    for (const [v, r] of this.records()) {
+      const why = this.heldWhy(v, site, now, r);
+      if (why === null) continue;
+      const ats = [r.early?.at, ...Object.values(r.sites ?? {}).map((x) => x.at)].filter((x): x is string => !!x).sort();
+      out.push({ version: v, at: ats.at(-1) ?? "", why });
+    }
+    return out;
+  }
+
+  /** Write the records, as one file moved into place; false where it cannot be written (a full
+   *  disk): the caller goes on, without the record. */
+  private writeRecords(all: Map<string, Failures>): boolean {
+    if (this.ensure()) return false;
     const f = join(this.root, "bad.json");
-    writeFileSync(`${f}.tmp-${process.pid}`, JSON.stringify(all, null, 1));
-    renameSync(`${f}.tmp-${process.pid}`, f);
-  }
-
-  markBad(v: string, why: string): void {
-    const all = Object.fromEntries(this.bad());
-    all[v] = { at: new Date().toISOString(), why, times: (all[v]?.times ?? 0) + 1 };
-    this.writeBad(all);
-  }
-
-  /** Take a version back from those set aside (a mark made in error, or one to try again). */
-  unmarkBad(v: string): void {
-    const all = Object.fromEntries(this.bad());
-    if (!Object.hasOwn(all, v)) return;
-    delete all[v];
-    this.writeBad(all);
-  }
-
-  /** Mark version `v` as run by this process, until it ends; the mark goes with the process. */
-  markRunning(v: string, pid = process.pid): void {
-    const f = join(this.root, v, `running-${pid}`);
     try {
-      writeFileSync(f, `${pid}\n`);
-      process.once("exit", () => {
-        try {
-          unlinkSync(f);
-        } catch {
-          // gone already
-        }
-      });
+      writeFileSync(`${f}.tmp-${process.pid}`, JSON.stringify(Object.fromEntries(all), null, 1));
+      renameSync(`${f}.tmp-${process.pid}`, f);
+      return true;
     } catch {
-      // not a version of the cache's: nothing to keep it for
+      try {
+        unlinkSync(`${f}.tmp-${process.pid}`);
+      } catch {
+        // not there
+      }
+      return false;
+    }
+  }
+
+  /** Record a failure of `v`: before it served (`site` null, shared by every site), or soon after
+   *  it served on `site`. False where the record could not be written. */
+  markBad(v: string, why: string, site: string | null = null, now = Date.now()): boolean {
+    const all = this.records();
+    const r: Failures = { ...(all.get(v) ?? {}) };
+    const add = (x: Strikes | undefined): Strikes => ({ at: new Date(now).toISOString(), why, times: (x?.times ?? 0) + 1 });
+    if (site === null) r.early = add(r.early);
+    else r.sites = { ...(r.sites ?? {}), [site]: add(r.sites?.[site]) };
+    all.set(v, r);
+    return this.writeRecords(all);
+  }
+
+  /** Take `v` back from those set aside: the fault was found elsewhere. What was recorded stays,
+   *  counted toward its setting aside for good. False where it could not be written. */
+  unmarkBad(v: string, now = Date.now()): boolean {
+    const all = this.records();
+    const r = all.get(v);
+    if (!r) return true;
+    all.set(v, { ...r, takenBack: new Date(now).toISOString() });
+    return this.writeRecords(all);
+  }
+
+  /** Where a site's server stopped taking patches (UpdateSpec decision 7): its versions up to
+   *  `upTo` are not run for it, so that it runs the installed package until a newer patch is out. */
+  paused(site: string | null): { upTo: string; at: string; why: string } | null {
+    if (site === null) return null;
+    try {
+      const all = JSON.parse(readFileSync(join(this.root, "paused.json"), "utf8")) as Record<string, { upTo?: unknown; at?: unknown; why?: unknown }>;
+      const p = Object.hasOwn(all, site) ? all[site] : null;
+      return p && typeof p.upTo === "string" && stable(p.upTo) ? { upTo: p.upTo, at: String(p.at ?? ""), why: String(p.why ?? "") } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Stop taking `site`'s patches up to `upTo` (they failed, and so did the version before them):
+   *  it runs the installed package until a newer patch is out. False where it cannot be written. */
+  pause(site: string, upTo: string, why: string, now = Date.now()): boolean {
+    if (this.ensure()) return false;
+    const f = join(this.root, "paused.json");
+    let all: Record<string, unknown> = {};
+    try {
+      all = JSON.parse(readFileSync(f, "utf8")) as Record<string, unknown>;
+    } catch {
+      // none yet
+    }
+    all[site] = { upTo, at: new Date(now).toISOString(), why };
+    try {
+      writeFileSync(`${f}.tmp-${process.pid}`, JSON.stringify(all, null, 1));
+      renameSync(`${f}.tmp-${process.pid}`, f);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The versions the last check found deprecated by their publisher (updates.json, in the caches'
+   *  root): never run. */
+  deprecated(): Set<string> {
+    try {
+      const d = (JSON.parse(readFileSync(join(dirname(this.root), "updates.json"), "utf8")) as { deprecated?: unknown }).deprecated;
+      return new Set(d && typeof d === "object" ? Object.keys(d) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  /** Mark version `v` as run by process `pid` (the supervisor, as it starts it); false where it
+   *  cannot be marked. */
+  markRunning(v: string, pid: number): boolean {
+    try {
+      writeFileSync(join(this.root, v, `running-${pid}`), `${pid}\n`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The mark of process `pid` on `v` taken off: it ended. */
+  unmarkRunning(v: string, pid: number): void {
+    try {
+      unlinkSync(join(this.root, v, `running-${pid}`));
+    } catch {
+      // gone already
     }
   }
 
@@ -452,14 +598,33 @@ export class Versions {
   }
 }
 
-/** The code a supervisor runs (UpdateSpec decision 5): the installed package's, or the newest
- *  version downloaded of its minor that is newer, ready, runs on this Node and is not set aside. */
-export function codeToRun(installedRoot: string, versions: Versions, node = process.versions.node): { main: string; version: string; cached: boolean } {
+/** What chooses the code a supervisor runs, beside the folders. */
+export interface RunOptions {
+  node?: string;
+  /** --updates: under notify, the installed package alone (decision 2) */
+  mode?: UpdateMode;
+  /** the site the server serves: what is set aside for it, where its patches are paused */
+  site?: string | null;
+  /** versions set aside meanwhile that could not be recorded (a full disk) */
+  also?: Set<string>;
+  now?: number;
+}
+
+/** The code a supervisor runs (UpdateSpec decision 5): the installed package's, or — under auto —
+ *  the newest version downloaded of its minor that is newer, ready, runs on this Node, is neither
+ *  set aside for this site nor deprecated, and is past where this site's patches were paused. */
+export function codeToRun(installedRoot: string, versions: Versions, o: RunOptions = {}): { main: string; version: string; cached: boolean } {
   const installed = versionAt(installedRoot) ?? "0.0.0";
-  const bad = versions.setAside();
+  const own = { main: join(installedRoot, "dist", "server", "main.js"), version: installed, cached: false };
+  if (o.mode !== undefined && o.mode !== "auto") return own;
+  const site = o.site ?? null;
+  const bad = versions.setAside(o.now ?? Date.now(), site);
+  const deprecated = versions.deprecated();
+  const paused = versions.paused(site);
   let best: string | null = null;
   for (const v of versions.ready()) {
-    if (!sameMinor(v, installed) || !newerThan(v, installed) || bad.has(v)) continue;
+    if (!sameMinor(v, installed) || !newerThan(v, installed) || bad.has(v) || o.also?.has(v) || deprecated.has(v)) continue;
+    if (paused && !newerThan(v, paused.upTo)) continue;
     const engines = (() => {
       try {
         return (JSON.parse(readFileSync(join(versions.packageOf(v), "package.json"), "utf8")) as { engines?: { node?: string } }).engines?.node;
@@ -467,10 +632,10 @@ export function codeToRun(installedRoot: string, versions: Versions, node = proc
         return undefined;
       }
     })();
-    if (engines && !satisfies(node, engines)) continue;
+    if (!satisfies(o.node ?? process.versions.node, engines)) continue;
     if (best === null || newerThan(v, best)) best = v;
   }
-  return best ? { main: versions.mainOf(best), version: best, cached: true } : { main: join(installedRoot, "dist", "server", "main.js"), version: installed, cached: false };
+  return best ? { main: versions.mainOf(best), version: best, cached: true } : own;
 }
 
 // ---------------------------------------------------------------- a server following its releases
@@ -526,6 +691,8 @@ export interface UpdatesOptions {
   running?: string;
   /** the installed package's folder: the supervisor's, where this server runs a patch from the cache */
   installedRoot?: string;
+  /** the site this server serves: what is set aside or paused for it (UpdateSpec decision 7) */
+  site?: string | null;
   npm?: Npm;
   node?: string;
   /** the Node binary this server runs on, which the supervisor starts the next one with */
@@ -575,10 +742,16 @@ export class Updates {
   }
 
   /** The versions newer than this one that it may take, and tell of, as last found. */
+  /** The patch this server may take and the release it may tell of, as the last check found them:
+   *  only versions whose engines and deprecation npm said (one it could not say of waits for the
+   *  next check), neither set aside for this site nor at or below where its patches are paused. */
   private found(): { patch: string | null; release: string | null } {
     if (!this.saved) return { patch: null, release: null };
     const e = this.saved.engines;
-    return choose(this.running, this.saved.versions, { bad: this.versions.setAside(this.now()), engines: (v) => (Object.hasOwn(e, v) ? e[v] : undefined), deprecated: new Set(Object.keys(this.saved.deprecated ?? {})), node: this.o.node });
+    const paused = this.versions.paused(this.o.site ?? null);
+    const known = this.saved.versions.filter((v) => Object.hasOwn(e, v));
+    const r = choose(this.running, known, { bad: this.versions.setAside(this.now(), this.o.site ?? null), engines: (v) => e[v], deprecated: new Set(Object.keys(this.saved.deprecated ?? {})), node: this.o.node });
+    return { ...r, patch: r.patch && paused && !newerThan(r.patch, paused.upTo) ? null : r.patch };
   }
 
   /** What a page is told (UpdateSpec decision 11): the version alone where `full` is not. */
@@ -591,8 +764,7 @@ export class Updates {
     // a newer minor, which needs someone, is told before a patch this server takes by itself
     if (release && !sameMinor(release, this.running)) s.newer = { version: release, taken: false, command: installCommand(this.installedRoot, release), notes: notesOf(release, this.installedRoot) };
     else if (patch) s.newer = this.mode === "auto" && this.o.canRestart ? { version: patch, taken: true, notes: notesOf(patch, this.installedRoot) } : { version: patch, taken: false, command: installCommand(this.installedRoot, patch), notes: notesOf(patch, this.installedRoot) };
-    const aside = this.versions.setAside(this.now());
-    const bad = [...this.versions.bad()].filter(([v]) => aside.has(v)).map(([version, e]) => ({ version, at: e.at, why: e.why }));
+    const bad = this.versions.reasons(this.now(), this.o.site ?? null);
     if (bad.length) s.setAside = bad;
     return s;
   }
@@ -600,8 +772,6 @@ export class Updates {
   /** Begin: the first check soon after the server listens (unless one was made in the last hour),
    *  then one a day; the quiet moment looked for every minute. */
   start(): void {
-    // a version of the cache's, which no other server removes while this one runs it
-    if (PACKAGE_ROOT === this.versions.packageOf(this.running)) this.versions.markRunning(this.running);
     if (this.mode === "off") return;
     if (this.o.check) {
       const last = this.saved ? Date.parse(this.saved.checked) : NaN;
@@ -649,16 +819,23 @@ export class Updates {
     }
     const engines: Record<string, string> = {};
     const deprecated: Record<string, string> = {};
-    const bad = this.versions.setAside(this.now());
+    /** versions npm could not say of: not taken now, asked again at the next check */
+    const unknown = new Set<string>();
+    const bad = this.versions.setAside(this.now(), this.o.site ?? null);
     // the newest beyond this one, in its minor and beyond it: what their Node needs, and whether
     // their publisher deprecated them — asked afresh, newest first, until one is fit (a few at most)
     const beyond = r.versions.filter((v) => newerThan(v, this.running));
     const descending = (vs: string[]) => [...vs].sort((a, b) => (newerThan(a, b) ? -1 : newerThan(b, a) ? 1 : 0));
     for (const list of [descending(beyond.filter((x) => sameMinor(x, this.running) && !bad.has(x))), descending(beyond)]) {
       for (const v of list.slice(0, 5)) {
+        if (unknown.has(v)) break;
         if (!Object.hasOwn(engines, v)) {
           const info = await registryInfo(v, ask);
-          if (info === null) break;
+          if (info === null) {
+            // nothing older is taken in its place: it may be the newest, which a later check finds
+            unknown.add(v);
+            break;
+          }
           engines[v] = info.engines;
           if (info.deprecated) deprecated[v] = info.deprecated;
         }
@@ -677,7 +854,15 @@ export class Updates {
     if (release && !sameMinor(release, this.running)) this.o.log(`updates: VisualProof ${release} is out (this is ${this.running}; ${notesOf(release, this.installedRoot)}): it is installed by ${installCommand(this.installedRoot, release)}, which this server then restarts into by itself`);
     else if (!patch) {
       const out = newest(beyond);
-      const why = out ? (bad.has(out) ? `set aside here: ${this.versions.bad().get(out)?.why ?? "it failed"}` : Object.hasOwn(deprecated, out) ? `deprecated: ${deprecated[out]}` : `it needs Node ${engines[out] ?? "another"}; this is ${this.o.node ?? process.versions.node}`) : "";
+      const why = !out
+        ? ""
+        : bad.has(out)
+          ? `set aside here: ${this.versions.heldWhy(out, this.o.site ?? null, this.now()) ?? "it failed"}`
+          : unknown.has(out) || !Object.hasOwn(engines, out)
+            ? "npm could not say what it needs; asked again at the next check"
+            : Object.hasOwn(deprecated, out)
+              ? `deprecated: ${deprecated[out]}`
+              : `it needs Node ${engines[out]}; this is ${this.o.node ?? process.versions.node}`;
       this.o.log(out ? `updates: VisualProof ${out} is out, not taken: ${why}` : `updates: VisualProof ${this.running} is the latest`);
     }
     if (patch) {
@@ -718,7 +903,7 @@ export class Updates {
     const installed = versionAt(this.installedRoot);
     if (installed !== this.installedAtStart) this.installedChanged ??= now;
     else this.installedChanged = null;
-    const runs = (): string => codeToRun(this.installedRoot, this.versions, this.o.node).version;
+    const runs = (): string => codeToRun(this.installedRoot, this.versions, { node: this.o.node, mode: this.mode, site: this.o.site ?? null }).version;
     let to: string | null = null;
     if (this.installedChanged !== null) {
       if (!installed || !(this.o.quiet() || now - this.installedChanged >= INSTALLED_WAIT)) return;
@@ -733,13 +918,17 @@ export class Updates {
     } else if (this.pending && this.mode === "auto") {
       if (!(this.o.quiet() || now - this.pending.since >= PATCH_WAIT)) return;
       to = this.pending.version;
-      // what the supervisor would run is another (it reads the download's own engines, set aside
-      // or not): no restart, which would start this one again
+      // what the supervisor would run is another: a newer one ready meanwhile is restarted into;
+      // else (the download's own engines, set aside, paused) no restart, which would start this
+      // one again
       const would = runs();
       if (would !== to) {
-        this.o.log(`updates: VisualProof ${to} is downloaded, but the supervisor would run ${would}: not restarted`);
-        this.pending = null;
-        return;
+        if (!newerThan(would, this.running)) {
+          this.o.log(`updates: VisualProof ${to} is downloaded, but the supervisor would run ${would}: not restarted`);
+          this.pending = null;
+          return;
+        }
+        to = would;
       }
     }
     if (to === null) return;

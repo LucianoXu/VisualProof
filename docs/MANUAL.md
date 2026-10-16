@@ -173,12 +173,15 @@ day; `--updates` (or `VISUALPROOF_UPDATES`) says what it does with what it finds
   doctor` from asking it too.
 
 `visualproof serve` from an installed package is a small supervisor that runs the server as its
-child and starts it again in the new version. A patch that fails before it serves, or twice soon
-after, is set aside (`~/.cache/visualproof/versions/bad.json`, with why; the log, the doctor and the
-help say it) and the version before it runs again — unless that one fails as soon, when the fault
-was not the patch's and it is taken back; one set aside is tried again a day on, and kept aside for
-good after its third failure. The servers of one user share `versions/`: none removes a version
-another runs. Where the Node a server runs on is gone (upgraded by Homebrew), it keeps running and
+child and starts it again in the new version. A patch that fails before it serves is set aside for
+every server of the user, one that fails twice soon after it served for that site alone (for all
+once two sites saw it), with why (`~/.cache/visualproof/versions/bad.json`; the log, the doctor and
+the help say it), and the version before it runs again; a SIGKILL never counts, nor running out of
+memory once it served. Where the version before it fails as soon, the fault was not the patch's: it
+is taken back, and that site's server runs the installed package until a newer patch is out (so it
+does after six starts in ten minutes). One set aside is tried again a day on, and kept aside for
+good after its third failure. Under `--updates notify` the installed package runs, whatever the
+cache holds. The servers of one user share `versions/`: none removes a version another runs. Where the Node a server runs on is gone (upgraded by Homebrew), it keeps running and
 says why. `visualproof --version` says the installed package; the server's first lines, `GET
 /api/updates` and the help say the version it runs. Activity records each version that serves the
 site ("Updated from 0.4.0 to 0.4.1"), and each build's snapshot the version that read it. A checkout
