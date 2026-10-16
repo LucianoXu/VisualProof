@@ -20,13 +20,16 @@ what each part does in full; a tip links to it.
    the theorem alone (Selection: its statement in the panel), its TCB (Rests on · TCB: what its
    statement rests on, proofs skipped), its key declarations (Rests on · Keys). A segmented
    *Statement · TCB · Keys* on the card says which is shown; Next goes through the three, and a
-   segment goes to its view. Each view says its own counts, read from the graph and the review: how
-   many declarations the TCB holds, how many the proofs use beyond it, how many are key — or, where
-   none is, that `k` marks one in a target's TCB.
-3. **The theorem the tour shows**: the selection; else a target with key declarations; else a
-   target; else a theorem whose TCB holds 6 to 300 declarations, one whose proofs use more than its
-   statement first (so that the TCB leaves something out). The tour leaves the reader's tool as it
-   found it.
+   segment goes to its view. The Statement view lights the theorem alone; the TCB and Keys views say
+   what they light, in numbers that add up to the selection bar's count: what is to be read, what is
+   trusted and assumed, what the proofs alone use beyond it, how many are key — or, where none is,
+   how one is marked.
+3. **The theorem the tour shows**: the selection; else a target whose Keys view lights key
+   declarations; else a target; else a theorem whose TCB holds 6 to 300 declarations, one whose
+   proofs use more than its statement first (so that the TCB leaves something out). The tour leaves
+   the page as it found it: the reader's tool and the step of Rests on a `2` resumes, the selection,
+   the camera, and no step in the history; nothing it does counts as the reader's doing for a tip in
+   place.
 4. **The tour fits the reader**: a read-only reader is told what they can do there (the review as
    it stands, nobody sees them), not Approve or Comment; a phone has a tour of its own, in the words
    of fingers and of the parts a phone shows (PhoneSpec); with reduced motion (the system's
@@ -34,8 +37,8 @@ what each part does in full; a tip links to it.
 
 ### Tips
 
-5. **A tip is a card**: a title of a few words, one or two sentences, a demonstration, and where it
-   helps **Show me** and **More** (the manual's section on GitHub). Tips are grouped by what one
+5. **A tip is a card**: a title of a few words, one or two sentences, for most of them a
+   demonstration, and where it helps **Show me** and **More** (the manual's section on GitHub). Tips are grouped by what one
    does — Start, Seeing, Reviewing, Arranging, Together, Agents, Export, History — never by how
    expert a reader is (ViewSpec decision 18).
 6. **A demonstration is a short clip of the page itself** (the owner's decision): the real page on
@@ -48,7 +51,7 @@ what each part does in full; a tip links to it.
 7. **Show me** does it on the reader's own page: the sheet closes and the tour's spotlight rings
    the real control, with the tip's words beside it; where it helps, it first does something
    harmless on what is the reader's own — the tour's theorem selected in a mode, a popover opened —
-   and never a change anyone else sees.
+   and never a change anyone else sees. What it did stays, as one step in the history.
 8. **Every tip is in the `?` sheet**: its first tab, *Tips*, before *Keys* (*Gestures* on a phone:
    every key and gesture, the "Open in editor" setting, and what the project and VisualProof are).
    A filter narrows the tips by their words.

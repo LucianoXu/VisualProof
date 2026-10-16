@@ -379,11 +379,13 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   selection, `?` the tips, and every key and gesture.
 - **The first visit** starts a short tour of the page on the project itself, ten steps on a real
   theorem ([GuideSpec.md](../SPEC/GuideSpec.md)). One step shows what the theorem rests on in three
-  views: the theorem alone, its statement in the panel; its TCB; its key declarations — each with
-  its counts. A read-only reader is told what they can do there. The tour leaves your tool as it
-  found it; the `?` sheet's **Take the tour again** replays it.
+  views: the theorem alone, its statement in the panel; its TCB; its key declarations. The TCB and
+  Keys views say how many each lights, as the selection bar counts them: what is to be read, what
+  is trusted and assumed, what the proofs alone use besides, what is key. A read-only reader is told
+  what they can do there. The tour leaves the page as it found it — your tool, your selection, the
+  camera, and no step in the history; the `?` sheet's **Take the tour again** replays it.
 - **The `?` sheet** opens on **Tips**: a card for each thing the page does, in groups (Start,
-  Seeing, Reviewing, Arranging, Together, Agents, Export, History), each with a few seconds' clip
+  Seeing, Reviewing, Arranging, Together, Agents, Export, History), most with a few seconds' clip
   of the page doing it, in your theme, **Show me**, which does it on your page (the control ringed,
   the tour's theorem selected where it helps; nothing anyone else sees), and **More**, its part of
   this manual. A field finds a tip by its words. With reduced motion a clip is still until you play

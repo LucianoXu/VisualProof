@@ -84,8 +84,8 @@ export const TIPS: Tip[] = [
   {
     id: "updates",
     group: "start",
-    title: "Always up to date",
-    text: "The server takes VisualProof's fixes by itself, at a quiet moment, and this page reloads where you were. A newer release is announced in the help, under About.",
+    title: "Kept up to date",
+    text: "A server installed from npm takes VisualProof's fixes by itself, unless told not to, and this page reloads where you were. The help's About says which VisualProof runs.",
     who: "all",
     where: "both",
     since: "0.4.0",
