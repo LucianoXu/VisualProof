@@ -34,15 +34,19 @@ export interface UpdateStatus {
   newer?: { version: string; taken: boolean; command?: string; notes: string };
 }
 
-/** What the tour's TCB step says of its theorem (GuideSpec decision 2). */
+/** What the tour's TCB step says of its theorem (GuideSpec decision 2): what each view lights on
+ *  the board, as the selection bar counts it ("19 lit"), the theorem itself left out — so that the
+ *  card's numbers add up to the bar's. */
 export interface RestsOn {
   /** its name, as the panel heads it */
   name: string;
-  /** the project's declarations its TCB holds, itself left out */
-  tcb: number;
-  /** the project's declarations its proofs use beyond its TCB */
+  /** what its TCB lights that is to be read: not trusted */
+  read: number;
+  /** what its TCB lights that is trusted (Mathlib's, and what the review trusts), and assumed */
+  assumed: number;
+  /** what Uses lights beyond what TCB lights: what its proofs alone use, trusted or not */
   proofs: number;
-  /** the key declarations Keys lights beside it */
+  /** what Keys lights: the key declarations among what TCB lights */
   keys: number;
   /** it is a target */
   target: boolean;
@@ -470,10 +474,14 @@ export class Guide {
           this.hooks.setTool("tcb");
           this.hooks.frameLit();
         },
+        // the numbers add up to the selection bar's: the theorem, what is to be read, what is assumed
         text: () => {
-          const proofs = r.proofs === 1 ? "the one it uses only in proofs is left out" : `the ${r.proofs} it uses only in proofs are left out`;
-          if (!r.tcb) return `Its <b>TCB</b> holds nothing to read but itself: its statement rests only on what is trusted.${r.proofs ? ` ${proofs[0].toUpperCase()}${proofs.slice(1)}.` : ""}`;
-          return `Its <b>TCB</b>: the ${count(r.tcb, "declaration")} its statement rests on — definitions, axioms, the project's notation. To trust it, read ${r.tcb === 1 ? "it" : "these"}; ${r.proofs ? `${proofs}, and ` : ""}what is trusted is assumed.`;
+          const lit = r.read + r.assumed;
+          const assumed = r.assumed ? `${r.assumed} trusted, as Mathlib is, and assumed` : "";
+          const proofs = r.proofs ? ` What its proofs alone use, ${r.proofs} more, is not lit: the proofs are Lean's to check.` : "";
+          if (!lit) return `Its <b>TCB</b> is itself alone: its statement rests on nothing but Lean.${proofs}`;
+          if (!r.read) return `Its <b>TCB</b> lights ${lit} besides it, all ${r.assumed === 1 ? "of it " : ""}trusted, as Mathlib is, and assumed: nothing of the project's to read.${proofs}`;
+          return `Its <b>TCB</b> lights ${lit} besides it: ${r.read} to read — definitions, axioms, the project's notation —${assumed ? ` and ${assumed}` : ""}. To trust it, read ${r.read === 1 ? "that one" : `those ${r.read}`}.${proofs}`;
         },
         at: lit("#rests-steps [data-mode=tcb]"),
       },
@@ -487,8 +495,8 @@ export class Guide {
         text: () =>
           r.keys
             ? r.keys === 1
-              ? "Of those, the one the review marked <b>key</b>: what carries its meaning. Read it first."
-              : `Of those, the ${r.keys} the review marked <b>key</b>: the few that carry its meaning. Read them first.`
+              ? `Of those ${r.read + r.assumed}, the one the review marked <b>key</b>: what carries its meaning. Read it first.`
+              : `Of those ${r.read + r.assumed}, the ${r.keys} the review marked <b>key</b>: the few that carry its meaning. Read them first.`
             : ro || this.hooks.snapshot()
               ? "None is marked <b>key</b> yet: the review marks the few of a target's TCB that carry its meaning."
               : phone

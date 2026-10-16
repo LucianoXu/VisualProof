@@ -4127,8 +4127,8 @@ async function boot(): Promise<void> {
     return fallback;
   };
   /** What the tour's TCB step says of declaration `i` (GuideSpec decision 2): what each of its
-   *  views lights on the board on show, the theorem left out — and, but for its keys, what is
-   *  trusted, which is assumed. */
+   *  views lights on the board on show, as the selection bar counts it, the theorem left out; what
+   *  TCB lights split into what is to be read and what is trusted, and assumed. */
   const restsOnOf = (i: number): RestsOn => {
     const name = g.nodes[i].name;
     const G = vg();
@@ -4139,15 +4139,18 @@ async function boot(): Promise<void> {
     };
     const tcb = lit("tcb"), uses = lit("deps"), keys = lit("keys");
     const self = toView(i);
-    let n = 0, m = 0, k = 0;
+    let read = 0, assumed = 0, proofs = 0, k = 0;
     for (let j = 0; j < G.n; j++) {
       if (j === self) continue;
       if (keys?.[j]) k++;
-      if (trusted.some((t) => covers(t, G.nodes[j].name, G.nodes[j].module, G.isExt(j)))) continue;
-      if (tcb?.[j]) n++;
-      else if (uses?.[j]) m++;
+      if (!tcb?.[j]) {
+        if (uses?.[j]) proofs++;
+        continue;
+      }
+      if (trusted.some((t) => covers(t, G.nodes[j].name, G.nodes[j].module, G.isExt(j)))) assumed++;
+      else read++;
     }
-    return { name: g.nodes[i].display ?? name.split(".").pop()!, tcb: n, proofs: m, keys: k, target: isTarget(name) };
+    return { name: g.nodes[i].display ?? name.split(".").pop()!, read, assumed, proofs, keys: k, target: isTarget(name) };
   };
   /** A tip's Show me (GuideSpec decision 7; web/src/tips.ts), done on the reader's own page: the tour's
    *  theorem selected in a mode, a window or a popover opened, the linear form, the Time Machine —

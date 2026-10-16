@@ -99,7 +99,7 @@ export const TIPS: Tip[] = [
     id: "what-a-tcb-is",
     group: "seeing",
     title: "What a TCB is",
-    text: "What you must read to believe a theorem says what you mean: the definitions its statement rests on, its axioms, the project's notation. Lean checked the proofs; what is trusted, Mathlib first, is assumed.",
+    text: "What you must read to believe a theorem says what you mean: the definitions its statement rests on, its axioms, the project's notation. What is trusted, Mathlib first, lights too, and is assumed.",
     who: "all",
     where: "both",
     since: "0.1.0",
