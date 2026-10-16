@@ -59,7 +59,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
     `projects/<project>-<hash>/` (extractions, the usage pass's results, prepared views, what was
     read of the library's files, typeset documents, Lean's language server's folder; `<cache>`
     below), the Lean programs compiled per toolchain and version of their source in `lean/`, shared
-    by every project and checkout, and the page's bundle in `web/`. By default
+    by every project and checkout, the page's bundle in `web/`, and what the servers know of
+    VisualProof's own releases: `updates.json` (the last check) and `versions/`, the patches they
+    downloaded (see Updates), which is code the servers run, so the caches' root is kept the
+    server's user's alone (`versions/` is made `0700`, and one others may write is refused). By default
     `~/.cache/visualproof/` (macOS: `~/Library/Caches/visualproof/`). `XDG_DATA_HOME` and
     `XDG_CACHE_HOME` move both defaults, on any platform. The server says where the site and the
     project's caches are when it starts.
@@ -147,30 +150,38 @@ The README says how to install the `visualproof` command. A checkout also runs a
 ### Updates
 
 A server follows VisualProof's own releases (SPEC/UpdateSpec.md). It asks the npm registry, through
-the npm beside its Node (so npm's registry, proxy and certificates hold), at start and once a day;
-`--updates` says what it does with what it finds:
+the npm of the Node it runs on (so npm's registry, proxy and certificates hold), at start and once a
+day; `--updates` (or `VISUALPROOF_UPDATES`) says what it does with what it finds:
 
 - **auto** (the default): a **patch** of the version it runs (0.4.1 for 0.4.0) is downloaded into
-  the cache (`<cache>/versions/0.4.1/`), checked to run, and taken at a quiet moment — nobody on a
-  page and nothing running (an extraction, the usage pass, a document being typeset), within a day.
-  Open pages reload where they were: the view, the selection, the camera, the source windows and
-  what was being typed come back; a page that is in the middle of something (typing, a drag, the
-  export window, the artwork mode) waits, its build pill saying "Updated — reload". While the
-  server restarts, the pill says "Updating to 0.4.1…".
+  the caches' root (`~/.cache/visualproof/versions/0.4.1/`, the root `--cache` names, not a
+  project's cache), checked to run on this Node, and taken at a quiet moment — nobody on a page
+  (read-only readers too) and nothing running (an extraction, the usage pass, a document being
+  typeset), within a day. Open pages reload where they were, each within a few seconds: the view,
+  the selection, the camera, the source windows and what was being typed come back; a page that is
+  in the middle of something (typing, a drag, a note being written, the export window, the artwork
+  mode, the linear form) waits, its build pill saying "Updated — reload". While the server
+  restarts, the pill says "Updating to 0.4.1…".
 - A **newer minor** (0.5.0) is never taken by itself: it may change the command line or the site.
   The log, `visualproof doctor` and the help's About part say it is out, with the command that
   installs it where this one was installed (`npm install --global visualproof@0.5.0`) and its
   release notes. Once it is installed, the server restarts into it by itself, within ten minutes.
 - **notify**: told of, never downloaded. **off**: the registry is never asked (a machine kept
-  offline), and the server runs as one process.
+  offline), and the server runs as one process. `VISUALPROOF_UPDATES=off` keeps `visualproof
+  doctor` from asking it too.
 
 `visualproof serve` from an installed package is a small supervisor that runs the server as its
-child and starts it again in the new version; a patch that fails as it starts is set aside
-(`<cache>/versions/bad.json`) and the version before it runs again. `visualproof --version` says the
-installed package; the server's first lines, `GET /api/updates` and the help say the version it
-runs. Activity records each version that serves the site ("Updated from 0.4.0 to 0.4.1"), and each
-build's snapshot the version that read it. A checkout never asks the registry. 0.3.0 has no
-updater: upgrade it by hand (`npm install --global visualproof`, then restart the server).
+child and starts it again in the new version. A patch that fails before it serves, or twice soon
+after, is set aside (`~/.cache/visualproof/versions/bad.json`, with why; the log, the doctor and the
+help say it) and the version before it runs again — unless that one fails as soon, when the fault
+was not the patch's and it is taken back; one set aside is tried again a day on, and kept aside for
+good after its third failure. The servers of one user share `versions/`: none removes a version
+another runs. Where the Node a server runs on is gone (upgraded by Homebrew), it keeps running and
+says why. `visualproof --version` says the installed package; the server's first lines, `GET
+/api/updates` and the help say the version it runs. Activity records each version that serves the
+site ("Updated from 0.4.0 to 0.4.1"), and each build's snapshot the version that read it. A checkout
+never asks the registry. 0.3.0 has no updater: upgrade it by hand (`npm install --global
+visualproof`, then restart the server).
 
 ## Supported Lean versions
 
@@ -538,7 +549,7 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   next source you open (Space, Source) opens in a new window in the middle, so up to six pinned
   windows can be compared side by side; Approve and Comment in a pinned window, and `a`, `m`, `k`
   with the focus in it, are about its declaration, whatever is selected. Pinned windows are this
-  page's (a reload starts without them). The window pressed last
+  page's (a reload starts without them; the reload into a new version, Updates below, keeps them). The window pressed last
   comes to the front, the conversation with an agent among them. Space closes the following
   window; Esc closes the window the focus is in, and from the page closes the following one. Above
   the code, muted, is the context it is written in, as Lean: the namespaces and

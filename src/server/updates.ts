@@ -1,7 +1,7 @@
 // VisualProof's own releases, as a running server follows them (UpdateSpec.md): which versions npm
 // has, which of them this server may take by itself (a patch of the minor it runs, UpdateSpec
 // decision 3) and which it only tells of (a newer minor, decision 4), the patches downloaded beside
-// the installed package (`<cache>/versions/`, decision 5), and the quiet moment a server restarts
+// the installed package (`versions/` in the caches' root, decision 5), and the quiet moment a server restarts
 // into one (decision 6).
 //
 // The registry is asked through npm itself, the npm beside the Node that runs the server, so that

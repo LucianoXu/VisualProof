@@ -129,7 +129,9 @@ function usage(code = 2): never {
   --cache  the root of the caches, which a rebuild makes again: the project's (extractions, the
            usage pass's results, prepared views, typeset documents, Lean's language server's
            folder) in projects/<project>-<hash>/, the Lean programs compiled per toolchain in
-           lean/, the page's bundle in web/. Default: ${cacheHome()}
+           lean/, the page's bundle in web/, VisualProof's own releases in updates.json and the
+           patches downloaded in versions/ (code the servers run: keep the root yours alone).
+           Default: ${cacheHome()}
            (XDG_DATA_HOME and XDG_CACHE_HOME move both homes, on any platform)
 
   --graph  use a saved extraction (a projects/*/extract/*.json of the cache) instead of reading
