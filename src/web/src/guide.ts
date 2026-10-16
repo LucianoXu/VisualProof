@@ -790,7 +790,8 @@ export class Guide {
     html += `Open source: its documentation, its code and its issues are at ${repo}.`;
     const n = u?.newer;
     if (n && u?.mode !== "off") {
-      const notes = `<a href="${escapeHtml(n.notes)}" target="_blank" rel="noopener noreferrer">what is new in it</a>`;
+      // the server's word, shown as text; its release notes linked only where they are an https address
+      const notes = /^https:\/\/[^\s"'<>]+$/.test(n.notes) ? `<a href="${escapeHtml(n.notes)}" target="_blank" rel="noopener noreferrer">what is new in it</a>` : "its notes on GitHub";
       html += `<div class="help-update">${escapeHtml(n.version)} is out (${notes}): ${n.taken ? "this server takes it by itself, at a quiet moment." : n.command ? `<code>${escapeHtml(n.command)}</code> on the server takes it.` : "the server's owner takes it."}</div>`;
     }
     return html;
@@ -802,6 +803,8 @@ export class Guide {
     const phone = isPhone();
     const keysTab = phone ? "Gestures" : "Keys";
     this.tab = tab;
+    // a tip asked for by its ⓘ shows, whatever the filter was
+    if (tipId) this.filter = "";
     this.help.innerHTML =
       `<div class="modal-box glass help-box${phone ? " help-touch" : ""}" role="dialog" aria-label="Help" tabindex="-1">` +
       `<div class="help-head"><div class="seg help-tabs" role="tablist" aria-label="Help">` +
