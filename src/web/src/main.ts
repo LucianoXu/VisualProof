@@ -219,7 +219,7 @@ async function boot(): Promise<void> {
   // guide is made; and the release the server runs (UpdateSpec), as its event stream says it
   let offerTip = (_rule: string): void => {};
   let didTip = (_rule: string): void => {};
-  let countTip = (_name: string): number => 0;
+  let countTip = (_name: string, _rule: string): number => 0;
   let heardRelease: string | null = null;
   let hearRelease = (v: string): void => void (heardRelease = v);
   /** read-only links can be made on this server: the tip about them is for it alone */
@@ -2317,7 +2317,7 @@ async function boot(): Promise<void> {
       const i = g.byName.get(decl);
       const q = selectionQuery(picks);
       if (i !== undefined && g.nodes[i].kind === "theorem" && q && litOn(q).count > 1) offerTip("tcb-first");
-      if (countTip("tcb-picks") >= 5) offerTip("rests-only-tcb");
+      if (countTip("tcb-picks", "rests-only-tcb") >= 5) offerTip("rests-only-tcb");
     }
   };
   /** The tips in place what is recorded may be the moment of: a target's second declaration
@@ -4358,7 +4358,7 @@ async function boot(): Promise<void> {
   });
   offerTip = (rule) => guide.inPlace.offer(rule);
   didTip = (rule) => guide.inPlace.did(rule);
-  countTip = (name) => guide.inPlace.count(name);
+  countTip = (name, rule) => guide.inPlace.count(name, rule);
   hearRelease = (v) => guide.serverIs(v);
   if (heardRelease) guide.serverIs(heardRelease);
   if (!data.snapshot && !reader) void data.shareInfo().then((i) => (readOnlyLinks = !!i.readOnlyLinks), () => {});

@@ -136,6 +136,19 @@ test("What's new is told once, for a newer release; a tip shown twice in place i
     const b = new TipState();
     assert.ok(b.isDone("follow") && b.off && b.bump("tcb-picks") === 2);
     assert.equal(b.meet("0.4.3"), null, "the newest seen is kept: back from an older server, nothing told");
+    // two pages open at once (two projects, or two tabs): neither writes back the other's older state
+    const one = new TipState(), two = new TipState();
+    one.done("used-by");
+    two.done("notes");
+    two.shown("time-machine");
+    one.shown("time-machine");
+    const now = new TipState();
+    assert.ok(now.isDone("used-by") && now.isDone("notes") && now.isDone("time-machine"), "both pages' changes kept, and both showings counted");
+    assert.ok(now.isDone("follow") && now.off, "and what was kept before");
+    // What's new is told once in the browser, not once per page open
+    const p1 = new TipState(), p2 = new TipState();
+    assert.equal(p1.meet("0.5.0"), "0.4.3");
+    assert.equal(p2.meet("0.5.0"), null);
     // what cannot be read is nothing kept
     kept.set("visualproof:tips", "{not json");
     assert.ok(!new TipState().isDone("follow"));

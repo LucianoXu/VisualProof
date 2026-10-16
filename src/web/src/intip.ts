@@ -94,9 +94,11 @@ export class InTips {
     return !!tip && !!RULES[rule] && !this.state.isDone(tip.id) && this.hooks.fits(tip);
   }
 
-  /** One more of what a rule counts, kept across visits (the picks under one step): how many now. */
-  count(name: string): number {
-    return this.state.bump(name);
+  /** One more of what a rule counts, kept across visits (the picks under one step): how many now;
+   *  nothing is counted once the rule's tip is done. */
+  count(name: string, rule: string): number {
+    const tip = TIPS.find((t) => t.when === rule);
+    return !tip || this.state.isDone(tip.id) ? 0 : this.state.bump(name);
   }
 
   /** The page says a rule's moment came: its tip shows once what triggered it has settled, unless

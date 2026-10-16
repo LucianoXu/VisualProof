@@ -34,30 +34,51 @@ export function newer(a: string, b: string): boolean {
   return x.pre > y.pre;
 }
 
+/** What is kept as it is now; null where the storage cannot be read (a private window). */
+function read(): Kept | null {
+  let raw: string | null;
+  try {
+    raw = localStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+  try {
+    const o = raw ? JSON.parse(raw) : null;
+    if (!o || typeof o !== "object") return { shown: {}, counts: {}, done: [] };
+    const ids = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : []);
+    const numbers = (x: unknown): Record<string, number> =>
+      x && typeof x === "object" ? Object.fromEntries(Object.entries(x).filter((e): e is [string, number] => Number.isInteger(e[1]) && e[1] > 0)) : {};
+    return { shown: numbers(o.shown), counts: numbers(o.counts), done: ids(o.done), off: o.off === true || undefined, version: typeof o.version === "string" ? o.version : undefined, newSince: typeof o.newSince === "string" ? o.newSince : undefined };
+  } catch {
+    // what cannot be read is nothing kept, and is written over by the next change
+    return { shown: {}, counts: {}, done: [] };
+  }
+}
+
 export class TipState {
-  private d: Kept = { shown: {}, counts: {}, done: [] };
+  private d: Kept;
 
   constructor() {
-    try {
-      const raw = localStorage.getItem(KEY);
-      const o = raw ? JSON.parse(raw) : null;
-      if (o && typeof o === "object") {
-        const ids = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : []);
-        const numbers = (x: unknown): Record<string, number> =>
-          x && typeof x === "object" ? Object.fromEntries(Object.entries(x).filter((e): e is [string, number] => Number.isInteger(e[1]) && e[1] > 0)) : {};
-        this.d = { shown: numbers(o.shown), counts: numbers(o.counts), done: ids(o.done), off: o.off === true || undefined, version: typeof o.version === "string" ? o.version : undefined, newSince: typeof o.newSince === "string" ? o.newSince : undefined };
-      }
-    } catch {
-      // nothing kept
-    }
+    this.d = read() ?? { shown: {}, counts: {}, done: [] };
+    // another page of this browser changed it: this one reads it as it is now
+    if (typeof addEventListener === "function")
+      addEventListener("storage", (e) => {
+        if (e.key === KEY || e.key === null) this.d = read() ?? this.d;
+      });
   }
 
-  private save(): void {
+  /** A change made to what is kept as it is now, not to this page's copy of it: pages open at once,
+   *  on one project or on two, never write back each other's older state. */
+  private change<T>(f: (d: Kept) => T): T {
+    const d = read() ?? this.d;
+    const out = f(d);
+    this.d = d;
     try {
-      localStorage.setItem(KEY, JSON.stringify(this.d));
+      localStorage.setItem(KEY, JSON.stringify(d));
     } catch {
       // not kept
     }
+    return out;
   }
 
   isDone(id: string): boolean {
@@ -66,24 +87,23 @@ export class TipState {
 
   done(id: string): void {
     if (this.isDone(id)) return;
-    this.d.done.push(id);
-    this.save();
+    this.change((d) => {
+      if (!d.done.includes(id)) d.done.push(id);
+    });
   }
 
   /** A tip shown in place: the second time, it is done, answered or not. */
   shown(id: string): void {
-    const n = (this.d.shown[id] ?? 0) + 1;
-    this.d.shown[id] = n;
-    if (n >= 2 && !this.d.done.includes(id)) this.d.done.push(id);
-    this.save();
+    this.change((d) => {
+      const n = (d.shown[id] ?? 0) + 1;
+      d.shown[id] = n;
+      if (n >= 2 && !d.done.includes(id)) d.done.push(id);
+    });
   }
 
   /** One more of what a rule counts; how many now. */
   bump(name: string): number {
-    const n = (this.d.counts[name] ?? 0) + 1;
-    this.d.counts[name] = n;
-    this.save();
-    return n;
+    return this.change((d) => (d.counts[name] = (d.counts[name] ?? 0) + 1));
   }
 
   get off(): boolean {
@@ -91,8 +111,7 @@ export class TipState {
   }
 
   set off(v: boolean) {
-    this.d.off = v || undefined;
-    this.save();
+    this.change((d) => void (d.off = v || undefined));
   }
 
   /** The releases New is told against: tips newer than `since` are New; null when none is. */
@@ -102,22 +121,23 @@ export class TipState {
 
   /** Tips has been looked at: nothing is New any more. */
   newLooked(): void {
-    if (this.d.newSince === undefined) return;
-    this.d.newSince = undefined;
-    this.save();
+    if (this.d.newSince === undefined && read()?.newSince === undefined) return;
+    this.change((d) => void (d.newSince = undefined));
   }
 
   /** The server runs release `v`: the release this browser saw before it when it is newer (What's
-   *  new is told), else null. A first visit records it and tells nothing. */
+   *  new is told), else null. Read and written at once, so that it is told once in the browser, not
+   *  once in each page open. A first visit records it and tells nothing. */
   meet(v: string): string | null {
-    const was = this.d.version;
-    if (was === v) return null;
-    // an older server (another one, or a step back): nothing told, and the newest seen kept, so that
-    // going between two servers tells nothing twice
-    if (was !== undefined && !newer(v, was)) return null;
-    this.d.version = v;
-    if (was !== undefined) this.d.newSince = this.d.newSince !== undefined && newer(was, this.d.newSince) ? this.d.newSince : was;
-    this.save();
-    return was ?? null;
+    return this.change((d) => {
+      const was = d.version;
+      if (was === v) return null;
+      // an older server (another one, or a step back): nothing told, and the newest seen kept, so
+      // that going between two servers tells nothing twice
+      if (was !== undefined && !newer(v, was)) return null;
+      d.version = v;
+      if (was !== undefined) d.newSince = d.newSince !== undefined && newer(was, d.newSince) ? d.newSince : was;
+      return was ?? null;
+    });
   }
 }
