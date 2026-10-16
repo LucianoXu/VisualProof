@@ -17,6 +17,15 @@ export function tracked<C extends ChildProcess>(child: C): C {
   return child;
 }
 
+/** The environment a program the server runs is given: the server's own, without what is the
+ *  server's alone (`VISUALPROOF_*`: the supervisor's word to it, its test hooks; UpdateSpec decision
+ *  9), with `extra` over it. */
+export function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [k, v] of Object.entries(process.env)) if (!k.startsWith("VISUALPROOF_")) env[k] = v;
+  return { ...env, ...extra };
+}
+
 /** How many tracked programs run now. */
 export function childCount(): number {
   return running.size;

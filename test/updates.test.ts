@@ -6,7 +6,8 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import type { ChildProcess } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -35,10 +36,12 @@ function pkg(root: string, v: string, engines = "^22.18.0 || >=24.2.0"): string 
   return root;
 }
 
-/** a patch downloaded and ready in the cache */
+/** a patch downloaded and ready in the cache, its folders the user's alone, as a server makes them */
 function ready(cache: string, v: string, engines?: string): void {
   pkg(join(cache, "versions", v, "node_modules", "visualproof"), v, engines);
   writeFileSync(join(cache, "versions", v, "ready"), `${v}\n`);
+  chmodSync(join(cache, "versions"), 0o700);
+  chmodSync(join(cache, "versions", v), 0o700);
 }
 
 test("releases: only x.y.z; newer, and of one minor", () => {
@@ -121,25 +124,63 @@ test("the code a supervisor runs: the newest ready patch of the installed minor,
   // a newer package installed meanwhile wins over the patches of the minor before
   pkg(root, "0.5.1");
   assert.deepEqual(codeToRun(root, versions), { main: join(root, "dist", "server", "main.js"), version: "0.5.1", cached: false });
-  versions.prune(["0.5.0"]);
-  assert.deepEqual(versions.ready(), ["0.5.0"]);
+});
+
+test("the versions folder is shared by the user's servers: what one runs, or would step back to, is never removed; other minors are left", async () => {
+  const cache = fresh("share");
+  const versions = new Versions(cache);
+  for (const v of ["0.4.1", "0.4.2", "0.4.3", "0.4.4", "0.5.0", "0.5.1"]) ready(cache, v);
+  // another living server runs 0.4.1; a dead one ran 0.4.2
+  const dead = spawn(process.execPath, ["-e", ""]);
+  await new Promise((ok) => dead.on("exit", ok));
+  writeFileSync(join(cache, "versions", "0.4.1", `running-${process.pid}`), "");
+  writeFileSync(join(cache, "versions", "0.4.2", `running-${dead.pid}`), "");
+  assert.ok(versions.inUse("0.4.1") && !versions.inUse("0.4.2"));
+  // downloads left midway: a dead server's goes, a living one's stays
+  mkdirSync(join(cache, "versions", `.0.4.5.tmp-${dead.pid}`));
+  mkdirSync(join(cache, "versions", `.0.4.6.tmp-${process.pid}`));
+  // a server running 0.4.4: it would step back to 0.4.3; 0.4.2 goes; 0.4.1 is run by another; 0.5.x is not its minor
+  versions.prune("0.4.4");
+  assert.deepEqual(versions.ready().sort(), ["0.4.1", "0.4.3", "0.4.4", "0.5.0", "0.5.1"]);
+  assert.ok(!existsSync(join(cache, "versions", `.0.4.5.tmp-${dead.pid}`)) && existsSync(join(cache, "versions", `.0.4.6.tmp-${process.pid}`)));
+});
+
+test("the versions folder is the user's alone: made 0700, refused where another may write it", () => {
+  const cache = fresh("perm");
+  const versions = new Versions(cache);
+  assert.equal(versions.ensure(), null);
+  assert.equal(statSync(versions.root).mode & 0o777, 0o700);
+  ready(cache, "0.4.1");
+  chmodSync(join(versions.root, "0.4.1"), 0o777);
+  assert.deepEqual(versions.ready(), [], "a version others may write is not run");
+  chmodSync(join(versions.root, "0.4.1"), 0o755);
+  assert.deepEqual(versions.ready(), ["0.4.1"]);
+  chmodSync(versions.root, 0o777);
+  assert.match(versions.ensure()!, /not this user's alone/);
+  assert.deepEqual(versions.ready(), []);
+  chmodSync(versions.root, 0o700);
 });
 
 test("a patch downloaded through npm, checked to run, and kept ready; one that does not say its version is not", async () => {
   const cache = fresh("fetch");
   const versions = new Versions(cache);
-  const install = (says: string): Npm => async (args) => {
-    const prefix = args[args.indexOf("--prefix") + 1];
+  const install = (says: string, engines?: string, meanwhile?: () => void): Npm => async (args) => {
+    const prefix = args.find((a) => a.startsWith("--prefix="))!.slice("--prefix=".length);
     const root = join(prefix, "node_modules", "visualproof");
-    pkg(root, args.at(-1)!.split("@")[1]);
+    pkg(root, args.at(-1)!.split("@")[1], engines);
     writeFileSync(join(root, "dist", "server", "main.js"), `console.log(${JSON.stringify(says)})`);
+    meanwhile?.();
     return { ok: true, out: "" };
   };
   assert.equal(await versions.fetch("0.4.1", install("0.4.1")), null);
   assert.deepEqual(versions.ready(), ["0.4.1"]);
-  assert.match((await versions.fetch("0.4.2", install("0.4.0")))!, /does not run here/);
+  assert.match((await versions.fetch("0.4.2", install("0.4.0")))!, /does not run here \(it says it is 0\.4\.0\)/);
   assert.match((await versions.fetch("0.4.3", async () => ({ ok: false, why: "ETARGET" })))!, /npm could not install it: ETARGET/);
-  assert.deepEqual(versions.ready(), ["0.4.1"]);
+  // its engines are checked before it is marked ready
+  assert.match((await versions.fetch("0.4.4", install("0.4.4", ">=99")))!, /needs Node >=99/);
+  // another server put its copy in place meanwhile: as good
+  assert.equal(await versions.fetch("0.4.5", install("0.4.5", undefined, () => ready(cache, "0.4.5"))), null);
+  assert.deepEqual(versions.ready().sort(), ["0.4.1", "0.4.5"]);
 });
 
 test("a server under auto downloads the patch it may take, restarts into it at a quiet moment, and tells of a newer minor", async () => {
