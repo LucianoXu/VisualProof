@@ -47,9 +47,12 @@ export const reducedMotion = (): boolean => typeof matchMedia === "function" && 
 export function cardHtml(t: Tip, ctx: TipsContext): string {
   const isNew = ctx.newSince !== null && newer(t.since, ctx.newSince);
   const clip = t.clip && ctx.clips.has(t.clip) ? t.clip : null;
+  // on a larger screen the clip in a card is small: a click on it, or Enter or Space, opens it large
+  // in the sheet (bigHtml); a phone's is the sheet's width already
+  const big = ctx.phone ? "" : ` data-tip-big="${t.id}" tabindex="0" role="button" aria-label="${escapeHtml(t.title)}: the clip, larger" title="Larger"`;
   const media = clip
-    ? `<div class="tip-media"><video class="tip-clip" data-clip="${clip}" muted loop playsinline preload="none" poster="/tips/${clip}.${theme()}.webp" aria-label="${escapeHtml(t.title)}: a short clip"></video>` +
-      `<button class="tip-play" data-tip-play aria-label="Play" title="Play" hidden>▶</button></div>`
+    ? `<div class="tip-media"${big}><video class="tip-clip" data-clip="${clip}" muted loop playsinline preload="none" poster="/tips/${clip}.${theme()}.webp" aria-hidden="true"></video>` +
+      `<button class="tip-play" data-tip-play aria-label="Play" title="Play" hidden${ctx.phone ? "" : ` tabindex="-1"`}>▶</button></div>`
     : "";
   const acts = [
     t.showMe && ctx.canShow(t.showMe) ? `<button class="link" data-tip-show="${t.id}">Show me</button>` : "",
@@ -59,6 +62,24 @@ export function cardHtml(t: Tip, ctx: TipsContext): string {
     `<article class="tip-card${clip ? "" : " words"}" data-tip="${t.id}">${media}` +
     `<div class="tip-body"><div class="tip-title">${escapeHtml(t.title)}${isNew ? ` <span class="tip-new">New</span>` : ""}</div>` +
     `<div class="tip-text">${t.text}</div>${acts.length ? `<div class="tip-acts">${acts.join("")}</div>` : ""}</div></article>`
+  );
+}
+
+/** A tip's clip opened large in the sheet (GuideSpec decision 6): the clip at up to its recorded size,
+ *  its title and words under it, Show me and More; ✕ (or Esc, or a press beside it) goes back. With
+ *  reduced motion it is the clip's key frame, with a button that plays it. */
+export function bigHtml(t: Tip, ctx: TipsContext): string {
+  const clip = t.clip!;
+  const acts = [
+    t.showMe && ctx.canShow(t.showMe) ? `<button class="link" data-tip-show="${t.id}">Show me</button>` : "",
+    t.manual ? `<a class="link" href="${ctx.manual}#${t.manual}" target="_blank" rel="noopener noreferrer">More</a>` : "",
+  ].filter(Boolean);
+  return (
+    `<div class="tip-big-box" role="group" aria-label="${escapeHtml(t.title)}">` +
+    `<div class="tip-big-head"><div class="tip-title">${escapeHtml(t.title)}</div><button class="icon" data-tip-big-close title="Back to the tips (Esc)" aria-label="Back to the tips">✕</button></div>` +
+    `<div class="tip-big-media"><video class="tip-big-clip" muted loop playsinline preload="auto" poster="/tips/${clip}.${theme()}.webp" src="/tips/${clip}.${theme()}.mp4" aria-label="${escapeHtml(t.title)}: a short clip"></video>` +
+    `<button class="tip-play" data-tip-big-play aria-label="Play" title="Play" hidden>▶</button></div>` +
+    `<div class="tip-text">${t.text}</div>${acts.length ? `<div class="tip-acts">${acts.join("")}</div>` : ""}</div>`
   );
 }
 
@@ -83,7 +104,8 @@ export class ClipPlayer {
     this.scroller = scroller;
     root.addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>("[data-tip-play]");
-      if (!b) return;
+      // a card's clip that opens large: the sheet opens it (web/src/guide.ts)
+      if (!b || b.closest("[data-tip-big]")) return;
       const v = b.parentElement?.querySelector<HTMLVideoElement>("video");
       if (!v) return;
       if (v.paused) this.play(v);

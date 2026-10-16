@@ -1998,10 +1998,15 @@ kbd {
 .help-tabs button { padding: 4px 14px; font-size: 13px; }
 .help-pane { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
 .help-pane[hidden] { display: none; }
-@media (min-width: 641px) { .help-box:has([data-help-pane="tips"]:not([hidden])) { width: min(780px, calc(100vw - 32px)); } }
+/* a larger screen's sheet of tips: two columns, wide enough that a card's clip can be followed; the
+   phone's keeps its one (the end of this file) */
+@media (min-width: 641px) {
+  .help-box:has([data-help-pane="tips"]:not([hidden])) { width: min(1000px, calc(100vw - 48px)); }
+}
+.help-pane [hidden] { display: none !important; }
 .tips-filter { font-family: var(--font); }
 .tips-group { display: flex; flex-direction: column; gap: 8px; }
-.tips-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.tips-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 /* a tip: its clip, its words, Show me and More (GuideSpec decisions 5–7) */
 /* a part of the panel with the ⓘ of its tip beside its heading (GuideSpec decision 15) */
 .sec-row { display: flex; align-items: center; gap: 4px; }
@@ -2018,6 +2023,20 @@ kbd {
 .tip-media { position: relative; aspect-ratio: 16 / 10; background: var(--canvas); border-bottom: 1px solid var(--line); }
 /* a phone's clip is upright: shown whole, the board's colour beside it */
 .tip-clip { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* a card's clip opens large (web/src/guide.ts, openBig) */
+.tip-media[data-tip-big] { cursor: zoom-in; }
+.tip-media[data-tip-big]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* a clip open large in the sheet: at up to its recorded size, fit to the sheet and the window */
+.tips-big { display: flex; justify-content: center; }
+.tip-big-box { display: flex; flex-direction: column; gap: 8px; width: min(100%, 800px); }
+.tip-big-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tip-big-head .tip-title { font-size: 15px; }
+.tip-big-media {
+  position: relative; width: min(100%, 800px, calc((100vh - 280px) * 1.6)); aspect-ratio: 16 / 10; margin: 0 auto;
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--canvas); box-shadow: var(--shadow);
+}
+.tip-big-clip { display: block; width: 100%; height: 100%; object-fit: contain; }
+.tip-big-box > .tip-text { font-size: 13px; }
 .tip-play {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 42px; height: 42px; border-radius: 50%;
   border: none; background: color-mix(in srgb, var(--surface-solid) 88%, transparent); color: var(--text); font-size: 15px;

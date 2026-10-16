@@ -18,7 +18,7 @@ import { typing } from "./typing.ts";
 import type { Tool } from "./selection.ts";
 import { TIPS } from "./tips.ts";
 import type { Tip } from "./tips.ts";
-import { cardsHtml, ClipPlayer, tipsFor } from "./tipcards.ts";
+import { bigHtml, cardsHtml, ClipPlayer, reducedMotion, tipsFor } from "./tipcards.ts";
 import type { TipsContext } from "./tipcards.ts";
 import { TipState } from "./tipstate.ts";
 import { InTips } from "./intip.ts";
@@ -315,6 +315,8 @@ export class Guide {
   /** the release tips newer than which are New while the sheet shows (decision 11); undefined until
    *  Tips is looked at in this showing of the sheet */
   private newShown: string | null | undefined = undefined;
+  /** the tip whose clip is open large in the sheet, and where the list was scrolled to */
+  private big: { id: string; scroll: number } | null = null;
   /** the release the server runs, as its event stream said (UpdateSpec); null until it says */
   private running: string | null = null;
 
@@ -364,7 +366,13 @@ export class Guide {
       const t = e.target as HTMLElement;
       const tab = t.closest<HTMLElement>("[data-help-tab]");
       const show = t.closest<HTMLElement>("[data-tip-show]");
-      if (t === this.help || t.closest("[data-help-close]")) this.closeHelp();
+      const big = t.closest<HTMLElement>("[data-tip-big]");
+      // a clip open large: ✕, or a press anywhere beside it but the sheet's own buttons, goes back to
+      // the tips
+      if (this.big && (t.closest("[data-tip-big-close]") || (!t.closest(".tip-big-box, [data-help-tab], [data-help-close], [data-help-tour]")))) this.closeBig();
+      else if (t.closest("[data-tip-big-play]")) this.playBig();
+      else if (big) this.openBig(big.dataset.tipBig!);
+      else if (t === this.help || t.closest("[data-help-close]")) this.closeHelp();
       else if (tab) this.showTab(tab.dataset.helpTab === "keys" ? "keys" : "tips");
       else if (show) {
         const tip = TIPS.find((x) => x.id === show.dataset.tipShow);
@@ -376,6 +384,18 @@ export class Guide {
       }
     });
     this.help.addEventListener("keydown", (e) => {
+      // a clip open large: Esc goes back to the tips, not out of the sheet
+      if (this.big && e.key === "Escape") {
+        e.stopPropagation();
+        return this.closeBig();
+      }
+      // Enter or Space on a card's clip opens it large
+      const big = (e.target as HTMLElement).closest?.<HTMLElement>("[data-tip-big]");
+      if (big && (e.key === "Enter" || e.key === " ")) {
+        e.preventDefault();
+        e.stopPropagation();
+        return this.openBig(big.dataset.tipBig!);
+      }
       // a ? typed into the editor's field is part of a URL, into the filter a word
       if (e.key === "Escape" || (e.key === "?" && !typing(e.target))) {
         e.stopPropagation();
@@ -816,7 +836,7 @@ export class Guide {
       `<button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
       `<div class="help-pane" data-help-pane="tips" role="tabpanel">` +
       `<input class="help-input tips-filter" data-tips-filter type="search" placeholder="Find a tip" value="${escapeHtml(this.filter)}" spellcheck="false" autocomplete="off" aria-label="Find a tip">` +
-      `<div class="tips-list" data-tips-list></div>` +
+      `<div class="tips-list" data-tips-list></div><div class="tips-big" data-tips-big hidden></div>` +
       (this.hooks.snapshot() ? "" : `<label class="help-note tips-off"><input type="checkbox" data-tips-off${this.tips.off ? "" : " checked"}> Show a tip beside a control when it helps, now and then</label>`) +
       `</div>` +
       `<div class="help-pane" data-help-pane="keys" role="tabpanel" hidden>` +
@@ -867,6 +887,7 @@ export class Guide {
   }
 
   private showTab(tab: "tips" | "keys"): void {
+    if (this.big) this.closeBig(false);
     this.tab = tab;
     for (const b of this.help.querySelectorAll<HTMLElement>("[data-help-tab]")) {
       const on = b.dataset.helpTab === tab;
@@ -891,12 +912,61 @@ export class Guide {
     this.player?.start();
   }
 
+  /** A tip's clip opened large in the sheet, in the list's place (GuideSpec decision 6): the cards'
+   *  clips stop, the list's place is kept, the focus goes to ✕. */
+  private openBig(id: string): void {
+    const tip = TIPS.find((t) => t.id === id);
+    const pane = this.help.querySelector<HTMLElement>("[data-help-pane=tips]");
+    const box = this.help.querySelector<HTMLElement>(".help-box");
+    const el = this.help.querySelector<HTMLElement>("[data-tips-big]");
+    if (!tip?.clip || !pane || !box || !el) return;
+    this.big = { id, scroll: box.scrollTop };
+    this.player?.stop();
+    el.innerHTML = bigHtml(tip, this.context(this.clipsHad ?? new Set()));
+    for (const part of pane.querySelectorAll<HTMLElement>("[data-tips-filter], [data-tips-list], .tips-off")) part.hidden = true;
+    el.hidden = false;
+    box.scrollTop = 0;
+    const v = el.querySelector<HTMLVideoElement>("video")!;
+    // with reduced motion, its key frame, until the reader plays it
+    if (reducedMotion()) el.querySelector<HTMLElement>("[data-tip-big-play]")!.hidden = false;
+    else void v.play().catch(() => {});
+    el.querySelector<HTMLElement>("[data-tip-big-close]")!.focus();
+  }
+
+  private playBig(): void {
+    const el = this.help.querySelector<HTMLElement>("[data-tips-big]");
+    const v = el?.querySelector<HTMLVideoElement>("video");
+    const b = el?.querySelector<HTMLElement>("[data-tip-big-play]");
+    if (!v || !b) return;
+    if (v.paused) void v.play().catch(() => {});
+    else v.pause();
+    b.hidden = !v.paused;
+  }
+
+  /** Back to the tips, where the list was, the focus on the card's clip (`focus`). */
+  private closeBig(focus = true): void {
+    const big = this.big;
+    this.big = null;
+    const pane = this.help.querySelector<HTMLElement>("[data-help-pane=tips]");
+    const el = this.help.querySelector<HTMLElement>("[data-tips-big]");
+    if (!big || !pane || !el) return;
+    el.querySelector("video")?.pause();
+    el.innerHTML = "";
+    el.hidden = true;
+    for (const part of pane.querySelectorAll<HTMLElement>("[data-tips-filter], [data-tips-list], .tips-off")) part.hidden = false;
+    const box = this.help.querySelector<HTMLElement>(".help-box");
+    if (box) box.scrollTop = big.scroll;
+    this.player?.start();
+    if (focus) this.help.querySelector<HTMLElement>(`[data-tip-big="${CSS.escape(big.id)}"]`)?.focus();
+  }
+
   closeHelp(): void {
     // the editor's field lets go of the focus now, not at the next frame: a key pressed right after
     // Esc is a shortcut again, not text typed into a field no one sees
     if (this.help.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     this.player?.stop();
     this.player = null;
+    this.big = null;
     this.newShown = undefined;
     this.help.hidden = true;
   }
