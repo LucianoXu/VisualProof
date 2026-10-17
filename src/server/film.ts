@@ -9,13 +9,19 @@
 //   <cache root>/media/                    the user's alone (0700), as versions/ is
 //   <cache root>/media/<sha256>.mp4        the film, checked, moved into place once whole
 //   <cache root>/media/.<sha256>.tmp-<pid> a download under way (that process's)
+//   <cache root>/media/pin-<pid>           the sha256 of the film a living server pins: kept
+//
+// Servers of different versions share the default cache root, each pinning its own film: a server
+// keeps the film it pins and those living servers' pins name, and removes the rest (an earlier
+// cut, a patch's film replaced) and the downloads of servers that died midway — as it starts, and
+// once its film is kept or confirmed; never while it downloads.
 //
 // VISUALPROOF_TOUR_FILM names a local file served in its place (a film being made: the checkout
 // that makes it); VISUALPROOF_MEDIA_BASE another address to fetch it from, honoured only where it is
 // a loopback address (the tests' asset server).
 
 import { createHash } from "node:crypto";
-import { chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import { chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { WEBFONTS } from "./pipeline.ts";
@@ -155,8 +161,70 @@ export class Film {
     this.checked = false;
     if (this.work) return null;
     if (this.failure && this.now() < this.failure.until) return null;
-    this.work = this.get(pin, kept).finally(() => (this.work = null));
+    this.work = this.get(pin, kept).finally(() => {
+      this.work = null;
+      // the film kept or confirmed: what no living server pins goes
+      if (this.checked) this.prune();
+    });
     return null;
+  }
+
+  /** Begin, as the server serves: the film it pins marked as in use while it lives (`pin-<pid>`), and
+   *  what no living server pins removed. Nothing under `--updates off` (no film is served), or
+   *  without a pin. */
+  start(): void {
+    const pin = this.o.pin;
+    if (!pin || this.o.mode === "off" || this.ensure()) return;
+    const mark = join(this.dir, `pin-${process.pid}`);
+    try {
+      writeFileSync(mark, `${pin.sha256}\n`);
+      process.once("exit", () => {
+        try {
+          unlinkSync(mark);
+        } catch {
+          // gone already
+        }
+      });
+    } catch {
+      // unmarked: another server's prune may remove the film, which is fetched again
+    }
+    this.prune();
+  }
+
+  /** Remove the films no living server pins — this one's own pin kept, and every `pin-<pid>` of a
+   *  living process' — the pins of the dead, and the downloads of servers that died midway. Never
+   *  while this server downloads, nor in a folder another may write. */
+  prune(): void {
+    if (this.work || !private_(this.dir)) return;
+    let names: string[] = [];
+    try {
+      names = readdirSync(this.dir);
+    } catch {
+      return;
+    }
+    const keep = new Set<string>(this.o.pin ? [this.o.pin.sha256] : []);
+    for (const n of names) {
+      const m = /^pin-(\d+)$/.exec(n);
+      if (!m) continue;
+      if (!alive(Number(m[1]))) {
+        rmSync(join(this.dir, n), { force: true });
+        continue;
+      }
+      try {
+        const sha = readFileSync(join(this.dir, n), "utf8").trim();
+        if (/^[0-9a-f]{64}$/.test(sha)) keep.add(sha);
+      } catch {
+        // gone meanwhile
+      }
+    }
+    for (const n of names) {
+      const film = /^([0-9a-f]{64})\.mp4$/.exec(n);
+      if (film && !keep.has(film[1])) {
+        rmSync(join(this.dir, n), { force: true });
+        this.o.log?.(`tour film: ${n} removed (no living server pins it)`);
+      }
+    }
+    this.sweep();
   }
 
   /** The download or check under way, done (for a test, and for whoever waits on it). */
@@ -310,6 +378,7 @@ let film: Film | null = null;
  *  VISUALPROOF_TOUR_FILM. */
 export function useFilm(o: Omit<FilmOptions, "pin" | "local"> & { pin?: FilmPin | null; local?: string | null }): Film {
   film = new Film({ ...o, pin: o.pin === undefined ? filmPin() : o.pin, local: o.local === undefined ? process.env.VISUALPROOF_TOUR_FILM || null : o.local });
+  film.start();
   return film;
 }
 
