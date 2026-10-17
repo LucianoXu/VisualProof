@@ -114,7 +114,7 @@ import { sourceLine, titleOf, untilStill } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
-import { decodeState, encodeState } from "./state.ts";
+import { decodeState, encodeState, tipsIn, tipsPart } from "./state.ts";
 import type { ViewState } from "./state.ts";
 import { Store } from "./store.ts";
 import { typing } from "./typing.ts";
@@ -883,6 +883,10 @@ async function boot(): Promise<void> {
   // the first view: the one the address names, else the tab the reader left on show, else the
   // Project
   const linked = decodeState(location.hash);
+  /** a link to the help's film (`#tips`, `#tips=<chapter>`: web/src/state.ts), opened once the page
+   *  is there; and the part of the address that says the film shows, while it does */
+  const filmLink = tipsIn(location.hash);
+  let filmPart = "";
   let first = linked ? linked.view ?? PROJECT : S.active ?? PROJECT;
   if (linked?.scope) {
     const v = await views.open(linked.scope, { version: linked.version ?? null });
@@ -2776,7 +2780,7 @@ async function boot(): Promise<void> {
   const writeAddress = (push: boolean) => {
     // a view still being opened (a link, back, forward): the address already says where it goes
     if (!push && nav.busy) return;
-    const hash = "#" + encodeState(current());
+    const hash = "#" + encodeState(current()) + filmPart;
     try {
       if (push && hash !== location.hash) {
         // the entry being left remembers where the camera was
@@ -4161,7 +4165,7 @@ async function boot(): Promise<void> {
   if (snap) await openSnapshot(snap);
   // the reader came to a place (a declaration, a view, what a sharer saw, an artwork): the welcome
   // stays quiet (GuideSpec decision 1)
-  const deepLink = !!snap || !!recipeIn(location.hash) || (!!linked && (!!linked.picks || !!linked.shown || (linked.view !== null && linked.view !== PROJECT) || !!linked.scope));
+  const deepLink = filmLink !== undefined || !!snap || !!recipeIn(location.hash) || (!!linked && (!!linked.picks || !!linked.shown || (linked.view !== null && linked.view !== PROJECT) || !!linked.scope));
   // a link with an artwork's recipe (ExportSpec decision 20): once, after the board is there; the
   // files it asks for are saved meanwhile
   const recipe = recipeIn(location.hash);
@@ -4439,6 +4443,13 @@ async function boot(): Promise<void> {
     },
     updates: () => (data.snapshot ? Promise.resolve(null) : data.updates()),
     clips: () => (data.snapshot ? Promise.resolve(new Set<string>()) : data.tipClips()),
+    // the film in the address while it shows (`tips`), and not once the sheet closes
+    shown: (open, chapter) => {
+      const part = tipsPart(open, chapter);
+      if (part === filmPart) return;
+      filmPart = part;
+      writeAddress(false);
+    },
     tour: () => (data.snapshot ? Promise.resolve(null) : data.tourJson()),
   });
   offerTip = (rule) => guide.inPlace.offer(rule);
@@ -4470,8 +4481,12 @@ async function boot(): Promise<void> {
   // change without a step in the history, so they are looked at every second and a half
   void people.init().then(() => {
     people.start();
-    // offered, never started by itself (GuideSpec decision 1)
-    setTimeout(() => guide.welcome(deepLink), 400);
+    // offered, never started by itself (GuideSpec decision 1); a link to the film opens it, at its
+    // chapter: the visitor is watching already
+    setTimeout(() => {
+      guide.welcome(deepLink);
+      if (filmLink !== undefined) guide.openHelp("tips", filmLink ? { chapter: filmLink } : {});
+    }, 400);
     activity.changed();
     let last = "";
     setInterval(() => {
