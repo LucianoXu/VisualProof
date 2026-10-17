@@ -12,7 +12,7 @@ authors:
     orcid: "https://orcid.org/0000-0001-9071-7862"
 repository-code: "https://github.com/LucianoXu/VisualProof"
 license: Apache-2.0
-version: "0.4.1"
+version: "0.4.2"
 keywords:
   - Lean 4
   - formal verification
