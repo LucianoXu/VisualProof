@@ -13,11 +13,41 @@
 //   from them.
 //
 // On a touch screen nothing on the board is moved by a finger (web/src/canvas.ts): it is read.
+//
+// A tall screen (PhoneSpec, "Tall screens"): wider than a phone and upright — a tablet held upright,
+// a narrow window, a monitor on its side. It is a larger screen's page, its parts placed for the
+// shape with the phone's own mechanisms: the side panel is the drawer from ☰, the panel the sheet
+// from the bottom (a drag on its handle sets its height there, besides the tap), and Activity, the
+// lost-and-found, Export's window and the floating windows take the sheet's place; the board's room
+// is above them (`tallInsets`).
 
 export const PHONE = "(max-width: 640px)";
+/** a tall screen: wider than a phone, and at least 1.2 times as high as it is wide */
+export const TALL = "(min-width: 641px) and (max-aspect-ratio: 5/6)";
+/** the shapes whose panel is a sheet and whose side panel a drawer: a phone, a tall screen (the
+ *  `max-width: 640px` and `max-aspect-ratio: 5/6` blocks of `web/style.css`) */
+export const SHEETED = "(max-width: 640px), (max-aspect-ratio: 5/6)";
+
+const matches = (q: string) => typeof matchMedia === "function" && matchMedia(q).matches;
 
 export function isPhone(): boolean {
-  return typeof matchMedia === "function" && matchMedia(PHONE).matches;
+  return matches(PHONE);
+}
+
+export function isTall(): boolean {
+  return matches(TALL);
+}
+
+/** The panel is a sheet and the side panel a drawer: a phone, or a tall screen. */
+export function sheeted(): boolean {
+  return matches(SHEETED);
+}
+
+/** The shape a screen of `w` × `h` px is: what TALL, PHONE and SHEETED decide, for a size (the
+ *  queries' own arithmetic, tested without a browser). */
+export function shapeOf(w: number, h: number): "phone" | "tall" | "wide" {
+  if (w <= 640) return "phone";
+  return w * 6 <= h * 5 ? "tall" : "wide";
 }
 
 export interface PhoneHooks {
@@ -56,6 +86,42 @@ const SHEET_MID = 0.55;
 const SHEET_TOP = 0.92;
 /** the handle: the top of the sheet a tap switches it on */
 const GRIP_PX = 34;
+/** On a tall screen: the sheet opens at half the screen and goes no lower than a third of it; at its
+ *  tallest it stops under the view bar (TALL_TOP_PX from the top), and under the review strip and the
+ *  selection bar where they are (style.css, --sheet-most). */
+const TALL_MID = 0.5;
+const TALL_LEAST = 0.33;
+const TALL_TOP_PX = 120;
+/** the page's margin, at the sheet's sides and foot on a tall screen */
+const EDGE_PX = 12;
+
+/** Where the sheets are on a tall screen: the panel, or Activity or the lost-and-found in its place;
+ *  then the floating windows docked there (style.css), and Export's window. */
+const SHEETS = ["panel", "activity", "lostfound"];
+const DOCKED = "#windows > :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])";
+
+/** A tall screen's board room, in px from the screen's edges (web/src/main.ts, the canvas's insets):
+ *  the whole width; under the view bar, the review strip and the selection bar; above the sheet or the
+ *  windows docked in its place, or above the legend's line where nothing is there. `--room-bottom`
+ *  tells the legend, the zoom's box and what sits low on the board where that is. */
+export function tallInsets(): { left: number; right: number; top: number; bottom: number } {
+  const $ = (id: string) => document.getElementById(id);
+  const bar = $("selbar")!;
+  const strip = [$("lensbar"), $("tm-kept")].find((e) => e && !e.hidden);
+  const under = !bar.hidden ? bar.getBoundingClientRect().bottom : strip ? strip.getBoundingClientRect().bottom : $("viewbar")!.getBoundingClientRect().bottom;
+  // the sheet or the dock: offsetHeight, not the bounding box, as either may still be sliding in
+  let low = 0;
+  for (const id of SHEETS) {
+    const el = $(id);
+    if (el?.classList.contains("open")) low = Math.max(low, el.offsetHeight);
+  }
+  if (document.querySelector(DOCKED)) low = Math.max(low, $("windows")!.offsetHeight);
+  const room = low ? low + EDGE_PX + 8 : EDGE_PX;
+  document.body.style.setProperty("--room-bottom", `${room}px`);
+  // the sheet at its tallest leaves the board no room: the legend and the zoom's box wait under it
+  document.body.style.setProperty("--room-shown", innerHeight - room - under < 200 ? "hidden" : "visible");
+  return { left: 0, right: 0, top: under + 12, bottom: room + 36 };
+}
 
 export class Phone {
   private hooks: PhoneHooks;
@@ -103,13 +169,39 @@ export class Phone {
     // going somewhere from it closes it: a target, a cluster's name; an arrow opens or folds a level
     // of the tree and the drawer stays, as it does for what is pressed on a row's buttons
     document.getElementById("side")!.addEventListener("click", (e) => {
-      if (!isPhone()) return;
+      if (!sheeted()) return;
       const t = e.target as HTMLElement;
       if (t.closest(".tw, button, [data-sec]")) return;
       if (t.closest(".tg-row, .o-row, [data-go], [data-open]")) setTimeout(() => this.drawer(false), 120);
     });
 
-    this.bindSheet(document.getElementById("panel")!);
+    // the sheets: the panel's on a phone; on a tall screen Activity and the lost-and-found too, which
+    // take its place, at its height
+    for (const id of SHEETS) {
+      const el = document.getElementById(id);
+      if (el) this.bindSheet(el);
+    }
+    // the floating windows docked in the sheet's place: the dock's handle, its own band over them
+    const dock = document.getElementById("windows");
+    if (dock) this.bindSheet(dock, 14, true);
+    // turning the screen, or a window resized across a line (PhoneSpec decisions 2 and 17): the
+    // drawer closes where there is none, the sheet keeps its share of the screen, and the board's
+    // room follows
+    const changed = () => {
+      if (!sheeted()) this.drawer(false);
+      this.sizeSheet();
+      this.hooks.resized();
+    };
+    if (typeof matchMedia === "function") for (const q of [PHONE, TALL]) matchMedia(q).addEventListener("change", changed);
+    addEventListener("resize", () => this.sizeSheet());
+    this.sizeSheet();
+    // a floating window docked in the sheet's place, or no longer: the board's room follows
+    const windows = document.getElementById("windows");
+    if (windows)
+      new MutationObserver((ms) => {
+        // a window come or gone, collapsed or opened, hidden or shown: the dock's own children only
+        if (isTall() && ms.some((m) => (m.type === "childList" ? m.target === windows : m.target.parentNode === windows))) this.hooks.resized();
+      }).observe(windows, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
 
     // Activity and the lost-and-found cover the board: what is gone to from them (a declaration, a
     // view, a note, a reference) shows with them closed
@@ -183,24 +275,68 @@ export class Phone {
     document.getElementById("side-btn")!.setAttribute("aria-expanded", String(on));
   }
 
-  /** The panel's sheet: a tap on its handle, at its top, makes it the whole screen or half of it
-   *  (PhoneSpec decision 10: a tap, not a drag); ✕ closes it. */
-  private bindSheet(panel: HTMLElement): void {
-    let press: { id: number; y: number } | null = null;
-    panel.addEventListener("pointerdown", (e) => {
-      if (!isPhone() || e.button !== 0) return;
-      const r = panel.getBoundingClientRect();
-      press = e.clientY - r.top <= GRIP_PX ? { id: e.pointerId, y: e.clientY } : null;
-    });
-    panel.addEventListener("pointerup", (e) => {
+  /** The sheet's height as a share of the screen's, while the page is open: on a phone the middle
+   *  or the top (decision 10), on a tall screen what the reader set (decision 20). */
+  private share: { phone: number; tall: number } = { phone: SHEET_MID, tall: TALL_MID };
+
+  /** The sheet's height, in px, for the screen as it is now (`--sheet-h`: the panel, Activity, the
+   *  lost-and-found and the windows docked in their place read it). */
+  private sizeSheet(): void {
+    const tall = isTall();
+    const h = tall ? Math.min(innerHeight * this.share.tall, innerHeight - TALL_TOP_PX - EDGE_PX) : innerHeight * this.share.phone;
+    document.documentElement.style.setProperty("--sheet-h", `${Math.round(h)}px`);
+  }
+
+  /** A sheet: a tap on its handle, at its top, makes it the tallest or half of the screen (PhoneSpec
+   *  decision 10: on a phone a tap, not a drag); on a tall screen a drag on the handle sets its
+   *  height too (decision 20). ✕ closes it. */
+  private bindSheet(sheet: HTMLElement, grip = GRIP_PX, own = false): void {
+    let press: { id: number; y: number; h: number; dragged: boolean } | null = null;
+    // a drag goes on over the board, out of the sheet: followed on the window while it lasts
+    const move = (e: PointerEvent) => {
       const p = press;
+      if (!p || p.id !== e.pointerId) return;
+      if (!p.dragged && Math.abs(e.clientY - p.y) <= 10) return;
+      p.dragged = true;
+      sheet.classList.add("sizing");
+      const h = Math.max(innerHeight * TALL_LEAST, Math.min(p.h + p.y - e.clientY, innerHeight - TALL_TOP_PX - EDGE_PX));
+      this.share.tall = h / innerHeight;
+      this.sizeSheet();
+    };
+    const end = (e: PointerEvent) => {
+      const p = press;
+      if (!p || p.id !== e.pointerId) return;
       press = null;
-      if (!p || p.id !== e.pointerId || Math.abs(e.clientY - p.y) > 10) return;
-      const full = panel.getBoundingClientRect().height > innerHeight * ((SHEET_MID + SHEET_TOP) / 2);
-      panel.style.setProperty("--sheet-h", `${Math.round(innerHeight * (full ? SHEET_MID : SHEET_TOP))}px`);
+      removeEventListener("pointermove", move);
+      removeEventListener("pointerup", end);
+      removeEventListener("pointercancel", end);
+      sheet.classList.remove("sizing");
+      if (e.type === "pointercancel") return;
+      if (p.dragged) return void this.hooks.resized();
+      if (Math.abs(e.clientY - p.y) > 10) return;
+      if (isTall()) {
+        const top = (innerHeight - TALL_TOP_PX - EDGE_PX) / innerHeight;
+        this.share.tall = this.share.tall > (TALL_MID + top) / 2 ? TALL_MID : top;
+      } else {
+        const full = sheet.getBoundingClientRect().height > innerHeight * ((SHEET_MID + SHEET_TOP) / 2);
+        this.share.phone = full ? SHEET_MID : SHEET_TOP;
+      }
+      this.sizeSheet();
       // the board's room follows once the sheet has settled
       setTimeout(() => this.hooks.resized(), 240);
+    };
+    sheet.addEventListener("pointerdown", (e) => {
+      if (!sheeted() || e.button !== 0 || press) return;
+      // what is pressed in the handle's band, a button there, is that button's; the dock's handle is
+      // its band alone, not the windows in it
+      if ((e.target as Element).closest("button, a, input, textarea, select") || (own && e.target !== sheet)) return;
+      if (own && !isTall()) return;
+      const r = sheet.getBoundingClientRect();
+      if (e.clientY - r.top > grip) return;
+      press = { id: e.pointerId, y: e.clientY, h: r.height, dragged: false };
+      if (isTall()) addEventListener("pointermove", move);
+      addEventListener("pointerup", end);
+      addEventListener("pointercancel", end);
     });
-    panel.addEventListener("pointercancel", () => (press = null));
   }
 }

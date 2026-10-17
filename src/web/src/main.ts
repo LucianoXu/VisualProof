@@ -108,7 +108,7 @@ import { ChatWindow } from "./chatwin.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
-import { isPhone, Phone } from "./phone.ts";
+import { isPhone, isTall, Phone, tallInsets } from "./phone.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import { sourceLine, titleOf, untilStill } from "./artwork.ts";
@@ -1331,7 +1331,10 @@ async function boot(): Promise<void> {
           top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 : 12) : bar.getBoundingClientRect().bottom + 12,
           bottom: sheet ? sheet + 8 : 56,
         }
-      : {
+      : isTall()
+        ? // a tall screen (PhoneSpec, "Tall screens"): the whole width, above the sheet and the dock
+          tallInsets()
+        : {
           left: side.width ? side.right + 8 : 0,
           // offsetWidth, not the bounding box: the panel may still be sliding in
           right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,
