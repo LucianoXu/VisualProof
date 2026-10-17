@@ -103,6 +103,9 @@ export interface GuideHooks {
   setEditor(t: string): string | null;
   /** what the server says of its release (decision 13); null where it says nothing (a snapshot) */
   updates(): Promise<UpdateStatus | null>;
+  /** the help shows the film, from `chapter` (null: its start), or no longer: the address says so
+   *  (`tips`, web/src/state.ts) */
+  shown(open: boolean, chapter: string | null): void;
   /** the clips the server has (decision 6): the film (`tour`), the phone's gestures; none in a
    *  snapshot */
   clips(): Promise<Set<string>>;
@@ -144,6 +147,12 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 export function welcomeOf(o: { guided: boolean; welcomed: boolean; deepLink: boolean; following: boolean; snapshot: boolean }): "card" | "dot" | "none" {
   if (o.guided || o.welcomed) return "none";
   return o.deepLink || o.following || o.snapshot ? "dot" : "card";
+}
+
+/** The chapter the film opens at, asked for (an ⓘ, Watch, a link `#tips=<chapter>`): one of the
+ *  film's, else its start (null). */
+export function filmChapterOf(id: string | null | undefined): string | null {
+  return id && TOUR.some((c) => c.id === id) ? id : null;
 }
 
 /** how long the page stays still before the welcome card shows */
@@ -1089,7 +1098,8 @@ export class Guide {
     this.hideWelcome();
     const box = this.help.querySelector<HTMLElement>(".help-box")!;
     if (tipId) this.openRef = tipId;
-    this.startAt = at.chapter ?? null;
+    // a chapter the film has not: from its start
+    this.startAt = filmChapterOf(at.chapter);
     this.showTab(tab);
     box.focus();
     if (tipId) {
@@ -1118,6 +1128,7 @@ export class Guide {
       this.renderFilm();
       this.renderRefs();
     } else this.film?.stop();
+    this.hooks.shown(tab === "tips", tab === "tips" ? this.startAt : null);
   }
 
   /** The film and its cards (GuideSpec decision 6): from the chapter asked for, else the first;
@@ -1153,6 +1164,7 @@ export class Guide {
     // the editor's field lets go of the focus now, not at the next frame: a key pressed right after
     // Esc is a shortcut again, not text typed into a field no one sees
     if (this.help.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    if (!this.help.hidden) this.hooks.shown(false, null);
     this.film?.stop();
     this.film = null;
     this.startAt = null;

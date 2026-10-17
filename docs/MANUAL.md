@@ -436,8 +436,10 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   off. The film is in the light theme (in a thin frame in the dark one). The server fetches it from
   VisualProof's releases the first time it is played and keeps it; until it has it (or offline),
   each chapter shows a still and its captions, as it does with reduced motion until you play it.
-  Under the film, **More tips**: what it does not show, one row each — a click opens one — and a
-  field to find one by its words. **Keys** lists every key and gesture and the "Open in editor"
+  An address ending in `#tips` opens the help on the film, `#tips=checks` at that chapter (the
+  chapters' names: target, view, arrange, source, keys, checks, review, project, share, agent,
+  library, export, artwork). Under the film, **More tips**: what it does not show, one row each — a
+  click opens one — and a field to find one by its words. **Keys** lists every key and gesture and the "Open in editor"
   template. The ⓘ beside the panel's **Its TCB** opens the film at its chapter on the ways to check.
 - **Tips in place**: now and then, when you are about to need it, a small card beside a control
   says what it does — the first time you select a theorem's TCB, the Time Machine opened, Export
