@@ -1,15 +1,98 @@
 # VisualProof manual
 
-The full reference to VisualProof: the page, the review, views, history, the printed document,
-collaboration, agents, and how the TCB is computed. For a first look, see the [README](../README.md).
+The full reference to VisualProof: how to start, the concepts, then the page, the review, views,
+history, the printed document, collaboration, agents, and how the TCB is computed. For a first look,
+see the [README](../README.md); in the page, the tour and the tips under `?` show each part at work.
 
 See a Lean codebase's declaration graph, and the trusted computing base (TCB) of any theorem in it:
-the definitions its statement rests on and the axioms behind its proof. The owner's specification
+the project's definitions its statement rests on, the notation it is written in and the axioms its
+proof uses, what it reaches outside the project being assumed ([Concepts](#concepts)). The owner's specification
 is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/CanvasSpec.md),
 [ReviewSpec.md](../SPEC/ReviewSpec.md), [CollabSpec.md](../SPEC/CollabSpec.md), [AgentSpec.md](../SPEC/AgentSpec.md),
 [ViewSpec.md](../SPEC/ViewSpec.md), [TCBSpec.md](../SPEC/TCBSpec.md), [ExportSpec.md](../SPEC/ExportSpec.md),
 [HistorySpec.md](../SPEC/HistorySpec.md), [AttachmentSpec.md](../SPEC/AttachmentSpec.md) and
 [PhoneSpec.md](../SPEC/PhoneSpec.md).
+
+## Start here
+
+1. **Install**: `npm install --global visualproof`. It needs Node, elan and Poppler;
+   `visualproof doctor <project>` checks this machine and the project, and says what to do.
+2. **Build, then serve**: `lake build` in the project (VisualProof never builds it; on Mathlib,
+   `lake exe cache get` first), then `visualproof serve <project>`, and open
+   http://127.0.0.1:4173/. The first visit starts a short
+   tour on the project itself; `?` holds the tips and every key.
+3. **Review a theorem**, in five minutes:
+   1. Find it (`/` searches names, statements and docstrings), click it, and **☆ Mark as target**
+      in its panel: from now on its review is counted, in the Targets list at the top of the side
+      panel.
+   2. In **Rests on · TCB**, the mode the page starts in (`2`), a click on it lights its TCB: what
+      you read to believe it says what you mean. **Its view**, in its panel, opens a board of its
+      TCB, the review focused on it.
+   3. There, mark the few declarations that carry its meaning **key** (`k`, one selected). Then
+      select the target again: the Keys step of Rests on (`2` again) lights them alone.
+   4. Read each in the source window (Space), the key declarations first, and **Approve** (`a`) or
+      **Comment** (`m`). The review strip counts what is approved.
+   5. **Share** lets others in — a person, a read-only reader, an AI agent — and **Export** prints a
+      view, or makes a picture of it.
+
+The words used here are the next part's; the rest of the manual is the reference.
+
+## Concepts
+
+<p align="center">
+  <img src="images/tcb-view-theorem.webp" width="32%" alt="flt_regular alone, lit on the board">
+  <img src="images/tcb-view-tcb.webp" width="32%" alt="the TCB of flt_regular, lit with the edges between its members">
+  <img src="images/tcb-view-keys.webp" width="32%" alt="the key declarations of flt_regular, joined by dashed edges">
+</p>
+<p align="center"><sub>flt_regular three ways: the theorem alone · its TCB · its key declarations
+(<code>scripts/docs-figures.mjs</code>, on the flt-regular showcase). That review no longer trusts
+<code>Mathlib.NumberTheory</code>, so the definitions it holds that the statement means,
+<code>FermatLastTheoremFor</code> among them, are read too, and can be key.</sub></p>
+
+- **The TCB of a theorem**, its trusted computing base: what you must read to believe it says what
+  you mean. Lean checks that the proof is correct; it cannot check that the statement means what
+  its names suggest. The TCB holds the theorem; the definitions, structures, inductive types and
+  instances its statement rests on, through statements and definition bodies, and what those rest
+  on in turn inside the project; the project's notation they are written in, with the code it
+  runs; and the axioms its statement and its proof use, as `#print axioms` gives them (a `sorry`
+  shows). Left out: what is used only inside proofs, wherever it occurs, Lean having checked it;
+  the instances of classes whose instances are all equal (`Decidable`, `Fintype`, …); Lean's
+  kernel and toolchain. **The walk stops at the project's edge**: a declaration of Mathlib or Lean
+  core that it reaches is in the TCB as a leaf, lit on the board but trusted and assumed, as the
+  libraries outside the project are (unless the review stops trusting it, below); what it rests on
+  is not followed. The pictures above are one theorem selected three ways: **Selection**, the
+  theorem alone, whose statement the panel shows; **Rests on · TCB**, its TCB; **Rests on ·
+  Keys**, its key declarations ([What you see](#what-you-see) has every mode; [How the TCB is
+  computed](#how-the-tcb-is-computed), the precise rules).
+- **Trusted without review**: what a TCB reaches that nobody needs to read — by default Mathlib,
+  Lean core (`Init`, `Lean`, `Std`) and Batteries, and the standard axioms (`propext`,
+  `Classical.choice`, `Quot.sound`). A part of the project, or the whole outside world, can be
+  trusted too, and a part of the outside world no longer trusted, its leaves then read as the
+  project's definitions are ([Review](#review)). Trusted declarations stay in the TCB, light green
+  on the board, but need no opinion and are not counted. The rest of the TCB, with every
+  non-standard axiom the theorem reaches, is its **review set**, what its review counts. "Trusted"
+  always means trusted without review: the panel lists the TCB itself as **Its TCB**.
+- **A target**: a theorem whose TCB is reviewed, marked ☆ by a reviewer (or by an agent at level
+  `full`). It carries a gold star, and the Targets list says how far each review has come.
+- **Key declarations**: of a target's review set, the few that matter for reading it — the central
+  definitions, the structures they are built on, the main theorem — marked key for that target (a
+  gold diamond); the target always is one. They are read first, and progress counts them first:
+  ◆ approved of the key declarations, then approved of all. A declaration that is not key is
+  *supported by* the key declarations that reach it through members that are not key; the **key
+  graph** joins key declarations reached so, dashed.
+- **The review's focus**: a view reviews one target at most, its focus, set when the view is made
+  from the target. **Focus ▾**, at the top left, shows it: there each reader may focus otherwise for
+  themselves alone (another target linked to the view or on its board, or none), remembered per
+  view and taken by whoever follows them, or make their focus the view's, for everyone on it. With
+  a focus there is the review strip, `k` marks key for that target, and Keys lights that target's
+  key declarations; without one there is no strip and no `k`, and Keys lights every target's (a
+  target clicked: its own).
+- **Opinions and their versions**: an opinion, an approval or a comment, is on a declaration's
+  version: its statement, and for data its body, the names it refers to followed through renames.
+  When the declaration changes, the opinion shows as given on an earlier version, **stale**
+  (orange), and **What changed** shows the lines since; a rename alone stales nothing. A
+  declaration's status is what reviewers said of its present version: commented, approved, stale,
+  or nobody yet. An AI agent's opinion is **advice**: shown apart, never counted.
 
 ## Run
 
@@ -146,7 +229,8 @@ The README says how to install the `visualproof` command. A checkout also runs a
   bytes. An A2 poster at 300 dpi of a project of 15,000 declarations takes about 20 seconds and
   1.2 GB of memory, most of it drawing the PNG; a picture of more than 80 million pixels is drawn in
   bands, in 2 GB at most but three times as long (16,384 pixels a side: 3½ minutes). Notes are not
-  drawn yet.
+  drawn yet. A poster step by step, the recipe's choices explained: [A poster from the command
+  line](#a-poster-from-the-command-line).
 
 ### Updates
 
@@ -556,16 +640,16 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   whole, go into that window's box under their file and line numbers, and once posted that
   header opens the source at those lines ([ReviewSpec.md](../SPEC/ReviewSpec.md), "Comments").
 - **☆ Mark as target** a theorem whose TCB you review. The panel then counts how far that review
-  has come (approved, commented, stale, not yet reviewed; Mathlib, Lean core and the standard
-  axioms are trusted and not counted), and **Its view** opens its board, or a temporary view of its
+  has come (approved, commented, stale, not yet reviewed; what is trusted is not counted:
+  [Concepts](#concepts)), and **Its view** opens its board, or a temporary view of its
   TCB where it has none. The targets are listed
   at the top of the side panel, with their progress. What changes in a target's TCB shows by
   itself: an opinion on a declaration that changed goes stale, what newly enters it is not yet
   reviewed, and Activity records each change.
 - **Reviewing a target** (on any view focused on it — its view, from the targets list or the panel):
   what is counted is its TCB without what is trusted (untrusted outside declarations stay) and the
-  non-standard axioms it reaches, whatever the board holds. Its view opens under the Selection tool
-  with the target selected, and you read by following the names in the source window from one
+  non-standard axioms it reaches, whatever the board holds. Its view opens under your tool, the
+  target selected alone, and you read by following the names in the source window from one
   declaration to the next; a row of the review list, or the strip's target, selects one declaration
   under the Selection tool, and Rests on or Used by then show that declaration's part of the board.
   The strip is one line of progress, *Reviewing ★target · ◆ approved / K · approved / total*, with
@@ -575,8 +659,8 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   declaration the panel says **why it is in the TCB**: the shortest chain of references from the
   target. Keys: `a` approve, `m` comment (it asks for the text first).
 - **Key declarations** ([ExportSpec.md](../SPEC/ExportSpec.md), decisions 1–4): a target's review set can
-  run to hundreds of declarations; the few that matter for reading it — the central
-  definitions, the structures they are built on, the main theorem — are marked **key** for it. Where the review is
+  run to hundreds of declarations; the few that matter for reading it are marked **key** for it
+  ([Concepts](#concepts)). Where the review is
   focused on T, a declaration's panel (and the source window) has **◇ Mark as key for T** (`k`), and the
   selection bar **Mark selected as key** for the declarations clicked; only what the review holds
   can be marked, and the target is always key. Key declarations carry a small gold diamond on the
@@ -585,10 +669,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   for every target (the target's panel has **Key view**); the Keys step of Rests on selects them.
   They are read first: the review list shows them alone, and agents list them first.
   Progress has two levels, in the strip, the target's panel and the Targets list: *◆ approved of
-  the key declarations*, then *approved of all*. A member that is not key is *supported by* the
-  key declarations that reach it through members that are not key. A target's key document is
-  its Key view exported (see Exported documents).
-- **Trusted without review**: Mathlib, Lean core and the standard axioms by default. Trust a part of
+  the key declarations*, then *approved of all*. A target's key document is its Key view
+  exported (see Exported documents).
+- **Trusted without review** ([Concepts](#concepts)): Mathlib, Lean core (`Init`, `Lean`, `Std`), Batteries and the standard axioms by default. Trust a part of
   the project too (a vendored library, a layer reviewed elsewhere) with the shield on its row in
   the side panel's cluster list; Trusted, over that list, shows what is trusted and stops
   trusting it (defaults included, which can be put back). **The whole outside world** can be
@@ -676,7 +759,7 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   their view at that build (leaving the Time Machine for it); Export prints the board on show, at the
   build browsed. Esc or ✕ leaves.
 - **What is counted**: a target's progress, and a board scoped to its review set (`review ★T`), count
-  the same things — its TCB
+  the same things, its review set ([Concepts](#concepts)) — its TCB
   except what is trusted (an untrusted outside declaration too), and every non-standard axiom the
   target reaches, through proofs too (`sorryAx` included), listed first as "axiom X · used in …".
   "All reviewed" waits until each of them is approved.
@@ -909,6 +992,52 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   its review set, 16 declarations, 4 pages in 1.5 s. On Sphere-Packing-Lean (7,851
   declarations), the review set of `SpherePacking.Dim24.MainTheorem`, 18 of the 226 declarations
   its TCB holds, 5 pages in 2.1 s: a large project's review sets are small.
+
+### A poster from the command line
+
+What a person or an agent does to draw a project as a poster, with no page open (the README's
+prompt asks an agent for this):
+
+1. **Install and build**: `npm install --global visualproof`, then `lake build` in the project
+   (on Mathlib, `lake exe cache get` first). `visualproof doctor <project>` says what is missing
+   (pictures need no Poppler nor XeLaTeX).
+2. **Choose the main theorem**, or two or three: from the project's own documentation (its README,
+   its blueprint, a file of `#print axioms` checks), else among the theorems nothing else in the
+   project uses. A target is written by its full name, as Lean has it, namespace included. To check
+   that one rests on no `sorry`, serve the project for a moment, on a port and a site folder of its
+   own (`visualproof serve <project> --port 4199 --site /tmp/vp-check --jobs 0`), ask
+   `GET http://127.0.0.1:4199/api/agent/declaration?name=<name>` with the header
+   `X-VisualProof-Kind: agent` — its `nonStandardAxioms` must not hold `sorryAx`
+   ([reading](agent-api/reading.md)) — then stop the server (Ctrl-C, or end its process) and delete
+   that folder.
+3. **Write the recipe**, a JSON file holding the recipe itself (the agents' API's `recipe`, not
+   `{recipe, save}`; every field: [export](agent-api/export.md), "Artwork"):
+
+   ```json
+   { "size": "a2", "orientation": "portrait", "theme": "light", "border": true,
+     "names": { "clusters": 1 }, "targets": ["flt_regular"],
+     "selection": { "name": "flt_regular", "mode": "tcb" }, "edges": "all",
+     "keys": false, "notes": false, "source": true,
+     "title": "FLT Regular", "subtitle": "Kummer's ideal numbers settle Fermat for every regular prime" }
+   ```
+
+   An A2 portrait at 300 dpi, light, with a thin border; the names of the top-level clusters and
+   of those right under them that hold at least 1% of the project, with the targets'; the main
+   theorem's TCB lit, every edge drawn and those of the TCB dark; no key diamonds, no notes; the git
+   source and commit at the bottom right. A selection's `mode` is `plain` (the theorem alone),
+   `tcb`, `keys`, `deps` (everything it uses), `refs` (what it uses directly) or `apps` (what uses
+   it). Left out, `title` is the project's name and `subtitle` how many declarations and targets it
+   has; `""` writes none.
+4. **Draw it**: `visualproof artwork <project> --recipe poster.json -o FltRegularA2` writes
+   `FltRegularA2.svg` and `FltRegularA2.png`. The first run reads the build and runs the usage pass
+   (`--jobs`), as `serve` does, and keeps both in the cache; then a picture takes seconds. It says
+   what it wrote: the names written, those a rule left out where they would have covered another,
+   the targets, the selection. A name the build has not ends it with status 1; a selection's name
+   mistyped is answered with the name likely meant.
+5. **Look at the PNG**: a name written over another, or a title shrunk to fit a narrow frame, is
+   mended in the recipe (`names.omit`, fewer `targets`, a shorter `title`) and drawn again. The same
+   build and recipe make the same bytes, so a series of posters (one recipe, a project each) keeps
+   one look; the larger `--screen` is, the smaller the names.
 
 ## Together
 
