@@ -83,7 +83,7 @@ export async function story(s: Stage): Promise<void> {
   await s.at("2026-09-08 10:12");
   const kummerView = await charlie.view(
     "Kummer's lemma: the class-group side",
-    "file(FltRegular.NumberTheory.KummersLemma) or file(FltRegular.NumberTheory.Hilbert94) or file(FltRegular.NumberTheory.Hilbert92)",
+    `file(FltRegular.NumberTheory.KummersLemma) or file(FltRegular.NumberTheory.Hilbert94) or file(FltRegular.NumberTheory.Hilbert92) or tcb(${KUMMER})`,
     { clustering: "module" },
   );
   await charlie.linkView(kummerView, KUMMER);
@@ -180,7 +180,7 @@ export async function story(s: Stage): Promise<void> {
 
   await s.at("2026-09-24 14:30");
   await bob.target("FltRegular.caseII");
-  const caseIIView = await bob.view("Case II", "file(FltRegular.CaseII)", { clustering: "module" });
+  const caseIIView = await bob.view("Case II", "file(FltRegular.CaseII) or tcb(FltRegular.caseII)", { clustering: "module" });
   await bob.linkView(caseIIView, "FltRegular.caseII");
   await s.at("2026-09-24 15:12");
   await bob.opinion(
