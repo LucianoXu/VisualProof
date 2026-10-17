@@ -21,9 +21,12 @@ const FIND_TARGET = [
   { move: { in: "#results", text: "SpherePacking.Dim24" } },
   { click: true, ms: 1300 },
 ];
-const EQ = "SpherePacking.Dim24.SpherePackingConstant_eq_leech_density";
-/** a cluster near the target on the view of what it uses, small enough to fold in one look */
-const FOLDS_NEAR = "SpherePacking.Dim24.UniquenessRootsLaplaceAux";
+/** On the view of what the target uses, seen whole: the circles dragged, by an empty part of each
+ *  (a press on a point would take the point), and the large one folded. */
+const EXTERNAL = { cluster: "⟨external⟩", rim: 0.96, at: 0.4 };
+const PROJECT = { cluster: "SpherePacking", rim: 0.97, at: 0.75 };
+const UNIQUENESS = "SpherePacking.Dim24.Uniqueness";
+const FOLD_AT = { cluster: UNIQUENESS, rim: 0.9, at: 0.625 };
 
 /** The frame on the whole window, or on 1280×800 of it about a place. */
 const WHOLE = { camera: { x: 720, y: 450 }, width: 1440, cut: true };
@@ -47,7 +50,15 @@ export default {
       id: "target",
       steps: [
         WHOLE,
-        { wait: 800 },
+        // the title: the page's background, the wordmark faded in, held, and faded out with it
+        { hide: true },
+        { fade: { cover: 1, title: 0 } },
+        { wait: 500 },
+        { fade: { title: [0, 1] }, ms: 800 },
+        { wait: 1500 },
+        { fade: { cover: [1, 0], title: [1, 0] }, ms: 800 },
+        { filmPoster: true },
+        { wait: 500 },
         { caption: "Search the theorem to review: press /." },
         { wait: 600 },
         { key: "/", cap: "/", ms: 500 },
@@ -92,31 +103,34 @@ export default {
     {
       id: "arrange",
       steps: [
-        { caption: "Drag a point with Ctrl held: it stays, for everyone." },
-        // to the target, close enough for its points to be taken
-        ...FIND_TARGET,
-        NEAR(`decl:${TARGET}`, { dx: -40, dy: 80 }),
-        { move: `decl:${UPPER}` },
-        { drag: `decl:${UPPER}`, dx: 110, dy: -70, with: "Control", cap: "Ctrl", ms: 1200, after: 1700 },
+        // the view seen whole, nothing selected, a click selecting the one thing clicked
+        WHOLE,
+        { key: "Escape", cap: "Esc", ms: 400 },
+        { key: "1", cap: "1", ms: 300 },
+        { key: "f", cap: "f", ms: 1600 },
+        { caption: "Drag a cluster with Ctrl held: it stays there, for everyone." },
+        { move: EXTERNAL },
+        { drag: EXTERNAL, dx: 260, dy: 40, with: "Control", cap: "Ctrl", ms: 1600, after: 2200 },
         { caption: "Or let the lock go with l, and drag without Ctrl." },
         { key: "l", cap: "l", ms: 900 },
-        { move: `decl:${EQ}` },
-        { drag: `decl:${EQ}`, dx: -90, dy: 60, ms: 1200, after: 1300 },
-        { key: "l", cap: "l", ms: 1000 },
-        { caption: "Double-click a circle to fold it; again to open it." },
-        { move: { cluster: FOLDS_NEAR, rim: 0.88, at: 0.5 } },
-        { click: true, count: 2, ms: 1800 },
+        { move: PROJECT },
+        { drag: PROJECT, dx: -120, dy: 30, ms: 1600, after: 1800 },
+        { key: "l", cap: "l", ms: 1200 },
+        { caption: "Double-click a circle to fold it to a point; again to open." },
+        { move: FOLD_AT },
+        { click: true, count: 2, ms: 2600 },
         { poster: true },
-        { move: { cluster: FOLDS_NEAR } },
-        { click: true, count: 2, ms: 1800 },
+        { move: { cluster: UNIQUENESS } },
+        { click: true, count: 2, ms: 2600 },
+        { key: "Escape", cap: "Esc", ms: 800 },
       ],
     },
     {
       id: "source",
       steps: [
         { caption: "Space opens the source of what is selected." },
-        { move: `decl:${TARGET}` },
-        { click: true, ms: 1000 },
+        { move: ROW },
+        { click: true, ms: 1200 },
         { key: " ", cap: "Space", ms: 900 },
         NEAR(".sw-win", { dy: 80 }),
         { wait: 1800 },
@@ -150,6 +164,8 @@ export default {
         { poster: true },
         { caption: "Rests on · Keys lights them, joined to the target." },
         WHOLE,
+        { move: "#rests-btn" },
+        { click: true, ms: 500 },
         { move: "#rests-steps [data-mode=keys]" },
         { click: true, ms: 600 },
         ...FIND_TARGET,
@@ -352,6 +368,12 @@ export default {
         { click: true, download: true, toast: 1800, ms: 300 },
         { move: "#art-panel [data-art-save=svg]" },
         { click: true, download: true, toast: 1800, ms: 1500 },
+        // the title again: the page fades to its background as the wordmark comes, held, gone
+        { caption: null },
+        { hide: true },
+        { fade: { cover: [0, 1], title: [0, 1] }, ms: 800 },
+        { wait: 2000 },
+        { fade: { title: [1, 0] }, ms: 800 },
       ],
     },
   ],

@@ -5,7 +5,8 @@
 // tells of. Names and keys, not numbers, so a link still means the same declarations after the
 // graph is read again. A link Share makes may carry after it a snapshot of everything followed
 // (`snap=`, shared/sharesnap.ts; the owner's decision of 2026-10-12), which the page applies once
-// and never writes back.
+// and never writes back. `tips` opens the help on its film (GuideSpec decision 6) — `tips=<chapter>`
+// at that chapter —, and stays in the address while the sheet shows Tips.
 
 import { declPick, readSelection, sameShown, selectionText, shownOf, TOOLS } from "./selection.ts";
 import type { Shown, Tool } from "./selection.ts";
@@ -45,6 +46,23 @@ export function encodeState(s: ViewState): string {
     else p.set("c", s.shown.cluster);
   }
   return p.toString();
+}
+
+/** The film a fragment opens the help at (`tips`, `tips=<chapter>`): undefined where it opens
+ *  none, null for the film's start, else the chapter named (which the guide checks). */
+export function tipsIn(hash: string): string | null | undefined {
+  const text = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (!text) return undefined;
+  const p = new URLSearchParams(text);
+  if (!p.has("tips")) return undefined;
+  const c = p.get("tips")!.trim();
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(c) ? c : null;
+}
+
+/** The part of a fragment that keeps the film open (`&tips`, `&tips=<chapter>`), written after the
+ *  rest; "" where the sheet does not show it. */
+export function tipsPart(open: boolean, chapter: string | null): string {
+  return open ? `&tips${chapter ? `=${encodeURIComponent(chapter)}` : ""}` : "";
 }
 
 /** The state a fragment describes, or null when it describes none. An address from before the

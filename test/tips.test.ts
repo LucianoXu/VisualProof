@@ -16,7 +16,8 @@ import { matches, plain, tipsFor } from "../src/web/src/tipcards.ts";
 import { newer, TipState } from "../src/web/src/tipstate.ts";
 import { FOLLOWED, FRAMES, keyActs, YOURS } from "../src/web/src/surfaces.ts";
 import type { PageEl } from "../src/web/src/surfaces.ts";
-import { GUIDE_SHOWS, welcomeOf } from "../src/web/src/guide.ts";
+import { filmChapterOf, GUIDE_SHOWS, welcomeOf } from "../src/web/src/guide.ts";
+import { decodeState, tipsIn, tipsPart } from "../src/web/src/state.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
@@ -397,4 +398,35 @@ test("the film is asked for while the server fetches it: every 2 s at first, the
   assert.equal(e.asks(), 2);
   await e.next();
   assert.deepEqual(e.states, ["loading", "loading", "ready"]);
+});
+
+test("a link opens the help's film, at its chapter: #tips, #tips=<chapter>, beside the rest of the address", () => {
+  // alone
+  assert.equal(tipsIn("#tips"), null, "the film's start");
+  assert.equal(tipsIn("#tips="), null);
+  assert.equal(tipsIn("#tips=checks"), "checks");
+  assert.equal(tipsIn("tips=checks"), "checks");
+  assert.equal(tipsIn("#tips=Not a chapter!"), null, "a word that is no chapter's: the start");
+  for (const none of ["", "#", "#v=project&mode=tcb", "#snap=x"]) assert.equal(tipsIn(none), undefined, none);
+  // beside the address the page writes: the view and the selection read as ever, tips alone no place
+  const h = "#v=project&mode=keys&sel=tcb%28FltRegular.flt_regular%29&tips=checks";
+  assert.equal(tipsIn(h), "checks");
+  assert.deepEqual([decodeState(h)?.view, decodeState(h)?.mode], ["project", "keys"]);
+  assert.equal(decodeState("#tips=checks"), null);
+  // written after the rest while the film shows, gone when the sheet closes
+  assert.equal(tipsPart(true, null), "&tips");
+  assert.equal(tipsPart(true, "checks"), "&tips=checks");
+  assert.equal(tipsPart(false, "checks"), "");
+  assert.equal(tipsIn(`#v=project&mode=tcb${tipsPart(true, "export")}`), "export");
+  // the chapter it opens at: one of the film's, else its start
+  assert.equal(filmChapterOf("checks"), "checks");
+  for (const c of TOUR) assert.equal(filmChapterOf(c.id), c.id);
+  assert.equal(filmChapterOf("tcb"), null, "a chapter of the first cut: the start");
+  assert.equal(filmChapterOf(null), null);
+  // the page opens it, once it is there, and counts it a link to a place: no welcome card
+  const main = read("src/web/src/main.ts");
+  assert.match(main, /const filmLink = tipsIn\(location\.hash\);/);
+  assert.match(main, /const deepLink = filmLink !== undefined \|\|/);
+  assert.match(main, /if \(filmLink !== undefined\) guide\.openHelp\("tips", filmLink \? \{ chapter: filmLink \} : \{\}\);/);
+  assert.match(main, /const hash = "#" \+ encodeState\(current\(\)\) \+ filmPart;/);
 });
