@@ -1019,7 +1019,9 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
   box-shadow: 0 0 0 1px var(--line), var(--shadow-lg);
 }
 #peer-menu[hidden] { display: none; }
-#bar:has(#peer-menu:not([hidden])) { z-index: 36; }
+/* over the Export window and the artwork's panel too: following someone, or no longer, is the
+   reader's own way out wherever they are (CollabSpec, "What following leaves") */
+#bar:has(#peer-menu:not([hidden])) { z-index: 42; }
 .pm-who { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; align-items: center; padding: 6px 10px 4px; }
 .pm-dot { width: 9px; height: 9px; border-radius: 50%; }
 .pm-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

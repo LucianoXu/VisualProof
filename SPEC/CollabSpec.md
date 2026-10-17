@@ -204,6 +204,47 @@ words, tooltips and hints, the notes of others' changes, the loader.
   box, the search box).
 - It ends when the followed reader leaves ("Alice left").
 
+### What following leaves (PROPOSED 2026-10-17, for the owner's review)
+
+The owner's report of 2026-10-17: following a reader whose Export window was open, then stopping,
+left the follower's board in the linear form with nothing on the screen to leave it by. Decision 4
+says the follower keeps what their page shows; this says, part by part, how what they keep is theirs:
+**nothing following brought stays on the screen without a control of the follower's own that puts it
+away**. The first five points are what 0.4.3 does; the last three are open.
+
+- **Kept, with their own controls**: the place — the view and its tab, the build browsed (the Time
+  Machine's ✕, `t`, Esc), the camera, the tool, the selection, the focus, the visitors, the panel; the
+  source and reference windows (ReviewSpec: nothing on the screen changes as following ends); Activity
+  and the lost-and-found (their ✕, Esc); the colouring and the edges, kept in the browser as the
+  reader's own choice.
+- **The linear form**, kept (ExportSpec decision 18), is asked for by nobody on the follower's page:
+  ⋯ → *Linear form* and `o` put it away, and so does the follower's own Export window as it closes —
+  the form the followed reader's Export window drew goes as theirs goes. Nothing on the screen saying
+  so, the page says it once as following ends ("The board stays in the linear form you followed: o,
+  or ⋯ at the bottom → Linear form, puts it away.").
+- **The artwork mode**, kept with its panel (ExportSpec decision 19): Done and Esc leave it, the camera
+  back where it was when the mode came; its settings are not the follower's until they change one.
+- **The ways out stay in reach while following**, wherever the followed reader's page takes the
+  follower's: in the artwork mode, whose bar is out of reach but for Share and Search, the people stay
+  in reach while the reader follows someone (out of reach once following has ended, the mode their
+  own); a person's menu opens over the Export window and the artwork's panel.
+- **Nothing comes after the end**: a step begun while following (opening the followed reader's view)
+  takes nothing more of theirs once following has ended — neither their build nor their windows.
+- *Open*: **Esc and the linear form.** Esc closes what is open and leaves the Time Machine, then
+  clears the selection (ViewSpec); it does not put the linear form away. Proposed: it does, after the
+  Time Machine and before the selection, for every reader, so that Esc leaves every mode a page can
+  be left in.
+- *Open*: **The follower's own Export window.** Opened while following, or open when following
+  starts, it draws the follower's board in the linear form where the followed reader's is not: the
+  reader's own over what they follow. By decision 4 (a tool of the reader's own that changes a
+  followed part is that part's control), opening it would end following, and following would close
+  it (it exports the view on show when it opened, which following leaves); today Export is the
+  reader's own whole, and neither happens.
+- *Open*: **On a phone** Activity, the lost-and-found and the artwork's panel take the whole screen
+  over the following strip: the follower does not see whom they follow, nor its ✕; a control of what
+  covers it (its ✕, Done) ends following, closing it too. Proposed: the strip stays over them while
+  following (PhoneSpec decision 12).
+
 ## The guide (G1)
 
 A tour of ten steps on a real theorem, offered on a first visit by a welcome card, never started by

@@ -1136,17 +1136,22 @@ async function boot(): Promise<void> {
     // the cells and the starfield are dark, on a dark ground round the frame
     if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
     else delete document.body.dataset.artStyle;
-    // of the bar, Share and Search alone (the owner's decision of 2026-10-15): the rest is out of
-    // reach until the mode is left, by the pointer and by the keyboard
-    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!a;
+    artReach();
     if (a) {
-      linear.hide("reader");
+      linear.hide("reader", "followed");
       document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
     } else applyTheme();
     canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
     applyScheme();
     syncEdges();
     apply();
+  };
+  /** Of the bar in the artwork mode, Share and Search alone (the owner's decision of 2026-10-15): the
+   *  rest is out of reach until the mode is left, by the pointer and by the keyboard — but the people
+   *  while the reader follows someone, whose initials clicked again end following (CollabSpec,
+   *  "Following ends" and "What following leaves"): the mode is the follower's own once it has. */
+  const artReach = () => {
+    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!artLook && !(people.following && el.matches(".peers-wrap"));
   };
   /** when the board was last drawn: a link's recipe saves its files once the board is still */
   let drawnAt = 0;
@@ -1481,7 +1486,7 @@ async function boot(): Promise<void> {
         if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
       },
       edges: (v) => setEdges(v.edges!),
-      linear: (v) => (v.linear ? void linear.show("reader") : linear.hide("reader")),
+      linear: (v) => (v.linear ? void linear.show("followed") : linear.hide("reader", "followed")),
       artwork: (v) => art.follow(v.artwork ?? null),
     },
   };
@@ -1543,16 +1548,23 @@ async function boot(): Promise<void> {
     reveal: () => chatWin.reveal(),
     stripDrawn: () => talk.dress(),
     describe: (v) => describePlace(v),
-    follow: (v) => void goWhere(v, false),
+    follow: (v) => {
+      artReach();
+      void goWhere(v, false);
+    },
     changed: () => {
       syncPeers();
       peerMenu.render();
     },
     // the windows that stood for the followed reader's are this reader's own now, and none says any
-    // more that the reader follows someone
+    // more that the reader follows someone; what following left is theirs to leave (CollabSpec, "What
+    // following leaves"): the artwork mode's bar, all but Share and Search out of reach again; the
+    // linear form, which nothing on the screen says how to put away — the line does, once
     unfollowed: () => {
       sources.release();
       papers.unfollowed();
+      artReach();
+      if (!people.following && linear.followed && !exportModal.isOpen) say(`The board stays in the linear form you followed: ${isPhone() ? "⋯ at the bottom → Linear form puts" : "o, or ⋯ at the bottom → Linear form, puts"} it away.`);
     },
     // what is left to review where the review has a focus is the reader's own
     renamed: () => {
@@ -1634,15 +1646,20 @@ async function boot(): Promise<void> {
     else if (!(id && (await nav.select(id, to))) && scope) await nav.open(scope, to);
     const reached = nav.board.id === id || (scope !== null && nav.query() === scope);
     if (once && !reached) place(to, false);
+    // following ended while their view was being opened (the reader's own act): nothing more of the
+    // followed reader's is taken — their build, their windows —, and the windows the reader has
+    // opened since are their own, nothing of the followed reader's closing them (CollabSpec, "What
+    // following leaves")
+    const ended = () => !once && !people.following;
     // where they are in the Time Machine (HistorySpec decision 18): the same build, or none
-    if (v.history) {
-      if (!tm.active) await tm.open({ snapshot: v.history.snapshot });
-      else if (tm.snapshot !== v.history.snapshot) await tm.show(v.history.snapshot);
-    } else if (tm.active) await tm.close();
+    if (!ended()) {
+      if (v.history) {
+        if (!tm.active) await tm.open({ snapshot: v.history.snapshot });
+        else if (tm.snapshot !== v.history.snapshot) await tm.show(v.history.snapshot);
+      } else if (tm.active) await tm.close();
+    }
     writeAddress(false);
-    // following ended while their view was being opened (the reader's own act): the windows the
-    // reader has opened since are their own, and nothing of the followed reader's closes them
-    if (!once && !people.following) return reached;
+    if (ended()) return reached;
     // what their panels and their board show besides: Activity, the lost-and-found, the colouring,
     // the edges — each their page says (an older one says none: this reader's stay)
     applyOwn(v, parts.apply);
@@ -1967,7 +1984,10 @@ async function boot(): Promise<void> {
     },
     start: (body) => data.exportDoc(body),
     poll: (id) => data.exportJob(id),
-    shown: (open) => (open ? void linear.show("export") : linear.hide("export")),
+    // the window closing, following nobody, takes with it the form following left, which nobody here
+    // asked for: the followed reader's own Export window drew it, as often as not (CollabSpec, "What
+    // following leaves")
+    shown: (open) => (open ? void linear.show("export") : people.following ? linear.hide("export") : linear.hide("export", "followed")),
     artwork: () => art.open(),
     artworkOnly: () => !!data.snapshot,
   });
