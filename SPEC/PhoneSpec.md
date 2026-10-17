@@ -1,9 +1,10 @@
 # VisualProof Phone Spec
 
 The page on a phone, beyond SPEC.md ("Deployment": "The website also supports small touch devices. On
-small screens it can have a UI focused on reading and reviewing."). How the board itself looks and
-behaves: CanvasSpec.md. Tablets such as the iPad are to be discussed (SPEC.md), and nothing here
-decides them.
+small screens it can have a UI focused on reading and reviewing."), and on a tall screen: a tablet
+held upright, a narrow window, a monitor on its side (decisions 16–28, the owner's of 2026-10-17).
+How the board itself looks and behaves: CanvasSpec.md. A tablet held sideways is a larger screen's
+page; what a finger changes there is decisions 3–5's.
 
 ## Decisions
 
@@ -74,6 +75,58 @@ decides them.
 15. **The help** (`?` in ⋯) holds the tips that fit a phone (GuideSpec decision 10), and lists the
     gestures and the page's places instead of the keys (`web/src/guide.ts`).
 
+### Tall screens (the owner's decision of 2026-10-17)
+
+16. **A tall screen is wider than a phone and at least 1.2 times as high as it is wide** (`TALL` in
+    `web/src/phone.ts`, `(min-width: 641px) and (max-aspect-ratio: 5/6)`; the block of that query
+    in `web/style.css`): an iPad held upright (768 × 1024 to 1024 × 1366), a narrow window, a
+    monitor turned on its side (1080 × 1920). The shape alone decides, not the pointer: a mouse on a
+    monitor on its side and a finger on a tablet get the same page, and what a finger changes is
+    decisions 3–5's, on any touch screen. A screen nearer to square is a larger screen's page: the
+    side panel and the panel leave its board room enough beside them.
+17. **The page follows the screen as it turns** or as the window is resized across a line (as
+    decision 2's): at once, nothing reloaded and nothing chosen lost — the selection, what the panel
+    shows, the windows, the camera — the board framed again in its new room. The drawer closes where
+    the shape has none; the sheet keeps its share of the screen.
+18. **A tall screen is a larger screen's page** (not decision 1's phone): the bar with every button,
+    the view bar with the modes, every popover, window, key and menu, arranging the board. Only where
+    things sit changes, and the phone's own mechanisms place them — the drawer (decision 9) and the
+    sheet (decision 10), never a third implementation; nothing a phone leaves out is left out.
+19. **The side panel is the drawer from ☰**, at the left of the view bar, at most 360 px wide (60 %
+    of the screen): it closes on a press outside it, on Esc, and when the reader goes somewhere from
+    it, and ⚙ Board and Trusted take its place with a row back to it (decision 9). The board has the
+    screen's whole width.
+20. **The panel is a sheet from the bottom**, across the screen less the page's margin, its corners
+    round. It opens at half the screen. Its handle sets its height: a drag, anywhere between a third
+    of the screen and the tallest, under what goes across under the view bar (decision 22); a tap,
+    half the screen or the tallest. The
+    height is kept, as a share of the screen, while the page is open. The board's room is above it.
+    What takes the panel's place on a larger screen takes the sheet's, at its height: Activity, the
+    lost-and-found, and Export's window, the outline it arranges above it.
+21. **The floating windows dock in the sheet's place** — the source windows, the reference window,
+    the conversation with an agent: over the panel, at the sheet's height, side by side where the
+    screen is 960 px wide or more and one over the other below that, the declaration's source first.
+    The dock places them: no edge resizes one and no drag moves one; its handle, above them, sets its
+    height as the sheet's does (the same height). A collapsed window is its pill, at the dock's foot.
+    The panel shows again as the last window closes or collapses; the board's room is above the dock.
+22. **Under the view bar, across the screen: the review strip, then the selection bar** (decision
+    11's order), so that neither covers the other nor the board.
+23. **The legend and the zoom's box keep to the foot of the board's room**: at its left and right,
+    above the sheet or the dock while one is open, at the screen's foot otherwise; where the sheet
+    at its tallest leaves the board no room, they wait under it. The welcome card, What's new and
+    the following strip sit just above them.
+24. **The bar holds its buttons in the screen's width**: below 900 px, Share, the library and Export
+    show their icons alone, with their titles; below 1000 px, the focus gives way to the Time
+    Machine's bar while it is open, as on a phone (decision 14).
+25. **The bar's popovers open at its right, under it** (Share, the library, the name's menu, help's
+    menu): never past the screen's edge. The view bar's menus (Views, the focus) open under their
+    buttons, as on a larger screen.
+26. **The help** is as wide as the screen less its margin: the film over its chapters, as on a
+    phone, then the tips; ⤢ as on a larger screen (GuideSpec decision 5).
+27. **The tour and the tips in place are a larger screen's** (GuideSpec): their spotlight frames the
+    board's room above the sheet, under the selection bar.
+28. **The Time Machine** is a larger screen's (HistorySpec), its bar in the view bar (decision 24).
+
 ## Open
 
 - **Arranging from the menu.** A finger held on the board still offers what arranges it: Fold, Hide
@@ -83,3 +136,8 @@ decides them.
   track of it.
 - **Not yet made for a phone**: the conversation window, the linear form and the artwork's frame.
   (The tour has a phone's own since 0.4: GuideSpec decision 4.)
+- **A tall screen's panel in two columns**: on a sheet 900 px wide or more, the declaration's head,
+  statement and review at the left, its counts, axioms and TCB at the right.
+- **A narrow window held sideways** (641–900 px wide, less than 1.2 times as high): the side panel
+  is hidden there with no drawer to open it, and the panel covers the board. The drawer and the
+  sheet would serve it as they serve a tall screen.
