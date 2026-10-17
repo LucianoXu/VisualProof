@@ -158,6 +158,10 @@ interface Plan {
 /** A row's name among the rows, kept from one outline to the next. */
 const keyOf = (r: Row) => `${r.kind}:${r.name}`;
 
+/** Why the form is shown: the Export window is open, the reader asked for it (⋯, the key), or the
+ *  reader they follow shows it. */
+type Why = "export" | "reader" | "followed";
+
 /** Ease in and out. */
 const ease = (t: number) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -167,8 +171,9 @@ export class LinearForm {
   private ctx: CanvasRenderingContext2D;
   private canvas: GraphCanvas;
   private hooks: LinearHooks;
-  /** why it is shown: the Export window is open, the reader asked for it */
-  private why = new Set<"export" | "reader">();
+  /** why it is shown: the Export window is open, the reader asked for it, or the reader they follow
+   *  shows it (kept once following ends: CollabSpec decision 4) */
+  private why = new Set<Why>();
   private outline: Outline | null = null;
   private rows: Row[] = [];
   /** the rows in order down the line, sections by their heading */
@@ -219,13 +224,19 @@ export class LinearForm {
     return this.why.size > 0;
   }
 
-  /** Whether the reader asked for it (⋯, the key), as followers take it. */
+  /** Whether the reader asked for it (⋯, the key), or has it from a reader they follow or followed:
+   *  ⋯ and the key put it away. */
   get asked(): boolean {
-    return this.why.has("reader");
+    return this.why.has("reader") || this.why.has("followed");
   }
 
-  /** Show it, for the Export window or at the reader's asking. */
-  async show(why: "export" | "reader"): Promise<void> {
+  /** Whether it shows as a followed reader's does, or did when following ended. */
+  get followed(): boolean {
+    return this.why.has("followed");
+  }
+
+  /** Show it, for the Export window, at the reader's asking, or as a followed reader's. */
+  async show(why: Why): Promise<void> {
     const was = this.shown;
     this.why.add(why);
     if (was) return;
@@ -245,9 +256,11 @@ export class LinearForm {
     this.hooks.changed(true);
   }
 
-  /** Put it away, for `why`; the board comes back once nothing asks for it. */
-  hide(why: "export" | "reader"): void {
-    if (!this.why.delete(why) || this.shown) return;
+  /** Put it away, for each of `whys`; the board comes back once nothing asks for it. */
+  hide(...whys: Why[]): void {
+    const was = this.shown;
+    for (const w of whys) this.why.delete(w);
+    if (!was || this.shown) return;
     this.turn++;
     this.press = null;
     this.drag = null;
@@ -258,7 +271,7 @@ export class LinearForm {
   }
 
   toggle(): void {
-    if (this.asked) this.hide("reader");
+    if (this.asked) this.hide("reader", "followed");
     else void this.show("reader");
   }
 

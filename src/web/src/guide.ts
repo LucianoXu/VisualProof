@@ -13,7 +13,7 @@
 import { dragKeyName, MAC } from "./drag.ts";
 import { escapeHtml } from "./highlight.ts";
 import type { Store } from "./store.ts";
-import { isPhone } from "./phone.ts";
+import { isPhone, isTall, sheeted } from "./phone.ts";
 import { typing } from "./typing.ts";
 import type { Tool } from "./selection.ts";
 import { TIPS, TOUR } from "./tips.ts";
@@ -244,14 +244,18 @@ function around(...sels: string[]): DOMRect | null {
   return isFinite(x0) ? new DOMRect(x0, y0, x1 - x0, y1 - y0) : null;
 }
 
-/** The board's part of the screen: right of the side panel, under the bars, left of the panel. */
+/** The board's part of the screen: right of the side panel, under the bars, left of the panel; on a
+ *  phone or a tall screen, whose side panel is a drawer, above the panel's sheet and under the
+ *  selection bar across the screen (PhoneSpec decisions 11 and 22). */
 function board(): DOMRect {
   const side = $("#side")?.getBoundingClientRect();
   const panel = $("#panel.open")?.getBoundingClientRect();
-  const left = side && side.width && !isPhone() ? side.right + 8 : 12;
-  const right = panel && panel.width && !isPhone() ? panel.left - 8 : innerWidth - 12;
-  const top = isPhone() ? 104 : 108;
-  const bottom = isPhone() && panel && panel.height ? panel.top - 8 : innerHeight - 48;
+  const sheet = sheeted();
+  const bar = isTall() ? $("#selbar:not([hidden])")?.getBoundingClientRect() : undefined;
+  const left = side && side.width && !sheet ? side.right + 8 : 12;
+  const right = panel && panel.width && !sheet ? panel.left - 8 : innerWidth - 12;
+  const top = isPhone() ? 104 : bar?.height ? bar.bottom + 8 : 108;
+  const bottom = sheet && panel && panel.height ? panel.top - 8 : innerHeight - 48;
   return new DOMRect(left, top, Math.max(40, right - left), Math.max(40, bottom - top));
 }
 

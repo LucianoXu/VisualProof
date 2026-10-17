@@ -5,6 +5,11 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.4.3
+
+- Fix following: a reader who followed someone into the export document, or into the artwork mode, can leave it once following ends.
+- Add a layout for tall screens (a tablet upright, a narrow window): the panel rises from the bottom, the side panel is a drawer, and windows dock under the board.
+
 ## 0.4.2
 
 - Count a TCB without what is trusted: the selection bar, the panel and the tour say "+N trusted" apart, so that Mathlib's definitions no longer make a TCB of hundreds.
