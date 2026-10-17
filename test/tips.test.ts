@@ -9,23 +9,24 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { GROUPS, TIPS, TOUR } from "../src/web/src/tips.ts";
-import { filmTimes } from "../src/web/src/tourfilm.ts";
+import { cueAt, cuesOf, FILM_KEYS, tourData } from "../src/web/src/tourfilm.ts";
 import { RULES } from "../src/web/src/intip.ts";
 import { matches, plain, tipsFor } from "../src/web/src/tipcards.ts";
 import { newer, TipState } from "../src/web/src/tipstate.ts";
-import { FOLLOWED, FRAMES, YOURS } from "../src/web/src/surfaces.ts";
-import { GUIDE_SHOWS } from "../src/web/src/guide.ts";
+import { FOLLOWED, FRAMES, keyActs, YOURS } from "../src/web/src/surfaces.ts";
+import type { PageEl } from "../src/web/src/surfaces.ts";
+import { GUIDE_SHOWS, welcomeOf } from "../src/web/src/guide.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
 
-test("the film is eleven chapters, in the review's order, each a few words and one or two sentences", () => {
-  assert.deepEqual(TOUR.map((c) => c.id), ["target", "view", "source", "keys", "tcb", "project", "share", "agent", "library", "export", "artwork"]);
+test("the film is thirteen chapters, in the review's order, each a few words and a few sentences", () => {
+  assert.deepEqual(TOUR.map((c) => c.id), ["target", "view", "arrange", "source", "keys", "checks", "review", "project", "share", "agent", "library", "export", "artwork"]);
   for (const c of TOUR) {
     assert.ok(c.title.length <= 32, `${c.id}: title of ${c.title.length} characters`);
     const words = plain(c.text);
     assert.ok(words.length <= 220, `${c.id}: ${words.length} characters`);
-    assert.ok((words.match(/[.!?](\s|$)/g) ?? []).length <= 2, `${c.id}: two sentences at most`);
+    assert.ok((words.match(/[.!?](\s|$)/g) ?? []).length <= 4, `${c.id}: four sentences at most`);
     assert.ok(!/<(?!\/?(b|kbd|i)>)/.test(c.text), `${c.id}: <b>, <kbd>, <i> alone`);
     assert.ok(!/\b(simple|advanced|expert|beginner)\b/i.test(c.title + words), `${c.id}: no level`);
     assert.ok(!("clip" in c), `${c.id}: a chapter is in the film, with no clip of its own`);
@@ -36,13 +37,49 @@ test("the film is eleven chapters, in the review's order, each a few words and o
   for (const c of TOUR) assert.ok(!TIPS.some((t) => t.id === c.id), `${c.id}: a chapter, and no tip`);
 });
 
-test("the film's times as the recording gives them: every chapter, in order, within the film; else no film", () => {
+test("the film as the recording says it: every chapter, in order, within the film, else none; its captions", () => {
   const chapters = TOUR.map((c, k) => ({ id: c.id, start: 10 * k, end: 10 * k + 10 }));
-  assert.deepEqual(filmTimes({ duration: 110, chapters }, TOUR), { duration: 110, chapters });
-  assert.equal(filmTimes({ duration: 110, chapters: chapters.slice(1) }, TOUR), null, "a chapter missing");
-  assert.equal(filmTimes({ duration: 50, chapters }, TOUR), null, "beyond the film");
-  assert.equal(filmTimes({ duration: 110, chapters: [chapters[1], chapters[0], ...chapters.slice(2)].map((c, k) => (k < 2 ? { ...c, start: 20 - 10 * k, end: 30 - 10 * k } : c)) }, TOUR), null, "out of order");
-  for (const bad of [null, "x", { duration: "1" }, { duration: 1 }]) assert.equal(filmTimes(bad, TOUR), null);
+  const film = { file: "tour.mp4", sha256: "0".repeat(64), size: 1, width: 2560, height: 1600, duration: 130 };
+  const captions = [
+    { start: 1, end: 4, text: "Search for the theorem." },
+    { start: 12, end: 15, text: " Uses lights what it uses. " },
+    { start: 5, end: 3, text: "backwards: dropped" },
+    { start: 6, end: 8, text: "" },
+    { start: 7, end: 9, text: "x".repeat(201) },
+    { start: 125, end: 140, text: "beyond the film: dropped" },
+  ];
+  const d = tourData({ film, chapters, captions }, TOUR)!;
+  assert.deepEqual(d.chapters, chapters);
+  assert.deepEqual([d.width, d.height, d.duration], [2560, 1600, 130]);
+  assert.deepEqual(d.captions.map((c) => c.text), ["Search for the theorem.", "Uses lights what it uses."]);
+  // the caption drawn at a time, and a chapter's captions where the film does not play them
+  assert.equal(cueAt(d.captions, 0.5), null);
+  assert.equal(cueAt(d.captions, 2)?.text, "Search for the theorem.");
+  assert.equal(cueAt(d.captions, 4), null);
+  assert.equal(cueAt(d.captions, 13)?.text, "Uses lights what it uses.");
+  assert.deepEqual(cuesOf(d.captions, d.chapters[0]).map((c) => c.start), [1]);
+  assert.deepEqual(cuesOf(d.captions, d.chapters[1]).map((c) => c.start), [12]);
+  assert.deepEqual(cuesOf(d.captions, d.chapters[2]), []);
+  // anything else: the cards are their words
+  assert.equal(tourData({ film, chapters: chapters.slice(1), captions }, TOUR), null, "a chapter missing");
+  assert.equal(tourData({ film: { ...film, duration: 50 }, chapters, captions }, TOUR), null, "beyond the film");
+  for (const bad of [null, "x", { film: { duration: "1" } }, { chapters }]) assert.equal(tourData(bad, TOUR), null);
+  // captions are optional
+  assert.deepEqual(tourData({ film, chapters }, TOUR)!.captions, []);
+});
+
+test("the film's keys are its own: declared, and kept from following there", () => {
+  const film = YOURS.find((y) => y.id === "film")!;
+  assert.ok("ownKeys" in film);
+  assert.deepEqual([...film.ownKeys].sort(), [...FILM_KEYS].sort());
+  // the film's handler binds these keys and no other
+  const src = read("src/web/src/tourfilm.ts");
+  assert.match(src, /FILM_KEYS = \[" ", "ArrowLeft", "ArrowRight", "c"\]/);
+  const el = (sel: string, parent: PageEl | null = null): PageEl => ({ matches: (s: string) => s.split(",").some((x) => x.trim() === sel), parentElement: parent });
+  const inFilm = el("div", el("[data-film]", el("#help")));
+  for (const k of FILM_KEYS) assert.equal(keyActs({ key: k }, inFilm, false), false, `${JSON.stringify(k)} in the film`);
+  // the same keys elsewhere change what is followed
+  assert.equal(keyActs({ key: "c" }, el("#canvas"), false), true);
 });
 
 test("each tip is a few words and one or two sentences, in a group, never of a level", () => {
@@ -172,8 +209,9 @@ test("each Show me is done, each rule is one of at most eight and shows one tip,
       .map((l) => l.replace(/^#+ /, "").toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-")),
   );
   for (const t of [...TIPS, ...TOUR]) if (t.manual) assert.ok(anchors.has(t.manual), `${t.id}: More links to a heading of the manual (#${t.manual})`);
-  // the panel's ⓘ opens the film at its TCB
-  assert.match(read("src/web/src/panel.ts"), /\{ id: "tcb", title: "What a TCB is/);
+  // the rules that teach what a chapter shows open the film at it; the panel's ⓘ at the ways to check
+  assert.deepEqual(Object.fromEntries(TOUR.flatMap((c) => (c.when ? [[c.when, c.id]] : []))), { "key-in-target": "keys", "tcb-first": "checks", "first-export": "export" });
+  assert.match(read("src/web/src/panel.ts"), /\{ id: "checks", title: "What a TCB is/);
 });
 
 test("a reader sees the tips for them: a read-only reader none about changing the review, a phone its own", () => {
@@ -240,4 +278,45 @@ test("What's new is told once, for a newer release; a tip shown twice in place i
   } finally {
     delete (globalThis as { localStorage?: unknown }).localStorage;
   }
+});
+
+test("a first visit is offered the tour, never given it: the welcome card once, the dot where the reader is busy", () => {
+  const first = { guided: false, welcomed: false, deepLink: false, following: false, snapshot: false };
+  assert.equal(welcomeOf(first), "card");
+  // came to a place, following someone, a snapshot: the dot alone
+  for (const busy of ["deepLink", "following", "snapshot"] as const) assert.equal(welcomeOf({ ...first, [busy]: true }), "dot", busy);
+  // the card shows once per browser and project; the tour taken, nothing more
+  assert.equal(welcomeOf({ ...first, welcomed: true }), "none");
+  assert.equal(welcomeOf({ ...first, guided: true }), "none");
+  assert.equal(welcomeOf({ ...first, welcomed: true, deepLink: true }), "none");
+  // nothing starts the tour by itself: the page offers it, a press starts it
+  const main = read("src/web/src/main.ts");
+  assert.ok(!main.includes("firstVisit") && !/guide\.start\(/.test(main), "the page never starts the tour");
+  assert.match(main, /guide\.welcome\(deepLink\)/);
+  const guide = read("src/web/src/guide.ts");
+  const welcome = guide.slice(guide.indexOf("  welcome(deepLink: boolean): void {"), guide.indexOf("  private hideWelcome(): void {"));
+  assert.ok(welcome.length > 200 && !welcome.includes("this.start("), "the welcome starts no tour");
+  assert.match(welcome, /this\.store\.data\.welcomed = true;/, "the card, once shown, is not shown again");
+  // its Take the tour and Watch a review are presses on it
+  assert.match(guide, /if \(what === "tour"\) this\.start\(\);\s*else this\.openHelp\("tips"\);/);
+});
+
+test("the dot on the help is kept in the browser until the help is opened", () => {
+  const kept = new Map<string, string>();
+  (globalThis as { localStorage?: unknown }).localStorage = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+  try {
+    const a = new TipState();
+    assert.equal(a.dot, false);
+    a.dot = true;
+    assert.equal(new TipState().dot, true, "another page, a later visit");
+    new TipState().dot = false;
+    assert.equal(new TipState().dot, false);
+  } finally {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
+  // the help is a menu: Tips, Keys, the tour, then the two Abouts; ? opens it
+  const guide = read("src/web/src/guide.ts");
+  for (const hm of ["tips", "keys", "tour", "repo"]) assert.ok(guide.includes(`data-hm="${hm}"`), hm);
+  assert.match(read("src/web/src/main.ts"), /e\.key === "\?"\) guide\.toggleMenu\(\)/);
+  assert.match(guide, /rel="noopener noreferrer"><span class="hm-h">About VisualProof/);
 });

@@ -294,7 +294,7 @@ export class Panel {
         () => `<div class="axioms">${axioms.length ? axioms.map((a) => `<span class="chip ${nonStd.includes(a) ? "bad" : ""}">${escapeHtml(a)}</span>`).join("") : `<span class="muted">none</span>`}</div>`,
       )}
       ${notationHtml(g, i)}
-      ${tcbP ? part(PANEL_SECTIONS.tcb, "Its TCB", `${tcbP}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`, { id: "tcb", title: "What a TCB is: its chapter of the film" }) : ""}
+      ${tcbP ? part(PANEL_SECTIONS.tcb, "Its TCB", `${tcbP}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`, { id: "checks", title: "What a TCB is: the film's chapter on the ways to check" }) : ""}
     `;
     this.el.classList.add("open");
     if (!same) this.el.scrollTop = 0;

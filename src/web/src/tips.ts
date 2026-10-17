@@ -1,5 +1,5 @@
 // What the `?` sheet teaches (GuideSpec decisions 5–11): the tour film's chapters (TOUR), a review
-// in eleven scenes, one card each; and the tips the film does not show (TIPS), one row each, in
+// in thirteen scenes, one card each; and the tips the film does not show (TIPS), one row each, in
 // their groups. Each says its words, the controls it is about, and what shows it — Show me, a rule
 // that shows it in place; a tip says too who and where it is for and the release its feature came
 // in. test/tips.test.ts holds both to their budgets and to the page's surfaces (web/src/surfaces.ts).
@@ -37,14 +37,15 @@ export interface Tip {
 }
 
 /** A chapter of the tour film (GuideSpec decision 6): one scene of a review, a card beside the
- *  player. Where it starts and ends in the film is the recording's (`/tips/tour.chapters.json`). */
+ *  player. Where it starts and ends in the film, and its captions, are the recording's
+ *  (`/tips/tour.json`). */
 export interface Chapter {
   /** stable: the recording's chapters are named by it; an in-place tip is kept as done under
    *  `tour-<id>` */
   id: string;
   /** a few words, at most 32 characters */
   title: string;
-  /** at most two sentences, 220 characters; <b>, <kbd> allowed */
+  /** at most 220 characters; <b>, <kbd> allowed */
   text: string;
   /** the controls it is about, as for a tip */
   about: string[];
@@ -54,8 +55,8 @@ export interface Chapter {
   when?: string;
 }
 
-/** The film, in its order: a review on Sphere-Packing-Lean, from marking its target to its
- *  artwork (the owner's decision of 2026-10-16, night). */
+/** The film, in its order: a review of Sphere-Packing-Lean's theorem in dimension 24, from marking
+ *  its target to its artwork (the owner's decisions of 2026-10-16, night, and 2026-10-17). */
 export const TOUR: Chapter[] = [
   {
     id: "target",
@@ -74,6 +75,14 @@ export const TOUR: Chapter[] = [
     manual: "views",
   },
   {
+    id: "arrange",
+    title: "Arrange the board",
+    text: "Drag a declaration with <kbd>Ctrl</kbd> held, or let the lock go, to place it for everyone; double-click a circle to fold it, again to open it.",
+    about: ["#canvas", "#lock-btn", "key:l"],
+    showMe: "ring-lock",
+    manual: "what-you-see",
+  },
+  {
     id: "source",
     title: "Read the source",
     text: "<kbd>Space</kbd> opens the source, following the selection. Rest on a name for what Lean says it is; click it to go there.",
@@ -84,8 +93,8 @@ export const TOUR: Chapter[] = [
   {
     id: "keys",
     title: "Key declarations",
-    text: "On the target's view, <kbd>k</kbd> marks the few declarations of its TCB that carry its meaning. <b>Keys</b> selects them.",
-    about: ["#panel [data-rv-key]", "#rests-steps [data-mode=keys]", "key:k"],
+    text: "On the target's view, select the declarations that carry its meaning and mark them key with a click. <b>Keys</b> selects them.",
+    about: ["#panel [data-rv-key]", "#selbar [data-mark-keys]", "#rests-steps [data-mode=keys]"],
     showMe: "ring-key",
     // key-in-target: on a view focused on a target T (its review strip shows), the reader approves a
     // declaration of T's TCB — the second they approved in T's TCB in this page's session — while T
@@ -95,18 +104,26 @@ export const TOUR: Chapter[] = [
     manual: "review",
   },
   {
-    id: "tcb",
-    title: "Its TCB, reviewed",
-    text: "<b>TCB</b> lights what you must read to trust the statement — definitions, axioms, notation; proofs are Lean's to check. Comment or approve: an opinion holds for the version it judged.",
-    about: ["#rests-steps [data-mode=tcb]", "#panel [data-rv=approve]", "#panel [data-rv=comment]", "key:2"],
+    id: "checks",
+    title: "Three ways to check",
+    text: "<b>Selection</b>: the statement alone, least effort. <b>Keys</b>: the few that carry the meaning. <b>TCB</b>: all it rests on, most effort, most confidence. The counts say what each costs.",
+    about: ["#lightup [data-mode=plain]", "#rests-steps [data-mode=keys]", "#rests-steps [data-mode=tcb]", "key:2"],
     showMe: "tcb-three",
     // tcb-first: the reader's own click selects, under Rests on · TCB, a theorem whose TCB lights
     // more than itself (not the tour's selection, not one taken by following or by a link opened),
     // for the first time in this browser. At #rests-steps [data-mode=tcb] on a larger screen, at the
     // panel's TCB part (#panel .p-tcb) on a phone. Ends: Got it; Show me pressed in it (it runs the
-    // three views); the reader stepping to another step of Rests on.
+    // three views); Watch; the reader stepping to another step of Rests on.
     when: "tcb-first",
     manual: "how-the-tcb-is-computed",
+  },
+  {
+    id: "review",
+    title: "Comment and approve",
+    text: "Comment or approve each declaration you read: an opinion holds for the version it judged, and the target's progress counts it.",
+    about: ["#panel [data-rv=approve]", "#panel [data-rv=comment]", "#targets"],
+    showMe: "ring-review",
+    manual: "review",
   },
   {
     id: "project",
@@ -142,11 +159,11 @@ export const TOUR: Chapter[] = [
   {
     id: "export",
     title: "A typeset document",
-    text: "<b>Export</b> turns the view into a PDF: the board shows its outline order, then statements, sources and the review are typeset.",
+    text: "<b>Export</b> draws the view as its outline on one line: drag a section to reorder it, then statements, sources and the review are typeset as a PDF.",
     about: ["#export-btn", "#export-modal", "#linear"],
     showMe: "ring-export",
     // first-export: the Export window opened for the first time in this browser, the linear form
-    // drawn beside it. At #linear. Ends: Got it; it goes, unanswered, when the window closes.
+    // drawn beside it. At #linear. Ends: Got it; Watch; it goes, unanswered, when the window closes.
     when: "first-export",
     manual: "exported-documents",
   },

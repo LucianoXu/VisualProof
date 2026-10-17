@@ -19,11 +19,12 @@ import type { Tool } from "./selection.ts";
 import { TIPS, TOUR } from "./tips.ts";
 import type { Chapter, Tip } from "./tips.ts";
 import { actsHtml, reducedMotion, refsHtml, tipsFor } from "./tipcards.ts";
-import { filmTimes, TourFilm } from "./tourfilm.ts";
-import type { FilmTimes } from "./tourfilm.ts";
+import { tourData, TourFilm } from "./tourfilm.ts";
+import type { TourData } from "./tourfilm.ts";
 import type { TipsContext } from "./tipcards.ts";
 import { TipState } from "./tipstate.ts";
 import { InTips } from "./intip.ts";
+import { Popover } from "./popover.ts";
 import type { InPlace } from "./intip.ts";
 
 /** What the server says of its release and a newer one (UpdateSpec; `GET /api/updates`): a
@@ -105,8 +106,9 @@ export interface GuideHooks {
   /** the clips the server has (decision 6): the film (`tour`), the phone's gestures; none in a
    *  snapshot */
   clips(): Promise<Set<string>>;
-  /** where the film's chapters are (`/tips/tour.chapters.json`); null where it says nothing */
-  chapters(): Promise<unknown>;
+  /** what the recording says of the tour film (`/tips/tour.json`: the film, its chapters, its
+   *  captions); null where there is none */
+  tour(): Promise<unknown>;
 }
 
 /** One view of a step: the TCB step shows its theorem three ways (GuideSpec decision 2). */
@@ -135,8 +137,20 @@ interface Step {
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel);
 
+/** What a first visit is met with (GuideSpec decision 1, the owner's decision of 2026-10-17): the
+ *  tour is offered, never started by itself — a welcome card, once per browser and project; only the
+ *  dot on the help where the reader came to work (a link to a place, following someone, a
+ *  snapshot); nothing more once the tour was taken or the card shown. */
+export function welcomeOf(o: { guided: boolean; welcomed: boolean; deepLink: boolean; following: boolean; snapshot: boolean }): "card" | "dot" | "none" {
+  if (o.guided || o.welcomed) return "none";
+  return o.deepLink || o.following || o.snapshot ? "dot" : "card";
+}
+
+/** how long the page stays still before the welcome card shows */
+const WELCOME_IDLE_MS = 2000;
+
 /** The Show me actions the guide does itself (GuideSpec decision 7): the TCB step's three views, and
- *  the sheet's About; the page does the others (web/src/main.ts, `showMe`). */
+ *  the help menu's About; the page does the others (web/src/main.ts, `showMe`). */
 export const GUIDE_SHOWS = ["tcb-three", "help-about"] as const;
 
 /** VisualProof's repository, which the help sheet links to (the owner's decision of 2026-10-16). */
@@ -312,13 +326,19 @@ export class Guide {
   private card: HTMLElement;
   private help: HTMLElement;
   private news: HTMLElement;
+  /** the help menu, under ? (GuideSpec decision 8) */
+  private menu: HTMLElement;
+  private menuPop: Popover;
+  /** the welcome card of a first visit (decision 1) */
+  private welcomeEl: HTMLElement;
+  private welcomeOff: (() => void) | null = null;
   readonly tips = new TipState();
   readonly inPlace: InTips;
   /** the tour film in the sheet, while it shows */
   private film: TourFilm | null = null;
-  /** where the film's chapters are; null: no film here (not recorded, a snapshot); undefined: not
-   *  known yet */
-  private times: FilmTimes | null | undefined = undefined;
+  /** what the recording says of the film; null: none here (a snapshot), the cards their words;
+   *  undefined: not known yet */
+  private tourData: TourData | null | undefined = undefined;
   /** the reference tip open, one at a time */
   private openRef: string | null = null;
   /** the chapter the film starts at in this showing of the sheet (an ⓘ, Watch); null: the first */
@@ -341,21 +361,68 @@ export class Guide {
     this.card = this.el.querySelector<HTMLElement>(".tour-card")!;
     this.help = $("#help")!;
     this.news = $("#whatsnew")!;
+    this.welcomeEl = $("#welcome")!;
+    this.menu = $("#help-menu")!;
+    this.menuPop = new Popover($("#help-btn")!, this.menu, {
+      changed: (open) => {
+        if (!open) return;
+        this.renderMenu();
+        this.setDot(false);
+        this.menu.querySelector<HTMLElement>("[role=menuitem]")?.focus();
+      },
+    });
+    this.menu.addEventListener("click", (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>("[data-hm]");
+      if (!t) return;
+      const what = t.dataset.hm;
+      // the repository and the notes open in their own tab, as their links say
+      if (what !== "repo" && what !== "notes") e.preventDefault();
+      this.closeMenu(false);
+      if (what === "tips") this.openHelp("tips");
+      else if (what === "keys") this.openHelp("keys");
+      else if (what === "tour") this.start();
+    });
+    // the menu's keys: the arrows, Home and End go from item to item, Esc and Tab close it
+    this.menu.addEventListener("keydown", (e) => {
+      const items = [...this.menu.querySelectorAll<HTMLElement>("[role=menuitem]")];
+      const k = items.indexOf(document.activeElement as HTMLElement);
+      const to = (j: number) => items[(j + items.length) % items.length]?.focus();
+      if (e.key === "ArrowDown") to(k + 1);
+      else if (e.key === "ArrowUp") to(k < 0 ? -1 : k - 1);
+      else if (e.key === "Home") to(0);
+      else if (e.key === "End") to(-1);
+      else if (e.key === "Escape") this.closeMenu(true);
+      else if (e.key === "Tab") return this.closeMenu(false);
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    this.welcomeEl.addEventListener("click", (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>("[data-wel]");
+      if (!t) return;
+      const what = t.dataset.wel;
+      if (what === "later") return this.foldWelcome();
+      this.hideWelcome();
+      if (what === "tour") this.start();
+      else this.openHelp("tips");
+    });
+    this.renderDot();
     this.inPlace = new InTips(this.tips, {
       blocked: () => !this.el.hidden || !this.help.hidden || this.hooks.snapshot() || this.hooks.following() || this.hooks.busy(),
       fits: (t) => tipsFor(this.context(new Set())).includes(t),
       showMe: (e) => this.showTip(e),
-      canWatch: () => !!this.times,
+      canWatch: () => !!this.tourData,
       watch: (chapter) => this.openHelp("tips", { chapter }),
     });
-    // whether the film is there, and where its chapters are: read once, before it is asked for
+    // what the recording says of the film, and the clips there are: read once, before they are asked
+    // for (whether the film itself is here, the player finds when it asks for it)
     if (!this.hooks.snapshot())
-      void Promise.all([this.hooks.clips(), this.hooks.chapters()]).then(([clips, raw]) => {
+      void Promise.all([this.hooks.clips(), this.hooks.tour()]).then(([clips, raw]) => {
         this.clipsHad = clips;
-        this.times = clips.has("tour") ? filmTimes(raw, TOUR) : null;
+        this.tourData = tourData(raw, TOUR);
         if (!this.help.hidden && this.tab === "tips") this.renderFilm();
       });
-    else this.times = null;
+    else this.tourData = null;
     this.card.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
       const seg = t.closest<HTMLElement>("[data-tour-view]");
@@ -407,6 +474,12 @@ export class Guide {
       }
     });
     this.help.addEventListener("keydown", (e) => {
+      // the film larger than its place: Esc steps it back, not out of the sheet
+      if (e.key === "Escape" && this.film?.back()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       // a ? typed into the editor's field is part of a URL, into the filter a word
       if (e.key === "Escape" || (e.key === "?" && !typing(e.target))) {
         e.stopPropagation();
@@ -461,10 +534,142 @@ export class Guide {
     });
   }
 
-  /** The first visit: the tour, once. */
-  firstVisit(): void {
-    if (this.store.data.guided) return;
-    this.start();
+  /** A first visit (GuideSpec decision 1): the welcome card once the page has stayed still for a
+   *  moment, or only the dot on the help where the reader came to work (`deepLink`: an address
+   *  naming a place). Nothing here starts the tour. */
+  welcome(deepLink: boolean): void {
+    const w = welcomeOf({ guided: !!this.store.data.guided, welcomed: !!this.store.data.welcomed, deepLink, following: this.hooks.following(), snapshot: this.hooks.snapshot() });
+    if (w === "dot") return this.setDot(true);
+    if (w === "none") return;
+    // the reader at work before the page was still: the dot, not the card
+    let timer = 0;
+    const busy = (e: Event) => {
+      if (e instanceof KeyboardEvent && ["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+      stop();
+      this.setDot(true);
+    };
+    const stop = () => {
+      clearTimeout(timer);
+      window.removeEventListener("pointerdown", busy, true);
+      window.removeEventListener("keydown", busy, true);
+    };
+    window.addEventListener("pointerdown", busy, true);
+    window.addEventListener("keydown", busy, true);
+    timer = window.setTimeout(() => {
+      stop();
+      // the tour or the sheet opened meanwhile, or someone followed: no card now
+      if (!this.el.hidden || !this.help.hidden || this.hooks.following()) return this.setDot(true);
+      this.showWelcome();
+    }, WELCOME_IDLE_MS);
+  }
+
+  /** The welcome card: no backdrop, never the keyboard's; it folds into the dot when the reader
+   *  starts working, or is put off (Not now, Esc). Shown once per browser and project. */
+  private showWelcome(): void {
+    this.store.data.welcomed = true;
+    this.store.save();
+    const project = escapeHtml(this.hooks.project());
+    this.welcomeEl.innerHTML =
+      `<div class="wel-title">New here?</div><div class="wel-text">A map of ${project}'s declarations, and what each theorem rests on.</div>` +
+      `<div class="wel-acts"><button class="rv-btn primary" data-wel="tour" title="About a minute">Take the tour</button>` +
+      `<button class="rv-btn" data-wel="film" title="Tips: the film of a whole review">Watch a review</button><span class="tour-gap"></span>` +
+      `<button class="rv-btn" data-wel="later">Not now</button></div>`;
+    // beside the side panel, over the legend; on a phone, over the bottom of the screen
+    const side = $("#side")?.getBoundingClientRect();
+    this.welcomeEl.style.left = isPhone() || !side?.width ? "" : `${Math.round(side.right + 16)}px`;
+    this.welcomeEl.hidden = false;
+    // the reader starts working: it folds away; Esc puts it off as Not now
+    const away = (e: Event) => {
+      if (this.welcomeEl.contains(e.target as Node)) return;
+      if (e instanceof KeyboardEvent && ["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+      this.foldWelcome();
+    };
+    window.addEventListener("pointerdown", away, true);
+    window.addEventListener("keydown", away, true);
+    this.welcomeOff = () => {
+      window.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("keydown", away, true);
+      this.welcomeOff = null;
+    };
+  }
+
+  private hideWelcome(): void {
+    this.welcomeOff?.();
+    this.welcomeEl.hidden = true;
+    this.welcomeEl.classList.remove("folding");
+    this.welcomeEl.style.transform = "";
+  }
+
+  /** The card folds into the dot on the help: not now, and not "never". */
+  private foldWelcome(): void {
+    if (this.welcomeEl.hidden) return;
+    this.welcomeOff?.();
+    this.setDot(true);
+    const to = (isPhone() ? $("#more-btn") : $("#help-btn"))?.getBoundingClientRect();
+    if (reducedMotion() || !to?.width) return this.hideWelcome();
+    const r = this.welcomeEl.getBoundingClientRect();
+    this.welcomeEl.classList.add("folding");
+    this.welcomeEl.style.transform = `translate(${Math.round(to.right - r.right)}px, ${Math.round(to.top - r.top)}px) scale(0.06)`;
+    setTimeout(() => this.hideWelcome(), 380);
+  }
+
+  /** The dot on the help (and on ⋯, which holds it on a phone). */
+  private setDot(on: boolean): void {
+    this.tips.dot = on;
+    this.renderDot();
+  }
+
+  private renderDot(): void {
+    const on = this.tips.dot;
+    $("#help-btn")?.classList.toggle("has-dot", on);
+    $("#more-btn")?.classList.toggle("has-dot", on);
+  }
+
+  // ---------------------------------------------------------------- the menu
+
+  /** The help menu (GuideSpec decision 8): opened, or closed, by ? — the focus on its first item. */
+  toggleMenu(): void {
+    if (this.menuPop.open) this.closeMenu(true);
+    else this.menuPop.toggle(true);
+  }
+
+  private closeMenu(focusButton: boolean): void {
+    if (!this.menuPop.open) return;
+    this.menuPop.toggle(false);
+    if (focusButton && !isPhone()) $("#help-btn")?.focus();
+  }
+
+  /** Tips, Keys, the tour; then what the project is and which VisualProof the server runs, said in
+   *  the menu itself. */
+  private renderMenu(): void {
+    const keys = isPhone() ? "Gestures" : "Keys";
+    this.menu.innerHTML =
+      `<button class="hm-item" role="menuitem" data-hm="tips"><span class="hm-t">Tips</span><span class="hm-d">The film of a review, and a tip for the rest</span></button>` +
+      `<button class="hm-item" role="menuitem" data-hm="keys"><span class="hm-t">${keys}</span></button>` +
+      `<button class="hm-item" role="menuitem" data-hm="tour"><span class="hm-t">Take the tour</span></button>` +
+      `<div class="hm-sep" role="separator"></div>` +
+      `<div class="hm-item" role="menuitem" aria-disabled="true" tabindex="-1"><span class="hm-h">About ${escapeHtml(this.hooks.project())}</span><span class="hm-d">${escapeHtml(this.hooks.about())}</span></div>` +
+      `<div data-hm-tool>${this.menuTool(null)}</div>`;
+    void this.hooks.updates().then((u) => {
+      const el = this.menu.querySelector<HTMLElement>("[data-hm-tool]");
+      if (u && el && this.menuPop.open) el.innerHTML = this.menuTool(u);
+    });
+  }
+
+  /** About VisualProof in the menu: which one runs — a press opens its repository —, and to those
+   *  let in fully a newer release, the server's word as text, its notes a link only at an https
+   *  address (GuideSpec decision 13). */
+  private menuTool(u: UpdateStatus | null): string {
+    const running = u?.running ?? this.running;
+    let html =
+      `<a class="hm-item" role="menuitem" data-hm="repo" href="${REPO}" target="_blank" rel="noopener noreferrer"><span class="hm-h">About VisualProof</span>` +
+      `<span class="hm-d">${running ? `VisualProof ${escapeHtml(running)}${u?.installed && u.installed !== running ? ` (installed: ${escapeHtml(u.installed)})` : ""}. ` : ""}Open source: ${REPO.replace("https://", "")}</span></a>`;
+    const n = u?.newer;
+    if (n && u?.mode !== "off") {
+      html += `<div class="hm-item" role="menuitem" aria-disabled="true" tabindex="-1"><span class="hm-d">${escapeHtml(n.version)} is out: ${n.taken ? "this server takes it by itself, at a quiet moment." : n.command ? `<code>${escapeHtml(n.command)}</code> on the server takes it.` : "the server's owner takes it."}</span></div>`;
+      if (/^https:\/\/[^\s"'<>]+$/.test(n.notes)) html += `<a class="hm-item hm-link" role="menuitem" data-hm="notes" href="${escapeHtml(n.notes)}" target="_blank" rel="noopener noreferrer">What is new in ${escapeHtml(n.version)}</a>`;
+    }
+    return html;
   }
 
   /** What the tips are shown against now. */
@@ -551,6 +756,8 @@ export class Guide {
   }
 
   start(): void {
+    this.hideWelcome();
+    this.setDot(false);
     this.kind = "tour";
     this.placeBefore = this.hooks.place();
     this.inPlace.hush();
@@ -633,8 +840,8 @@ export class Guide {
         title: "Getting around",
         // the last step points at the tips (GuideSpec decision 1)
         text: phone
-          ? "‹ goes back; <b>Search</b> finds names, statements and docstrings. <b>⋯</b> → Help holds the gestures and the <b>Tips</b>."
-          : "Back, forward and links work as in a browser; <kbd>/</kbd> searches names, statements and docstrings. <b>?</b> holds every key, and the <b>Tips</b>: how to do the rest, one at a time.",
+          ? "‹ goes back; <b>Search</b> finds names, statements and docstrings. There is more under <b>⋯</b> → Help → <b>Tips</b>: the film of a whole review, and a tip for the rest."
+          : "Back, forward and links work as in a browser; <kbd>/</kbd> searches names, statements and docstrings. There is more under <b>?</b> → <b>Tips</b>: the film of a whole review, and a tip for the rest.",
         at: () => (phone ? around(".brand .nav", ".search-wrap", "#more-btn") : around(".brand .nav", ".search-wrap", "#help-btn")),
       },
     ];
@@ -651,10 +858,9 @@ export class Guide {
     if (!tip.showMe || !this.hooks.canShow(tip.showMe)) return;
     // the sheet's About: the sheet stays, on the tab that holds it
     if (tip.showMe === GUIDE_SHOWS[1]) {
-      this.openHelp("keys");
-      const about = this.help.querySelector<HTMLElement>("[data-help-tool]");
-      about?.scrollIntoView({ block: "center" });
-      about?.parentElement?.classList.add("flash");
+      this.closeHelp();
+      this.menuPop.toggle(true);
+      this.menu.querySelector<HTMLElement>("[data-hm=repo]")?.focus();
       return;
     }
     let step: Step | null;
@@ -727,11 +933,11 @@ export class Guide {
     this.card.innerHTML =
       (show ? "" : `<div class="tour-step">${k + 1} of ${this.steps.length}</div>`) +
       `<div class="tour-title">${s.title}</div>${seg}<div class="tour-text">${text}</div>` +
-      `<div class="tour-actions">${show ? "" : `<button class="rv-btn" data-tour-skip>${last ? "Close" : "Skip"}</button>`}` +
-      // the last step points at the tips (GuideSpec decision 1)
-      (last && !show ? `<button class="rv-btn" data-tour-tips>Tips</button>` : "") +
+      `<div class="tour-actions">${show || last ? "" : `<button class="rv-btn" data-tour-skip>Skip</button>`}` +
       `<span class="tour-gap"></span>` +
       (k > 0 || this.v > 0 ? `<button class="rv-btn" data-tour-back>Back</button>` : "") +
+      // the last step points on to the tips: the film from its start (GuideSpec decision 1)
+      (last && !show ? `<button class="rv-btn" data-tour-tips>Open Tips</button>` : "") +
       `<button class="rv-btn primary" data-tour-next>${next}</button></div>`;
     // the panel slides in: place again once it has
     this.place();
@@ -786,6 +992,8 @@ export class Guide {
       // the page as the tour found it (GuideSpec decision 3)
       this.hooks.back(this.placeBefore);
       this.hooks.ended();
+      // and the help says there is more, until it is opened
+      this.setDot(true);
     } else this.hooks.record();
     this.placeBefore = null;
   }
@@ -851,7 +1059,7 @@ export class Guide {
       `<button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
       `<div class="help-pane" data-help-pane="tips" role="tabpanel">` +
       // the film of a review, a card per scene (GuideSpec decision 6)
-      `<div class="film-h">A review in eleven scenes</div><div data-film></div>` +
+      `<div class="film-h">A review in thirteen scenes</div><div data-film></div>` +
       // the tips it does not show, one row each
       `<div class="refs-head"><div class="help-h">More tips</div><input class="help-input tips-filter" data-tips-filter type="search" placeholder="Find a tip" value="${escapeHtml(this.filter)}" spellcheck="false" autocomplete="off" aria-label="Find a tip"></div>` +
       `<div class="tips-list" data-tips-list></div>` +
@@ -873,23 +1081,17 @@ export class Guide {
       `<input class="help-input" data-help-editor value="${escapeHtml(mine ?? "")}" placeholder="${escapeHtml(server ?? "vscode://file/{path}:{line}:{col}")}" spellcheck="false" autocomplete="off" aria-label="Open in editor: URL template">` +
       `<div class="modal-err" data-help-editor-err hidden></div>` +
       `<div class="help-note" data-help-editor-now>${this.editorNow()}</div></div>`) +
-      `<div class="help-about"><div class="help-h">About ${escapeHtml(this.hooks.project())}</div>` +
-      `<div class="help-note">${escapeHtml(this.hooks.about())}</div></div>` +
-      // which VisualProof, and where it is: its documentation, its code, where an issue is reported
-      `<div class="help-about"><div class="help-h">About VisualProof</div>` +
-      `<div class="help-note" data-help-tool>${this.aboutTool(null)}</div></div>` +
       `</div>` +
       `<div class="modal-actions"><button class="rv-btn" data-help-tour>Take the tour again</button><button class="rv-btn primary" data-help-close>Close</button></div></div>`;
     this.help.hidden = false;
+    if (tab === "tips") this.setDot(false);
+    this.closeMenu(false);
+    this.hideWelcome();
     const box = this.help.querySelector<HTMLElement>(".help-box")!;
     if (tipId) this.openRef = tipId;
     this.startAt = at.chapter ?? null;
     this.showTab(tab);
     box.focus();
-    void this.hooks.updates().then((u) => {
-      const el = this.help.querySelector<HTMLElement>("[data-help-tool]");
-      if (u && el && !this.help.hidden) el.innerHTML = this.aboutTool(u);
-    });
     if (tipId) {
       const row = this.help.querySelector<HTMLElement>(`[data-tip="${CSS.escape(tipId)}"]`);
       if (row) {
@@ -925,9 +1127,10 @@ export class Guide {
     if (!el) return;
     this.film?.stop();
     const ctx = this.context(this.clipsHad ?? new Set());
-    this.film = new TourFilm(el, TOUR, this.times ?? null, {
+    this.film = new TourFilm(el, TOUR, this.tourData ?? null, {
       still: reducedMotion(),
       acts: (c: Chapter) => actsHtml(c.showMe, c.manual, ctx, `data-tour-show="${c.id}"`),
+      sheet: this.help.querySelector<HTMLElement>(".help-box")!,
     });
     this.film.start(this.startAt ?? undefined);
   }

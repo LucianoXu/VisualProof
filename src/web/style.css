@@ -607,7 +607,7 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 #windows > * { pointer-events: auto; }
 /* a popover lies above the windows: it was opened last, and goes on a press anywhere else. Those
    inside a bar raise the bar with them while they are open */
-#bar:has(#share-pop:not([hidden]), #results:not([hidden]), #who-menu:not([hidden])), #viewbar:has(#views-menu:not([hidden]), #focus-menu:not([hidden])), #zoom:has(#eyes-pop:not([hidden])) { z-index: 36; }
+#bar:has(#share-pop:not([hidden]), #results:not([hidden]), #who-menu:not([hidden]), #help-menu:not([hidden])), #viewbar:has(#views-menu:not([hidden]), #focus-menu:not([hidden])), #zoom:has(#eyes-pop:not([hidden])) { z-index: 36; }
 /* a source window (web/src/sourcewin.ts): floating, not modal; as large as its code needs until the
    reader moves or resizes it (floatwin.ts sets its place, and its bounds while it is fitted to its
    code), scrolling down beyond that */
@@ -1992,6 +1992,34 @@ kbd {
   color: var(--text-2); font: 600 14px var(--font); cursor: pointer;
 }
 .help-btn:hover { border-color: var(--accent); color: var(--accent); }
+/* the help menu (GuideSpec decision 8): the tips, the keys, the tour; then what the project and
+   VisualProof are, said in it */
+.help-wrap { position: relative; display: flex; }
+#help-menu {
+  position: absolute; top: 38px; right: 0; width: min(340px, calc(100vw - 24px)); padding: 6px; border-radius: 14px; z-index: 40;
+  display: flex; flex-direction: column; background: color-mix(in srgb, var(--surface-solid) 96%, transparent);
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-lg);
+}
+#help-menu[hidden] { display: none; }
+.hm-item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 7px 10px; border: 0; border-radius: 9px;
+  background: transparent; color: var(--text); font: 13px var(--font); text-align: left; text-decoration: none; cursor: pointer;
+}
+.hm-item:hover, .hm-item:focus-visible { background: var(--code-bg); outline: none; }
+.hm-item[aria-disabled="true"] { cursor: default; }
+.hm-item[aria-disabled="true"]:hover { background: none; }
+.hm-t { font-weight: 500; }
+.hm-h { font-size: 11.5px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.hm-d { font-size: 12px; line-height: 1.4; color: var(--text-2); }
+.hm-d code { font: 11px var(--mono); background: var(--code-bg); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+.hm-sep { height: 1px; margin: 5px 4px; background: var(--line); }
+.hm-link { color: var(--accent); }
+/* the tour has pointed at the tips: a dot on the help until the menu is first opened */
+.help-btn.has-dot, #more-btn.has-dot { position: relative; }
+.help-btn.has-dot::after, #more-btn.has-dot::after {
+  content: ""; position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--surface-solid);
+}
 
 /* the sheet's tabs: the tips first, then the keys (GuideSpec decision 8) */
 .help-tabs { display: inline-flex; }
@@ -2018,15 +2046,48 @@ kbd {
 .film { display: grid; grid-template-columns: minmax(0, 960px) minmax(240px, 320px); gap: 16px; align-items: start; }
 @media (max-width: 1100px) { .film { grid-template-columns: minmax(0, 1fr); } }
 /* the film is light: in the dark theme, a thin frame of the theme's own, so that it does not glare */
+.film-stage { outline: none; border-radius: 12px; }
+.film-stage:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
 .film-frame { position: relative; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: #f5f5f7; border: 1px solid var(--line); box-shadow: var(--shadow); }
 :root[data-theme="dark"] .film-frame { border: 6px solid #2c2c2e; box-shadow: 0 0 0 1px var(--line), var(--shadow); }
 :root[data-theme="dark"] .film-video, :root[data-theme="dark"] .film-still { filter: brightness(0.92); }
 .film-video, .film-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
-.film-play {
-  position: absolute; left: 12px; bottom: 12px; width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line);
-  background: color-mix(in srgb, #ffffff 88%, transparent); color: #1d1d1f; font-size: 13px; box-shadow: var(--shadow); cursor: pointer;
+/* the controls over the film: play, captions, larger — light, as the film is */
+.film-controls { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.film-controls button {
+  pointer-events: auto; min-width: 36px; height: 36px; padding: 0 10px; border-radius: 18px; border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.86); color: #1d1d1f; font: 600 13px var(--font); box-shadow: var(--shadow); cursor: pointer;
+  backdrop-filter: blur(10px);
 }
-.film-play:hover { color: var(--accent); }
+.film-controls button:hover { color: var(--accent); }
+.film-controls [data-film-cc][aria-pressed="false"] { color: #a1a1a6; text-decoration: line-through; }
+.film-gap { flex: 1; }
+/* a caption: over the film at the bottom, in the page's own type, a soft pill readable on the light film */
+.film-video::cue { color: transparent; background: transparent; }
+.film-cc {
+  position: absolute; left: 50%; bottom: 60px; transform: translateX(-50%); max-width: min(78%, 760px); padding: 6px 14px;
+  border-radius: 14px; background: rgba(255, 255, 255, 0.84); color: #1d1d1f; font: 500 14px/1.4 var(--font); text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12); backdrop-filter: blur(10px); pointer-events: none;
+}
+/* a chapter's captions where the film does not play them: listed under its words */
+.film-cues { margin: 2px 0 0; padding-left: 16px; color: var(--text-2); font-size: 12px; line-height: 1.45; display: flex; flex-direction: column; gap: 2px; }
+.film-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.film-list-btn { display: none; align-self: flex-start; }
+/* large: the film fills the sheet, its chapters beside it (folded away at a press); then the screen */
+.help-box.film-large { width: calc(100vw - 48px); height: calc(100vh - 48px); max-height: none; }
+.help-box.film-large [data-help-pane="tips"] > :not([data-film]) { display: none; }
+.help-box.film-large .film { grid-template-columns: minmax(0, 1fr) minmax(240px, 320px); align-items: start; }
+.help-box.film-large .film.list-hidden { grid-template-columns: minmax(0, 1fr); }
+.help-box.film-large .film.list-hidden .film-list { display: none; }
+.help-box.film-large .film-list-btn { display: inline-flex; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-solid); color: var(--text-2); font: 12.5px var(--font); cursor: pointer; }
+.help-box.film-large .film-frame, .help-box.film-large .film-bar { width: min(100%, calc((100vh - 230px) * 1.6)); margin-left: auto; margin-right: auto; }
+.help-box.film-large .film-cc { font-size: 19.5px; bottom: 70px; padding: 8px 18px; border-radius: 18px; }
+@media (max-width: 1100px) { .help-box.film-large .film { grid-template-columns: minmax(0, 1fr); } }
+.film-stage:fullscreen { background: #000; display: flex; flex-direction: column; justify-content: center; padding: 24px; }
+.film-stage:fullscreen .film-frame { width: min(100%, calc((100vh - 80px) * 1.6)); margin: 0 auto; border: none; }
+.film-stage:fullscreen .film-cc { font-size: 24px; bottom: 80px; }
+.film-stage:fullscreen .film-bar { width: min(100%, calc((100vh - 80px) * 1.6)); margin: 8px auto 0; }
+.film-stage:fullscreen .film-track { background: rgba(255, 255, 255, 0.22); }
 /* under the player, a segment per chapter: the one playing fills */
 .film-bar { display: flex; gap: 3px; margin-top: 6px; }
 .film-seg { flex-basis: 0; flex-shrink: 1; padding: 5px 0; border: none; background: none; cursor: pointer; min-width: 4px; }
@@ -2083,6 +2144,18 @@ kbd {
 .intip-text { font-size: 12.5px; line-height: 1.45; color: var(--text-2); }
 .intip-text b { color: var(--text); font-weight: 600; }
 .intip-acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+/* the welcome of a first visit (GuideSpec decision 1): beside the side panel, over the legend; it
+   folds into the dot on ? */
+#welcome {
+  position: fixed; left: 300px; bottom: 64px; z-index: 44; width: min(360px, calc(100vw - 24px)); padding: 14px 16px 12px;
+  border-radius: 14px; background: var(--surface-solid); box-shadow: var(--shadow-lg);
+  transform-origin: top right; transition: transform 0.36s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.36s;
+}
+#welcome.folding { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { #welcome { transition: none; } }
+.wel-title { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; margin-bottom: 4px; }
+.wel-text { font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.wel-acts { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
 /* What's new, once: at the bottom, in the middle, quiet (GuideSpec decision 11) */
 #whatsnew {
   position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%); z-index: 44; display: flex; align-items: center; gap: 4px;
@@ -2541,6 +2614,8 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #more-badge { position: absolute; top: -5px; right: -5px; }
   #more-pop { position: fixed; top: 58px; right: 8px; width: min(260px, calc(100vw - 16px)); z-index: 46; border-radius: 14px; padding: 6px; display: flex; flex-direction: column; background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg); }
   #more-pop[hidden] { display: none; }
+  /* the help menu, from ⋯ → Help: at the top right, as ⋯'s own */
+  #help-menu { position: fixed; top: 58px; right: 8px; z-index: 46; background: var(--surface-solid); }
   .more-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--text); font: 15px var(--font); text-align: left; }
   .more-item:active { background: var(--code-bg); }
   .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -2589,6 +2664,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .film { grid-template-columns: minmax(0, 1fr); }
   .refs-head .tips-filter { max-width: none; }
   #whatsnew { bottom: calc(64px + env(safe-area-inset-bottom)); }
+  /* over the bottom of the screen, where the sheet comes up */
+  #welcome { left: 8px; right: 8px; width: auto; bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .wel-acts { flex-wrap: wrap; }
   #zoom #zoom-in, #zoom #zoom-out { display: none; }
   #foot { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   /* under the view bar, the review strip, then the selection bar (--strip-h: main.ts) */

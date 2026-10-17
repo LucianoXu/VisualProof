@@ -4144,7 +4144,7 @@ async function boot(): Promise<void> {
       else if (i !== null) reviewBox.give(e.key === "a" ? "approve" : "comment", i, f && !f.collapsed ? f.el : $("#panel"));
     }
     else if (e.key === "k" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) toggleKey();
-    else if (e.key === "?") guide.toggleHelp();
+    else if (e.key === "?") guide.toggleMenu();
   });
 
   // a handle for diagnosis from the console: window.visualproof.canvas
@@ -4159,6 +4159,9 @@ async function boot(): Promise<void> {
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
   if (snap) await openSnapshot(snap);
+  // the reader came to a place (a declaration, a view, what a sharer saw, an artwork): the welcome
+  // stays quiet (GuideSpec decision 1)
+  const deepLink = !!snap || !!recipeIn(location.hash) || (!!linked && (!!linked.picks || !!linked.shown || (linked.view !== null && linked.view !== PROJECT) || !!linked.scope));
   // a link with an artwork's recipe (ExportSpec decision 20): once, after the board is there; the
   // files it asks for are saved meanwhile
   const recipe = recipeIn(location.hash);
@@ -4436,7 +4439,7 @@ async function boot(): Promise<void> {
     },
     updates: () => (data.snapshot ? Promise.resolve(null) : data.updates()),
     clips: () => (data.snapshot ? Promise.resolve(new Set<string>()) : data.tipClips()),
-    chapters: () => (data.snapshot ? Promise.resolve(null) : data.tourChapters()),
+    tour: () => (data.snapshot ? Promise.resolve(null) : data.tourJson()),
   });
   offerTip = (rule) => guide.inPlace.offer(rule);
   didTip = (rule) => guide.inPlace.did(rule);
@@ -4462,13 +4465,13 @@ async function boot(): Promise<void> {
     },
     true,
   );
-  $("#help-btn").addEventListener("click", () => guide.toggleHelp());
   void data.activity().then((events) => activity.load(events));
   // who this page is, then the others are told where it is; the camera and the source window
   // change without a step in the history, so they are looked at every second and a half
   void people.init().then(() => {
     people.start();
-    setTimeout(() => guide.firstVisit(), 400);
+    // offered, never started by itself (GuideSpec decision 1)
+    setTimeout(() => guide.welcome(deepLink), 400);
     activity.changed();
     let last = "";
     setInterval(() => {

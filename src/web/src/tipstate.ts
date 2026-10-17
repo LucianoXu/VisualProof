@@ -17,6 +17,9 @@ interface Kept {
   version?: string;
   /** the release seen before the last one came: tips newer than it are New until Tips is looked at */
   newSince?: string;
+  /** a dot on the help (?): the tour ended, or the welcome was put off, and the help not opened since
+   *  (GuideSpec decision 1) */
+  dot?: boolean;
 }
 
 /** Whether release `a` is newer than `b` (x.y.z, a pre-release before its release). */
@@ -48,7 +51,7 @@ function read(): Kept | null {
     const ids = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : []);
     const numbers = (x: unknown): Record<string, number> =>
       x && typeof x === "object" ? Object.fromEntries(Object.entries(x).filter((e): e is [string, number] => Number.isInteger(e[1]) && e[1] > 0)) : {};
-    return { shown: numbers(o.shown), counts: numbers(o.counts), done: ids(o.done), off: o.off === true || undefined, version: typeof o.version === "string" ? o.version : undefined, newSince: typeof o.newSince === "string" ? o.newSince : undefined };
+    return { shown: numbers(o.shown), counts: numbers(o.counts), done: ids(o.done), off: o.off === true || undefined, version: typeof o.version === "string" ? o.version : undefined, newSince: typeof o.newSince === "string" ? o.newSince : undefined, dot: o.dot === true || undefined };
   } catch {
     // what cannot be read is nothing kept, and is written over by the next change
     return { shown: {}, counts: {}, done: [] };
@@ -112,6 +115,16 @@ export class TipState {
 
   set off(v: boolean) {
     this.change((d) => void (d.off = v || undefined));
+  }
+
+  /** The dot on the help: shown until the help is opened, the tour taken, or Tips looked at. */
+  get dot(): boolean {
+    return this.d.dot === true;
+  }
+
+  set dot(v: boolean) {
+    if (this.dot === v && read()?.dot === (v || undefined)) return;
+    this.change((d) => void (d.dot = v || undefined));
   }
 
   /** The releases New is told against: tips newer than `since` are New; null when none is. */
