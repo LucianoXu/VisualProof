@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { GROUPS, TIPS, TOUR } from "../src/web/src/tips.ts";
-import { cueAt, cuesOf, FILM_KEYS, tourData } from "../src/web/src/tourfilm.ts";
+import { cueAt, cuesOf, FILM_KEYS, FilmWaiter, tourData } from "../src/web/src/tourfilm.ts";
+import type { FilmAnswer, WaitClock } from "../src/web/src/tourfilm.ts";
 import { RULES } from "../src/web/src/intip.ts";
 import { matches, plain, tipsFor } from "../src/web/src/tipcards.ts";
 import { newer, TipState } from "../src/web/src/tipstate.ts";
@@ -319,4 +320,81 @@ test("the dot on the help is kept in the browser until the help is opened", () =
   for (const hm of ["tips", "keys", "tour", "repo"]) assert.ok(guide.includes(`data-hm="${hm}"`), hm);
   assert.match(read("src/web/src/main.ts"), /e\.key === "\?"\) guide\.toggleMenu\(\)/);
   assert.match(guide, /rel="noopener noreferrer"><span class="hm-h">About VisualProof/);
+});
+
+/** A waiter for the film on a clock of the test's, its asks answered in turn. */
+function waiting(answers: (FilmAnswer | Error)[]) {
+  let now = 0;
+  const timers: { f: () => void; ms: number }[] = [];
+  const clock: WaitClock = { now: () => now, after: (f, ms) => (timers.push({ f, ms }), timers.length), cancel: (t) => void (timers[(t as number) - 1].f = () => {}) };
+  const states: string[] = [];
+  let asks = 0;
+  const w = new FilmWaiter(
+    async () => {
+      const a = answers[Math.min(asks++, answers.length - 1)];
+      if (a instanceof Error) throw a;
+      return a;
+    },
+    (s) => states.push(s),
+    clock,
+  );
+  const settle = () => new Promise((ok) => setTimeout(ok, 0));
+  /** the next ask, after the delay it waits */
+  const next = async () => {
+    const t = timers.at(-1)!;
+    now += t.ms;
+    t.f();
+    await settle();
+    return t.ms;
+  };
+  return { w, states, asks: () => asks, delays: () => timers.map((t) => t.ms), next, settle, at: (ms: number) => void (now = ms) };
+}
+
+test("the film is asked for while the server fetches it: every 2 s at first, then as Retry-After says; it plays once it comes", async () => {
+  const busy = { status: 503, retryAfter: 10 };
+  // 503, 503, then 200: loading, loading, ready, asked three times, 2 s apart
+  const a = waiting([busy, busy, { status: 206, retryAfter: null }]);
+  a.w.start();
+  await a.settle();
+  assert.deepEqual(a.states, ["loading"]);
+  assert.equal(await a.next(), 2000);
+  assert.deepEqual(a.states, ["loading", "loading"]);
+  assert.equal(await a.next(), 2000);
+  assert.deepEqual(a.states, ["loading", "loading", "ready"]);
+  assert.equal(a.asks(), 3);
+  assert.deepEqual(a.delays(), [2000, 2000], "nothing asked once it is there");
+  // past the first 30 s: as Retry-After says, or 10 s where it says nothing
+  const b = waiting([busy, busy, { status: 503, retryAfter: null }, { status: 503, retryAfter: null }]);
+  b.w.start();
+  await b.settle();
+  b.at(31_000);
+  await b.next();
+  assert.equal(b.delays().at(-1), 10_000);
+  await b.next();
+  assert.equal(b.delays().at(-1), 10_000, "no Retry-After: 10 s");
+  // 404: the film is not to be had here; nothing asked again
+  const c = waiting([{ status: 404, retryAfter: null }]);
+  c.w.start();
+  await c.settle();
+  assert.deepEqual(c.states, ["absent"]);
+  assert.deepEqual(c.delays(), []);
+  // no answer: as if it were still coming
+  const d = waiting([new Error("offline"), { status: 200, retryAfter: null }]);
+  d.w.start();
+  await d.settle();
+  assert.deepEqual(d.states, ["loading"]);
+  await d.next();
+  assert.deepEqual(d.states, ["loading", "ready"]);
+  // the sheet closed: no more asks; opened again: asking goes on
+  const e = waiting([busy, busy, { status: 200, retryAfter: null }]);
+  e.w.start();
+  await e.settle();
+  e.w.stop();
+  await e.next();
+  assert.equal(e.asks(), 1, "stopped: the pending ask does nothing");
+  e.w.start();
+  await e.settle();
+  assert.equal(e.asks(), 2);
+  await e.next();
+  assert.deepEqual(e.states, ["loading", "loading", "ready"]);
 });

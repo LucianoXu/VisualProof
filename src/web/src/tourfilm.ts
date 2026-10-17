@@ -9,9 +9,11 @@
 // sheet, then the screen; Esc steps back. With the film's area focused: Space plays or pauses, ←
 // and → go to the chapter before or after, c turns the captions on or off.
 //
-// The film is not in the package: the server fetches it (server/media.ts). Where it has none (not
-// yet, or offline) the film answers 404, or 503 while it is fetched: the player then shows each
-// chapter's still, and the open card its captions, and a press on play tries the film again. With
+// The film is not in the package: the server fetches it on the first ask (server/film.ts), answering
+// 503 while it comes and 404 where it cannot have it. The player asks for it while the sheet shows
+// (FilmWaiter): meanwhile it says, quietly, that the film is loading, and shows each chapter's still,
+// the open card its captions; when it comes, it plays from the chapter the reader is on, unless they
+// paused it or motion is reduced. Where the server has none (404), the stills and captions stay. With
 // reduced motion nothing plays by itself: a card shows its chapter's still, its captions listed, and
 // the play button plays from there. In a snapshot there is no film: the cards are their words.
 
@@ -80,6 +82,90 @@ export function cuesOf(captions: readonly Cue[], ch: { start: number; end: numbe
   return captions.filter((c) => c.start >= ch.start - 0.01 && c.start < ch.end);
 }
 
+/** What the server says to an ask for the film: its status, and how long it asks to wait (Retry-After,
+ *  in seconds). */
+export interface FilmAnswer {
+  status: number;
+  retryAfter: number | null;
+}
+
+/** how often the film is asked for at first, and for how long; then as often as Retry-After says
+ *  (10 s where it says nothing) */
+export const POLL_FIRST_MS = 2000;
+export const POLL_QUICK_FOR_MS = 30_000;
+export const POLL_LATER_S = 10;
+
+/** A clock the waiter runs on: the page's, or a test's. */
+export interface WaitClock {
+  now(): number;
+  after(f: () => void, ms: number): unknown;
+  cancel(t: unknown): void;
+}
+
+const PAGE_CLOCK: WaitClock = { now: () => Date.now(), after: (f, ms) => setTimeout(f, ms), cancel: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) };
+
+/** Asks for the film until the server has it (200, 206: ready) or says it never will (404:
+ *  absent); while it is fetched (503, or no answer) it says so (loading) and asks again — every 2 s
+ *  for the first 30 s, then as Retry-After says. `stop` pauses it (the sheet closed), `start`
+ *  resumes it. */
+export class FilmWaiter {
+  private ask: () => Promise<FilmAnswer>;
+  private told: (state: "loading" | "ready" | "absent") => void;
+  private clock: WaitClock;
+  private timer: unknown = null;
+  /** when the asking began, for the first quick ones */
+  private since: number | null = null;
+  private running = false;
+  private done = false;
+
+  constructor(ask: () => Promise<FilmAnswer>, told: (state: "loading" | "ready" | "absent") => void, clock: WaitClock = PAGE_CLOCK) {
+    this.ask = ask;
+    this.told = told;
+    this.clock = clock;
+  }
+
+  start(): void {
+    if (this.running || this.done) return;
+    this.running = true;
+    this.since ??= this.clock.now();
+    void this.tick();
+  }
+
+  stop(): void {
+    this.running = false;
+    if (this.timer !== null) this.clock.cancel(this.timer);
+    this.timer = null;
+  }
+
+  private async tick(): Promise<void> {
+    this.timer = null;
+    let a: FilmAnswer;
+    try {
+      a = await this.ask();
+    } catch {
+      // no answer: as if it were still being fetched
+      a = { status: 0, retryAfter: null };
+    }
+    if (!this.running) return;
+    if (a.status === 200 || a.status === 206 || a.status === 404) {
+      this.done = true;
+      this.running = false;
+      return this.told(a.status === 404 ? "absent" : "ready");
+    }
+    this.told("loading");
+    const quick = this.clock.now() - this.since! < POLL_QUICK_FOR_MS;
+    this.timer = this.clock.after(() => void this.tick(), quick ? POLL_FIRST_MS : Math.max(POLL_FIRST_MS, (a.retryAfter ?? POLL_LATER_S) * 1000));
+  }
+}
+
+/** Ask the server for the film's first byte: whether it has it. */
+async function askFilm(): Promise<FilmAnswer> {
+  const r = await fetch(FILM, { headers: { range: "bytes=0-0" }, cache: "no-store" });
+  void r.body?.cancel().catch(() => {});
+  const after = Number(r.headers.get("retry-after"));
+  return { status: r.status, retryAfter: Number.isFinite(after) && after > 0 ? after : null };
+}
+
 /** The film's own keys, while its area has the focus (web/src/surfaces.ts declares them). */
 export const FILM_KEYS = [" ", "ArrowLeft", "ArrowRight", "c"] as const;
 
@@ -115,8 +201,11 @@ export class TourFilm {
   /** the chapter open: playing, or shown */
   private at = 0;
   private video: HTMLVideoElement | null = null;
-  /** whether the film could be read: not yet known, there, or not (404, 503: its stills instead) */
-  private film: "unknown" | "ok" | "absent" = "unknown";
+  /** whether the film is here: not yet known, being fetched by the server, there, or not (404) */
+  private film: "unknown" | "loading" | "ok" | "absent" = "unknown";
+  /** whether the reader wants it playing: not after they paused it, nor with reduced motion */
+  private wantPlay: boolean;
+  private waiter: FilmWaiter | null = null;
   private cc = ccOn();
   /** normal, as large as the sheet, the whole screen */
   private size: 0 | 1 | 2 = 0;
@@ -130,6 +219,7 @@ export class TourFilm {
     this.tour = tour;
     this.data = data;
     this.opts = opts;
+    this.wantPlay = !opts.still;
     root.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
       const go = t.closest<HTMLElement>("[data-chapter]");
@@ -137,7 +227,7 @@ export class TourFilm {
       else if (t.closest("[data-film-cc]")) this.setCc(!this.cc);
       else if (t.closest("[data-film-large]")) this.resize(this.size === 0 ? 1 : this.size === 1 ? 2 : 1);
       else if (t.closest("[data-film-list]")) root.querySelector(".film")?.classList.toggle("list-hidden");
-      else if (go && !t.closest("a, [data-tour-show]")) this.go(this.index(go.dataset.chapter!), this.film !== "absent");
+      else if (go && !t.closest("a, [data-tour-show]")) this.go(this.index(go.dataset.chapter!), true);
     });
     root.addEventListener("keydown", (e) => {
       const t = e.target as HTMLElement;
@@ -145,7 +235,7 @@ export class TourFilm {
       if (card && (e.key === "Enter" || e.key === " ")) {
         e.preventDefault();
         e.stopPropagation();
-        return this.go(this.index(card.dataset.chapter!), this.film !== "absent");
+        return this.go(this.index(card.dataset.chapter!), true);
       }
       // the film's keys, its area focused; a button keeps its own Space and Enter
       if (!this.data || t.closest("button, a, input") || !(FILM_KEYS as readonly string[]).includes(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -179,7 +269,7 @@ export class TourFilm {
    *  reduced motion), its actions. */
   private body(c: Chapter, k: number): string {
     const ch = this.data?.chapters[k];
-    const cues = ch && (this.film === "absent" || this.opts.still) ? cuesOf(this.data!.captions, ch) : [];
+    const cues = ch && (this.film === "absent" || this.film === "loading" || this.opts.still) ? cuesOf(this.data!.captions, ch) : [];
     const list = cues.length ? `<ol class="film-cues" aria-label="Captions">${cues.map((q) => `<li>${escapeHtml(q.text)}</li>`).join("")}</ol>` : "";
     return `<div class="tip-text">${c.text}</div>${list}${this.opts.acts(c)}`;
   }
@@ -209,9 +299,10 @@ export class TourFilm {
     this.root.innerHTML =
       `<div class="film"><div class="film-stage" tabindex="0" aria-label="${name}: Space plays or pauses, the arrows go to the chapter before or after, c turns the captions on or off">` +
       `<div class="film-frame" style="aspect-ratio: ${d.width} / ${d.height}">` +
-      `<video class="film-video" muted playsinline preload="metadata" poster="${POSTER}" src="${FILM}" aria-label="${name}: the film">` +
+      `<video class="film-video" muted playsinline preload="metadata" poster="${POSTER}" aria-label="${name}: the film">` +
       `<track kind="captions" src="${VTT}" srclang="en" label="English" default></video>` +
       `<img class="film-still" alt="" hidden>` +
+      `<div class="film-wait" role="status" hidden>Loading the film…</div>` +
       `<div class="film-cc" aria-hidden="true" hidden></div>` +
       `<div class="film-controls"><button data-film-play aria-label="Play" title="Play">▶</button><span class="film-gap"></span>` +
       `<button data-film-cc aria-pressed="${this.cc}" title="Captions (c)">CC</button>` +
@@ -230,13 +321,31 @@ export class TourFilm {
     v.textTracks.addEventListener?.("addtrack", hide);
     v.addEventListener("loadedmetadata", hide);
     hide();
-    // the film cannot be had here (404, 503): its stills and captions
+    // the film, once the server has it: from the chapter the reader is on, playing unless they
+    // paused it or motion is reduced
+    v.addEventListener("loadedmetadata", () => {
+      if (this.film !== "unknown") return;
+      this.film = "ok";
+      v.currentTime = this.data!.chapters[this.at].start;
+      if (this.wantPlay && !this.opts.still) {
+        this.hideStill();
+        void v.play().catch(() => {});
+      } else if (this.opts.still) this.showStill(this.at);
+      else this.hideStill();
+      this.show();
+    });
+    // what was had cannot be read: its stills and captions
     v.addEventListener("error", () => {
+      if (!v.getAttribute("src")) return;
       this.film = "absent";
       this.show();
     });
-    v.addEventListener("loadeddata", () => {
-      this.film = "ok";
+    this.waiter = new FilmWaiter(askFilm, (state) => {
+      if (state === "ready") {
+        this.film = "unknown";
+        v.src = FILM;
+        v.load();
+      } else this.film = state;
       this.show();
     });
     v.addEventListener("play", () => this.sync());
@@ -246,9 +355,11 @@ export class TourFilm {
     v.addEventListener("seeked", () => this.follow());
   }
 
-  /** Begin at a chapter (the first by default): it plays, unless motion is reduced. */
+  /** Begin at a chapter (the first by default): it plays, unless motion is reduced — once the server
+   *  has the film, which is asked for while the sheet shows. */
   start(id?: string): void {
     this.go(id ? this.index(id) : 0, !this.opts.still);
+    this.waiter?.start();
   }
 
   /** Chapter `k` open, the film at its start: playing if `play`; else (reduced motion, no film)
@@ -257,10 +368,11 @@ export class TourFilm {
     this.open(k);
     const v = this.video;
     if (!v || !this.data) return;
-    if (this.film !== "absent") v.currentTime = this.data.chapters[k].start;
-    if (this.opts.still || this.film === "absent" || !play) {
+    if (play && !this.opts.still) this.wantPlay = true;
+    if (this.film === "ok") v.currentTime = this.data.chapters[k].start;
+    if (this.opts.still || this.film !== "ok" || !play) {
       v.pause();
-      if (this.opts.still || this.film === "absent") this.showStill(k);
+      if (this.opts.still || this.film !== "ok") this.showStill(k);
     } else {
       this.hideStill();
       void v.play().catch(() => {});
@@ -280,38 +392,37 @@ export class TourFilm {
     if (still) still.hidden = true;
   }
 
-  /** The film found or not: the open card again (its captions listed or not), its still. */
+  /** The film found, coming, or not: the open card again (its captions listed or not), its still,
+   *  the quiet word that it is loading. */
   private show(): void {
     this.open(this.at, true);
-    if (this.film === "absent" || this.opts.still) this.showStill(this.at);
+    if (this.film === "absent" || this.film === "loading" || this.opts.still) this.showStill(this.at);
+    const wait = this.root.querySelector<HTMLElement>(".film-wait");
+    if (wait) wait.hidden = this.film !== "loading";
     this.sync();
   }
 
-  /** The play button: play or pause; at the end, again from the start; without the film, try it
-   *  again (the server may have it now). */
+  /** The play button: play or pause; at the end, again from the start; while the film comes, to
+   *  play it when it does; without one here, nothing. */
   private toggle(): void {
     const v = this.video;
     if (!v || !this.data) return;
-    if (this.film === "absent") {
-      this.film = "unknown";
-      const at = this.data.chapters[this.at].start;
-      v.src = FILM;
-      v.load();
-      v.addEventListener("loadedmetadata", () => {
-        v.currentTime = at;
-        this.hideStill();
-        void v.play().catch(() => {});
-      }, { once: true });
-      return;
+    if (this.film !== "ok") {
+      if (this.film !== "absent" && !this.opts.still) this.wantPlay = !this.wantPlay;
+      return this.sync();
     }
     if (v.ended || v.currentTime >= this.data.duration - 0.05) {
       v.currentTime = 0;
       this.open(0);
     }
     if (v.paused) {
+      this.wantPlay = true;
       this.hideStill();
       void v.play().catch(() => {});
-    } else v.pause();
+    } else {
+      this.wantPlay = false;
+      v.pause();
+    }
   }
 
   private setCc(on: boolean): void {
@@ -376,14 +487,14 @@ export class TourFilm {
     if (!v || !this.data) return;
     const t = v.currentTime;
     const cs = this.data.chapters;
-    if (this.film !== "absent") {
+    if (this.film === "ok") {
       let k = cs.findIndex((c) => t < c.end);
       if (k < 0) k = cs.length - 1;
       if (k !== this.at) this.open(k);
     }
     this.root.querySelectorAll<HTMLElement>(".film-fill").forEach((f, j) => {
       const c = cs[j];
-      const at = this.film === "absent" ? (j < this.at ? 1 : 0) : t >= c.end ? 1 : t <= c.start ? 0 : (t - c.start) / (c.end - c.start);
+      const at = this.film !== "ok" ? (j < this.at ? 1 : 0) : t >= c.end ? 1 : t <= c.start ? 0 : (t - c.start) / (c.end - c.start);
       f.style.transform = `scaleX(${at.toFixed(4)})`;
     });
     const box = this.root.querySelector<HTMLElement>(".film-cc");
@@ -404,8 +515,11 @@ export class TourFilm {
     if (!v) return;
     const b = this.root.querySelector<HTMLElement>("[data-film-play]")!;
     const end = v.ended;
-    b.textContent = end ? "↻" : v.paused ? "▶" : "❚❚";
-    const label = this.film === "absent" ? "Play the film" : end ? "Play again from the start" : v.paused ? "Play" : "Pause";
+    // while it comes, the button says what the reader wants of it then
+    const playing = this.film === "ok" ? !v.paused : this.wantPlay && !this.opts.still;
+    b.textContent = end ? "↻" : playing ? "❚❚" : "▶";
+    b.toggleAttribute("disabled", this.film === "absent");
+    const label = this.film === "absent" ? "The film is not on this server" : end ? "Play again from the start" : playing ? "Pause" : "Play";
     b.setAttribute("aria-label", label);
     b.title = label;
     cancelAnimationFrame(this.frame);
@@ -418,6 +532,7 @@ export class TourFilm {
 
   stop(): void {
     cancelAnimationFrame(this.frame);
+    this.waiter?.stop();
     this.video?.pause();
     if (this.size) this.resize(0);
     document.removeEventListener("fullscreenchange", this.onFullscreen);
