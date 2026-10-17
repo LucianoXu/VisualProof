@@ -132,7 +132,8 @@ function usage(code = 2): never {
            usage pass's results, prepared views, typeset documents, Lean's language server's
            folder) in projects/<project>-<hash>/, the Lean programs compiled per toolchain in
            lean/, the page's bundle in web/, VisualProof's own releases in updates.json and the
-           patches downloaded in versions/ (code the servers run: keep the root yours alone).
+           patches downloaded in versions/ (code the servers run: keep the root yours alone),
+           and the tips' tour film in media/.
            Default: ${cacheHome()}
            (XDG_DATA_HOME and XDG_CACHE_HOME move both homes, on any platform)
 
@@ -196,7 +197,9 @@ function usage(code = 2): never {
            open pages reloading where they were; a newer version (0.5.0) is told of, in the log
            and the help, with the command that installs it, after which the server restarts into
            it by itself; notify — told of, never downloaded; off — never asked (and no
-           supervisor process). VISUALPROOF_UPDATES says the same. From a checkout, never asked.
+           supervisor process), and the tips' tour film never fetched: the server reaches the
+           network for nothing of its own. VISUALPROOF_UPDATES says the same. From a checkout,
+           never asked.
 
   --library-limit  the most the project's library of papers and images may take, in GB (default
            ${DEFAULT_LIBRARY_LIMIT / 1024 ** 3}); its files are kept in the site directory, by their hash.

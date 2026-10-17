@@ -156,6 +156,30 @@ The owner's decisions of 2026-10-16.
     0.3.0 has no updater: its servers are upgraded by hand to 0.4.0, the first that takes its
     patches.
 
+### The tour film
+
+14. **The tips' tour film is fetched by the server, on its first play** (the owner's decision of
+    2026-10-17): 3½–4 minutes at 2560×1600, too large for the package and for git, it is an asset
+    of the repository's GitHub prerelease `tour-1`, and the package pins it
+    (`assets/tips/tour.json`: its file, size and sha256). The first `GET /tips/tour.mp4` starts the
+    one download, which every request shares and outlives the request that started it; meanwhile
+    the address answers 503 with Retry-After. The download is streamed to a file of its own,
+    never past the pinned size, given up after a minute with nothing or half an hour in all,
+    checked (size and sha256), and moved into the caches' root, `media/<sha256>.mp4` (`0700`, the
+    user's alone, as `versions/`); a film kept before is hashed once per process before it is
+    served. What is not the film is removed and not asked for again for a day (an hour where it
+    could not be had). It is served from there with byte ranges: no reader's browser reaches
+    GitHub. Redirects are followed only to GitHub's own hosts, https, five at most: the hash
+    guards what is kept, the hosts where the server goes. Any reader who may play it (read-only
+    readers too) may cause the one fetch: it is bounded, pinned and happens once.
+    - `--updates off` is the switch: an off server asks nothing of the network on its own (neither
+      the registry nor the film); `/tips/tour.mp4` answers 404, and the tour shows its stills and
+      captions alone. Under notify the film is fetched: it is the installed version's, no update.
+    - A checkout fetches it too (developers see the film); `VISUALPROOF_TOUR_FILM` names a local
+      file served in its place, under off too (a film being made).
+    - Full readers are told its state (`GET /api/updates` `film`: cached, fetching, unavailable
+      and why, waiting, off, local, none); the doctor says it in a line.
+
 ## Implementation notes
 
 - `server/updates.ts`: the versions (release only, newer, same minor; `choose`), npm (`npmPath`,
@@ -182,6 +206,10 @@ The owner's decisions of 2026-10-16.
   - Between a version chosen and its mark written, another server's prune may still remove it:
     the supervisor marks before it starts it and chooses again where the version went meanwhile,
     leaving the window between prune's look and its removal.
+- `server/film.ts`: the film (`Film`; `useFilm`, set up as the server serves; `filmFile`,
+  `filmStatus`; `serveFilm`, the whole answer of `GET /tips/tour.mp4` given the media route's
+  `send`). `VISUALPROOF_MEDIA_BASE` another address to fetch it from, honoured only where it is a
+  loopback address (the tests' asset server).
 - The supervisor's variables are read only by a supervised server. `VISUALPROOF_UPDATE_TEST_MS`
   shortens every wait for `npm run test:updates`, honoured only where npm's registry is a loopback
   address (`npm_config_registry`), as the test's is and a server's never is.

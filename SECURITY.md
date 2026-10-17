@@ -84,6 +84,13 @@ into the latest release only.
   installs it, and what was set aside and why (Activity tells the others the version alone). A
   read-only reader's `GET /api/status` has no log and no review folder; the updates' lines go to
   the server's console alone.
+- **The tips' tour film.** The first time a page plays the tour, the server fetches the film from
+  the project's GitHub release (`releases/download/tour-1/`, redirects followed only to GitHub's own
+  asset hosts, https), once for every reader, bounded by the size the package pins and checked
+  against the sha256 it pins before it is kept, in the caches' root (`media/`, `0700`) — and serves
+  it from there: no reader's browser reaches GitHub. Any reader who may play it, read-only readers
+  too, can cause that one fetch. What is not the pinned film is removed, and not asked for again
+  for a day. `--updates off` stops it: the tour shows its stills and captions alone.
 - **Uploads.** PDFs and images of at most 50 MB each, the library at most `--library-limit` (2 GB
   by default). The server reads PDFs with Poppler: keep it up to date. Pages draw them with pdf.js,
   whose script engine is never served, so a PDF's JavaScript does not run.
@@ -101,7 +108,9 @@ folder up as you would any secret, and never commit it.
 ## Code at rest
 
 The caches' root (`--cache`, by default `~/.cache/visualproof/`) holds, in `versions/`, the patches
-a server downloaded, which the supervisor runs: it is code, as the installed package is. `versions/`
+a server downloaded, which the supervisor runs: it is code, as the installed package is; and in
+`media/` the tips' tour film, checked against the package's sha256 (refused, as `versions/` is,
+where another may write the folder). `versions/`
 is made `0700`; a folder in it that another user owns, or that its group or others may write, is
 refused and its patch never run. Keep the caches' root the server's user's alone, as the site.
 
