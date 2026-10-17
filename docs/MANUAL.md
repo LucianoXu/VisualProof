@@ -178,8 +178,8 @@ day; `--updates` (or `VISUALPROOF_UPDATES`) says what it does with what it finds
 
 The tips' tour film is not in the package (it is 30–60 MB): the first time a page plays it, the
 server fetches it from the project's GitHub release, checks it against the sha256 the package pins,
-keeps it in the caches' root (`media/`) and serves it from there — readers' browsers never reach
-GitHub; meanwhile the page waits, and where it cannot be had the tour shows its stills and
+keeps it in the caches' root (`media/`, where an earlier film no living server pins is removed) and
+serves it from there — readers' browsers never reach GitHub; meanwhile the page waits, and where it cannot be had the tour shows its stills and
 captions. `--updates off` means the server reaches the network for nothing of its own: neither the
 registry nor the film. `VISUALPROOF_TOUR_FILM=<file>` serves a local film in its place.
 

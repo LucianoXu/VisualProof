@@ -5,7 +5,8 @@
 // the film may be; never fetched under --updates off, where the address answers 404.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, createReadStream, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -125,6 +126,47 @@ test("redirects: followed where the film may be (here, the test's host); refused
   await away.file();
   await away.settled();
   assert.match(away.status().why!, /sent to https:\/\/example\.org, which is not where the film is kept/);
+  await A.close();
+});
+
+test("media/ is pruned as versions/ is: the film pinned here and those living servers pin are kept; earlier films, the dead's pins and downloads go; at start and once the film is kept, never while it downloads", async () => {
+  const cache = fresh("prune");
+  const media = join(cache, "media");
+  mkdirSync(media, { recursive: true, mode: 0o700 });
+  chmodSync(media, 0o700);
+  const sha = (c: string) => c.repeat(64);
+  const dead = spawn(process.execPath, ["-e", ""]);
+  await new Promise((ok) => dead.on("exit", ok));
+  // an earlier cut nobody pins; a film an older living server pins; one a dead server pinned
+  writeFileSync(join(media, `${sha("a")}.mp4`), "old cut");
+  writeFileSync(join(media, `${sha("b")}.mp4`), "an older server's");
+  writeFileSync(join(media, `pin-${process.ppid}`), `${sha("b")}\n`);
+  writeFileSync(join(media, `${sha("c")}.mp4`), "a dead server's");
+  writeFileSync(join(media, `pin-${dead.pid}`), `${sha("c")}\n`);
+  // a download a dead server left, and one a living one makes
+  writeFileSync(join(media, `.${sha("d")}.tmp-${dead.pid}`), "half");
+  writeFileSync(join(media, `.${sha("e")}.tmp-${process.ppid}`), "under way");
+  let release = () => {};
+  const held = new Promise<void>((ok) => (release = ok));
+  const A = await assets({ "/tour-abc.mp4": (q, r) => void held.then(() => bytes(FILM)(q, r)) });
+  const film = new Film({ cacheRoot: cache, mode: "auto", pin: pin(), base: A.base });
+  film.start();
+  assert.deepEqual(readdirSync(media).sort(), [`.${sha("e")}.tmp-${process.ppid}`, `${sha("b")}.mp4`, `pin-${process.pid}`, `pin-${process.ppid}`].sort());
+  assert.equal(readFileSync(join(media, `pin-${process.pid}`), "utf8").trim(), pin().sha256);
+  // a film left meanwhile is not removed while this server downloads its own
+  await film.file();
+  writeFileSync(join(media, `${sha("f")}.mp4`), "another cut");
+  film.prune();
+  assert.ok(existsSync(join(media, `${sha("f")}.mp4`)), "not while it downloads");
+  release();
+  await film.settled();
+  await new Promise((r) => setImmediate(r));
+  assert.ok(!existsSync(join(media, `${sha("f")}.mp4`)), "once the film is kept");
+  assert.ok(existsSync(join(media, `${pin().sha256}.mp4`)) && existsSync(join(media, `${sha("b")}.mp4`)));
+  // under off nothing is marked nor removed
+  writeFileSync(join(media, `${sha("g")}.mp4`), "kept under off");
+  new Film({ cacheRoot: cache, mode: "off", pin: pin(), base: A.base }).start();
+  assert.ok(existsSync(join(media, `${sha("g")}.mp4`)));
   await A.close();
 });
 
