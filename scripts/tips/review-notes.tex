@@ -1,0 +1,56 @@
+% The paper the tour film adds to the library (scripts/tips/storyboards/tour.mjs): a short note of
+% the review it shows, typeset by XeLaTeX when the film is recorded (scripts/tips-record.mjs). Alice
+% is the film's reviewer; the mathematics is Sphere-Packing-Lean's.
+\documentclass[11pt]{article}
+\usepackage[a5paper,margin=18mm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{fontspec}
+% the title the library shows it by (the PDF's own)
+\usepackage[pdftitle={Sphere packing in dimension 24: review notes},pdfauthor={Alice},hidelinks]{hyperref}
+\setlength{\parindent}{0pt}
+% Lean's names, smaller, and a paragraph that holds a long one stretched rather than overfull
+\newcommand{\lean}[1]{{\small\texttt{#1}}}
+\sloppy
+\setlength{\parskip}{6pt}
+\pagestyle{plain}
+\title{Sphere packing in dimension 24:\\ review notes}
+\author{Alice}
+\date{16 October 2026}
+\begin{document}
+\maketitle
+
+\section*{What we review}
+
+The target is \lean{SpherePacking.Dim24.MainTheorem}: the densest packing of balls in
+$\mathbb{R}^{24}$ is the Leech packing,
+\[
+  \lean{SpherePackingConstant}\ 24 = \lean{LeechPacking.density},
+\]
+and a periodic packing of that density is a scaled Leech packing. Lean checks the proof. What we
+read is what the statement means: the definitions it rests on.
+
+\section*{Its three keys}
+
+\begin{itemize}
+  \item \lean{SpherePackingConstant} $d$: the supremum of the densities of all sphere packings in
+        $\mathbb{R}^d$, the constant the statement is about.
+  \item \lean{LeechPacking}: the periodic packing of $\mathbb{R}^{24}$ centred at the points of the
+        Leech lattice, at separation $2$; its density is $\pi^{12}/12!$.
+  \item \lean{IsometricToScaledLeech} $S$: some scaling of the Leech packing has the separation of
+        $S$ and, up to an isometry of $\mathbb{R}^{24}$, its centres.
+\end{itemize}
+
+\section*{The proof, in three parts}
+
+\begin{itemize}
+  \item The lower bound is the Leech packing itself:\\
+        \lean{LeechPacking\_density\_le\_SpherePackingConstant}.
+  \item The upper bound is the Cohn--Elkies linear programming bound applied to the auxiliary
+        function \lean{scaledF}: it comes to $\pi^{12}/12!$.\\
+        \lean{SpherePackingConstant\_le\_leech\_density}.
+  \item Uniqueness among periodic packings comes from the case of equality in that bound.
+\end{itemize}
+
+They are used in the proof alone, so none of them is in the TCB: Lean checks them.
+
+\end{document}

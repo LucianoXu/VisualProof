@@ -21,6 +21,7 @@
     "prepack": "npm run build",
     "serve": "node src/server/main.ts serve",
     "showcase": "node scripts/showcase.mjs",
+    "tips:record": "node scripts/tips-record.mjs",
     "typecheck": "tsc --noEmit -p .",
     "test": "node --test --import ./test/setup.ts \"test/*.test.ts\"",
     "test:toolchains": "node scripts/test-toolchains.mjs",

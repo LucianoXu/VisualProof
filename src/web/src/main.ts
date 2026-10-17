@@ -4149,7 +4149,7 @@ async function boot(): Promise<void> {
 
   // a handle for diagnosis from the console: window.visualproof.canvas
   // and the Time Machine's hook, as the build-status popover and the lost-and-found call it
-  (window as unknown as { visualproof: object }).visualproof = { canvas, graph: () => g, present: () => present, board: () => nav.board, views, tm, timeMachine: (at?: TimeMachineAt) => openTimeMachine(at) };
+  (window as unknown as { visualproof: object }).visualproof = { canvas, linear, graph: () => g, present: () => present, board: () => nav.board, views, tm, timeMachine: (at?: TimeMachineAt) => openTimeMachine(at) };
   window.addEventListener("resize", syncInsets);
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
