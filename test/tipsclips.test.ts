@@ -195,3 +195,19 @@ test("the muxer: an index whose chunk offset finds the first sample, sync sample
   const reordered = mp4({ width: 16, height: 8, fps: 30, avcC: Uint8Array.from([1]), samples: [samples[0], { ...samples[2], pts: 2000 }, { ...samples[1], pts: 1000 }] });
   assert.ok(reordered.indexOf(Buffer.from("ctts")) > 0);
 });
+
+test("the muxer: a chunk a second, so that a player reading a chunk whole streams the film", () => {
+  // 75 frames at 30 a second: chunks of 30, 30 and 15, each found where its first sample is
+  const samples = Array.from({ length: 75 }, (_, i) => ({ data: Uint8Array.from([i, i]), key: i % 30 === 0, pts: i * 1000 }));
+  const f = mp4({ width: 16, height: 8, fps: 30, avcC: Uint8Array.from([1]), samples });
+  const stsc = f.indexOf(Buffer.from("stsc"));
+  const entries = f.readUInt32BE(stsc + 8);
+  assert.deepEqual(Array.from({ length: entries }, (_, k) => [0, 4, 8].map((d) => f.readUInt32BE(stsc + 12 + 12 * k + d))), [[1, 30, 1], [3, 15, 1]]);
+  const stco = f.indexOf(Buffer.from("stco"));
+  const chunks = f.readUInt32BE(stco + 8);
+  assert.equal(chunks, 3);
+  for (let c = 0; c < chunks; c++) assert.equal(f[f.readUInt32BE(stco + 12 + 4 * c)], 30 * c, `chunk ${c + 1} starts at its first sample`);
+  // a film of whole seconds has one stsc entry
+  const even = mp4({ width: 16, height: 8, fps: 30, avcC: Uint8Array.from([1]), samples: samples.slice(0, 60) });
+  assert.equal(even.readUInt32BE(even.indexOf(Buffer.from("stsc")) + 8), 1);
+});
