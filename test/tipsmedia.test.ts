@@ -9,7 +9,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { sendMedia, TIP_PATH, tipClips } from "../src/server/media.ts";
+import { sendMedia, TIP_PATH, tipClips, tourVtt } from "../src/server/media.ts";
 import { readOnlyAllows } from "../src/server/readonlygate.ts";
 import { site } from "./site.ts";
 
@@ -85,30 +85,35 @@ test("a reader gone in the middle of a clip leaves no file open; a file that can
   }
 });
 
-test("the clips there are: those in the light theme; the addresses of clips, key frames and the film's chapters alone", () => {
+test("the clips there are: those in the light theme; the addresses of clips, the film's data, poster and stills alone", () => {
   const dir = mkdtempSync(join(tmpdir(), "vp-tips-"));
   try {
-    for (const f of ["tour.light.mp4", "tour.light.webp", "tour-tcb.light.webp", "tour.chapters.json", "phone-fingers.light.mp4", "notes.txt"]) writeFileSync(join(dir, f), "x");
-    assert.deepEqual(tipClips(dir).sort(), ["phone-fingers", "tour"]);
+    for (const f of ["tour.json", "tour.webp", "tour-checks.webp", "phone-fingers.light.mp4", "phone-fingers.light.webp", "notes.txt"]) writeFileSync(join(dir, f), "x");
+    assert.deepEqual(tipClips(dir), ["phone-fingers"]);
     assert.deepEqual(tipClips(join(dir, "none")), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-  for (const p of ["/tips/tour.light.mp4", "/tips/tour-tcb.light.webp", "/tips/tour.chapters.json", "/tips/phone-fingers.light.webp"]) assert.ok(TIP_PATH.test(p), p);
-  for (const p of ["/tips/../package.json", "/tips/tcb.mp4", "/tips/TCB.light.mp4", "/tips/a/b.light.mp4", "/tips/tcb.light.mp4.map", "/tips/other.chapters.json", "/tips/tour.chapters.json.bak"]) assert.ok(!TIP_PATH.test(p), p);
+  for (const p of ["/tips/tour.json", "/tips/tour.webp", "/tips/tour-checks.webp", "/tips/phone-fingers.light.mp4", "/tips/phone-fingers.light.webp"]) assert.ok(TIP_PATH.test(p), p);
+  // the film is not a file of the package (server/media.ts, tourFilmFile), nor are its captions
+  for (const p of ["/tips/tour.mp4", "/tips/tour.en.vtt", "/tips/../package.json", "/tips/tcb.mp4", "/tips/TCB.light.mp4", "/tips/a/b.light.mp4", "/tips/tcb.light.mp4.map", "/tips/other.json", "/tips/tour.json.bak"]) assert.ok(!TIP_PATH.test(p), p);
 });
 
-test("the film's chapters are served as JSON", async () => {
-  const C = await clips({ "tour.chapters.json": 0 });
+test("the film's data is served as JSON; its captions as WebVTT, nothing in them read as markup", async () => {
+  const C = await clips({ "tour.json": 0 });
   try {
-    writeFileSync(join(C.dir, "tour.chapters.json"), JSON.stringify({ duration: 10, chapters: [] }));
-    const r = await fetch(`${C.base}/tour.chapters.json`);
+    writeFileSync(join(C.dir, "tour.json"), JSON.stringify({ film: { duration: 10 }, chapters: [], captions: [] }));
+    const r = await fetch(`${C.base}/tour.json`);
     assert.equal(r.status, 200);
     assert.equal(r.headers.get("content-type"), "application/json");
-    assert.deepEqual(await r.json(), { duration: 10, chapters: [] });
+    assert.deepEqual(await r.json(), { film: { duration: 10 }, chapters: [], captions: [] });
   } finally {
     await C.close();
   }
+  const vtt = tourVtt({ captions: [{ start: 1.5, end: 4, text: "TCB <b>lights</b> & --> what\nit rests on" }, { start: 3661.25, end: 3662, text: "an hour on" }, { start: 5, end: 4, text: "dropped" }] })!;
+  assert.equal(vtt, "WEBVTT\n\n00:00:01.500 --> 00:00:04.000\nTCB &lt;b&gt;lights&lt;/b&gt; &amp; → what it rests on\n\n01:01:01.250 --> 01:01:02.000\nan hour on\n");
+  assert.equal(tourVtt({}), null);
+  assert.equal(tourVtt(null), null);
 });
 
 test("the server lists its clips at /tips/index.json, and lets a read-only reader read them", async () => {

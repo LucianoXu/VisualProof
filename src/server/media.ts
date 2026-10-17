@@ -1,10 +1,11 @@
-// What the sheet's tips play (GuideSpec decision 6): the tour film, assets/tips/tour.light.mp4, its
-// poster and each chapter's key frame (tour-<chapter>.light.webp), where its chapters are
-// (tour.chapters.json), and the phone's gestures (phone-fingers.light.mp4) — served as they are
-// (they are compressed already) and with byte ranges, which Safari needs to play a video at all;
-// and which clips there are.
+// What the sheet's tips play (GuideSpec decision 6): the tour film's data, assets/tips/tour.json (the
+// film pinned by its sha256, its chapters, its captions), its poster tour.webp and each chapter's
+// still tour-<chapter>.webp; its captions as WebVTT, made from tour.json; the film itself,
+// /tips/tour.mp4, which is not in the package (`tourFilmFile`); and the phone's gestures
+// (phone-fingers.light.mp4). Served as they are (they are compressed already) and with byte
+// ranges, which Safari needs to play a video at all; and which clips there are.
 
-import { closeSync, createReadStream, fstatSync, openSync, readdirSync } from "node:fs";
+import { closeSync, createReadStream, fstatSync, openSync, readdirSync, readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { pipeline } from "node:stream";
@@ -13,8 +14,43 @@ import { WEBFONTS } from "./pipeline.ts";
 /** where the clips are: beside the artworks' fonts, in the checkout's src/assets or the package's dist/assets */
 export const TIPS_DIR = join(dirname(WEBFONTS), "tips");
 
-/** a clip's, a key frame's or the chapters' address */
-export const TIP_PATH = /^\/tips\/(?:[a-z0-9]+(?:-[a-z0-9]+)*\.(?:light|dark)\.(?:mp4|webp)|tour\.chapters\.json)$/;
+/** a clip's or its key frame's address, the film's data, poster and stills */
+export const TIP_PATH = /^\/tips\/(?:[a-z0-9]+(?:-[a-z0-9]+)*\.(?:light|dark)\.(?:mp4|webp)|tour(?:-[a-z0-9]+)?\.webp|tour\.json)$/;
+
+/** The film to serve at /tips/tour.mp4, where there is one: for developing, the file
+ *  VISUALPROOF_TOUR_FILM names. The film is not in the package; the server fetches it, checks it
+ *  against tour.json's sha256 and keeps it in the cache (UpdateSpec, beside this). Null: no film
+ *  here, and the page shows the stills and the captions. */
+export function tourFilmFile(): string | null {
+  return process.env.VISUALPROOF_TOUR_FILM || null;
+}
+
+/** A time of a WebVTT cue: hh:mm:ss.mmm. */
+function vttTime(t: number): string {
+  const ms = Math.max(0, Math.round(t * 1000));
+  const p = (n: number, w = 2) => String(n).padStart(w, "0");
+  return `${p(Math.floor(ms / 3_600_000))}:${p(Math.floor(ms / 60_000) % 60)}:${p(Math.floor(ms / 1000) % 60)}.${p(ms % 1000, 3)}`;
+}
+
+/** The film's captions as WebVTT, for assistive technology (the page draws its own from
+ *  tour.json): each cue in order, its text on one line, nothing in it read as markup. Null where
+ *  tour.json says none. */
+export function tourVtt(raw: unknown): string | null {
+  const caps = (raw as { captions?: unknown } | null)?.captions;
+  if (!Array.isArray(caps)) return null;
+  const cues = caps.filter((c): c is { start: number; end: number; text: string } => !!c && typeof c.start === "number" && typeof c.end === "number" && c.end > c.start && typeof c.text === "string");
+  const text = (t: string) => t.replace(/[\r\n]+/g, " ").replace(/-->/g, "→").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return "WEBVTT\n\n" + cues.map((c) => `${vttTime(c.start)} --> ${vttTime(c.end)}\n${text(c.text)}\n`).join("\n");
+}
+
+/** tour.json as the package holds it; null where there is none. */
+export function tourData(dir = TIPS_DIR): unknown {
+  try {
+    return JSON.parse(readFileSync(join(dir, "tour.json"), "utf8"));
+  } catch {
+    return null;
+  }
+}
 
 const TYPES: Record<string, string> = { mp4: "video/mp4", webp: "image/webp", json: "application/json" };
 

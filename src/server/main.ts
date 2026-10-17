@@ -48,7 +48,7 @@ import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
-import { sendMedia, TIP_PATH, TIPS_DIR, tipClips } from "./media.ts";
+import { sendMedia, TIP_PATH, TIPS_DIR, tipClips, tourData, tourFilmFile, tourVtt } from "./media.ts";
 import { withoutReasons } from "../shared/timeline.ts";
 import { FROM_PACKAGE, PACKAGE_ROOT, UPDATE_MODES, Updates } from "./updates.ts";
 import type { UpdateMode } from "./updates.ts";
@@ -844,6 +844,18 @@ export class App {
       if (FONT_PATH.test(path)) return sendFile(req, res, join(WEBFONTS, path.slice("/fonts/".length)));
       // the tips' clips and their key frames (GuideSpec decision 6), and which there are
       if (path === "/tips/index.json") return sendJson(res, { clips: tipClips() });
+      // the tour film, where this server has it (server/media.ts, tourFilmFile): else 404, and the
+      // page shows its stills and captions; and its captions as WebVTT, for assistive technology
+      if (path === "/tips/tour.mp4" && !refused.has(res)) {
+        const film = tourFilmFile();
+        return film ? sendMedia(req, res, film) : sendJson(res, { error: "no film here" }, 404);
+      }
+      if (path === "/tips/tour.en.vtt") {
+        const vtt = tourVtt(tourData());
+        if (vtt === null) return sendJson(res, { error: "no captions" }, 404);
+        res.writeHead(200, { "content-type": "text/vtt; charset=utf-8", "cache-control": "no-cache" });
+        return void res.end(vtt);
+      }
       if (TIP_PATH.test(path) && !refused.has(res)) return sendMedia(req, res, join(TIPS_DIR, path.slice("/tips/".length)));
       // the page, and its workers: the one that lays out the Time Machine's past graphs
       // (web/src/layoutworker.ts), the one that chooses the overview's edges (web/src/edgeworker.ts),
