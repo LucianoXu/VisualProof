@@ -179,6 +179,10 @@ The owner's decisions of 2026-10-16.
       file served in its place, under off too (a film being made).
     - Full readers are told its state (`GET /api/updates` `film`: cached, fetching, unavailable
       and why, waiting, off, local, none); the doctor says it in a line.
+    - `media/` is shared by the user's servers, of whatever version, each pinning its own film:
+      each marks the film it pins while it lives (`pin-<pid>`), and removes the films no living
+      server pins (an earlier cut, a patch's film replaced) and the downloads of servers that died
+      midway — as it starts, and once its film is kept or confirmed; never while it downloads.
 
 ## Implementation notes
 
