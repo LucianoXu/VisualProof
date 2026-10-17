@@ -206,10 +206,9 @@ words, tooltips and hints, the notes of others' changes, the loader.
 
 ## The guide (G1)
 
-A tour on the first visit, on the project itself, ten steps, on a real theorem; a step whose part is
-not shown is passed over; a snapshot has no step about the others; shown once per browser. The `?`
-sheet holds the tips, lists every key and gesture, and replays the tour. What the tour and the tips
-are, in full: GuideSpec.md.
+A tour of ten steps on a real theorem, offered on a first visit by a welcome card, never started by
+itself; the `?` menu holds the tips (a film of a review), every key and gesture, and the tour. What
+the tour, the welcome and the tips are, in full: GuideSpec.md.
 
 ## Implementation notes
 
