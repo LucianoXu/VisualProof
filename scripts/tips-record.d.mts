@@ -6,7 +6,8 @@ export interface Size {
 }
 
 /** One thing done in a film: one verb (camera, move, click, choose, pdf, tap, key, type, drag,
- *  swipe, pinch, wheel, scroll, wait, waitFor, hide, poster, caption, agent, eval) and how. */
+ *  swipe, pinch, wheel, scroll, wait, waitFor, hide, poster, filmPoster, fade, caption, agent, eval)
+ *  and how. */
 export type Step = Record<string, any>;
 
 /** A chapter of a film: its id and what is done in it. */

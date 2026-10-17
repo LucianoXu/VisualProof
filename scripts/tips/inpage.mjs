@@ -197,6 +197,30 @@ export function inPage() {
       return { w: 0, h: 0, ...target };
     },
 
+    /** The film's title over the page: the page's background at `cover` (0 to 1) and the
+     *  VisualProof wordmark at `title`, in the header's own style (`.logo`, its gradient and
+     *  font), large, in the middle. Neither: taken away. */
+    title({ cover = 0, title = 0 }) {
+      let el = document.getElementById("__tips-title");
+      if (!cover && !title) {
+        el?.remove();
+        return;
+      }
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "__tips-title";
+        el.style.cssText = "position:fixed;inset:0;z-index:2147483646;pointer-events:none;display:flex;align-items:center;justify-content:center";
+        el.innerHTML =
+          `<div data-bg style="position:absolute;inset:0;background:${getComputedStyle(document.body).backgroundColor}"></div>` +
+          '<span data-t class="logo" style="position:relative;font-size:132px;line-height:1.25;padding:0 0.06em;display:inline-block"></span>';
+        el.querySelector("[data-t]").textContent = "VisualProof";
+        // in the page's body, so that the wordmark takes the page's font
+        document.body.appendChild(el);
+      }
+      el.querySelector("[data-bg]").style.opacity = String(cover);
+      el.querySelector("[data-t]").style.opacity = String(title);
+    },
+
     /** What the browser itself would show, drawn over the page, since a headless one shows none: a
      *  download's bubble (`saved`: the file's name, its size) or a downloaded PDF's pages
      *  (`pdf`: the file's name, its pages as images). `null` takes it away. */

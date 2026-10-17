@@ -28,7 +28,7 @@ const TOUR = ["target", "view", "arrange", "source", "keys", "checks", "review",
 const STILL_MAX = 200 * 1024;
 const CAPTION_MAX = 60;
 
-const VERBS = ["camera", "move", "click", "choose", "pdf", "tap", "key", "type", "drag", "swipe", "pinch", "wheel", "scroll", "wait", "waitFor", "hide", "poster", "caption", "agent", "eval"];
+const VERBS = ["camera", "move", "click", "choose", "pdf", "tap", "key", "type", "drag", "swipe", "pinch", "wheel", "scroll", "wait", "waitFor", "hide", "poster", "filmPoster", "fade", "caption", "agent", "eval"];
 
 /** The page's own text: its skeleton, its code and its style, where every control it makes is named. */
 const WEB = join(ROOT, "src", "web");

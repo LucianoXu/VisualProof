@@ -331,6 +331,8 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
   let ring = 0, ringX = px, ringY = py, key = "", keyT = 0, keyHeld = false, hidden = !!board.hidePointer || !!board.phone;
   // a pinch's other finger, while it is down
   let second = null;
+  // the film's title over the page (scripts/tips/inpage.mjs, `title`)
+  const title = { cover: 0, title: 0 };
   const cam = { x: V.width / 2, y: V.height / 2, vx: 0, vy: 0, gx: V.width / 2, gy: V.height / 2, follow: false };
   let late = 0;
   let tick = 0;
@@ -410,10 +412,11 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
       if (keyT > 1100) key = "";
     }
     const keyAlpha = Math.min(1, keyT / 120, Math.max(0, (1100 - keyT) / 250));
-    await page.evaluate((p) => {
+    await page.evaluate(([p, t]) => {
       window.__tips.pointer(p);
+      window.__tips.title(t);
       window.__tips.sync();
-    }, { x: px, y: py, finger: !!board.phone, ring, ringX, ringY, key, keyAlpha, hidden, second });
+    }, [{ x: px, y: py, finger: !!board.phone, ring, ringX, ringY, key, keyAlpha, hidden, second }, title]);
     if (cam.follow) {
       // the pointer near an edge of the frame brings the frame along
       const mx = camW * 0.3, my = camH * 0.3;
@@ -701,6 +704,28 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
         await page.mouse.wheel(0, s.wheel / n);
         await frame();
       }
+    },
+    /** The title over the page faded over `ms`: `cover` (the page's background) and `title` (the
+     *  wordmark), each from its first value to its second (one value: held there). */
+    async fade(s) {
+      const from = { ...title };
+      const to = {};
+      for (const k of ["cover", "title"]) {
+        const v = s.fade[k];
+        if (Array.isArray(v)) [from[k], to[k]] = v;
+        else to[k] = v ?? title[k];
+      }
+      const n = Math.round((s.ms ?? 0) / DT);
+      Object.assign(title, n ? from : to);
+      for (let i = 1; i <= n; i++) {
+        const t = easeInOut(i / n);
+        for (const k of ["cover", "title"]) title[k] = from[k] + (to[k] - from[k]) * t;
+        await frame();
+      }
+    },
+    /** This frame is the film's poster (else its first). */
+    async filmPoster() {
+      poster = await still();
     },
     /** A panel scrolled over `ms` so that what `to` finds stands in its middle (a reader's wheel). */
     async scroll(s) {
