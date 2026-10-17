@@ -148,8 +148,8 @@ Every field is optional; left out, as a new artwork has it.
   names; `from` `none` (default) or `board`.
 - `targets`: `all` (default), `none`, `faded`, or a list of targets marked alone. `keys`, `notes`:
   default true. `edges`: `all` (under a selection, the rest faint), `selection`, `none`.
-- `selection`: `{name, mode}` (`mode` as `POST view`'s; default `tcb`), lit while `lit` (default
-  true). `view`: a view's id; left out, the Project.
+- `selection`: `{name, mode}` (`mode` as `POST view`'s, or `refs`, what it uses directly; default
+  `tcb`), lit while `lit` (default true). `view`: a view's id; left out, the Project.
 
 Answer: `{ok, link, length, size, names: {clusters, decls, ruled}, targets, selection, left, note}`;
 `left`: names or targets beyond what an artwork carries, left out. Saving both files, the page says
