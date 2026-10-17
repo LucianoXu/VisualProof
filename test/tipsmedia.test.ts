@@ -95,7 +95,7 @@ test("the clips there are: those in the light theme; the addresses of clips, the
     rmSync(dir, { recursive: true, force: true });
   }
   for (const p of ["/tips/tour.json", "/tips/tour.webp", "/tips/tour-checks.webp", "/tips/phone-fingers.light.mp4", "/tips/phone-fingers.light.webp"]) assert.ok(TIP_PATH.test(p), p);
-  // the film is not a file of the package (server/media.ts, tourFilmFile), nor are its captions
+  // the film is not a file of the package (server/film.ts fetches it), nor are its captions
   for (const p of ["/tips/tour.mp4", "/tips/tour.en.vtt", "/tips/../package.json", "/tips/tcb.mp4", "/tips/TCB.light.mp4", "/tips/a/b.light.mp4", "/tips/tcb.light.mp4.map", "/tips/other.json", "/tips/tour.json.bak"]) assert.ok(!TIP_PATH.test(p), p);
 });
 

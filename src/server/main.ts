@@ -48,12 +48,13 @@ import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
-import { sendMedia, TIP_PATH, TIPS_DIR, tipClips, tourData, tourFilmFile, tourVtt } from "./media.ts";
+import { sendMedia, TIP_PATH, TIPS_DIR, tipClips, tourData, tourVtt } from "./media.ts";
 import { withoutReasons } from "../shared/timeline.ts";
 import { FROM_PACKAGE, PACKAGE_ROOT, UPDATE_MODES, Updates } from "./updates.ts";
 import type { UpdateMode } from "./updates.ts";
 import { RESTART_STATUS, supervise } from "./supervise.ts";
 import { stopChildren } from "./children.ts";
+import { filmStatus, serveFilm, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 
 interface Options {
@@ -132,7 +133,8 @@ function usage(code = 2): never {
            usage pass's results, prepared views, typeset documents, Lean's language server's
            folder) in projects/<project>-<hash>/, the Lean programs compiled per toolchain in
            lean/, the page's bundle in web/, VisualProof's own releases in updates.json and the
-           patches downloaded in versions/ (code the servers run: keep the root yours alone).
+           patches downloaded in versions/ (code the servers run: keep the root yours alone),
+           and the tips' tour film in media/.
            Default: ${cacheHome()}
            (XDG_DATA_HOME and XDG_CACHE_HOME move both homes, on any platform)
 
@@ -196,7 +198,9 @@ function usage(code = 2): never {
            open pages reloading where they were; a newer version (0.5.0) is told of, in the log
            and the help, with the command that installs it, after which the server restarts into
            it by itself; notify — told of, never downloaded; off — never asked (and no
-           supervisor process). VISUALPROOF_UPDATES says the same. From a checkout, never asked.
+           supervisor process), and the tips' tour film never fetched: the server reaches the
+           network for nothing of its own. VISUALPROOF_UPDATES says the same. From a checkout,
+           never asked.
 
   --library-limit  the most the project's library of papers and images may take, in GB (default
            ${DEFAULT_LIBRARY_LIMIT / 1024 ** 3}); its files are kept in the site directory, by their hash.
@@ -844,12 +848,10 @@ export class App {
       if (FONT_PATH.test(path)) return sendFile(req, res, join(WEBFONTS, path.slice("/fonts/".length)));
       // the tips' clips and their key frames (GuideSpec decision 6), and which there are
       if (path === "/tips/index.json") return sendJson(res, { clips: tipClips() });
-      // the tour film, where this server has it (server/media.ts, tourFilmFile): else 404, and the
-      // page shows its stills and captions; and its captions as WebVTT, for assistive technology
-      if (path === "/tips/tour.mp4" && !refused.has(res)) {
-        const film = tourFilmFile();
-        return film ? sendMedia(req, res, film) : sendJson(res, { error: "no film here" }, 404);
-      }
+      // the tour film, fetched by this server on its first play and kept checked in the cache
+      // (server/film.ts, UpdateSpec decision 14): else 503 while it comes, or 404, and the page shows
+      // its stills and captions; and its captions as WebVTT, for assistive technology
+      if (path === "/tips/tour.mp4" && !refused.has(res)) return void serveFilm(req, res, sendMedia);
       if (path === "/tips/tour.en.vtt") {
         const vtt = tourVtt(tourData());
         if (vtt === null) return sendJson(res, { error: "no captions" }, 404);
@@ -1468,7 +1470,10 @@ async function main(): Promise<void> {
     site: dirs.site,
     // what the supervisor set aside without a record of it (a full disk), believed only from it
     also: new Set(supervised ? unrecordedOf(process.env.VISUALPROOF_UNRECORDED) : []),
+    film: () => filmStatus(),
   });
+  // the tips' tour film, fetched on its first play (UpdateSpec decision 14; never under --updates off)
+  useFilm({ cacheRoot, mode: o.updates, log: (l) => console.log(l) });
   live.updateStatus = (full) => updates.status(full);
   app.updates = updates;
   stopNow = () => stop(0, { stopped: true });

@@ -62,7 +62,8 @@ The README says how to install the `visualproof` command. A checkout also runs a
     by every project and checkout, the page's bundle in `web/`, and what the servers know of
     VisualProof's own releases: `updates.json` (the last check) and `versions/`, the patches they
     downloaded (see Updates), which is code the servers run, so the caches' root is kept the
-    server's user's alone (`versions/` is made `0700`, and one others may write is refused). By default
+    server's user's alone (`versions/` is made `0700`, and one others may write is refused); and
+    `media/`, the tips' tour film, fetched on its first play (see Updates). By default
     `~/.cache/visualproof/` (macOS: `~/Library/Caches/visualproof/`). `XDG_DATA_HOME` and
     `XDG_CACHE_HOME` move both defaults, on any platform. The server says where the site and the
     project's caches are when it starts.
@@ -174,6 +175,13 @@ day; `--updates` (or `VISUALPROOF_UPDATES`) says what it does with what it finds
 - **notify**: told of, never downloaded. **off**: the registry is never asked (a machine kept
   offline), and the server runs as one process. `VISUALPROOF_UPDATES=off` keeps `visualproof
   doctor` from asking it too.
+
+The tips' tour film is not in the package (it is 30–60 MB): the first time a page plays it, the
+server fetches it from the project's GitHub release, checks it against the sha256 the package pins,
+keeps it in the caches' root (`media/`) and serves it from there — readers' browsers never reach
+GitHub; meanwhile the page waits, and where it cannot be had the tour shows its stills and
+captions. `--updates off` means the server reaches the network for nothing of its own: neither the
+registry nor the film. `VISUALPROOF_TOUR_FILM=<file>` serves a local film in its place.
 
 `visualproof serve` from an installed package is a small supervisor that runs the server as its
 child and starts it again in the new version. A patch that fails before it serves is set aside for

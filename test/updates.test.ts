@@ -312,6 +312,9 @@ test("a server under auto downloads the patch it may take, restarts into it at a
   // a checkout's server follows no releases, and says so rather than a mode
   const co = new Updates({ mode: "auto", cacheRoot: cache, canRestart: false, check: false, checkout: true, quiet: () => true, restart: () => {}, log: () => {}, running: "0.4.0", installedRoot: root });
   assert.deepEqual([co.status(true), co.status(false)], [{ running: "0.4.0", checkout: true }, { running: "0.4.0" }]);
+  // the tips' tour film, to full readers alone
+  const fi = new Updates({ mode: "auto", cacheRoot: cache, canRestart: false, check: false, quiet: () => true, restart: () => {}, log: () => {}, running: "0.4.0", installedRoot: root, film: () => ({ state: "fetching" }) });
+  assert.deepEqual([fi.status(true).film, fi.status(false).film], [{ state: "fetching" }, undefined]);
   assert.deepEqual(JSON.parse(readFileSync(join(cache, "updates.json"), "utf8")).versions, ["0.4.0", "0.4.1", "0.5.0"]);
   // someone is on a page: it waits; nobody is: it restarts
   await u.look();

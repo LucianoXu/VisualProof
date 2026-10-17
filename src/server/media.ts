@@ -1,7 +1,7 @@
 // What the sheet's tips play (GuideSpec decision 6): the tour film's data, assets/tips/tour.json (the
 // film pinned by its sha256, its chapters, its captions), its poster tour.webp and each chapter's
 // still tour-<chapter>.webp; its captions as WebVTT, made from tour.json; the film itself,
-// /tips/tour.mp4, which is not in the package (`tourFilmFile`); and the phone's gestures
+// /tips/tour.mp4, which is not in the package (server/film.ts fetches it); and the phone's gestures
 // (phone-fingers.light.mp4). Served as they are (they are compressed already) and with byte
 // ranges, which Safari needs to play a video at all; and which clips there are.
 
@@ -16,14 +16,6 @@ export const TIPS_DIR = join(dirname(WEBFONTS), "tips");
 
 /** a clip's or its key frame's address, the film's data, poster and stills */
 export const TIP_PATH = /^\/tips\/(?:[a-z0-9]+(?:-[a-z0-9]+)*\.(?:light|dark)\.(?:mp4|webp)|tour(?:-[a-z0-9]+)?\.webp|tour\.json)$/;
-
-/** The film to serve at /tips/tour.mp4, where there is one: for developing, the file
- *  VISUALPROOF_TOUR_FILM names. The film is not in the package; the server fetches it, checks it
- *  against tour.json's sha256 and keeps it in the cache (UpdateSpec, beside this). Null: no film
- *  here, and the page shows the stills and the captions. */
-export function tourFilmFile(): string | null {
-  return process.env.VISUALPROOF_TOUR_FILM || null;
-}
 
 /** A time of a WebVTT cue: hh:mm:ss.mmm. */
 function vttTime(t: number): string {
