@@ -48,12 +48,13 @@ import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
+import { sendMedia, TIP_PATH, TIPS_DIR, tipClips, tourData, tourVtt } from "./media.ts";
 import { withoutReasons } from "../shared/timeline.ts";
 import { FROM_PACKAGE, PACKAGE_ROOT, UPDATE_MODES, Updates } from "./updates.ts";
 import type { UpdateMode } from "./updates.ts";
 import { RESTART_STATUS, supervise } from "./supervise.ts";
 import { stopChildren } from "./children.ts";
-import { filmStatus, useFilm } from "./film.ts";
+import { filmStatus, serveFilm, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 
 interface Options {
@@ -845,6 +846,19 @@ export class App {
       if (path === "/style.css") return sendFile(req, res, join(WEB, "style.css"));
       // the fonts an artwork is drawn in (ExportSpec decision 19)
       if (FONT_PATH.test(path)) return sendFile(req, res, join(WEBFONTS, path.slice("/fonts/".length)));
+      // the tips' clips and their key frames (GuideSpec decision 6), and which there are
+      if (path === "/tips/index.json") return sendJson(res, { clips: tipClips() });
+      // the tour film, fetched by this server on its first play and kept checked in the cache
+      // (server/film.ts, UpdateSpec decision 14): else 503 while it comes, or 404, and the page shows
+      // its stills and captions; and its captions as WebVTT, for assistive technology
+      if (path === "/tips/tour.mp4" && !refused.has(res)) return void serveFilm(req, res, sendMedia);
+      if (path === "/tips/tour.en.vtt") {
+        const vtt = tourVtt(tourData());
+        if (vtt === null) return sendJson(res, { error: "no captions" }, 404);
+        res.writeHead(200, { "content-type": "text/vtt; charset=utf-8", "cache-control": "no-cache" });
+        return void res.end(vtt);
+      }
+      if (TIP_PATH.test(path) && !refused.has(res)) return sendMedia(req, res, join(TIPS_DIR, path.slice("/tips/".length)));
       // the page, and its workers: the one that lays out the Time Machine's past graphs
       // (web/src/layoutworker.ts), the one that chooses the overview's edges (web/src/edgeworker.ts),
       // and pdf.js's, which reads the library's PDFs for the reference window (AttachmentSpec decision 11)

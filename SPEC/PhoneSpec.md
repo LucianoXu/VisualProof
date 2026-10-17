@@ -71,8 +71,8 @@ decides them.
 14. **The Time Machine** keeps its clock, its ruler, the build's date and ✕ in its bar; keeping a
     build or saving it as a view arranges the board, and is left to a larger screen. The focus
     gives way to it.
-15. **The help** (`?` in ⋯) lists the gestures and the page's places instead of the keys
-    (`web/src/guide.ts`).
+15. **The help** (`?` in ⋯) holds the tips that fit a phone (GuideSpec decision 10), and lists the
+    gestures and the page's places instead of the keys (`web/src/guide.ts`).
 
 ## Open
 
@@ -81,5 +81,5 @@ decides them.
   call (decision 1 suggests not).
 - **The mode in use** shows only in ⋯ (decision 7). A mark of it on the screen, if a reader loses
   track of it.
-- **Not yet made for a phone**: the tour, the conversation window, the linear form and the
-  artwork's frame.
+- **Not yet made for a phone**: the conversation window, the linear form and the artwork's frame.
+  (The tour has a phone's own since 0.4: GuideSpec decision 4.)

@@ -77,7 +77,12 @@
         <button id="who" class="who" hidden></button>
         <div id="who-menu" class="glass" role="menu" aria-label="Your name and visibility" hidden></div>
       </div>
-      <button id="help-btn" class="help-btn" title="Keys and gestures, and the tour (?)" aria-label="Help">?</button>
+      <!-- help: a menu of the tips, the keys, the tour, and what the project and VisualProof are
+           (GuideSpec decision 8, web/src/guide.ts) -->
+      <div class="help-wrap">
+        <button id="help-btn" class="help-btn" title="Help: tips, keys, the tour (?)" aria-label="Help" aria-haspopup="menu" aria-expanded="false">?</button>
+        <div id="help-menu" class="glass" role="menu" aria-label="Help" hidden></div>
+      </div>
       <!-- on a phone the bar's buttons are in one menu (web/src/phone.ts) -->
       <div class="more-wrap">
         <button id="more-btn" class="act-btn act-icon" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="Share, the library, export, activity, your name, help"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg><span id="more-badge" class="act-badge" hidden></span></button>
@@ -229,6 +234,13 @@
     <div class="tour-spot"></div><div class="tour-card glass" role="dialog" aria-live="polite"></div>
   </div>
   <div id="help" hidden></div>
+  <!-- a tip in place, beside the control it is about (GuideSpec decision 9, web/src/intip.ts); What's
+       new, said once when the server runs a newer release than this browser saw (decision 11) -->
+  <div id="intip" class="glass" role="dialog" aria-live="polite" hidden></div>
+  <div id="whatsnew" class="glass" role="status" hidden></div>
+  <!-- a first visit: the tour and the film offered, never imposed; no backdrop, never the keyboard's
+       (GuideSpec decision 1) -->
+  <div id="welcome" class="glass" role="region" aria-label="Welcome" aria-live="polite" hidden></div>
   <div id="modal" hidden>
     <form id="who-form" class="modal-box glass" autocomplete="off">
       <div class="modal-title" id="who-title">Who is reviewing?</div>

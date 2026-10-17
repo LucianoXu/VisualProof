@@ -53,8 +53,10 @@ export interface Saved {
   private?: boolean;
   /** the newest event this reader has seen in the timeline (CollabSpec decision 5) */
   activitySeen?: string;
-  /** the first-visit tour was shown (CollabSpec, G1) */
+  /** the tour was taken (GuideSpec decision 1) */
   guided?: boolean;
+  /** the welcome card was shown, once (GuideSpec decision 1) */
+  welcomed?: boolean;
   /** the reader's own "Open in editor" template (shared/editor.ts), over the server's */
   editor?: string;
   /** the sections this reader folded: the side panel's targets and the board's filter, the

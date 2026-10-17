@@ -62,6 +62,9 @@ interface Yours {
    *  reader looks aside until the followed reader moves; following ends there only by what is there
    *  to end it (the strip's ✕, the initials clicked again, web/src/people.ts) */
   whole?: true;
+  /** keys that act inside it alone, while it has the focus, and are kept from the page: there they
+   *  change nothing followed, whatever they do elsewhere */
+  ownKeys?: readonly string[];
 }
 
 /** The followed parts, in the order a follower's page applies them. */
@@ -106,7 +109,7 @@ export const FOLLOWED = [
     part: "selection",
     what: "the selection, and going somewhere: a row, a name or a result that goes to a declaration or a cluster",
     fields: ["selection"],
-    changes: "#selbar, #ctxmenu, .cm-sub, #results .hit, [data-go], [data-ref], [data-walk], [data-c], [data-module], [data-tm-go], #help [data-help-tour], #linear",
+    changes: "#selbar, #ctxmenu, .cm-sub, #results .hit, [data-go], [data-ref], [data-walk], [data-c], [data-module], [data-tm-go], #help [data-help-tour], #help-menu [data-hm=tour], #welcome [data-wel=tour], #help [data-tip-show], #help [data-tour-show], #intip [data-intip-show], #linear",
     keys: ["ContextMenu", "F10"],
     fieldKeys: [{ in: "#search", key: "Enter" }],
     place: true,
@@ -217,7 +220,10 @@ export const YOURS = [
   { id: "paperTools", what: "zoom, find and the box tool in the reference window", where: "[data-pw-zoom], [data-pw-find], [data-pw-box], .pw-find" },
   { id: "share", what: "Share, and its switch Exactly what I see", where: "#share-btn, #share-pop" },
   { id: "export", what: "Export", where: "#export-btn, #export-modal" },
-  { id: "help", what: "Help: the ? sheet and the tour", where: "#help-btn, #help, #tour", keys: ["?"] },
+  { id: "help", what: "Help: the ? menu and its sheet, its tips and its keys, the tour, a tip in place, What's new, the welcome of a first visit (GuideSpec)", where: "#help-btn, #help-menu, #help, #tour, #intip, #whatsnew, #welcome, [data-tip-open]", keys: ["?"] },
+  // the tour film in the sheet (GuideSpec decision 6, web/src/tourfilm.ts): its keys play it, go
+  // from chapter to chapter, turn its captions on or off, there alone
+  { id: "film", what: "the tour film in the help sheet: playing, its chapters, its captions, its larger sizes", where: "[data-film]", ownKeys: [" ", "ArrowLeft", "ArrowRight", "c"] },
   { id: "library", what: "the Library popover", where: "#library-btn, #library-pop" },
   { id: "board", what: "⚙ Board: the board's scope, clustering, depth and Re-layout, shared with everyone on it", where: "#board-btn, #board-pop", keys: ["e", "[", "]"] },
   { id: "trusted", what: "Trusted, and trusting without review", where: "#trusted-btn, #trust-list, #trust-pop" },
@@ -327,6 +333,8 @@ const REGIONS: { sel: string; verdict: Verdict }[] = [
   ...FOLLOWED.flatMap((p): { sel: string; verdict: Verdict }[] => ("reads" in p ? [{ sel: p.reads, verdict: "reads" }] : [])),
 ];
 const FOLLOWED_KEYS = new Set<string>(FOLLOWED.flatMap((p) => ("keys" in p ? [...p.keys] : [])));
+/** the keys a surface of the reader's own keeps while it has the focus */
+export const OWN_KEYS: readonly { in: string; keys: readonly string[] }[] = YOURS.flatMap((y) => ("ownKeys" in y ? [{ in: y.where, keys: y.ownKeys }] : []));
 const YOURS_KEYS = new Set<string>(YOURS.flatMap((y) => ("keys" in y ? [...y.keys] : [])));
 const FIELD_KEYS = FOLLOWED.flatMap((p) => ("fieldKeys" in p ? [...p.fieldKeys] : []));
 const WHOLE = YOURS.flatMap((y) => ("whole" in y ? [y.where] : [])).join(", ");
@@ -390,6 +398,8 @@ export function keyActs(e: KeyPress, t: PageEl | null, field: boolean): boolean 
   const yours = inYours(t);
   if (field || e.isComposing) return !yours || (!e.isComposing && FIELD_KEYS.some((k) => k.key === e.key && closest(t, k.in) !== null));
   if ((e.key === "Enter" || e.key === " ") && closest(t, PRESSABLE)) return pressActs(t);
+  // a surface's own keys, there (the film's Space, arrows and c): the page never sees them
+  if (OWN_KEYS.some((o) => o.keys.includes(e.key) && closest(t, o.in) !== null)) return false;
   if ((e.ctrlKey || e.metaKey) && e.key.length === 1) return false;
   if (FOLLOWED_KEYS.has(e.key)) return true;
   if (yours || YOURS_KEYS.has(e.key)) return false;

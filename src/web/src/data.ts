@@ -1,6 +1,7 @@
 // Where the page gets its data: the live server, or a snapshot carried inside the page itself
 // (`visualproof export`), which opens from disk with no server at all.
 
+import type { UpdateStatus } from "./guide.ts";
 import type { Outline } from "../../shared/doc/outline.ts";
 import type { BoardMemory } from "../../shared/board.ts";
 import type { AgentTalk, AgentTokenInfo, ChatMessage, PersonInvite, PresenceView, ReadOnlyLink } from "../../shared/collab.ts";
@@ -165,6 +166,14 @@ export interface DataSource {
   /** what this page may share (web/src/share.ts): the link that lets someone in, and whether
    *  read-only links can be made here */
   shareInfo(): Promise<ShareInfo>;
+  /** which VisualProof the server runs, and what it says of a newer one (UpdateSpec); null where it
+   *  says nothing (a snapshot, a server that does not tell) */
+  updates(): Promise<UpdateStatus | null>;
+  /** the clips of the tips the server has (GuideSpec decision 6); none in a snapshot */
+  tipClips(): Promise<Set<string>>;
+  /** what the recording says of the tour film (`tour.json`: the film, its chapters, its captions);
+   *  null where there is none */
+  tourJson(): Promise<unknown>;
   /** sharing with AI agents (AgentSpec decision 7): the tokens in force and what a new one may be;
    *  null where there is no server (a snapshot) or it cannot be reached */
   agentShares(): Promise<AgentShares | null>;
@@ -428,6 +437,9 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     exportDoc: async () => "a snapshot cannot typeset documents: export from the server",
     exportJob: async () => "a snapshot cannot typeset documents: export from the server",
     shareInfo: async () => ({ path: null }),
+    updates: async () => null,
+    tipClips: async () => new Set<string>(),
+    tourJson: async () => null,
     agentShares: async () => null,
     shareAgent: async () => ({ error: "a snapshot has no server to share with an agent" }),
     agentPrompt: async () => ({ error: "a snapshot has no server" }),
@@ -589,6 +601,20 @@ function serverSource(): DataSource {
       fetch("/api/share")
         .then((r) => r.json())
         .then((b: ShareInfo) => ({ ...b, path: typeof b.path === "string" ? b.path : null })),
+    updates: () =>
+      fetch("/api/updates")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b: UpdateStatus | null) => (b && typeof b.running === "string" ? b : null))
+        .catch(() => null),
+    tipClips: () =>
+      fetch("/tips/index.json")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b: { clips?: unknown } | null) => new Set(Array.isArray(b?.clips) ? b.clips.filter((c): c is string => typeof c === "string") : []))
+        .catch(() => new Set<string>()),
+    tourJson: () =>
+      fetch("/tips/tour.json")
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
     agentShares: () =>
       fetch("/api/share/agents")
         .then((r) => (r.ok ? r.json() : null))

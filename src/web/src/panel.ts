@@ -242,10 +242,13 @@ export class Panel {
           `<button data-tcb-order="key" class="${keyOnly ? "on" : ""}" title="The key declarations alone, in review order">◆ Key</button>` +
           `<button data-tcb-order="kind" class="${inOrder ? "" : "on"}" title="Grouped by kind, by name">By kind</button></span>`;
 
-    // a part that folds: its heading, saying what is in it, and its body while open
-    const part = (key: string, title: string, aside: string, body: () => string) => {
+    // a part that folds: its heading, saying what is in it, and its body while open; beside the
+    // heading, the ⓘ of the tip it is about (GuideSpec decision 15)
+    const part = (key: string, title: string, aside: string, body: () => string, tip?: { id: string; title: string }) => {
       const shut = this.hooks.shut(key);
-      return `<div class="p-sec">${sectionHead(key, shut, title, aside)}${shut ? "" : `<div class="p-sec-body">${body()}</div>`}</div>`;
+      const head = sectionHead(key, shut, title, aside);
+      const info = tip ? `<button class="p-info" data-tip-open="${tip.id}" title="${escapeHtml(tip.title)}" aria-label="${escapeHtml(tip.title)}">ⓘ</button>` : "";
+      return `<div class="p-sec ${key}">${info ? `<div class="sec-row">${head}${info}</div>` : head}${shut ? "" : `<div class="p-sec-body">${body()}</div>`}</div>`;
     };
     const flags = (v.flags ?? []).map((f) => `<span class="chip ${f === "opaque" || f === "unsafe" || f === "partial" || f === "implemented_by" || f === "extern" ? "warn" : ""}">${f}</span>`).join("");
     const line = v.range ? `:${v.range[0]}` : "";
@@ -291,7 +294,7 @@ export class Panel {
         () => `<div class="axioms">${axioms.length ? axioms.map((a) => `<span class="chip ${nonStd.includes(a) ? "bad" : ""}">${escapeHtml(a)}</span>`).join("") : `<span class="muted">none</span>`}</div>`,
       )}
       ${notationHtml(g, i)}
-      ${tcbP ? part(PANEL_SECTIONS.tcb, "Trusted definitions", `${tcbP}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`) : ""}
+      ${tcbP ? part(PANEL_SECTIONS.tcb, "Its TCB", `${tcbP}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`, { id: "checks", title: "What a TCB is: the film's chapter on the ways to check" }) : ""}
     `;
     this.el.classList.add("open");
     if (!same) this.el.scrollTop = 0;
