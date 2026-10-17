@@ -1,19 +1,28 @@
 # The whole suite once per Lean toolchain of test/toolchains.json (VP_TOOLCHAIN, test/fixturecopy.ts),
-# when what reads Lean's output changes, and every week; and, allowed to fail, on the newest stable
-# release and on a release candidate newer than it, to hear early what the next release changes.
-# Every week also the typesetting, with XeLaTeX. A workflow of its own because `paths` is a
-# workflow's, not a job's.
+# on a pull request that changes what reads Lean's output or how Lean is run, and every week. Every
+# week, or by hand, also: allowed to fail, the newest stable release and a release candidate newer
+# than it, to hear early what the next release changes; and the typesetting, with XeLaTeX. A
+# workflow of its own because `paths` is a workflow's, not a job's.
 name: toolchains
 
 on:
-  push:
+  pull_request:
     paths:
       - src/extractor/**
       - src/server/extract.ts
       - src/server/usage.ts
       - src/server/status.ts
       - src/server/hover.ts
-      - test/**
+      - src/server/children.ts
+      - test/fixture/**
+      - test/golden/**
+      - test/toolchains.json
+      - test/fixturecopy.ts
+      - test/compat.test.ts
+      - test/extract.test.ts
+      - test/usage.test.ts
+      - test/hover.test.ts
+      - test/status.test.ts
       - .github/workflows/toolchains.yml
   schedule:
     - cron: "0 4 * * 1"
@@ -62,8 +71,10 @@ jobs:
         env:
           VP_TOOLCHAIN: ${{ matrix.toolchain }}
 
+  # only every week or by hand: a new release candidate is news, not a pull request's failure
   newest:
     timeout-minutes: 45
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     continue-on-error: true
     strategy:
@@ -112,11 +123,11 @@ jobs:
           VP_TOOLCHAIN: ${{ steps.version.outputs.toolchain }}
 
   # the exported document typeset with XeLaTeX, whose installation takes minutes: every week and by
-  # hand, never on a push. Libertinus (texlive-fonts-extra, gigabytes) is left out, so the document
+  # hand, never on a pull request. Libertinus (texlive-fonts-extra, gigabytes) is left out, so the document
   # is set in Latin Modern, as the style file falls back to
   typeset:
     timeout-minutes: 45
-    if: github.event_name != 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
