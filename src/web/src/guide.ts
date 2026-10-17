@@ -24,6 +24,9 @@ import type { TourData } from "./tourfilm.ts";
 import type { TipsContext } from "./tipcards.ts";
 import { TipState } from "./tipstate.ts";
 import { InTips } from "./intip.ts";
+import type { ReviewData } from "../../shared/review.ts";
+import { needsReview } from "../../shared/reviewqueue.ts";
+import type { Graph } from "../../shared/viewgraph.ts";
 import { Popover } from "./popover.ts";
 import type { InPlace } from "./intip.ts";
 
@@ -39,21 +42,79 @@ export interface UpdateStatus {
 }
 
 /** What the tour's TCB step says of its theorem (GuideSpec decision 2): what each view lights on
- *  the board, as the selection bar counts it ("19 lit"), the theorem itself left out — so that the
- *  card's numbers add up to the bar's. */
+ *  the board, split as the selection bar splits it ("8 lit · +11 trusted": TCBSpec decision 7), the
+ *  theorem itself apart — so that the card's numbers add up to the bar's. */
 export interface RestsOn {
   /** its name, as the panel heads it */
   name: string;
-  /** what its TCB lights that is to be read: not trusted */
+  /** where the theorem itself falls in the bar's count: lit and to be read, lit and trusted, or not
+   *  on the board */
+  self: "read" | "trusted" | null;
+  /** what its TCB lights besides it that is to be read: not trusted */
   read: number;
-  /** what its TCB lights that is trusted (Mathlib's, and what the review trusts), and assumed */
+  /** what its TCB lights besides it that is trusted (Mathlib's, and what the review trusts), and
+   *  assumed */
   assumed: number;
   /** what Uses lights beyond what TCB lights: what its proofs alone use, trusted or not */
   proofs: number;
-  /** what Keys lights: the key declarations among what TCB lights */
+  /** what Keys lights besides it: the key declarations among what TCB lights — none trusted, a mark
+   *  on what has left the review lighting nothing (shared/query.ts) */
   keys: number;
   /** it is a target */
   target: boolean;
+}
+
+/** What the TCB step counts on the board's graph `g`, as the selection bar splits it (TCBSpec
+ *  decision 7): `self`, the theorem there (-1 off the board); `tcb`, `uses`, `keys`, what its views
+ *  light. */
+export function restsOnCounts(
+  g: Graph,
+  d: ReviewData,
+  self: number,
+  lit: { tcb: Uint8Array | null; uses: Uint8Array | null; keys: Uint8Array | null },
+): Pick<RestsOn, "self" | "read" | "assumed" | "proofs" | "keys"> {
+  let read = 0, assumed = 0, proofs = 0, keys = 0;
+  for (let j = 0; j < g.n; j++) {
+    if (j === self) continue;
+    if (!lit.tcb?.[j]) {
+      if (lit.uses?.[j]) proofs++;
+      continue;
+    }
+    if (!needsReview(g, d, j)) assumed++;
+    else read++;
+    if (lit.keys?.[j]) keys++;
+  }
+  const at = self >= 0 && lit.tcb?.[self] ? (needsReview(g, d, self) ? "read" : "trusted") : null;
+  return { self: at, read, assumed, proofs, keys };
+}
+
+/** The TCB view's words for `r`: the numbers the selection bar shows beside them, "N lit · +M
+ *  trusted" — the theorem and what is to be read, then what is trusted (TCBSpec decision 7). */
+export function tcbText(r: RestsOn): string {
+  // written as the bar writes its numbers
+  const n = (x: number) => x.toLocaleString();
+  const proofs = r.proofs ? ` What its proofs alone use, ${n(r.proofs)} more, is not lit: the proofs are Lean's to check.` : "";
+  if (!r.read && !r.assumed) return `Its <b>TCB</b> is itself alone: its statement rests on nothing but Lean.${proofs}`;
+  const decls = (x: number) => `${n(x)} declaration${x === 1 ? "" : "s"}`;
+  const readThem = r.read ? ` To trust it, read ${r.read === 1 ? "that one" : `those ${n(r.read)}`}.` : "";
+  if (r.self === "read") {
+    const one = r.assumed === 1;
+    const trusted = r.assumed ? ` The ${one ? "one" : n(r.assumed)} trusted, as Mathlib is, light${one ? "s" : ""} too, and ${one ? "is" : "are"} assumed.` : "";
+    if (!r.read) return `Its <b>TCB</b> lights it alone to read: the ${one ? "one" : n(r.assumed)} it rests on ${one ? "is" : "are"} trusted, as Mathlib is, and assumed.${proofs}`;
+    return `Its <b>TCB</b> lights ${n(r.read + 1)}: it, and ${decls(r.read)} to read — definitions, axioms, the project's notation.${trusted}${readThem}${proofs}`;
+  }
+  // the theorem trusted itself, or off the board: the bar counts it with the trusted, or not at all
+  const trusted = r.assumed + (r.self === "trusted" ? 1 : 0);
+  return `Its <b>TCB</b> lights ${r.read ? `${decls(r.read)} to read` : "nothing to read"}, and ${n(trusted)} trusted${r.self === "trusted" ? ", it among them" : ""}, as Mathlib is, and assumed.${readThem}${proofs}`;
+}
+
+/** The Keys view's words for `r`, where something is marked key: the key declarations among what is
+ *  to be read, which the bar counts with the theorem. */
+export function keysText(r: RestsOn): string {
+  const of = `Of the ${r.read.toLocaleString()} declaration${r.read === 1 ? "" : "s"} to read, `;
+  return r.keys === 1
+    ? `${of}the one the review marked <b>key</b>: what carries its meaning. Read it first.`
+    : `${of}the ${r.keys.toLocaleString()} the review marked <b>key</b>: the few that carry its meaning. Read them first.`;
 }
 
 export interface GuideHooks {
@@ -705,10 +766,11 @@ export class Guide {
     const ro = this.hooks.readOnly();
     let r = this.hooks.restsOn(i);
     const ring = (step: string) => () => (phone ? around("#panel") : around(step)) ?? board();
-    // the mode's step at the top right, and the board it lights, together: nothing lit is shaded
+    // the mode's step at the top right, the selection bar's count the card speaks of, and the board
+    // it lights, together: nothing lit is shaded
     const lit = (step: string) => () => {
       const b = board();
-      const m = phone ? null : around(step);
+      const m = phone ? null : around(step, "#selbar .sb-n");
       if (!m) return b;
       const l = Math.min(b.left, m.left), t = Math.min(b.top, m.top);
       return new DOMRect(l, t, Math.max(b.right, m.right) - l, Math.max(b.bottom, m.bottom) - t);
@@ -730,15 +792,8 @@ export class Guide {
           this.hooks.setTool("tcb");
           this.hooks.frameLit();
         },
-        // the numbers add up to the selection bar's: the theorem, what is to be read, what is assumed
-        text: () => {
-          const lit = r.read + r.assumed;
-          const assumed = r.assumed ? `${r.assumed} trusted, as Mathlib is, and assumed` : "";
-          const proofs = r.proofs ? ` What its proofs alone use, ${r.proofs} more, is not lit: the proofs are Lean's to check.` : "";
-          if (!lit) return `Its <b>TCB</b> is itself alone: its statement rests on nothing but Lean.${proofs}`;
-          if (!r.read) return `Its <b>TCB</b> lights ${lit} besides it, all ${r.assumed === 1 ? "of it " : ""}trusted, as Mathlib is, and assumed: nothing of the project's to read.${proofs}`;
-          return `Its <b>TCB</b> lights ${lit} besides it: ${r.read} to read — definitions, axioms, the project's notation —${assumed ? ` and ${assumed}` : ""}. To trust it, read ${r.read === 1 ? "that one" : `those ${r.read}`}.${proofs}`;
-        },
+        // the numbers are the selection bar's: the theorem and what is to be read, what is trusted
+        text: () => tcbText(r),
         at: lit("#rests-steps [data-mode=tcb]"),
       },
       {
@@ -750,9 +805,7 @@ export class Guide {
         },
         text: () =>
           r.keys
-            ? r.keys === 1
-              ? `Of those ${r.read + r.assumed}, the one the review marked <b>key</b>: what carries its meaning. Read it first.`
-              : `Of those ${r.read + r.assumed}, the ${r.keys} the review marked <b>key</b>: the few that carry its meaning. Read them first.`
+            ? keysText(r)
             : ro || this.hooks.snapshot()
               ? "None is marked <b>key</b> yet: the review marks the few of a target's TCB that carry its meaning."
               : phone

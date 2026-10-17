@@ -1,6 +1,7 @@
 // The selection, at the top right under the mode buttons (decided 2026-10-07): a slim bar with
 // a chip for each pick (web/src/selection.ts) — its words, and × to take it out — how many
-// declarations are lit, Zoom in, and Clear; where the review has a focus, "Mark selected as key"
+// declarations are lit, the trusted told apart ("8 lit · +11 trusted": under TCB and Keys, the
+// TCB's size; TCBSpec decision 7, ViewSpec decision 14), Zoom in, and Clear; where the review has a focus, "Mark selected as key"
 // marks the declarations clicked as key declarations of that target (ExportSpec decision 1).
 // Hidden while nothing is selected. It sits above the
 // panel, in the panel's column, which moves down to make room for it (style.css, --selbar-h).
@@ -22,6 +23,13 @@ export interface SelectionBarHooks {
   clear(): void;
   /** mark the declarations selected key for the target on show */
   markKeys(): void;
+}
+
+/** How many declarations are lit on the board: those not trusted, and the trusted apart
+ *  (shared/reviewqueue.ts, trustSplit). */
+export interface LitCount {
+  counted: number;
+  trusted: number;
 }
 
 /** What "Mark selected as key" would do where the review has a focus: how many of the declarations
@@ -59,16 +67,16 @@ export class SelectionBar {
   }
 
   /** The picks, the one the panel tells of (its index, or -1), how many declarations are lit on the
-   *  board, and whether Zoom in has a view to open that is not this one: one holding something,
+   *  board, the trusted apart, and whether Zoom in has a view to open that is not this one: one holding something,
    *  and not just what this board holds (shared/board.ts, zoomScope). */
-  render(picks: Pick[], panel: number, lit: number, zoom: boolean, key: KeyMarking | null = null): void {
+  render(picks: Pick[], panel: number, lit: LitCount, zoom: boolean, key: KeyMarking | null = null): void {
     this.el.hidden = !picks.length;
     if (!picks.length) {
       this.el.innerHTML = "";
       return;
     }
     const esc = escapeHtml;
-    const why = lit ? "This board holds just what is lit already" : "Nothing selected is on this board";
+    const why = lit.counted + lit.trusted ? "This board holds just what is lit already" : "Nothing selected is on this board";
     const chips = picks
       .map((p, k) => {
         const words = pickWords(p);
@@ -82,7 +90,11 @@ export class SelectionBar {
       .join("");
     this.el.innerHTML =
       `<span class="sb-chips">${chips}</span>` +
-      `<span class="sb-meta"><span class="sb-n" title="Declarations lit on this board">${lit.toLocaleString()} lit</span>` +
+      `<span class="sb-meta"><span class="sb-n"><span title="Declarations lit on this board that are not trusted">${lit.counted.toLocaleString()} lit</span>` +
+      (lit.trusted
+        ? `<span class="sb-trusted" title="Trusted declarations lit too: assumed without review, and not counted — what a trusted prefix covers, and the standard axioms"> · +${lit.trusted.toLocaleString()} trusted</span>`
+        : "") +
+      `</span>` +
       (this.hooks.canOpenViews() ? `<button class="sb-btn" data-zoom${zoom ? ` title="Open a view of what is selected, laid out on its own, in a tab"` : ` disabled title="${why}"`}>Zoom in</button>` : "") +
       (key
         ? `<button class="sb-btn sb-key" data-mark-keys${

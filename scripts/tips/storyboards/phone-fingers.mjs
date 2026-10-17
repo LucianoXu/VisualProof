@@ -9,7 +9,7 @@ export default {
   viewport: { width: 390, height: 844 },
   out: { width: 360, height: 780 },
   width: 390,
-  address: "v=vkfjur68&mode=plain",
+  address: "v=v5cp2t1n&mode=plain",
   steps: [
     { camera: { x: 195, y: 422 }, cut: true },
     { wait: 400 },

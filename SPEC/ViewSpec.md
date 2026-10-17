@@ -68,7 +68,11 @@ of invisible clusters" is the view's hidden levels (decision 24).
     selections and has no added or removed items (as any view made from a selection or scope). Made
     from a board of a past build, Zoom in, a cluster's Zoom in and a target's key declarations open at
     that build.
-14. **The selection shows at the top right**: a chip per pick, the count lit, Zoom in, Clear.
+14. **The selection shows at the top right**: a chip per pick, the count lit, Zoom in, Clear. The
+    count is of what is lit and not trusted, the trusted lit told apart beside it ("N lit · +M
+    trusted"; TCBSpec decision 7, the owner's decision of 2026-10-17), whatever the tool: under Rests
+    on · TCB it is the TCB's size, the theorem among it; under the other tools the same split keeps
+    one meaning for the number.
 15. **A target's view opens with the target selected alone**, under the reader's tool (a click on a
     target never changes the tool). Going to a declaration from the target's review list or the
     strip's target selects it alone under the Selection tool. The target's review set (ReviewSpec

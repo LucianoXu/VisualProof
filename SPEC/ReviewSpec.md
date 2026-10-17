@@ -24,6 +24,7 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
      people and agents at level full (AgentSpec decision 9) from the cluster tree's shields and the
      Trusted popover (ViewSpec decision 17), where removed defaults stay listed. Trusted
      declarations are not counted but can get opinions; the panel names the prefix that trusts one.
+     A TCB's size leaves them out too, telling them apart as "+N trusted" (TCBSpec decision 7).
    - The count is the review set wherever the focus is on the target (ViewSpec decision 28), on the
      whole graph, never what a board holds.
 4. **Targets** are marked by people and agents at level full. Marking makes no view (ViewSpec

@@ -106,7 +106,7 @@ export const TOUR: Chapter[] = [
   {
     id: "checks",
     title: "Three ways to check",
-    text: "<b>Selection</b>: the statement alone, least effort. <b>Keys</b>: the few that carry the meaning. <b>TCB</b>: all it rests on, most effort, most confidence. The counts say what each costs.",
+    text: "<b>Selection</b>: the statement alone, least effort. <b>Keys</b>: the few that carry the meaning. <b>TCB</b>: all it rests on, most effort, most confidence. The counts say what each costs, the trusted apart.",
     about: ["#lightup [data-mode=plain]", "#rests-steps [data-mode=keys]", "#rests-steps [data-mode=tcb]", "key:2"],
     showMe: "tcb-three",
     // tcb-first: the reader's own click selects, under Rests on · TCB, a theorem whose TCB lights
