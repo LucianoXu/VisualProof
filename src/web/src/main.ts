@@ -1136,9 +1136,7 @@ async function boot(): Promise<void> {
     // the cells and the starfield are dark, on a dark ground round the frame
     if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
     else delete document.body.dataset.artStyle;
-    // of the bar, Share and Search alone (the owner's decision of 2026-10-15): the rest is out of
-    // reach until the mode is left, by the pointer and by the keyboard
-    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!a;
+    artReach();
     if (a) {
       linear.hide("reader", "followed");
       document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
@@ -1147,6 +1145,13 @@ async function boot(): Promise<void> {
     applyScheme();
     syncEdges();
     apply();
+  };
+  /** Of the bar in the artwork mode, Share and Search alone (the owner's decision of 2026-10-15): the
+   *  rest is out of reach until the mode is left, by the pointer and by the keyboard — but the people
+   *  while the reader follows someone, whose initials clicked again end following (CollabSpec,
+   *  "Following ends" and "What following leaves"): the mode is the follower's own once it has. */
+  const artReach = () => {
+    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!artLook && !(people.following && el.matches(".peers-wrap"));
   };
   /** when the board was last drawn: a link's recipe saves its files once the board is still */
   let drawnAt = 0;
@@ -1543,18 +1548,22 @@ async function boot(): Promise<void> {
     reveal: () => chatWin.reveal(),
     stripDrawn: () => talk.dress(),
     describe: (v) => describePlace(v),
-    follow: (v) => void goWhere(v, false),
+    follow: (v) => {
+      artReach();
+      void goWhere(v, false);
+    },
     changed: () => {
       syncPeers();
       peerMenu.render();
     },
     // the windows that stood for the followed reader's are this reader's own now, and none says any
     // more that the reader follows someone; what following left is theirs to leave (CollabSpec, "What
-    // following leaves"): the linear form, which nothing on the screen says how to put away — the
-    // line does, once
+    // following leaves"): the artwork mode's bar, all but Share and Search out of reach again; the
+    // linear form, which nothing on the screen says how to put away — the line does, once
     unfollowed: () => {
       sources.release();
       papers.unfollowed();
+      artReach();
       if (!people.following && linear.followed && !exportModal.isOpen) say(`The board stays in the linear form you followed: ${isPhone() ? "⋯ at the bottom → Linear form puts" : "o, or ⋯ at the bottom → Linear form, puts"} it away.`);
     },
     // what is left to review where the review has a focus is the reader's own
