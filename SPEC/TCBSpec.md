@@ -3,7 +3,8 @@
 What a declaration of the graph (a unit) is and exactly what a theorem's TCB holds, beside SPEC.md's
 "Definition of TCB"; ReviewSpec.md says what of it needs review. "TCB" names the part of the trust
 specific to a theorem: Lean's kernel and toolchain, and the libraries outside the project, are
-assumed.
+assumed — what is trusted (ReviewSpec decision 3) is in a TCB, but never counted in its size
+(decision 7).
 
 ## Decisions
 
@@ -45,6 +46,15 @@ assumed.
    body, a theorem in its proof. Lean compiles the bodies together (structural recursion through
    each member's `_f`, well-founded recursion through one shared `_mutual`, a `partial def` through
    the others' `_unsafe_rec`), so a member never names the others.
+7. **A TCB's size counts what is not trusted** (the owner's decision of 2026-10-17). Wherever the
+   page or the documentation says how large a TCB is, it counts the TCB's declarations that are not
+   trusted in ReviewSpec decision 3's sense — the standard axioms, and what a trusted prefix covers
+   (`Mathlib`, `Init`, `Lean`, `Std`, `Batteries` by default, or `@external`), save a non-standard
+   axiom — the project's and any untrusted one outside it. The trusted declarations stay in the
+   TCB: they are lit on a board that holds them and told apart beside the number as "+N trusted",
+   never added into it; the panel's Its TCB lists what is counted, and its Counts give what a
+   declaration uses the same way, so that the two compare. A theorem stated with many of Mathlib's
+   definitions does not show hundreds of declarations to read.
 
 ## Implementation notes
 

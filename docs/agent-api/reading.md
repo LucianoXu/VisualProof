@@ -39,9 +39,10 @@ Everything about one declaration; here `include=print` while Lean loads:
   a personal link, `by` their name now; `recordedBy`: typed for `by` by that person, at one screen
   (theirs all the same); `trustedBy`: covering prefixes, or `["standard axiom"]`.
 - `editedSinceCompiled`: file differs from what was compiled (null outside the project); `keyFor`,
-  `inTcbOf`: targets it is key for, whose TCB holds it; `usesDirect`, `usedBy.direct`: what it
-  refers to by name, what refers to it (`uses`, `users` list them); `usedBy.all`: all reaching it,
-  proofs included.
+  `inTcbOf`: targets it is key for, whose TCB holds it; `tcbSize`: its TCB besides it, by where,
+  trusted included (a TCB's size leaves them out: `tcb`'s `needReview`, `trustedNotCounted`);
+  `usesDirect`, `usedBy.direct`: what it refers to by name, what refers to it (`uses`, `users` list
+  them); `usedBy.all`: all reaching it, proofs included.
 
 **`include`**: comma-separated parts, each answered under its name as its endpoint would. `uses`,
 `users` take `offset`, `limit`, `where` from the query; `print` takes `proofs`; `describe` and

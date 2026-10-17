@@ -69,7 +69,9 @@ The words used here are the next part's; the rest of the manual is the reference
   `Classical.choice`, `Quot.sound`). A part of the project, or the whole outside world, can be
   trusted too, and a part of the outside world no longer trusted, its leaves then read as the
   project's definitions are ([Review](#review)). Trusted declarations stay in the TCB, light green
-  on the board, but need no opinion and are not counted. The rest of the TCB, with every
+  on the board, but need no opinion and are not counted — **nor in a TCB's size**: for flt_regular
+  above, the selection bar says *8 lit · +11 trusted*, it and the 7 to read, then what is assumed,
+  and the panel's Counts *7 in TCB*, *+11 trusted* beneath. The rest of the TCB, with every
   non-standard axiom the theorem reaches, is its **review set**, what its review counts. "Trusted"
   always means trusted without review: the panel lists the TCB itself as **Its TCB**.
 - **A target**: a theorem whose TCB is reviewed, marked ☆ by a reviewer (or by an agent at level
@@ -363,7 +365,8 @@ graph is read from the last build.
 Every declaration is a point. **The selection** is a list of picks, each one thing clicked with one
 tool, and what is lit is exactly their union — computed on the whole project, then what this board
 holds; it shows at the top right as one chip per pick (×
-takes one off), with how much is lit, **Zoom in** and **Clear**. A lit declaration gets a card
+takes one off), with how much is lit — what is not trusted, then the trusted apart (*8 lit · +11
+trusted*), whatever the tool — **Zoom in** and **Clear**. A lit declaration gets a card
 beside it with a short lead to its point, so that the point stays in sight; a card never covers
 another card, a lit point, a pick's ring or the panels, one with no room stays a point, and a card
 keeps its side as the view moves. A pick has no card: a ring marks it, and a lead runs from the
@@ -499,9 +502,11 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   when you arrive by a link to a place, follow someone, or open a snapshot (the dot alone). The
   tour is ten steps on a real theorem. One step shows what the theorem rests on in three views: the
   theorem alone, its statement in the panel; its TCB; its key declarations. The TCB and Keys views
-  say how many each lights, as the selection bar counts them: what is to be read, what is trusted
-  and assumed, what the proofs alone use besides, what is key. A read-only reader is told what they
-  can do there. The tour leaves the page as it found it — your tool, your selection, the camera,
+  say how many each lights, as the selection bar counts them: the theorem and what is to be read,
+  then what is trusted and assumed, never added in (*Its TCB lights 8: it, and 7 declarations to
+  read — definitions, axioms, the project's notation. The 11 trusted, as Mathlib is, light too,
+  and are assumed.*); what the proofs alone use besides; what is key. A read-only reader is told
+  what they can do there. The tour leaves the page as it found it — your tool, your selection, the camera,
   and no step in the history; its last step points on to **Tips**.
 - **`?`** (⋯ → Help on a phone; the `?` key) opens a menu: **Tips**, **Keys** (Gestures on a
   phone), **Take the tour**, then what the project's graph holds, when and under which toolchain it

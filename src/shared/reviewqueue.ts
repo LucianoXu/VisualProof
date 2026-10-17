@@ -46,6 +46,19 @@ export function needsReview(g: Graph, d: ReviewData, i: number): boolean {
   return nonStandardAxiom(g, i) || !trusted(d, g.nodes[i].name, g.nodes[i].module, g.isExt(i));
 }
 
+/** What set `s` holds besides `skip`, as a TCB's size counts it (TCBSpec decision 7): `counted`,
+ *  what needs review; `trusted`, the rest, told apart and never added in. The panel's counts and
+ *  the selection bar's (ViewSpec decision 14) count so. */
+export function trustSplit(g: Graph, d: ReviewData, s: Uint8Array, skip = -1): { counted: number; trusted: number } {
+  let counted = 0, t = 0;
+  for (let j = 0; j < s.length; j++) {
+    if (!s[j] || j === skip) continue;
+    if (needsReview(g, d, j)) counted++;
+    else t++;
+  }
+  return { counted, trusted: t };
+}
+
 /** What `root`'s review holds, its review set (`reviewScope`), in the graph's numbering. */
 export function reviewSet(g: Graph, d: ReviewData, root: number): Uint8Array {
   return evaluate(reviewScope(g.nodes[root].name), { g, review: d });

@@ -9,6 +9,7 @@ import { ALL_SITES, shortName } from "../../shared/viewgraph.ts";
 import type { FileStatus } from "../../shared/build.ts";
 import { escapeHtml, highlightLean, renderDoc } from "./highlight.ts";
 import { markOf } from "../../shared/review.ts";
+import { needsReview, trustSplit } from "../../shared/reviewqueue.ts";
 import type { ReviewData } from "../../shared/review.ts";
 import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
@@ -63,6 +64,9 @@ export interface PanelHooks {
  *  the TCB starts open (it is one line, and only where the review has a focus); the counts, the axioms and the
  *  TCB's list start folded (store.ts, SHUT_FIRST), their headings saying what is in them. */
 export const PANEL_SECTIONS = { why: "p-why", stats: "p-stats", axioms: "p-axioms", tcb: "p-tcb" } as const;
+
+/** What "+N trusted" under a count stands for (TCBSpec decision 7). */
+const TRUSTED_TITLE = "Trusted without review, and not counted: what a trusted prefix covers (Mathlib, Lean's own by default), and the standard axioms";
 
 /** What the reader should know about the file before trusting what the card shows. */
 export function banner(f: FileStatus | undefined): string {
@@ -196,20 +200,20 @@ export class Panel {
     const tcb = g.reach([i], SITE_STMT | SITE_BODY, "out");
     const deps = g.reach([i], ALL_SITES, "out");
     const apps = g.reach([i], ALL_SITES, "in");
-    const count = (s: Uint8Array) => {
-      let p = 0, x = 0;
-      for (let j = 0; j < s.length; j++) if (s[j] && j !== i) g.isExt(j) ? x++ : p++;
-      return [p, x] as const;
-    };
-    const [tcbP, tcbX] = count(tcb);
-    const [depP, depX] = count(deps);
-    const [appP] = count(apps);
+    // a TCB's size, and what it uses, count what is not trusted, the trusted told apart
+    // (TCBSpec decision 7); what uses it is the project's
+    const d = this.hooks.reviewData();
+    const inTcb = trustSplit(g, d, tcb, i);
+    const used = trustSplit(g, d, deps, i);
+    const n = (x: number) => x.toLocaleString();
+    let appP = 0;
+    for (let j = 0; j < apps.length; j++) if (apps[j] && j !== i && !g.isExt(j)) appP++;
     const axioms = g.axiomsOf(i);
 
-    // the TCB's definitions, grouped by kind: what a reviewer has to read
+    // the TCB's declarations that are not trusted, grouped by kind: what a reviewer has to read
     const groups = new Map<string, number[]>();
     for (let j = 0; j < tcb.length; j++) {
-      if (!tcb[j] || j === i || g.isExt(j)) continue;
+      if (!tcb[j] || j === i || !needsReview(g, d, j)) continue;
       const k = g.nodes[j].kind;
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push(j);
@@ -222,7 +226,7 @@ export class Panel {
         return (
           `<div class="grp"><div class="grp-h"><span class="dot k-${k}"></span>${k} <span class="muted">${xs.length}</span></div>` +
           xs
-            .map((j) => `<button class="row rv-${markOf(this.hooks.reviewData(), g.nodes[j].name, g.nodes[j].module, false, g.nodes[j].hash)}" data-go="${j}" title="Go to ${escapeHtml(g.nodes[j].name)}">${escapeHtml(g.nodes[j].name)}</button>`)
+            .map((j) => `<button class="row rv-${markOf(d, g.nodes[j].name, g.nodes[j].module, g.isExt(j), g.nodes[j].hash)}" data-go="${j}" title="Go to ${escapeHtml(g.nodes[j].name)}">${escapeHtml(g.nodes[j].name)}</button>`)
             .join("") +
           `</div>`
         );
@@ -280,11 +284,11 @@ export class Panel {
       ${this.hooks.links?.(i) ?? ""}
       ${this.box.html(i, true, tcb)}
       ${why ? part(PANEL_SECTIONS.why, "Why in the TCB", "", () => why) : ""}
-      ${part(PANEL_SECTIONS.stats, "Counts", `${tcbP} in TCB · ${depP} uses · ${appP} used by`, () => `
+      ${part(PANEL_SECTIONS.stats, "Counts", `${n(inTcb.counted)} in TCB · ${n(used.counted)} uses · ${n(appP)} used by`, () => `
       <div class="stats">
-        <div class="stat"><div class="n grad-tcb">${tcbP}</div><div class="l">in TCB<br><span class="muted">+${tcbX} external</span></div></div>
-        <div class="stat"><div class="n grad-dep">${depP}</div><div class="l">uses<br><span class="muted">+${depX} external</span></div></div>
-        <div class="stat"><div class="n grad-app">${appP}</div><div class="l">used by</div></div>
+        <div class="stat"><div class="n grad-tcb">${n(inTcb.counted)}</div><div class="l">in TCB<br><span class="muted" title="${TRUSTED_TITLE}">+${n(inTcb.trusted)} trusted</span></div></div>
+        <div class="stat"><div class="n grad-dep">${n(used.counted)}</div><div class="l">uses<br><span class="muted" title="${TRUSTED_TITLE}">+${n(used.trusted)} trusted</span></div></div>
+        <div class="stat"><div class="n grad-app">${n(appP)}</div><div class="l">used by</div></div>
       </div>`)}
       ${part(
         PANEL_SECTIONS.axioms,
@@ -294,7 +298,7 @@ export class Panel {
         () => `<div class="axioms">${axioms.length ? axioms.map((a) => `<span class="chip ${nonStd.includes(a) ? "bad" : ""}">${escapeHtml(a)}</span>`).join("") : `<span class="muted">none</span>`}</div>`,
       )}
       ${notationHtml(g, i)}
-      ${tcbP ? part(PANEL_SECTIONS.tcb, "Its TCB", `${tcbP}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`, { id: "checks", title: "What a TCB is: the film's chapter on the ways to check" }) : ""}
+      ${inTcb.counted ? part(PANEL_SECTIONS.tcb, "Its TCB", `${inTcb.counted}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`, { id: "checks", title: "What a TCB is: the film's chapter on the ways to check" }) : ""}
     `;
     this.el.classList.add("open");
     if (!same) this.el.scrollTop = 0;
