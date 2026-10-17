@@ -53,6 +53,7 @@ import { FROM_PACKAGE, PACKAGE_ROOT, UPDATE_MODES, Updates } from "./updates.ts"
 import type { UpdateMode } from "./updates.ts";
 import { RESTART_STATUS, supervise } from "./supervise.ts";
 import { stopChildren } from "./children.ts";
+import { filmStatus, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 
 interface Options {
@@ -1452,7 +1453,10 @@ async function main(): Promise<void> {
     site: dirs.site,
     // what the supervisor set aside without a record of it (a full disk), believed only from it
     also: new Set(supervised ? unrecordedOf(process.env.VISUALPROOF_UNRECORDED) : []),
+    film: () => filmStatus(),
   });
+  // the tips' tour film, fetched on its first play (UpdateSpec decision 14; never under --updates off)
+  useFilm({ cacheRoot, mode: o.updates, log: (l) => console.log(l) });
   live.updateStatus = (full) => updates.status(full);
   app.updates = updates;
   stopNow = () => stop(0, { stopped: true });

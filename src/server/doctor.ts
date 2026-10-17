@@ -4,7 +4,8 @@
 // (in a project's folder that would install its toolchain, and Lake may build), and makes no folder.
 
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, readFileSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
+import { filmPin } from "./film.ts";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { cacheHome, projectDirs, siteHolder } from "./dirs.ts";
@@ -28,6 +29,8 @@ export interface Report {
   checks: Check[];
   /** what is known of VisualProof's newer releases, in a line */
   updates: string;
+  /** the tips' tour film: kept, or fetched on its first play, or never (UpdateSpec decision 14) */
+  film: string;
   /** the command that serves the project, when nothing failed */
   ready: string | null;
 }
@@ -161,6 +164,21 @@ function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: s
   return `the latest release${aside}`;
 }
 
+/** The tips' tour film, in a line: kept in the cache, or fetched on its first play, or never. */
+function filmLine(cacheRoot: string, mode: string | undefined): string {
+  if (process.env.VISUALPROOF_TOUR_FILM) return `the local file ${process.env.VISUALPROOF_TOUR_FILM} (VISUALPROOF_TOUR_FILM)`;
+  const pin = filmPin();
+  if (!pin) return "none pinned in this package";
+  const kept = join(cacheRoot, "media", `${pin.sha256}.mp4`);
+  try {
+    if (statSync(kept).size === pin.size) return `kept (${kept})`;
+  } catch {
+    // not kept yet
+  }
+  if (mode === "off") return "never fetched (VISUALPROOF_UPDATES=off): the tour shows its stills and captions";
+  return `fetched from the project's GitHub release on its first play (${(pin.size / 1e6).toFixed(0)} MB)`;
+}
+
 export function doctor(o: DoctorOptions): Report {
   const exec = o.run ?? run;
   const node = o.node ?? process.versions.node;
@@ -203,8 +221,9 @@ export function doctor(o: DoctorOptions): Report {
     checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them" });
   }
 
+  const film = filmLine(o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES);
   const updates = updatesLine(exec, node, o.fromPackage ?? FROM_PACKAGE, o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES, o.path === null ? null : projectDirs(resolve(o.path), o.site, o.cache).site);
-  if (o.path === null) return { checks, updates, ready: null };
+  if (o.path === null) return { checks, updates, film, ready: null };
 
   let project;
   try {
@@ -212,7 +231,7 @@ export function doctor(o: DoctorOptions): Report {
   } catch (e) {
     if (!(e instanceof ProjectError)) throw e;
     checks.push({ level: "fail", what: e.message });
-    return { checks, updates, ready: null };
+    return { checks, updates, film, ready: null };
   }
   const { root, toolchain, roots, libDir } = project;
   const name = toolchainName(toolchain);
@@ -254,7 +273,7 @@ export function doctor(o: DoctorOptions): Report {
   );
   const failed = checks.some((c) => c.level === "fail");
   const args = [o.path, ...o.roots.flatMap((r) => ["--root", r]), ...(o.site ? ["--site", o.site] : []), ...(o.cache ? ["--cache", o.cache] : [])];
-  return { checks, updates, ready: failed ? null : `visualproof serve ${args.map((a) => (/^[\w./:@%+=-]+$/.test(a) ? a : JSON.stringify(a))).join(" ")}` };
+  return { checks, updates, film, ready: failed ? null : `visualproof serve ${args.map((a) => (/^[\w./:@%+=-]+$/.test(a) ? a : JSON.stringify(a))).join(" ")}` };
 }
 
 const MARK: Record<Level, string> = { ok: "✓", fail: "✗", warn: "!", info: "·" };
@@ -265,7 +284,7 @@ export function printReport(r: Report, project: string | null): string {
     lines.push(`  ${MARK[c.level]} ${c.what}`);
     if (c.fix && c.level !== "ok") lines.push(`      ${c.fix}`);
   }
-  lines.push(`  updates: ${r.updates}`);
+  lines.push(`  updates: ${r.updates}`, `  tour film: ${r.film}`);
   if (r.ready) lines.push("", `Ready: ${r.ready}`);
   else if (project === null && !r.checks.some((c) => c.level === "fail")) lines.push("", "To check a project too: visualproof doctor <lean-project>");
   return lines.join("\n");

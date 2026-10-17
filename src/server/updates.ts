@@ -25,6 +25,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSy
 import { basename, dirname, join } from "node:path";
 import { childEnv, tracked } from "./children.ts";
 import { packageVersion, satisfies } from "./version.ts";
+import type { FilmStatus } from "./film.ts";
 
 export type UpdateMode = "auto" | "notify" | "off";
 export const UPDATE_MODES: UpdateMode[] = ["auto", "notify", "off"];
@@ -50,6 +51,8 @@ export interface UpdateStatus {
   checkout?: true;
   /** this site's patches up to `upTo` are not taken, for a day or until a newer one (decision 7) */
   paused?: { upTo: string; at: string; why: string };
+  /** the tips' tour film (decision 14, server/film.ts): kept, being fetched, unavailable, … */
+  film?: FilmStatus;
 }
 
 /** The package's own folder, holding package.json: the one this code was loaded from. */
@@ -268,7 +271,7 @@ function readObject(file: string): Record<string, unknown> {
 }
 
 /** Whether process `pid` lives (EPERM: it does, another user's). */
-function alive(pid: number): boolean {
+export function alive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;
@@ -279,7 +282,7 @@ function alive(pid: number): boolean {
 
 /** Whether a folder is this user's alone to write: owned by them, neither group nor others may write
  *  it (UpdateSpec decision 12). Where there are no users (Windows), any. */
-function private_(dir: string): boolean {
+export function private_(dir: string): boolean {
   try {
     const st = statSync(dir);
     if (typeof process.getuid !== "function") return st.isDirectory();
@@ -695,6 +698,8 @@ export interface UpdatesOptions {
   site?: string | null;
   /** versions its supervisor set aside without a record of it (a full disk): never restarted into */
   also?: Set<string>;
+  /** what is known of the tips' tour film, for full readers (server/film.ts) */
+  film?: () => FilmStatus;
   npm?: Npm;
   node?: string;
   /** the Node binary this server runs on, which the supervisor starts the next one with */
@@ -760,7 +765,8 @@ export class Updates {
   /** What a page is told (UpdateSpec decision 11): the version alone where `full` is not. */
   status(full: boolean): UpdateStatus {
     if (!full) return { running: this.running };
-    if (this.o.checkout) return { running: this.running, checkout: true };
+    const film = this.o.film ? { film: this.o.film() } : {};
+    if (this.o.checkout) return { running: this.running, checkout: true, ...film };
     const installed = versionAt(this.installedRoot);
     const { patch, release } = this.found();
     const s: UpdateStatus = { running: this.running, mode: this.mode, ...(installed && installed !== this.running ? { installed } : {}), ...(this.saved ? { checked: this.saved.checked } : {}) };
@@ -771,7 +777,7 @@ export class Updates {
     if (bad.length) s.setAside = bad;
     const paused = this.versions.paused(this.o.site ?? null, this.now());
     if (paused) s.paused = paused;
-    return s;
+    return { ...s, ...film };
   }
 
   /** Begin: the first check soon after the server listens (unless one was made in the last hour),
