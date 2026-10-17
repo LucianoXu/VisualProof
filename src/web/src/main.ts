@@ -1646,15 +1646,20 @@ async function boot(): Promise<void> {
     else if (!(id && (await nav.select(id, to))) && scope) await nav.open(scope, to);
     const reached = nav.board.id === id || (scope !== null && nav.query() === scope);
     if (once && !reached) place(to, false);
+    // following ended while their view was being opened (the reader's own act): nothing more of the
+    // followed reader's is taken — their build, their windows —, and the windows the reader has
+    // opened since are their own, nothing of the followed reader's closing them (CollabSpec, "What
+    // following leaves")
+    const ended = () => !once && !people.following;
     // where they are in the Time Machine (HistorySpec decision 18): the same build, or none
-    if (v.history) {
-      if (!tm.active) await tm.open({ snapshot: v.history.snapshot });
-      else if (tm.snapshot !== v.history.snapshot) await tm.show(v.history.snapshot);
-    } else if (tm.active) await tm.close();
+    if (!ended()) {
+      if (v.history) {
+        if (!tm.active) await tm.open({ snapshot: v.history.snapshot });
+        else if (tm.snapshot !== v.history.snapshot) await tm.show(v.history.snapshot);
+      } else if (tm.active) await tm.close();
+    }
     writeAddress(false);
-    // following ended while their view was being opened (the reader's own act): the windows the
-    // reader has opened since are their own, and nothing of the followed reader's closes them
-    if (!once && !people.following) return reached;
+    if (ended()) return reached;
     // what their panels and their board show besides: Activity, the lost-and-found, the colouring,
     // the edges — each their page says (an older one says none: this reader's stay)
     applyOwn(v, parts.apply);
