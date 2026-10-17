@@ -75,6 +75,12 @@ recipe and a name; the file's head comment says its format. It needs Playwright,
 does not depend on: `npm install --no-save playwright && npx playwright install chromium` (or point
 `VP_CHROMIUM` at a Chromium of your own).
 
+`node scripts/docs-figures.mjs <flt-regular checkout> [--cache dir] [--only name]` makes the
+documentation's figures again (`docs/images/tcb-view-*.webp`, in the README and the manual's
+Concepts): each is a recipe the script holds, drawn by this checkout's `visualproof artwork` from a
+copy of the flt-regular showcase's site, on the build it serves (`showcase/flt-regular/setup.sh`),
+then written as WebP by ImageMagick. The same build, site and recipes make the same files.
+
 The tips' films (GuideSpec) are made by
 `npm run tips:record -- --sphere <dir> --showcase <dir> --film <dir> [--cache <dir>] [<id>…]`: each
 storyboard (`scripts/tips/storyboards/`) played on a server of this checkout, in a headless Chromium
@@ -84,14 +90,14 @@ chapters of a review on Sphere-Packing-Lean (`--sphere`, built, on a site made e
 is written to `--film` (`tour.mp4` and its `tour.mp4.sha256`) and published as a release's asset.
 The repository keeps `src/assets/tips/tour.json` (the film's name, digest, size and length, its
 chapters and its captions, of which the server makes the WebVTT), its first frame `tour.webp` and
-each chapter's key frame `tour-<chapter>.webp`. Its agent's lines are requests to the agents' API the recorder makes, and the
-paper it adds is `scripts/tips/review-notes.tex`, typeset then by XeLaTeX. The phone's gestures are
-one clip kept here, on the flt-regular showcase (`--showcase`, at `b8a5f23`,
-`showcase/flt-regular/setup.sh`). It needs Playwright as above, XeLaTeX and Poppler; `--cache`
-keeps the extractions between runs. Without ids named, it makes all of them. Two recordings are the
-same to within a few pixels a few levels apart, but for the agent's token; the file's head comment
-says the rest. `test/tipsclips.test.ts` checks every storyboard against the page without a browser,
-and the tour's chapters, captions and stills.
+each chapter's key frame `tour-<chapter>.webp`. Its agent's lines are requests to the agents' API
+the recorder makes, and the paper it adds is `scripts/tips/review-notes.tex`, typeset then by
+XeLaTeX. The phone's gestures are one clip kept here, on the flt-regular showcase (`--showcase`, at
+`b8a5f23`, `showcase/flt-regular/setup.sh`). It needs Playwright as above, XeLaTeX and Poppler;
+`--cache` keeps the extractions between runs. Without ids named, it makes all of them. Two
+recordings are the same to within a few pixels a few levels apart, but for the agent's token; the
+file's head comment says the rest. `test/tipsclips.test.ts` checks every storyboard against the page
+without a browser, and the tour's chapters, captions and stills.
 
 ## Lean versions
 
@@ -137,6 +143,8 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   A patch found broken is withdrawn by the owner with `npm deprecate visualproof@<version> "<why>"`:
   servers neither take nor tell of a deprecated release (one that took it already sets it aside only
   if it fails), and the next patch replaces it.
+- Before a release, the documentation's figures are made again where the board's drawing or the
+  showcase changed (`node scripts/docs-figures.mjs`, "Real projects" above), and committed.
 - Before a release, the tips' films are recorded again when a part of the page they show changed
   (`npm run tips:record -- <id>…`, above), so that what they show is what the page does.
 - Releasing, by the owner: update `CHANGELOG.md` (the owner's own file, a `## ` heading naming the
