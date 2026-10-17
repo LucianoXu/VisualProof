@@ -28,11 +28,11 @@ import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
 import { evaluate, parseQuery, printQuery, readsReview, sameQuery, setOutside, withoutOutside } from "../../shared/query.ts";
 import { litKeyEdges } from "../../shared/keys.ts";
-import { keyMarked, keyMarks, trusted as isTrusted, under, validPrefix } from "../../shared/review.ts";
+import { keyMarked, keyMarks, under, validPrefix } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest } from "../../shared/review.ts";
-import { reviewCount } from "../../shared/reviewqueue.ts";
+import { reviewCount, trustSplit } from "../../shared/reviewqueue.ts";
 import { scopeWith, scopeWithout } from "../../shared/scopeedit.ts";
 import { newNoteId, noteExcerpt, withCarry } from "../../shared/sticky.ts";
 import type { NoteCarry, NoteOp, StickyNote } from "../../shared/sticky.ts";
@@ -75,7 +75,7 @@ import { popHtml, stamp } from "./buildpop.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
 import { FocusMenu, readerFocus } from "./focus.ts";
-import { Guide } from "./guide.ts";
+import { Guide, restsOnCounts } from "./guide.ts";
 import type { RestsOn } from "./guide.ts";
 import { reducedMotion } from "./tipcards.ts";
 import { Legend } from "./legend.ts";
@@ -85,6 +85,7 @@ import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SearchBox } from "./search.ts";
 import { SelectionBar } from "./selbar.ts";
+import type { LitCount } from "./selbar.ts";
 import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Shown, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
@@ -2163,10 +2164,13 @@ async function boot(): Promise<void> {
     reviewChanged();
   };
 
+  /** How many are lit on the board as the selection bar counts them: what is not trusted, the
+   *  trusted apart (TCBSpec decision 7, ViewSpec decision 14). */
+  const litCount = (lit: Lit | null): LitCount => (lit ? trustSplit(vg(), boardReview(), lit.set) : { counted: 0, trusted: 0 });
   /** The selection bar: its picks, what is lit, Zoom in, and where the review has a focus what "Mark
    *  selected as key" would mark — which the review changes, so it is drawn again with it. */
   const renderSelBar = (q = selectionQuery(picks), lit: Lit | null = q && litOn(q)) =>
-    selBar.render(picks, picks.findIndex((p) => !!shown && sameShown(shownOf(p), shown)), lit?.count ?? 0, zoomOf(q, lit) !== null, keyMarking());
+    selBar.render(picks, picks.findIndex((p) => !!shown && sameShown(shownOf(p), shown)), litCount(lit), zoomOf(q, lit) !== null, keyMarking());
 
   /** What is selected, lit and shown: the selection's query evaluated on the whole graph and cut to
    *  the board (decided 2026-10-07: what is lit is exactly that set; the owner's decision,
@@ -4287,9 +4291,9 @@ async function boot(): Promise<void> {
     return i;
   };
   /** What the tour's TCB step says of declaration `i` (GuideSpec decision 2): what each of its
-   *  views lights on the board on show, as the selection bar counts it, the theorem left out; what
-   *  TCB lights split into what is to be read and what is trusted (a prefix the review trusts, a
-   *  standard axiom: as the status colours say), and assumed. */
+   *  views lights on the board on show, as the selection bar counts it, the theorem apart; what is
+   *  lit split, as the bar splits it, into what is to be read and what is trusted (a prefix the
+   *  review trusts, a standard axiom: TCBSpec decision 7), and assumed. */
   const restsOnOf = (i: number): RestsOn => {
     const name = g.nodes[i].name;
     const G = vg();
@@ -4298,20 +4302,8 @@ async function boot(): Promise<void> {
       const q = selectionQuery([declPick(tool, name, keysFor({ decl: name }))]);
       return q ? litOn(q).set : null;
     };
-    const tcb = lit("tcb"), uses = lit("deps"), keys = lit("keys");
-    const self = toView(i);
-    let read = 0, assumed = 0, proofs = 0, k = 0;
-    for (let j = 0; j < G.n; j++) {
-      if (j === self) continue;
-      if (keys?.[j]) k++;
-      if (!tcb?.[j]) {
-        if (uses?.[j]) proofs++;
-        continue;
-      }
-      if (isTrusted(d, G.nodes[j].name, G.nodes[j].module, G.isExt(j))) assumed++;
-      else read++;
-    }
-    return { name: g.nodes[i].display ?? name.split(".").pop()!, read, assumed, proofs, keys: k, target: isTarget(name) };
+    const counts = restsOnCounts(G, d, toView(i), { tcb: lit("tcb"), uses: lit("deps"), keys: lit("keys") });
+    return { name: g.nodes[i].display ?? name.split(".").pop()!, ...counts, target: isTarget(name) };
   };
   /** A tip's Show me (GuideSpec decision 7; web/src/tips.ts), done on the reader's own page: the tour's
    *  theorem selected in a mode, a window or a popover opened, the linear form, the Time Machine —
