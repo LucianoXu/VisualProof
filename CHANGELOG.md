@@ -5,6 +5,13 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.4.0
+
+- Add automatic updates.
+- Add the tips' film: a review of Sphere-Packing-Lean in thirteen chapters, with captions.
+- Redesign the help: `?` is a menu (Tips, Keys, the tour, About).
+- Refine the manual and README.
+
 ## 0.3.0
 
 - Add the `visualproof artwork` command: make an artwork's PNG and SVG from a recipe, without a browser.
