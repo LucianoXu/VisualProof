@@ -1140,7 +1140,7 @@ async function boot(): Promise<void> {
     // reach until the mode is left, by the pointer and by the keyboard
     for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!a;
     if (a) {
-      linear.hide("reader");
+      linear.hide("reader", "followed");
       document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
     } else applyTheme();
     canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
@@ -1481,7 +1481,7 @@ async function boot(): Promise<void> {
         if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
       },
       edges: (v) => setEdges(v.edges!),
-      linear: (v) => (v.linear ? void linear.show("reader") : linear.hide("reader")),
+      linear: (v) => (v.linear ? void linear.show("followed") : linear.hide("reader", "followed")),
       artwork: (v) => art.follow(v.artwork ?? null),
     },
   };
@@ -1549,10 +1549,13 @@ async function boot(): Promise<void> {
       peerMenu.render();
     },
     // the windows that stood for the followed reader's are this reader's own now, and none says any
-    // more that the reader follows someone
+    // more that the reader follows someone; what following left is theirs to leave (CollabSpec, "What
+    // following leaves"): the linear form, which nothing on the screen says how to put away — the
+    // line does, once
     unfollowed: () => {
       sources.release();
       papers.unfollowed();
+      if (!people.following && linear.followed && !exportModal.isOpen) say(`The board stays in the linear form you followed: ${isPhone() ? "⋯ at the bottom → Linear form puts" : "o, or ⋯ at the bottom → Linear form, puts"} it away.`);
     },
     // what is left to review where the review has a focus is the reader's own
     renamed: () => {
@@ -1967,7 +1970,10 @@ async function boot(): Promise<void> {
     },
     start: (body) => data.exportDoc(body),
     poll: (id) => data.exportJob(id),
-    shown: (open) => (open ? void linear.show("export") : linear.hide("export")),
+    // the window closing, following nobody, takes with it the form following left, which nobody here
+    // asked for: the followed reader's own Export window drew it, as often as not (CollabSpec, "What
+    // following leaves")
+    shown: (open) => (open ? void linear.show("export") : people.following ? linear.hide("export") : linear.hide("export", "followed")),
     artwork: () => art.open(),
     artworkOnly: () => !!data.snapshot,
   });
