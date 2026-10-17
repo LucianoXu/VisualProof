@@ -33,6 +33,9 @@ import { PastBuilds } from "./pastdoc.ts";
 import type { LastHad, LostAnswer } from "../shared/lostfound.ts";
 import type { Identity } from "./versions.ts";
 import { spawnSync } from "node:child_process";
+import { packageVersion } from "./version.ts";
+import { withoutReasons } from "../shared/timeline.ts";
+import { childEnv } from "./children.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -971,7 +974,7 @@ export class AgentApi {
     const advise = !this.refuse(me, "advise");
     const byKey = new Map(this.endpoints.map((e) => [`${e.method} ${e.path}`, e]));
     return ok({
-      about: "VisualProof shows a Lean project's declarations, the TCB of its theorems (what a theorem's statement rests on) and the review people make of it. This is its API for AI agents.",
+      about: `VisualProof ${packageVersion()} shows a Lean project's declarations, the TCB of its theorems (what a theorem's statement rests on) and the review people make of it. This is its API for AI agents.`,
       you: {
         name: me.name,
         kind: me.kind,
@@ -1305,7 +1308,9 @@ export class AgentApi {
     const t = this.talker(a);
     if (typeof t !== "string") return t;
     try {
-      return { status: 200, body: null, text: { type: "text/javascript; charset=utf-8", body: readFileSync(MCP_FILE, "utf8") } };
+      // the file carries the version of the server it came from (UpdateSpec decision 11)
+      const body = readFileSync(MCP_FILE, "utf8").replace(/^const VERSION = "[^"\n]*";$/m, `const VERSION = ${JSON.stringify(packageVersion())};`);
+      return { status: 200, body: null, text: { type: "text/javascript; charset=utf-8", body } };
     } catch {
       return fail(404, "The MCP server is not beside this server.", "Use the HTTP API (GET /api/agent).");
     }
@@ -2096,7 +2101,7 @@ export class AgentApi {
         // the operations themselves are the server's business: what moved, and whether it was undone
         const { ops, undo: _u, ...rest } = e;
         out.push({ ...rest, ...who, moved: ops.flatMap((o) => (o.op === "clear" ? [] : [o.key])).slice(0, 100), undoneBy: undone.get(e.id) ?? null });
-      } else out.push({ ...e, ...who });
+      } else out.push({ ...withoutReasons(e), ...who });
     }
     const about = (a.query.get("name") ?? "").trim();
     // a note is about the declarations it names; a link, about the declaration it is on, or was on
@@ -2893,7 +2898,7 @@ export class AgentApi {
       {
         method: "GET", path: "/api/agent/activity", brief: "the timeline", about: "The timeline, oldest first: opinions and advice, targets and key marks, files of the library added, retitled, archived or restored and links made, edited or removed (all from the review's logs), builds, TCB changes, targets taken off, prefixes trusted or no longer, views saved, renamed, rescoped, deleted or laid out afresh, notes added to a view or taken out of it, notes, layouts and their undoing.",
         params: { since: "an ISO time (e.g. the `now` of your last answer) or an event id: what came after", name: "optional: only what is about this declaration (opinions, advice, notes that name it, key marks, links on it; a target's own events)", limit: "default 100, at most 1000 (the newest)" },
-        returns: "{now, events: [{at, kind, by?, agent?, …}] oldest first, more}; kinds: opinion, target, key (a key declaration as marked now: target, name), build, tcb, untarget, trust, untrust, view (a view saved, renamed, rescoped, deleted or laid out afresh: what, view, name, was?, scope; or a note of the project added to it or taken out of it: what items, note, text, shown), note (a note on a view written, edited or deleted: what, view, title, note, text), file (a file of the library: what is added, edited — its title, wasTitle the one before —, archived or restored; sha, title), link (what is made, edited or removed; id, subject, label, file, and an edit's changed (subject, label, place), wasSubject?, wasLabel?, auto? where VisualProof carried it with a renamed cluster), layout (with moved and undoneBy), undo; relayout only in a timeline kept from before views",
+        returns: "{now, events: [{at, kind, by?, agent?, …}] oldest first, more}; kinds: opinion, target, key (a key declaration as marked now: target, name), build, tcb, untarget, trust, untrust, view (a view saved, renamed, rescoped, deleted or laid out afresh: what, view, name, was?, scope; or a note of the project added to it or taken out of it: what items, note, text, shown), note (a note on a view written, edited or deleted: what, view, title, note, text), file (a file of the library: what is added, edited — its title, wasTitle the one before —, archived or restored; sha, title), link (what is made, edited or removed; id, subject, label, file, and an edit's changed (subject, label, place), wasSubject?, wasLabel?, auto? where VisualProof carried it with a renamed cluster), layout (with moved and undoneBy), undo, tool (the VisualProof version serving the site changed: from, to, setAside?); relayout only in a timeline kept from before views",
         run: (a) => this.activity(a),
       },
       {
@@ -3260,7 +3265,7 @@ export function commitOf(root: string): { hash: string; branch: string | null } 
   const was = commits.get(root);
   if (was && now - was.at < 10_000) return was.commit;
   const git = (...args: string[]) => {
-    const r = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" }, stdio: ["ignore", "pipe", "ignore"] });
+    const r = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 5000, env: childEnv({ GIT_OPTIONAL_LOCKS: "0" }), stdio: ["ignore", "pipe", "ignore"] });
     return r.status === 0 ? r.stdout.trim() : null;
   };
   const hash = git("rev-parse", "HEAD");

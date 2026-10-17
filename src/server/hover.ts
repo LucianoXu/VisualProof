@@ -25,6 +25,7 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { childEnv, DETACH, end, grouped } from "./children.ts";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -183,9 +184,9 @@ export class LeanHover {
   private resolveEnv(): { lean: string; leanPath: string } {
     if (this.env) return this.env;
     const root = this.project.root;
-    const which = spawnSync("elan", ["which", "lean"], { cwd: root, encoding: "utf8", timeout: 60000 });
+    const which = spawnSync("elan", ["which", "lean"], { cwd: root, encoding: "utf8", timeout: 60000, env: childEnv() });
     const lean = which.status === 0 && which.stdout.trim() ? which.stdout.trim() : "lean";
-    const env = spawnSync("lake", ["env", "printenv", "LEAN_PATH"], { cwd: root, encoding: "utf8", timeout: 120000 });
+    const env = spawnSync("lake", ["env", "printenv", "LEAN_PATH"], { cwd: root, encoding: "utf8", timeout: 120000, env: childEnv() });
     if (env.status !== 0) throw new Error(`lake env failed: ${(env.stderr || env.stdout || "").trim().slice(0, 300)}`);
     this.env = { lean, leanPath: env.stdout.trim() };
     return this.env;
@@ -197,7 +198,8 @@ export class LeanHover {
     this.starting ??= (async () => {
       const { lean, leanPath } = this.resolveEnv();
       if (!existsSync(this.dir)) mkdirSync(this.dir, { recursive: true });
-      const p = spawn(lean, ["--server"], { cwd: this.dir, env: { ...process.env, LEAN_PATH: leanPath }, stdio: ["pipe", "pipe", "pipe"] });
+      // a group of its own, which stopping ends with its workers (server/children.ts)
+      const p = grouped(spawn(lean, ["--server"], { cwd: this.dir, env: childEnv({ LEAN_PATH: leanPath }), stdio: ["pipe", "pipe", "pipe"], detached: DETACH }));
       this.proc = p;
       // what Lean writes is read here, in a callback no request waits on: nothing it writes may
       // throw out of it, or the server stops (read() skips what it cannot read)
@@ -226,7 +228,7 @@ export class LeanHover {
       if (init.error) {
         const why = this.failure ?? init.error.message;
         this.reset();
-        p.kill();
+        end(p);
         throw new Error(why);
       }
       this.notify("initialized", {});
@@ -640,7 +642,7 @@ export class LeanHover {
     this.idle = null;
     const p = this.proc;
     this.reset();
-    p?.kill();
+    if (p) end(p);
   }
 }
 

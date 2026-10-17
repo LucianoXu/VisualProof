@@ -2,6 +2,7 @@
 // changed.
 
 import { spawn } from "node:child_process";
+import { childEnv, DETACH, grouped } from "./children.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
@@ -100,7 +101,7 @@ export function leanProgram(prog: LeanProgram, toolchain: string, leanRoot: stri
     writeFileSync(join(work, "lean-toolchain"), toolchain + "\n");
     writeFileSync(join(work, "lakefile.toml"), `name = "${prog.exe.replace(/-/g, "")}"\n\n[[lean_exe]]\nname = "${prog.exe}"\nroot = "${prog.root}"\nsupportInterpreter = true\n`);
     log(`building ${prog.exe} for ${toolchain}…`);
-    const child = spawn("lake", ["build", prog.exe], { cwd: work, stdio: ["ignore", "pipe", "pipe"] });
+    const child = grouped(spawn("lake", ["build", prog.exe], { cwd: work, stdio: ["ignore", "pipe", "pipe"], detached: DETACH, env: childEnv() }));
     let tail = "";
     child.stdout.on("data", (b: Buffer) => (tail = (tail + b).slice(-2000)));
     child.stderr.on("data", (b: Buffer) => (tail = (tail + b).slice(-2000)));
@@ -144,7 +145,7 @@ function runExtractor(
     const args = opts.bin
       ? ["env", opts.bin, out, p.libDir, ...p.roots, ...tail_]
       : ["env", "lean", "--run", EXTRACTOR, out, p.libDir, ...p.roots, ...tail_];
-    const child = spawn("lake", args, { cwd: p.root, stdio: ["ignore", "pipe", "pipe"] });
+    const child = grouped(spawn("lake", args, { cwd: p.root, stdio: ["ignore", "pipe", "pipe"], detached: DETACH, env: childEnv() }));
     let tail = "";
     const onData = (buf: Buffer) => {
       const text = buf.toString();

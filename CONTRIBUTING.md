@@ -23,6 +23,7 @@ npm install
 npm run typecheck
 npm test                    # the whole suite, on the fixture's own toolchain
 npm run test:toolchains     # the whole suite once per toolchain of test/toolchains.json
+npm run test:updates        # the update path end to end, against a registry of its own
 node src/server/main.ts serve <a built Lean project>     # then open http://127.0.0.1:4173/
 ```
 
@@ -82,6 +83,13 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
 - A change to the extractor (`src/extractor/`), or to how the server runs Lean
   (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`), passes
   `npm run test:toolchains` on all of them.
+- A change to how the server follows its releases (`server/updates.ts`, `server/supervise.ts`,
+  `web/src/reload.ts`, the stopping in `server/main.ts`) passes `npm run test:updates`: the package
+  built as 8.0.0, its patch 8.0.1 and a broken 8.0.2, published to a registry the script serves on
+  this machine; 8.0.0 installed from it, the patch taken with a page open on it (which reloads where
+  it was, with Playwright installed as above), the broken one set aside. `VISUALPROOF_UPDATE_TEST_MS`
+  shortens the server's waits for it, and is honoured only where npm's registry
+  (`npm_config_registry`) is a loopback address, as the script's is.
 - `test/fixture/` is a small Lean project whose answers are known. `test/compat.test.ts` compares
   each toolchain's extraction of it with `test/golden/fixture-graph.json`. The golden changes only
   on purpose (`npm run golden:update`, on the fixture's own toolchain); a difference Lean itself
@@ -104,6 +112,13 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   - the site folder (`--site`): the review's logs and what a site accumulates. A version that
     changes its form reads the old one, or moves it over, so that no review is lost;
   - the agents' API and the MCP server's tools (`docs/agent-api/`).
+- **A patch release changes none of these.** Servers take a patch of the minor they run by
+  themselves, unattended (`--updates auto`, SPEC/UpdateSpec.md), so a patch is fixes alone: no option
+  gone or changed, no new form of the site, no change to the agents' API — and no change of the Node
+  versions it runs on (`engines`). Anything else waits for the next minor, which servers only tell of.
+  A patch found broken is withdrawn by the owner with `npm deprecate visualproof@<version> "<why>"`:
+  servers neither take nor tell of a deprecated release (one that took it already sets it aside only
+  if it fails), and the next patch replaces it.
 - Releasing, by the owner: update `CHANGELOG.md` (the owner's own file, a `## ` heading naming the
   version), the version in `package.json` and `CITATION.cff`, merge, then tag `main` and push the
   tag. `.github/workflows/release.yml` takes it from there: it checks that the tag, both files and

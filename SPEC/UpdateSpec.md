@@ -1,0 +1,226 @@
+# VisualProof Update Spec
+
+How a running VisualProof follows its own releases, beyond SPEC.md ("Deployment": "Websites served by
+this tool will check for updates periodically, and seamlessly update"): what it asks of the registry
+and how often, which releases it takes by itself and which it only tells of, how it takes one
+without losing anything, and how the open pages follow. Releases themselves, and what a release may
+change: CONTRIBUTING.md, "Branches and releases".
+
+## Decisions
+
+The owner's decisions of 2026-10-16.
+
+### Knowing of a release
+
+1. **The registry is asked through npm**, npm's own script run by the Node that runs the server
+   (where the `npm` beside it leads, else `lib/node_modules/npm/bin/npm-cli.js` beside it or, for
+   Homebrew's formula, its keg's `libexec/lib/node_modules/npm`; else `npm` on the PATH), in the versions'
+   folder (no project's `.npmrc` applies), so that the user's registry, proxy and certificates hold
+   as for any `npm install`: the versions of `visualproof` (`npm view visualproof versions`), and the
+   Node range of the newest beyond the running one (`engines`, read as npm reads ranges; an empty
+   one runs anywhere) and whether its publisher deprecated it: a deprecated release is neither taken
+   nor told of, so that a broken patch is withdrawn by `npm deprecate`; each check also asks of the
+   version the server runs and the patches of its minor the cache holds, and a server running a
+   deprecated patch steps back at a quiet moment (to the newest ready one that is not, else the
+   installed package). What a check found deprecated is merged into `updates.json`, shared by the
+   servers of the cache: never dropped for a version not asked or not answered, cleared only by an
+   answer that it is not. A version npm could not say these of is not taken: it is asked again at
+   the next check. Engines are checked as npm checks a Node (includePrerelease): a prerelease Node
+   is taken as any version. Nothing of the project is sent. At start (half a minute after
+   the server listens, unless it asked within the hour) and then once a day, with up to two hours
+   more so that servers started together do not ask together. Releases only: never a release
+   candidate (npm's `next`). A release whose Node range this Node does not meet is neither taken nor
+   told of as one to install; the log says what it needs. What was found is kept in `updates.json`
+   in the caches' root (`--cache`, not a project's cache), so that a restart knows it at once. A
+   check that fails, however, leaves the next one a day on.
+2. **Three modes**, `--updates auto|notify|off` (or `VISUALPROOF_UPDATES`), auto by default:
+   - **auto** — a patch is taken by itself (decision 3), a newer minor told of (decision 4);
+   - **notify** — any newer release is told of, with its command; nothing is downloaded, and the
+     installed package is what runs (not a patch an auto server sharing the cache downloaded);
+   - **off** — the registry is never asked, and the server runs as it did before 0.4: one process,
+     no supervisor (decision 5). For a machine kept offline.
+3. **What is taken unattended is a patch**: a release of the minor the server runs (0.4.1 for 0.4.0;
+   the owner's decision D1). Patches change no part of what is public — the command line, the site's
+   form, the agents' API (CONTRIBUTING.md) — so a server takes one without anyone looking.
+4. **A newer minor is told of, never taken** (the owner's decision D2): in 0.x a minor may change
+   the command line or the site's form. The log says it as the check finds it; `visualproof doctor`
+   and the help's About part say it, with the command that installs it where this one is installed
+   (`npm install --global visualproof@0.5.0`, or `--prefix` the folder it was installed in) and its
+   release notes. Once someone installs it, the server restarts into it by itself (decision 6).
+
+### Taking a patch
+
+5. **Side by side, under a supervisor.** A patch is downloaded into the caches' root,
+   `versions/<v>/` (`npm install --prefix=… --ignore-scripts --omit=dev --no-package-lock`, into a
+   folder of its own first: npm checks it against the registry's integrity), checked to run on this
+   Node (its `engines`, then `--version` says `<v>`), and marked ready; the installed package is
+   never written over. `visualproof serve` from an installed package is a small supervisor that runs
+   the server as a child: the newest of the installed package and the ready patches of its minor
+   that runs on this Node and is not set aside. It passes signals on and ends with the server's
+   status, unless the server asks to be started again (decision 9).
+   - `versions/` is shared by the user's servers: each supervisor marks the version it starts, as
+     it starts it (`running-<pid>`), moves a download into place only where none is (another's copy is as
+     good), and removes only versions of its own minor older than the one it would step back to
+     that no living server runs, and the downloads of servers that died midway.
+   - It is code the servers run: made `0700`; a folder another owns or others may write is
+     refused (decision 12).
+   - Not `npm install --global` from the server: it would write files under a running process,
+     which reads some of them as it goes (the Lean programs' sources, the layout worker, the page),
+     into a folder that may be root's, with no way back.
+   - `visualproof --version` says the installed package; the server says, in its first lines and in
+     its pages, the version it runs.
+6. **At a quiet moment**: nobody on a page (read-only readers too) and nothing running that a
+   restart would cut short — an extraction, a re-layout, the usage pass, a document being typeset.
+   Looked for every minute. A patch waits a day at most, then is taken anyway, the pages following
+   (decision 8). A package installed while the server runs (someone's `npm install`) waits ten
+   minutes at most: its files are no longer the ones the server started with. A server restarts
+   only into what the supervisor would run (the two read the same: the version, its engines, what
+   is set aside), and not where the Node it runs on is gone (an upgrade removed it): it keeps
+   running, and says why.
+7. **A version that fails is set aside**, and the version before it started again:
+   - one that fails before it serves is set aside for every server sharing the cache (what fails
+     as it starts is the version's); one that fails twice within ten minutes of serving, for the
+     site that saw it alone (that may be its project's), and for every site once two sites saw it;
+     the failures soon after it served are counted for a day after the last;
+   - a SIGKILL never counts (the kernel's when memory runs out, an operator's kill -9), nor a
+     SIGABRT once it served (V8's when the heap reaches its limit: a reader's request, maybe); a
+     SIGABRT before it served counts, as a version that runs out of memory where the one before it
+     did not. Not counted, the version is started again;
+   - where the version started after one was set aside fails as soon, the fault was not the first
+     one's: it is taken back, what was recorded of it kept and counted; that site's patches up to it
+     are paused — its server runs the installed package for a day, or until a newer patch is out
+     (`versions/paused.json`) — and the supervisor ends. So it does after six starts in ten minutes,
+     pausing the patch it was starting: under systemd's `Restart=on-failure`, the next start runs
+     the installed package, and stays there. A start after a kill that does not count waits — 5 s,
+     doubling, at most five minutes — and is not one of the six, so that kills at boot (out of
+     memory) do not pause a good patch;
+   - one set aside is tried again a day later, and kept aside for good after its third failure;
+   - a record that cannot be written (a full disk) sets the version aside all the same, for as long
+     as the supervisor runs (its server is told, VISUALPROOF_UNRECORDED, and never restarts into
+     it), and says so.
+
+   What ends a server that is not its code — the site held by another server, the port taken, the
+   project unreadable — sets nothing aside. What is set aside now, and why, and where a site's
+   patches are paused, is said in the log, by the doctor and to full readers (decision 11).
+
+### The pages, and stopping
+
+8. **Open pages follow their server.** A page is told which server answers as its event stream
+   opens (`hello`: the version it runs and its process). A page of another version reloads where it
+   is: the address, the camera and the browser's storage keep the view, the mode, the selection and
+   the tabs, and the page keeps for the reload what it alone holds — its source windows, the drafts
+   of comments and of messages to agents, a read-only reader's notes opened or collapsed. The reload
+   waits while it would cut something short — text being typed, a drag, a note being written, the
+   export window, the artwork mode, the linear form — the build pill offering it meanwhile
+   ("Updated — reload", which reloads at once). The pages back from a restart reload each within
+   five seconds, not all at once, and a tab reloads once for a version, whether or not its storage
+   is refused. A page of the same version and another process (a restart) reads the graph again:
+   graph versions are counted per process. While the server is away for a restart into another
+   version, the pill says "Updating to 0.4.2…".
+9. **Stopping is graceful**: on SIGINT, SIGTERM or SIGHUP the server takes no new request, tells
+   each page why (`update` for a restart into another version, `bye` for a stop) and ends its
+   stream, stops what it runs (Lean's language server, the usage pass's workers, the extractor, the
+   Lean programs' build, XeLaTeX, ImageMagick, Poppler, git) — those that start programs of their
+   own as a process group, with all they started — writes when tokens and links were last used, and
+   lets the site go; within five seconds whatever still waits. Status 0 for a stop, 75 for a restart
+   into another version. Once a stop was asked, the supervisor ends with 0, whatever the server
+   does meanwhile (a restart, a signal that reached it before its own handlers); a server ends at
+   once, with 0, at a stop asked before it can stop gracefully. A child ended by a signal otherwise
+   ends the supervisor with 128 + its number. A supervised server whose supervisor went stops too.
+
+### The record, and who is told
+
+10. **The version is part of the audit record.** The timeline records the VisualProof version that
+    serves the site where it is another than the one recorded before ("Updated from 0.4.1 to
+    0.4.2"; "VisualProof 0.4.0 serves the site" the first time), and a version set aside before it
+    (decision 7); Activity shows it with the builds. Each snapshot of a build records the version
+    that read it. A release that changes what the extractor makes of a build changes versions and
+    stales opinions through what already does so, the update standing beside it in Activity.
+11. **Who is told what**: `GET /api/updates` and the `updates` event give everything to those let
+    in fully (the version running, the installed one where it is another, the mode, when the
+    registry was last asked, a newer release: whether this server takes it, else the command, and
+    its notes; the versions set aside, and why); a read-only reader and an agent are told the version
+    alone, by one rule for both, and Activity a version set aside without why. The log of `GET
+    /api/status`, and where the review is kept, are not
+    a read-only reader's; the updates' own lines go to the server's console alone. The agents' API's
+    entry names the version; the MCP server's file carries the version of the server it came from.
+12. **What it trusts, and sends** (SECURITY.md): under auto, the npm registry and the package's
+    publisher are trusted as at the first install, unattended: the registry's hash is checked, not
+    provenance; dependencies are resolved again at each patch; the trust root is the release path
+    (a tag on `main`, the `npm` environment the owner approves). The check sends npm's own requests
+    and nothing of the project. `versions/` is code the servers run: the caches' root is kept the
+    user's alone. `--updates off` for a machine that asks nothing of the network.
+13. **Where none of it applies**: a checkout (`node src/server/main.ts`) never asks the registry
+    and runs no supervisor — its updates are git's, and `GET /api/updates` says `checkout: true`
+    rather than a mode; nor do `export` and `artwork`; `--updates off`.
+    0.3.0 has no updater: its servers are upgraded by hand to 0.4.0, the first that takes its
+    patches.
+
+### The tour film
+
+14. **The tips' tour film is fetched by the server, on its first play** (the owner's decision of
+    2026-10-17): 3½–4 minutes at 2560×1600, too large for the package and for git, it is an asset
+    of the repository's GitHub prerelease `tour-1`, and the package pins it
+    (`assets/tips/tour.json`: its file, size and sha256). The first `GET /tips/tour.mp4` starts the
+    one download, which every request shares and outlives the request that started it; meanwhile
+    the address answers 503 with Retry-After. The download is streamed to a file of its own,
+    never past the pinned size, given up after a minute with nothing or half an hour in all,
+    checked (size and sha256), and moved into the caches' root, `media/<sha256>.mp4` (`0700`, the
+    user's alone, as `versions/`); a film kept before is hashed once per process before it is
+    served. What is not the film is removed and not asked for again for a day (an hour where it
+    could not be had). It is served from there with byte ranges: no reader's browser reaches
+    GitHub. Redirects are followed only to GitHub's own hosts, https, five at most: the hash
+    guards what is kept, the hosts where the server goes. Any reader who may play it (read-only
+    readers too) may cause the one fetch: it is bounded, pinned and happens once.
+    - `--updates off` is the switch: an off server asks nothing of the network on its own (neither
+      the registry nor the film); `/tips/tour.mp4` answers 404, and the tour shows its stills and
+      captions alone. Under notify the film is fetched: it is the installed version's, no update.
+    - A checkout fetches it too (developers see the film); `VISUALPROOF_TOUR_FILM` names a local
+      file served in its place, under off too (a film being made).
+    - Full readers are told its state (`GET /api/updates` `film`: cached, fetching, unavailable
+      and why, waiting, off, local, none); the doctor says it in a line.
+    - `media/` is shared by the user's servers, of whatever version, each pinning its own film:
+      each marks the film it pins while it lives (`pin-<pid>`), and removes the films no living
+      server pins (an earlier cut, a patch's film replaced) and the downloads of servers that died
+      midway — as it starts, and once its film is kept or confirmed; never while it downloads.
+
+## Implementation notes
+
+- `server/updates.ts`: the versions (release only, newer, same minor; `choose`), npm (`npmPath`,
+  `registryVersions`, `registryEngines`), the commands (`installCommand`, `notesOf`), the patches
+  kept (`Versions`: `ready`, `bad`, `fetch`, `prune`), the code a supervisor runs (`codeToRun`), and
+  `Updates`: the check and its timers, the download, the quiet moment (`look`), the status.
+- `server/supervise.ts`: the supervisor. The child's environment says `VISUALPROOF_SUPERVISED=1`,
+  `VISUALPROOF_INSTALLED` (the installed package it watches) and `VISUALPROOF_SET_ASIDE` (what was
+  set aside before it); over IPC the child says `{vp: "listening", version}`, `{vp: "restart", to}`
+  and `{vp: "environment"}` (what ends it is not its code). More than six starts in ten minutes,
+  and it gives up.
+- `server/children.ts`: the programs the server runs, tracked to be stopped; `grouped` (spawned
+  detached, ended with `kill(-pid)`) for those that start programs of their own; `childEnv`, their
+  environment without `VISUALPROOF_*`.
+- Known limits, left as they are:
+  - `bad.json` and `paused.json` are read, changed and written by each supervisor without a lock
+    between the supervisors sharing a cache: two writing at once may lose one's change. Each write
+    is whole (a file moved into place), so a record is never half written, and what is lost is one
+    failure's count or one pause — the version is set aside or paused again at its next failure.
+  - A take-back is global: it clears a version's records for every site, though the site whose
+    step-back failed may be the only one whose environment is at fault.
+  - A signal sent to the server alone (not the supervisor), before its handlers are set at its very
+    start, ends it by the signal's default; the supervisor counts that as the version's failure.
+  - Between a version chosen and its mark written, another server's prune may still remove it:
+    the supervisor marks before it starts it and chooses again where the version went meanwhile,
+    leaving the window between prune's look and its removal.
+- `server/film.ts`: the film (`Film`; `useFilm`, set up as the server serves; `filmFile`,
+  `filmStatus`; `serveFilm`, the whole answer of `GET /tips/tour.mp4` given the media route's
+  `send`). `VISUALPROOF_MEDIA_BASE` another address to fetch it from, honoured only where it is a
+  loopback address (the tests' asset server).
+- The supervisor's variables are read only by a supervised server. `VISUALPROOF_UPDATE_TEST_MS`
+  shortens every wait for `npm run test:updates`, honoured only where npm's registry is a loopback
+  address (`npm_config_registry`), as the test's is and a server's never is.
+- `server/main.ts`: `--updates`, the supervisor's start, `stop()`, `GET /api/updates`, the version
+  recorded at start (`recordVersion`); `/api/meta?v=&i=` refuses another process's version (409).
+- `server/live.ts`: `instance`, `toolVersion`, `hello`'s `server`, `GraphInfo.instance`,
+  `updatesChanged`, `end`.
+- `web/src/reload.ts`: the page's version (`__VP_VERSION__`, defined as the page is bundled), what
+  is kept (`keep`, `takeKept`, sessionStorage `visualproof:reload`, ten minutes at most), `Reloader`.
+- The timeline's `tool` event (`shared/timeline.ts`), drawn by `web/src/activity.ts`.

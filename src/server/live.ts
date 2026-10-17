@@ -58,6 +58,10 @@ import { join } from "node:path";
 import { PROJECT, viewTitle } from "../shared/views.ts";
 import { boardSet } from "../shared/board.ts";
 import { derivesOn, existsIn } from "../shared/noteplace.ts";
+import { packageVersion } from "./version.ts";
+import type { UpdateStatus } from "./updates.ts";
+import { withoutReasons } from "../shared/timeline.ts";
+import type { StoredEvent } from "../shared/timeline.ts";
 
 const TICK = 1000;
 /** outputs quiet this long, and no compile running: the build is over */
@@ -95,13 +99,16 @@ interface Stream {
   /** a read-only reader's (CollabSpec decision 11): the read-only link it came by, whose revoking
    *  ends the stream, or "public" (--public); null for anyone else */
   readOnly: string | null;
+  /** told all of the server's own releases (UpdateSpec decision 11): someone let in fully, not a
+   *  read-only reader nor an agent */
+  toldAll: boolean;
 }
-
-/** What a stream's page alone is told of it (`hello`). */
-const helloOf = (st: Stream): StreamHello => ({ id: st.id, token: st.token, ...(st.private ? { private: true as const } : {}) });
 
 export interface GraphInfo {
   version: number;
+  /** the server's process the version is counted by (UpdateSpec decision 8): a page told of a
+   *  graph by another reads it again, whatever its number */
+  instance?: string;
   fingerprint: string;
   at: string;
   /** modules left out because they, or something under them, could not be imported */
@@ -138,6 +145,15 @@ export class Live {
   /** review changes not yet sent: those made in one turn of the event loop go out as one */
   private reviewPending: ReviewChange[] = [];
   private version = 0;
+  /** this server's process, as its pages know it (UpdateSpec decision 8): the graph's versions are
+   *  counted again by another */
+  readonly instance = randomBytes(6).toString("base64url");
+  /** the VisualProof version this server runs, read as it started */
+  readonly toolVersion = packageVersion();
+  /** what a page is told of VisualProof's releases (server/updates.ts): everything, or the version
+   *  alone (`full` false: a read-only reader, an agent); null where nobody follows them (a test's
+   *  server) */
+  updateStatus: ((full: boolean) => UpdateStatus) | null = null;
 
   /** the review's logs (ReviewSpec.md, server/review.ts) */
   readonly review: ReviewStore;
@@ -195,7 +211,7 @@ export class Live {
     this.editor = editor;
     this.usage = new UsagePass(project, dirs, saved ? 0 : jobs, (l) => this.say(l));
     this.tracker = new BuildTracker(project);
-    this.timeline = new Timeline(dirs.site, (e) => this.send("activity", e));
+    this.timeline = new Timeline(dirs.site, (e) => this.sendActivity(e));
     this.tokens = new AgentTokens(dirs.site);
     this.invites = new Invites(dirs.site);
     // every page knows the names the people invited by a link go by, so that what each did shows
@@ -348,7 +364,7 @@ export class Live {
     s.private = priv;
     // a private reader cannot be followed: what they asked is withdrawn
     if (priv) this.asks.withdraw(s.token);
-    this.write(s.res, "hello", helloOf(s));
+    this.write(s.res, "hello", this.helloOf(s));
     if (s.session) {
       if (priv) this.views.hold(s.session, was ? [...(was.view ? [was.view] : []), ...was.tabs] : []);
       else this.views.release(s.session);
@@ -686,7 +702,7 @@ export class Live {
         written = found.written;
         return found;
       };
-      const r = this.history.record(ex.graph, { at: buildTime(this.project), fingerprint: ex.fingerprint, commit, toolchain: this.project.toolchain, missing, sources });
+      const r = this.history.record(ex.graph, { at: buildTime(this.project), fingerprint: ex.fingerprint, commit, toolchain: this.project.toolchain, missing, sources, tool: this.toolVersion });
       if (!r.written) return renamed;
       const s = r.info;
       if (r.before) {
@@ -960,7 +976,55 @@ export class Live {
   graphInfo(): GraphInfo | null {
     if (!this.graph) return null;
     const { prep: _, ...info } = this.graph;
-    return info;
+    return { ...info, instance: this.instance };
+  }
+
+  /** What a stream's page alone is told of it (`hello`), and which server it is (UpdateSpec
+   *  decision 8): its version, and its process. */
+  private helloOf(st: Stream): StreamHello {
+    return { id: st.id, token: st.token, ...(st.private ? { private: true as const } : {}), server: { version: this.toolVersion, instance: this.instance } };
+  }
+
+  /** How many pages are open on the server (their event streams), read-only readers' too. */
+  get pages(): number {
+    return this.streams.size;
+  }
+
+  /** Whether the server is working on the build (an extraction, a re-layout, the usage pass):
+   *  no moment to restart in (UpdateSpec decision 6). */
+  get busy(): boolean {
+    return this.extracting || this.usage.status.state === "running";
+  }
+
+  /** What happened, to every page: a version set aside, without why, to those not told all
+   *  (UpdateSpec decision 11). */
+  private sendActivity(e: StoredEvent): void {
+    if (e.kind !== "tool" || !e.setAside) return this.send("activity", e);
+    const full = `event: activity\ndata: ${JSON.stringify(e)}\n\n`;
+    const slim = `event: activity\ndata: ${JSON.stringify(withoutReasons(e))}\n\n`;
+    for (const st of [...this.streams.values()]) this.push(st, st.toldAll ? full : slim);
+  }
+
+  /** What is known of VisualProof's releases changed: each page is told what it may know of it
+   *  (`toldAll`, as GET /api/updates says it). */
+  updatesChanged(): void {
+    const status = this.updateStatus;
+    if (!status) return;
+    const full = `event: updates\ndata: ${JSON.stringify(status(true))}\n\n`;
+    const slim = `event: updates\ndata: ${JSON.stringify(status(false))}\n\n`;
+    for (const st of [...this.streams.values()]) this.push(st, st.toldAll ? full : slim);
+  }
+
+  /** The server stops (UpdateSpec decision 9): every page is told why — a restart into another
+   *  version (`update`), or a stop (`bye`) — and its stream ended, so that it comes back to the
+   *  server that answers next. */
+  end(why: { update: { from: string; to: string } } | { stopped: true }): void {
+    const text = "update" in why ? `event: update\ndata: ${JSON.stringify(why.update)}\n\n` : `event: bye\ndata: ${JSON.stringify({ why: "stopped" })}\n\n`;
+    for (const st of [...this.streams.values()]) {
+      this.streams.delete(st.res);
+      this.byToken.delete(st.token);
+      st.res.end(text);
+    }
   }
 
   /** What /api/status says: enough for the loader and for a page that just connected. */
@@ -987,7 +1051,7 @@ export class Live {
    *  it), `person` the personal link it came by. The stream is named by the server: the page is
    *  told its id, which everyone sees, and a secret for its heartbeats (`hello`); it is gone from
    *  presence when its stream closes. */
-  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null): void {
+  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null): void {
     if (session) {
       // a page that opens one more than a page needs (a reload whose old stream lingers) loses
       // its oldest
@@ -1006,12 +1070,13 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
     res.on("close", () => this.close(st));
-    this.write(res, "hello", helloOf(st));
+    this.write(res, "hello", this.helloOf(st));
+    if (this.updateStatus) this.write(res, "updates", this.updateStatus(st.toldAll));
     this.write(res, "presence", this.presence.list());
     this.write(res, "private", { count: this.presence.privateCount() } satisfies PrivateCount);
     this.write(res, "people", this.invites.people());

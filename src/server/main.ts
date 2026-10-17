@@ -48,6 +48,12 @@ import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 import { doctor, packageVersion, printReport } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
+import { withoutReasons } from "../shared/timeline.ts";
+import { FROM_PACKAGE, PACKAGE_ROOT, UPDATE_MODES, Updates } from "./updates.ts";
+import type { UpdateMode } from "./updates.ts";
+import { RESTART_STATUS, supervise } from "./supervise.ts";
+import { stopChildren } from "./children.ts";
+import { filmStatus, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 
 interface Options {
@@ -90,6 +96,9 @@ interface Options {
   png: boolean;
   svg: boolean;
   screen: { w: number; h: number };
+  /** serve: what the server does with VisualProof's own releases (UpdateSpec decision 2): takes a
+   *  patch of its minor by itself, tells of a newer one, or neither */
+  updates: UpdateMode;
 }
 
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
@@ -99,7 +108,7 @@ function usage(code = 2): never {
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
-                                         [--public-url https://host] [--library-limit GB]
+                                         [--public-url https://host] [--library-limit GB] [--updates auto|notify|off]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Name]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
@@ -122,7 +131,10 @@ function usage(code = 2): never {
   --cache  the root of the caches, which a rebuild makes again: the project's (extractions, the
            usage pass's results, prepared views, typeset documents, Lean's language server's
            folder) in projects/<project>-<hash>/, the Lean programs compiled per toolchain in
-           lean/, the page's bundle in web/. Default: ${cacheHome()}
+           lean/, the page's bundle in web/, VisualProof's own releases in updates.json and the
+           patches downloaded in versions/ (code the servers run: keep the root yours alone),
+           and the tips' tour film in media/.
+           Default: ${cacheHome()}
            (XDG_DATA_HOME and XDG_CACHE_HOME move both homes, on any platform)
 
   --graph  use a saved extraction (a projects/*/extract/*.json of the cache) instead of reading
@@ -179,6 +191,16 @@ function usage(code = 2): never {
   --public-url  the address people reach this server at, when it is not the one their browser
            sends (a proxy in front): the prompt Share makes for an agent tells it this address.
 
+  --updates  what the server does with VisualProof's own releases, asked of the npm registry
+           (through npm) at start and once a day: auto (the default) — a patch of the version it
+           runs (0.4.x) is downloaded into the cache and taken at a quiet moment, nobody on a page,
+           open pages reloading where they were; a newer version (0.5.0) is told of, in the log
+           and the help, with the command that installs it, after which the server restarts into
+           it by itself; notify — told of, never downloaded; off — never asked (and no
+           supervisor process), and the tips' tour film never fetched: the server reaches the
+           network for nothing of its own. VISUALPROOF_UPDATES says the same. From a checkout,
+           never asked.
+
   --library-limit  the most the project's library of papers and images may take, in GB (default
            ${DEFAULT_LIBRARY_LIMIT / 1024 ** 3}); its files are kept in the site directory, by their hash.
 
@@ -200,7 +222,12 @@ function parseArgs(argv: string[]): Options {
     process.exit(0);
   }
   if (cmd !== "serve" && cmd !== "export" && cmd !== "purge-file" && cmd !== "doctor" && cmd !== "artwork") usage();
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 } };
+  const fromEnv = process.env.VISUALPROOF_UPDATES;
+  if (cmd === "serve" && fromEnv !== undefined && !UPDATE_MODES.includes(fromEnv as UpdateMode)) {
+    console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
+    process.exit(2);
+  }
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto" };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -236,6 +263,11 @@ function parseArgs(argv: string[]): Options {
       const n = Number(val());
       if (!Number.isInteger(n) || n < 0 || n > 256) usage();
       o.jobs = n;
+    }
+    else if (a === "--updates" && cmd === "serve") {
+      const mode = val();
+      if (!UPDATE_MODES.includes(mode as UpdateMode)) usage();
+      o.updates = mode as UpdateMode;
     }
     else if (a === "--agents") {
       const level = val();
@@ -299,6 +331,9 @@ export class App {
   private readOnlyOf = new WeakMap<IncomingMessage, string>();
   /** what read-only readers may cost the server: Lean's answers, their documents */
   readonly bounds: ReadOnlyBounds;
+  /** VisualProof's own releases as this server follows them (server/updates.ts); null: the
+   *  version alone is told (a test's server) */
+  updates: Updates | null = null;
 
   constructor(live: Live, hover: LeanHover, ids: Identities, agents: AgentApi, access: Access | null, exporter: Exporter | null = null, publicUrl: string | null = null, publicRead = false) {
     this.live = live;
@@ -315,6 +350,12 @@ export class App {
     this.publicUrl = publicUrl;
     this.publicRead = publicRead && access !== null;
     this.bounds = new ReadOnlyBounds((id) => this.exporter?.job(id)?.state === "running");
+  }
+
+  /** Whether a request is told all of the server's own releases (UpdateSpec decision 11): someone
+   *  let in fully; not a read-only reader, nor an agent. */
+  private toldAll(req: IncomingMessage): boolean {
+    return this.readOnlyOf.get(req) === undefined && this.ids.kind(req) !== "agent";
   }
 
   /** The exported document (ExportSpec decisions 5–16): POST /api/export starts typesetting the
@@ -810,7 +851,18 @@ export class App {
       if (/^\/(app|layout|edges|pdfworker)\.js(\.map)?$/.test(path)) return sendFile(req, res, join(bundleDir(), path.slice(1)));
       if (path.startsWith("/pdfjs/")) return pdfjsAsset(res, path);
       // with Lean's language server as it is (server/hover.ts): what is open, what crashed
-      if (path === "/api/status") return sendJson(res, { ...live.status(), lean: this.hover.state() });
+      // a read-only reader is told how the server is, not its log nor where its review is kept
+      if (path === "/api/status") {
+        const st: Record<string, unknown> = { ...(live.status() as Record<string, unknown>), lean: this.hover.state() };
+        if (this.readOnlyOf.get(req) !== undefined) {
+          delete st.log;
+          st.review = { ...(st.review as object), folder: undefined };
+        }
+        return sendJson(res, st);
+      }
+      // VisualProof's own version, and what of its releases those let in fully are told (UpdateSpec
+      // decision 11): a read-only reader and an agent are told the version alone
+      if (path === "/api/updates") return sendJson(res, this.updates?.status(this.toldAll(req)) ?? { running: packageVersion() });
       // the link that lets someone in, for a page that shares where it is (web/src/share.ts); a
       // request gets here only once it is in
       // a read-only reader shares the link they came by, or the address alone (--public)
@@ -911,11 +963,14 @@ export class App {
       }
       if (path === "/api/events") {
         const session = url.searchParams.get("session");
-        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null);
+        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null, this.toldAll(req));
       }
       // what happened (CollabSpec decision 5): what the server stored; the review's own history the
       // page reads from the review
-      if (path === "/api/activity") return sendJson(res, { events: live.timeline.events.slice(-2000) });
+      if (path === "/api/activity") {
+        const events = live.timeline.events.slice(-2000);
+        return sendJson(res, { events: this.toldAll(req) ? events : events.map(withoutReasons) });
+      }
       // a layout batch an agent made, undone (AgentSpec decision 4): from a page's Activity, by anyone;
       // by a private reader, without their name (CollabSpec decision 8)
       if (path === "/api/layout/undo" && req.method === "POST") {
@@ -940,7 +995,9 @@ export class App {
         if (!g) return sendJson(res, { error: "not ready" }, 503);
         // a page asks for the version it was told about; an older one is gone
         const want = url.searchParams.get("v");
-        if (want && Number(want) !== g.version) return sendJson(res, { error: "superseded", version: g.version }, 409);
+        // of this server's: one restarted since counts its versions again (UpdateSpec decision 8)
+        const of = url.searchParams.get("i");
+        if ((want && Number(want) !== g.version) || (of && of !== live.instance)) return sendJson(res, { error: "superseded", version: g.version, instance: live.instance }, 409);
         // a page asks for the edges packed (shared/edgecodec.ts; `pack=2` with the grammar site, a
         // page from before it `pack=1`, which takes grammar for a proof); an agent gets them as they
         // are
@@ -1235,8 +1292,20 @@ function packedGz(edgesGz: Buffer, format: 1 | 2): Buffer {
   return p;
 }
 
+/** What a stop signal does to a server: end it at once, until it can stop gracefully (serve). */
+let stopNow: () => void = () => process.exit(0);
+
 async function main(): Promise<void> {
   const o = parseArgs(process.argv.slice(2));
+  // an installed package's server runs under the supervisor, which stays while it restarts into
+  // another version (UpdateSpec decision 5); `--updates off`, and a checkout, run it as they are
+  if (o.cmd === "serve" && FROM_PACKAGE && o.updates !== "off" && process.env.VISUALPROOF_SUPERVISED !== "1") {
+    const site = projectDirs(resolve(o.path), o.site, o.cache).site;
+    process.exit(await supervise({ installedRoot: PACKAGE_ROOT, cacheRoot: o.cache ? resolve(o.cache) : cacheHome(), argv: process.argv.slice(2), site, mode: o.updates }));
+  }
+  // a stop asked before the server can stop gracefully (it reads the project, takes the site) ends
+  // it at once, with status 0; once it can, the graceful stop does (`stopNow`, below)
+  if (o.cmd === "serve") for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(sig, () => stopNow());
   if (o.cmd === "doctor") {
     const report = doctor({ path: o.path || null, roots: o.roots, site: o.site, cache: o.cache });
     console.log(printReport(report, o.path || null));
@@ -1251,7 +1320,7 @@ async function main(): Promise<void> {
   } catch (e) {
     if (e instanceof ProjectError) {
       console.error(`visualproof: ${e.message}`);
-      process.exit(1);
+      return endNotTheCode(1);
     }
     throw e;
   }
@@ -1268,7 +1337,7 @@ async function main(): Promise<void> {
     } catch (e) {
       if (!(e instanceof SiteBusy)) throw e;
       console.error(`visualproof: ${e.message}`);
-      process.exit(1);
+      return endNotTheCode(1);
     }
   }
   useBundleDir(bundleDirIn(o.cache ? resolve(o.cache) : cacheHome()));
@@ -1320,7 +1389,7 @@ async function main(): Promise<void> {
     key = o.accessKeyFile ? loadKey(o.accessKeyFile) : null;
   } catch (e) {
     console.error(`visualproof: --access-key-file: ${e instanceof Error ? e.message : String(e)}`);
-    process.exit(2);
+    return endNotTheCode(2);
   }
   process.on("exit", () => {
     hover.stop();
@@ -1331,9 +1400,75 @@ async function main(): Promise<void> {
     live.invites.close();
     live.readOnly.close();
   });
-  for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => process.exit(0));
-  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, new Exporter(dirs.cache), o.publicUrl, o.publicRead);
+  const exporter = new Exporter(dirs.cache);
+  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, exporter, o.publicUrl, o.publicRead);
   const server = createServer((req, res) => app.handle(req, res));
+  const version = packageVersion();
+  // run by the supervisor, which starts it again in another version (UpdateSpec decision 5)
+  const supervised = typeof process.send === "function" && process.env.VISUALPROOF_SUPERVISED === "1";
+  /** Stop (UpdateSpec decision 9): no new requests, the pages told why and their streams ended, the
+   *  programs the server runs stopped, then the process ends: status 0, or RESTART_STATUS for the
+   *  supervisor to start it again in another version. A second signal meanwhile changes nothing;
+   *  whatever still waits, it ends within 5 s. */
+  let stopping = false;
+  /** the status the process ends with: a stop asked during a restart makes it a stop (0), so that
+   *  the supervisor does not start it again */
+  let exitStatus = 0;
+  const stop = (status: number, why: { update: { from: string; to: string } } | { stopped: true }) => {
+    if (stopping) {
+      if ("stopped" in why) exitStatus = 0;
+      return;
+    }
+    stopping = true;
+    exitStatus = status;
+    updates.stop();
+    server.close();
+    live.end(why);
+    hover.stop();
+    live.usage.cancel();
+    server.closeIdleConnections();
+    setTimeout(() => process.exit(exitStatus), 5000);
+    void stopChildren(2000).then(() => {
+      server.closeAllConnections();
+      process.exit(exitStatus);
+    });
+  };
+  const cacheRoot = o.cache ? resolve(o.cache) : cacheHome();
+  const updates = new Updates({
+    mode: o.updates,
+    cacheRoot,
+    canRestart: supervised && FROM_PACKAGE,
+    check: FROM_PACKAGE,
+    checkout: !FROM_PACKAGE,
+    // nobody on a page, nothing running that a restart would cut short (UpdateSpec decision 6)
+    quiet: () => live.pages === 0 && !live.busy && !exporter.busy,
+    restart: (to) => {
+      process.send?.({ vp: "restart", to });
+      stop(RESTART_STATUS, { update: { from: version, to } });
+    },
+    // the server's console alone: the log pages read (GET /api/status) is no place for paths and
+    // commands of this machine
+    log: (l) => console.log(l),
+    changed: () => live.updatesChanged(),
+    running: version,
+    // the supervisor's word, believed only from it
+    installedRoot: (supervised && process.env.VISUALPROOF_INSTALLED) || PACKAGE_ROOT,
+    site: dirs.site,
+    // what the supervisor set aside without a record of it (a full disk), believed only from it
+    also: new Set(supervised ? unrecordedOf(process.env.VISUALPROOF_UNRECORDED) : []),
+    film: () => filmStatus(),
+  });
+  // the tips' tour film, fetched on its first play (UpdateSpec decision 14; never under --updates off)
+  useFilm({ cacheRoot, mode: o.updates, log: (l) => console.log(l) });
+  live.updateStatus = (full) => updates.status(full);
+  app.updates = updates;
+  stopNow = () => stop(0, { stopped: true });
+  // the supervisor went: this server goes with it rather than serve on alone
+  if (supervised) process.on("disconnect", () => stop(0, { stopped: true }));
+  server.on("error", (e: NodeJS.ErrnoException) => {
+    console.error(`visualproof: ${e.code === "EADDRINUSE" ? `${o.host}:${o.port} is in use already: give --port another` : e.message}`);
+    return endNotTheCode(1);
+  });
   server.listen(o.port, o.host, () => {
     console.log(`VisualProof — ${project.name} (${targetsInWords(project)})`);
     console.log(`  http://${o.host}:${o.port}/`);
@@ -1346,8 +1481,54 @@ async function main(): Promise<void> {
     console.log(
       `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : "anyone who reaches the port"}`,
     );
+    console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
+    recordVersion(live, version, supervised);
+    process.send?.({ vp: "listening", version });
+    updates.start();
   });
   live.start();
+}
+
+/** What the server does with its releases, for its first lines (UpdateSpec decisions 2–4, 13). */
+function updatesInWords(mode: UpdateMode, version: string, supervised: boolean): string {
+  if (mode === "off") return "off (--updates off): the registry is never asked";
+  if (!FROM_PACKAGE) return "none from a checkout";
+  const minor = version.split(".").slice(0, 2).join(".");
+  if (mode === "notify") return `notify — newer versions told of, never downloaded${supervised ? "; one installed meanwhile is restarted into" : ""}`;
+  return supervised ? `auto — a patch of ${minor} taken by itself at a quiet moment; a newer version told of` : "auto, but without the supervisor: newer versions told of";
+}
+
+/** The versions the supervisor says it set aside without a record (VISUALPROOF_UNRECORDED). */
+function unrecordedOf(text: string | undefined): string[] {
+  try {
+    const v = JSON.parse(text ?? "[]") as unknown;
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The version that serves the site, recorded in the timeline where it is another than the last one
+ *  recorded (UpdateSpec decision 10), with what the supervisor set aside before this one started. */
+function recordVersion(live: Live, version: string, supervised: boolean): void {
+  let setAside: { version: string; why: string } | undefined;
+  try {
+    const raw = JSON.parse((supervised && process.env.VISUALPROOF_SET_ASIDE) || "null") as { version?: unknown; why?: unknown } | null;
+    if (raw && typeof raw.version === "string" && typeof raw.why === "string") setAside = { version: raw.version, why: raw.why };
+  } catch {
+    // nothing set aside that can be read
+  }
+  const was = live.timeline.lastVersion() ?? live.history?.lastVersion() ?? null;
+  if (was !== version || setAside) live.timeline.add({ kind: "tool", from: was, to: version, ...(setAside ? { setAside } : {}) });
+}
+
+/** End the server with `status`, the supervisor told first that what ends it is not its code (the
+ *  site is busy, the port is taken, the project cannot be read): a patch that ends so is not set
+ *  aside (UpdateSpec decision 7). The message is sent before the process ends, not lost with it. */
+function endNotTheCode(status: number): void {
+  process.exitCode = status;
+  if (process.send) process.send({ vp: "environment" }, () => process.exit(status));
+  else process.exit(status);
 }
 
 /** The artwork command (ExportSpec decision 21): the build read as an export reads it, the picture a

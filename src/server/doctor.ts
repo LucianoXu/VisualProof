@@ -1,11 +1,18 @@
 // `visualproof doctor [<lean-project>]`: what this machine, and a project, need for VisualProof to
-// run, each checked, with what to do where it falls short. It changes nothing: it runs no Lake (in a
-// project's folder that would install its toolchain, and Lake may build), and makes no folder.
+// run, each checked, with what to do where it falls short; and whether a newer VisualProof is out,
+// asked of the npm registry through npm (UpdateSpec decision 1). It changes nothing: it runs no Lake
+// (in a project's folder that would install its toolchain, and Lake may build), and makes no folder.
 
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, readFileSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
+import { filmPin } from "./film.ts";
+import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { projectDirs, siteHolder } from "./dirs.ts";
+import { cacheHome, projectDirs, siteHolder } from "./dirs.ts";
+import { cmp, packageVersion, parseVersion, satisfies } from "./version.ts";
+import { choose, FROM_PACKAGE, installCommand, newerThan, newest, notesOf, npmCommand, PACKAGE_ROOT, readInfo, sameMinor, Versions } from "./updates.ts";
+
+export { packageVersion, satisfies };
 import { ProjectError, openProject, targetsInWords } from "./project.ts";
 
 /** ok; fail: VisualProof cannot run until it is fixed; warn: it runs, without something; info: optional */
@@ -20,55 +27,26 @@ export interface Check {
 
 export interface Report {
   checks: Check[];
+  /** what is known of VisualProof's newer releases, in a line */
+  updates: string;
+  /** the tips' tour film: kept, or fetched on its first play, or never (UpdateSpec decision 14) */
+  film: string;
   /** the command that serves the project, when nothing failed */
   ready: string | null;
 }
 
-/** What the doctor asks of the machine: a program's output, or null when it cannot be run. */
-export type Run = (cmd: string, args: string[]) => string | null;
+/** What the doctor asks of the machine: a program's output (run in `cwd`, where one is said), or
+ *  null when it cannot be run. */
+export type Run = (cmd: string, args: string[], cwd?: string) => string | null;
 
-export const run: Run = (cmd, args) => {
-  const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
+export const run: Run = (cmd, args, cwd) => {
+  const r = spawnSync(cmd, args, { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"], ...(cwd ? { cwd } : {}) });
   return r.error || r.status !== 0 ? null : `${r.stdout}${r.stderr}`;
 };
 
 /** The package's own file, read where both a checkout and the installed package have it. */
 function packageFile(rel: string): string {
   return join(import.meta.dirname, "..", "..", rel);
-}
-
-export function packageVersion(): string {
-  return JSON.parse(readFileSync(packageFile("package.json"), "utf8")).version;
-}
-
-type Version = [number, number, number];
-
-function parseVersion(v: string): Version | null {
-  const m = /(\d+)\.(\d+)\.(\d+)/.exec(v);
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
-}
-
-function cmp(a: Version, b: Version): number {
-  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i];
-  return 0;
-}
-
-/** Whether a version meets a range of the forms package.json's `engines` uses: alternatives
- *  joined by `||`, each of `^x.y.z`, `>=x.y.z`, `<x.y.z`, joined by spaces. */
-export function satisfies(version: string, range: string): boolean {
-  const v = parseVersion(version);
-  if (!v) return false;
-  return range.split("||").some((alt) =>
-    alt.trim().split(/\s+/).every((part) => {
-      const m = /^(\^|>=|<|)(\d+\.\d+\.\d+)$/.exec(part);
-      if (!m) return false;
-      const w = parseVersion(m[2])!;
-      if (m[1] === "^") return v[0] === w[0] && cmp(v, w) >= 0;
-      if (m[1] === ">=") return cmp(v, w) >= 0;
-      if (m[1] === "<") return cmp(v, w) < 0;
-      return cmp(v, w) === 0;
-    }),
-  );
 }
 
 /** A toolchain as elan names it: `leanprover/lean4:v4.33.1`, whether the project writes it so, or
@@ -123,6 +101,82 @@ export interface DoctorOptions {
   run?: Run;
   node?: string;
   platform?: NodeJS.Platform;
+  /** whether this is an installed package's doctor, whose releases are npm's (a test says) */
+  fromPackage?: boolean;
+  /** the updates' mode, as VISUALPROOF_UPDATES says it (off: the registry is not asked) */
+  updates?: string;
+}
+
+/** What the registry says of the releases beyond this one, in a line (UpdateSpec decisions 1–4, 7):
+ *  asked through npm under this Node, unless updates are off (VISUALPROOF_UPDATES=off); with what
+ *  this machine's servers set aside. */
+function updatesLine(exec: Run, node: string, fromPackage: boolean, cacheRoot: string, mode: string | undefined, site: string | null): string {
+  const running = packageVersion();
+  if (!fromPackage) return "a checkout: its updates are git's, not npm's";
+  if (mode === "off") return "not asked (VISUALPROOF_UPDATES=off)";
+  // what is set aside now (for the project's site, where one is checked), and where its patches are paused
+  const kept = new Versions(cacheRoot);
+  const held = kept.reasons(Date.now(), site);
+  const paused = kept.paused(site);
+  const bad = new Map(held.map((h) => [h.version, h]));
+  const aside =
+    (held.length ? `; set aside here: ${held.map((h) => `${h.version} (${h.why})`).join(", ")}` : "") +
+    (paused ? `; this site's patches up to ${paused.upTo} are not taken (${paused.why})` : "");
+  const { cmd, args } = npmCommand();
+  // run where no project's .npmrc applies: the caches' root, else the temporary folder
+  const cwd = existsSync(cacheRoot) ? cacheRoot : tmpdir();
+  const ask = (more: string[]) => exec(cmd, [...args, ...more, "--fetch-timeout=15000", "--fetch-retries=1"], cwd);
+  // npm's own warnings come after its answer: the answer alone is read
+  const json = (out: string | null, re: RegExp): unknown => {
+    const m = out === null ? null : re.exec(out)?.[0];
+    try {
+      return m ? JSON.parse(m) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const v = json(ask(["view", "visualproof", "versions", "--json"]), /\[[^\]]*\]|"[^"\n]*"/);
+  if (v === undefined) return `the npm registry could not be asked (offline, or npm not found): not checked${aside}`;
+  const versions = (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === "string");
+  // the engines of the newest beyond this one: those the doctor would name
+  const engines = new Map<string, string>();
+  const deprecated = new Set<string>();
+  const first = choose(running, versions, { bad: new Set(bad.keys()) });
+  for (const c of [first.patch, first.release]) {
+    if (!c || engines.has(c)) continue;
+    const out = ask(["view", `visualproof@${c}`, "engines", "deprecated", "--json"]);
+    const info = out === null ? null : readInfo(/^[\s\S]*?(\{[\s\S]*\}|"[^"\n]*")/.exec(out)?.[1] ?? "");
+    if (!info) continue;
+    engines.set(c, info.engines);
+    if (info.deprecated) deprecated.add(c);
+  }
+  // only versions npm said the engines and deprecation of are named: one it could not say of is not
+  const { patch, release } = choose(running, versions.filter((x) => engines.has(x)), { node, bad: new Set(bad.keys()), engines: (x) => engines.get(x), deprecated });
+  const skipped = newest(versions.filter((x) => newerThan(x, running)));
+  const unsaid = [first.patch, first.release].find((c) => c && !engines.has(c));
+  if (release && !sameMinor(release, running)) return `${release} is out: ${installCommand(PACKAGE_ROOT, release)} (${notesOf(release)}); a server restarts into it by itself${aside}`;
+  // the pause is said in `aside`: no server here takes this one
+  if (patch && paused && !newerThan(patch, paused.upTo)) return `${patch} is out, not taken${aside}, for a day or until a newer patch`;
+  if (patch) return `${patch} is out: a server takes it by itself (--updates auto), or ${installCommand(PACKAGE_ROOT, patch)}${aside}`;
+  if (unsaid) return `${unsaid} is out, but npm could not say what it needs: not checked${aside}`;
+  if (skipped && deprecated.has(skipped)) return `${skipped} is out, but deprecated by its publisher${aside}`;
+  if (skipped && engines.has(skipped)) return `${skipped} is out, but needs Node ${engines.get(skipped)}; this is ${node}${aside}`;
+  return `the latest release${aside}`;
+}
+
+/** The tips' tour film, in a line: kept in the cache, or fetched on its first play, or never. */
+function filmLine(cacheRoot: string, mode: string | undefined): string {
+  if (process.env.VISUALPROOF_TOUR_FILM) return `the local file ${process.env.VISUALPROOF_TOUR_FILM} (VISUALPROOF_TOUR_FILM)`;
+  const pin = filmPin();
+  if (!pin) return "none pinned in this package";
+  const kept = join(cacheRoot, "media", `${pin.sha256}.mp4`);
+  try {
+    if (statSync(kept).size === pin.size) return `kept (${kept})`;
+  } catch {
+    // not kept yet
+  }
+  if (mode === "off") return "never fetched (VISUALPROOF_UPDATES=off): the tour shows its stills and captions";
+  return `fetched from the project's GitHub release on its first play (${(pin.size / 1e6).toFixed(0)} MB)`;
 }
 
 export function doctor(o: DoctorOptions): Report {
@@ -167,7 +221,9 @@ export function doctor(o: DoctorOptions): Report {
     checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them" });
   }
 
-  if (o.path === null) return { checks, ready: null };
+  const film = filmLine(o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES);
+  const updates = updatesLine(exec, node, o.fromPackage ?? FROM_PACKAGE, o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES, o.path === null ? null : projectDirs(resolve(o.path), o.site, o.cache).site);
+  if (o.path === null) return { checks, updates, film, ready: null };
 
   let project;
   try {
@@ -175,7 +231,7 @@ export function doctor(o: DoctorOptions): Report {
   } catch (e) {
     if (!(e instanceof ProjectError)) throw e;
     checks.push({ level: "fail", what: e.message });
-    return { checks, ready: null };
+    return { checks, updates, film, ready: null };
   }
   const { root, toolchain, roots, libDir } = project;
   const name = toolchainName(toolchain);
@@ -217,7 +273,7 @@ export function doctor(o: DoctorOptions): Report {
   );
   const failed = checks.some((c) => c.level === "fail");
   const args = [o.path, ...o.roots.flatMap((r) => ["--root", r]), ...(o.site ? ["--site", o.site] : []), ...(o.cache ? ["--cache", o.cache] : [])];
-  return { checks, ready: failed ? null : `visualproof serve ${args.map((a) => (/^[\w./:@%+=-]+$/.test(a) ? a : JSON.stringify(a))).join(" ")}` };
+  return { checks, updates, film, ready: failed ? null : `visualproof serve ${args.map((a) => (/^[\w./:@%+=-]+$/.test(a) ? a : JSON.stringify(a))).join(" ")}` };
 }
 
 const MARK: Record<Level, string> = { ok: "✓", fail: "✗", warn: "!", info: "·" };
@@ -228,6 +284,7 @@ export function printReport(r: Report, project: string | null): string {
     lines.push(`  ${MARK[c.level]} ${c.what}`);
     if (c.fix && c.level !== "ok") lines.push(`      ${c.fix}`);
   }
+  lines.push(`  updates: ${r.updates}`, `  tour film: ${r.film}`);
   if (r.ready) lines.push("", `Ready: ${r.ready}`);
   else if (project === null && !r.checks.some((c) => c.level === "fail")) lines.push("", "To check a project too: visualproof doctor <lean-project>");
   return lines.join("\n");

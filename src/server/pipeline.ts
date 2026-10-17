@@ -16,6 +16,7 @@ import type { LayoutMemory } from "../shared/layout.ts";
 import type { Project } from "./project.ts";
 import { buildViewOffThread } from "./view.ts";
 import { cacheHome } from "./dirs.ts";
+import { packageVersion } from "./version.ts";
 import type { Dirs } from "./dirs.ts";
 
 /** the tool's own folder, `src/`; the repository is above it */
@@ -160,7 +161,9 @@ export async function ensureBundle(): Promise<void> {
   const dist = bundleDir();
   const out = join(dist, "app.js");
   let newest = 0;
-  for (const f of [...readdirRec(join(WEB, "src")), ...readdirRec(join(SRC, "shared"))]) newest = Math.max(newest, statSync(f).mtimeMs);
+  // package.json too: the page is bundled with its version (UpdateSpec decision 8), which a page
+  // compares with its server's — a bundle of another version would have every new tab reload
+  for (const f of [...readdirRec(join(WEB, "src")), ...readdirRec(join(SRC, "shared")), join(REPO, "package.json")]) newest = Math.max(newest, statSync(f).mtimeMs);
   const beside = ["layout.js", "edges.js", "pdfworker.js"].every((f) => existsSync(join(dist, f)));
   if (existsSync(out) && beside && statSync(out).mtimeMs >= newest) return;
   mkdirSync(dirname(dist), { recursive: true });
@@ -191,6 +194,8 @@ export async function bundlePage(outdir: string, sourcemap = true): Promise<void
     // the owner reads in Safari: what Safari 16 lacks of the syntax (pdf.js's class static blocks; a
     // regular expression's lookbehind, read at run time instead) is lowered
     target: ["es2022", "safari16"],
+    // the version the page is of, which it compares with its server's (UpdateSpec decision 8)
+    define: { __VP_VERSION__: JSON.stringify(packageVersion()) },
     sourcemap,
     outdir,
     logLevel: "warning",

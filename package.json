@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "node --test --import ./test/setup.ts \"test/*.test.ts\"",
     "test:toolchains": "node scripts/test-toolchains.mjs",
+    "test:updates": "node scripts/test-updates.mjs",
     "golden:update": "VP_GOLDEN_UPDATE=1 node --test --import ./test/setup.ts test/compat.test.ts"
   },
   "engines": {
