@@ -105,8 +105,12 @@ The supported toolchains are those of `test/toolchains.json`: the last six or so
 and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor.
 
 - A change to the extractor (`src/extractor/`), or to how the server runs Lean
-  (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`), passes
-  `npm run test:toolchains` on all of them.
+  (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`,
+  `server/children.ts`), passes `npm run test:toolchains` on all of them. CI runs the toolchains on
+  a pull request that touches those files, the fixture or its golden (`toolchains.yml` lists them),
+  and every week; the suite (`test.yml`) runs once per pull request and once on `main` as a merge
+  lands, which is what a release then checks. The newest Lean release and release candidate run
+  every week only: news of the next release, not a pull request's failure.
 - A change to how the server follows its releases (`server/updates.ts`, `server/supervise.ts`,
   `web/src/reload.ts`, the stopping in `server/main.ts`) passes `npm run test:updates`: the package
   built as 8.0.0, its patch 8.0.1 and a broken 8.0.2, published to a registry the script serves on
@@ -147,10 +151,13 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   showcase changed (`node scripts/docs-figures.mjs`, "Real projects" above), and committed.
 - Before a release, the tips' films are recorded again when a part of the page they show changed
   (`npm run tips:record -- <id>…`, above), so that what they show is what the page does.
-- Releasing, by the owner: update `CHANGELOG.md` (the owner's own file, a `## ` heading naming the
-  version), the version in `package.json` and `CITATION.cff`, merge, then tag `main` and push the
-  tag. `.github/workflows/release.yml` takes it from there: it checks that the tag, both files and
-  the changelog agree and that the tag is on `main`, runs the suite, publishes to npm with
+- Releasing, by the owner: one pull request carries the release — its work, the `CHANGELOG.md`
+  section (the owner's own file, a `## ` heading naming the version) and the version in
+  `package.json`, `package-lock.json` and `CITATION.cff` — rather than a stack of them and a release
+  commit after; merge it, then tag `main` and push the tag. `.github/workflows/release.yml` takes it
+  from there: it checks that the tag, the files and the changelog agree and that the tag is on
+  `main`, that main's required checks passed on the tagged commit as it landed (else it runs the
+  suite itself, and a commit whose checks failed is never released), publishes to npm with
   provenance (a release candidate under `next`), and makes the GitHub release from the changelog's
   section. It publishes in the `npm` environment of the repository, which only `v*` tags may use and
   whose runs the owner approves, by npm's trusted publishing: npm takes no token for `visualproof`.

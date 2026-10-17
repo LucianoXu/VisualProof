@@ -1,7 +1,7 @@
 // An MP4 file of one H.264 track, from what WebCodecs' VideoEncoder gives (its chunks, in decode
 // order, and the decoder configuration's `description`, the avcC record): the boxes a browser needs
 // to play it, with the index (moov) before the samples (mdat), so that it plays as it arrives. No
-// sound, one chunk of samples, no edit list. ISO/IEC 14496-12 (the boxes) and 14496-15 (avc1, avcC).
+// sound, a chunk of samples a second (players that read a chunk whole, as Apple's do, then stream it), no edit list. ISO/IEC 14496-12 (the boxes) and 14496-15 (avc1, avcC).
 
 /** A box: its size, its four-letter type, then what it holds. */
 function box(type, ...parts) {
@@ -77,16 +77,25 @@ export function mp4({ width, height, fps, avcC, samples }) {
   const keys = samples.flatMap((s, i) => (s.key ? [i + 1] : []));
   const stss = full("stss", 0, 0, u32(keys.length, ...keys));
   const ctts = reordered ? full("ctts", 0, 0, u32(n), ...offsets.map((o) => u32(1, o - shift))) : null;
-  const stsc = full("stsc", 0, 0, u32(1, 1, n, 1));
+  // a chunk a second: the samples of each second together, their chunk's offset in stco
+  const per = Math.max(1, Math.round(fps));
+  const chunks = Math.ceil(n / per);
+  const last = n - (chunks - 1) * per;
+  const stsc = full("stsc", 0, 0, ...(last === per || chunks === 1 ? [u32(1, 1, chunks === 1 ? n : per, 1)] : [u32(2, 1, per, 1), u32(chunks, last, 1)]));
   const stsz = full("stsz", 0, 0, u32(0, n), ...samples.map((s) => u32(s.data.byteLength)));
   const moovWith = (offset) => {
-    const stco = full("stco", 0, 0, u32(1, offset));
+    const starts = [];
+    for (let c = 0, at = offset; c < chunks; c++) {
+      starts.push(at);
+      for (let i = c * per; i < Math.min(n, (c + 1) * per); i++) at += samples[i].data.byteLength;
+    }
+    const stco = full("stco", 0, 0, u32(chunks, ...starts));
     const stbl = box("stbl", stsd, stts, ...(ctts ? [ctts] : []), stss, stsc, stsz, stco);
     const minf = box("minf", vmhd, dinf, stbl);
     const mdia = box("mdia", mdhd, hdlr, minf);
     return box("moov", mvhd, box("trak", tkhd, mdia));
   };
-  // the samples start after ftyp, moov and mdat's own header; moov's size does not depend on the offset
+  // the samples start after ftyp, moov and mdat's own header; moov's size does not depend on the offsets
   const offset = ftyp.length + moovWith(0).length + 8;
   const mdat = box("mdat", ...samples.map((s) => Buffer.from(s.data.buffer, s.data.byteOffset, s.data.byteLength)));
   return Buffer.concat([ftyp, moovWith(offset), mdat]);

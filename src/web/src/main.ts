@@ -174,7 +174,7 @@ async function waitReady(data: DataSource): Promise<{ graph: GraphInfo | null; e
   const log = $("#loader-log");
   for (;;) {
     const st = await data.status();
-    log.textContent = st.log.slice(-8).join("\n");
+    log.textContent = (st.log ?? []).slice(-8).join("\n");
     if (st.state === "ready") return { graph: (st as { graph?: GraphInfo }).graph ?? null, editor: st.editor ?? null };
     if (st.state === "error") {
       $("#loader-title").textContent = "Could not read the project";

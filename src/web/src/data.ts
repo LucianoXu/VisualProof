@@ -42,7 +42,8 @@ import type { ExportHead, ExportJobState } from "./exportmodal.ts";
 
 export interface Status {
   state: "extracting" | "ready" | "error";
-  log: string[];
+  /** the server's log as it reads the project: not told to a read-only reader (UpdateSpec decision 11) */
+  log?: string[];
   error?: string;
   /** the server's "Open in editor" template (`--editor`, shared/editor.ts); a snapshot has none */
   editor?: string | null;

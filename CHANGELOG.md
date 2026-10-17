@@ -5,6 +5,11 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.4.1
+
+- Fix the page of read-only readers, the public demo's among them, stopping at "Reading the project…".
+- Fix the tips' film stopping after its title in Safari.
+
 ## 0.4.0
 
 - Add automatic updates.
