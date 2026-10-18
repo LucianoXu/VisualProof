@@ -54,7 +54,7 @@ export interface Storyboard {
   store?: Record<string, unknown>;
 }
 
-export const FILM: { viewport: Size; out: Size; fps: number; bitrate: number; keyEvery: number; now: string; pace: number; reading: number; shownAtLeast: number; warnAbove: number; stillMax: number };
+export const FILM: { viewport: Size; out: Size; fps: number; bitrate: number; keyEvery: number; now: string; pace: number; typing: number; reading: number; shownAtLeast: number; warnAbove: number; stillMax: number };
 
 /** A caption of a film: from, to (seconds), what it says. */
 export interface Caption {
