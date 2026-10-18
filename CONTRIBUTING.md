@@ -38,6 +38,9 @@ it is packed. Pack it, then install the file.
 
 - Tests that need `lake` or XeLaTeX skip without them. Install elan: without `lake`, the tests of
   the extraction, the usage pass, the build status and Lean's hovers all skip.
+- `test/engines.test.ts` lays the fixture and the flt-regular showcase out in Chromium, and in
+  Firefox and WebKit where Playwright has them, and checks that every engine gives Node's layout to
+  the last bit. It needs Playwright (as below, "Real projects"), and skips without it.
 - Tests write only into the system's temporary directory, never into the repository, your site
   folders or your cache.
 - To try a change on a real project, point `--site` and `--cache` at scratch folders, so that

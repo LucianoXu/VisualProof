@@ -1343,7 +1343,9 @@ as a 1 V battery; each cluster solves the network of its children (declarations 
 a dependency counting where its two ends meet) with everything outside the cluster held at 0 V,
 and places its children by potential, the highest on top: sub-clusters at the free spot nearest
 their height, declarations packed tightly and handed their places from the top down. Nothing
-overlaps and the same graph always gives the same picture. On a large project about nine in ten of the
+overlaps and the same graph always gives the same picture, on the server and in every browser alike:
+the layout computes its sines, logarithms and lengths itself (`shared/libm.ts`), where engines would
+each round the last digit their own way. On a large project about nine in ten of the
 dependencies inside the project point downwards where their two ends meet (on Sphere-Packing-Lean, 90% of
 them by namespace, 87% by module; on flt-regular, 73% and 87%). Between rebuilds what survived keeps
 its place, unless its height in its cluster moved by more than a tenth of the radius; newcomers
@@ -1376,7 +1378,7 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `shared/query.ts`, `shared/board.ts`, `shared/views.ts`, `server/views.ts` | the query language of scopes and the selection, what a scope makes of the graph, the views and their store (ViewSpec) |
 | `server/agent.ts`, `server/agentviews.ts`, `server/agentdocs.ts`, `docs/agent-api/` | the JSON API for agents (AgentSpec), its endpoints about views, and its documentation in topics |
 | `server/tokens.ts`, `server/prompt.ts`, `server/talk.ts`, `server/mcptools.ts`, `mcp/visualproof-mcp.mjs` | agents' tokens and the prompt Share makes; conversations with agents, their inboxes and states; VisualProof's MCP server and the tools it offers |
-| `shared/layout.ts`, `shared/separate.ts` | the layout, on the server for the project and on the page for a board's own scope |
+| `shared/layout.ts`, `shared/separate.ts`, `shared/libm.ts` | the layout, on the server for the project and on the page for a board's own scope; the separation of a cluster's children, found through grids; the transcendental functions the layout computes alike on every engine |
 | `shared/keys.ts` | key declarations: what each supports, the key graph, the key-first order (ExportSpec) |
 | `shared/doc/`, `shared/lexer.ts`, `shared/palette.ts` | the exported document: its model, settings, plan of a view's sections (`sections.ts`), author line from the traces left on a view (`authors.ts`), builder (with proofs left out, `proof.ts`), docstrings read as Markdown (`markdown.ts`) and LaTeX renderer; the Lean tokenizer the page and the document highlight with; the colours they share |
 | `server/export.ts`, `server/pastdoc.ts`, `assets/latex/visualproof.sty`, `assets/fonts/` | typesetting on the server (XeLaTeX, cache, the sources zip); the past builds a view of a past build is printed from, kept for the next export; the style file; JuliaMono (SIL OFL) |
