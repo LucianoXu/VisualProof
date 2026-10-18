@@ -164,8 +164,11 @@ function readPlace(b: Record<string, unknown>, type: FileType, pages: number | u
     place.page = b.page as number;
   }
   if (b.region !== undefined && b.region !== null) {
-    if (!validRegion(b.region)) return "region is [left, top, right, bottom], fractions of the page from its top left (0 to 1), left < right and top < bottom.";
-    place.region = roundRegion(b.region as Region);
+    // checked as it is kept, to four decimals: a region narrower than that is none, and its event
+    // would be refused as it is written ("region"), with nothing to say why
+    const r = validRegion(b.region) ? roundRegion(b.region as Region) : null;
+    if (!r || !validRegion(r)) return "region is [left, top, right, bottom], fractions of the page from its top left (0 to 1), left < right and top < bottom, at least 0.0001 apart.";
+    place.region = r;
   }
   if (b.quote !== undefined && b.quote !== null) {
     const q = typeof b.quote === "string" ? { text: b.quote } : b.quote;

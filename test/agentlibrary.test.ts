@@ -63,6 +63,10 @@ test("at level advise an agent adds files and links, and changes its own; what o
     assert.equal(made.json!.link.by, "Claude");
     // its own, edited; a person's, not
     assert.equal((await S.ask("POST", "/api/agent/link/edit", { id: made.json!.link.id, region: [0.1, 0.05, 0.5, 0.1] }, agent())).status, 200);
+    // a region narrower than the four decimals it is kept to is none, and says so
+    const thin = await S.ask("POST", "/api/agent/link/edit", { id: made.json!.link.id, region: [0.10001, 0.05, 0.10004, 0.1] }, agent());
+    assert.equal(thin.status, 400);
+    assert.match(thin.json!.error, /0\.0001 apart/);
     const person = await S.ask("POST", "/api/library/link", { subject: "ns(N)", file: sha, page: 1 }, { "x-visualproof-name": "Alice" });
     const id = person.json!.link.id;
     assert.equal((await S.ask("POST", "/api/agent/link/edit", { id, label: "mine now" }, agent())).status, 403);
