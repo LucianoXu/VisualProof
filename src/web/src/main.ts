@@ -4078,6 +4078,10 @@ async function boot(): Promise<void> {
     const route = routeKey(e.key, win !== null, !!(e.target as Element | null)?.closest?.("button, a[href], summary, select"));
     // Space on a window's button or link presses it
     if (route === "press") return;
+    // and on any button reached from the keyboard, as everywhere (surfaces.ts: Enter or Space on a
+    // control presses it); on one the pointer pressed last, where the focus stays, Space is the page's
+    // key for the source
+    if (e.key === " " && (e.target as Element | null)?.matches?.(":focus-visible") && (e.target as Element).closest("button, summary")) return;
     if (win && route === "close") {
       e.preventDefault();
       sources.close(win);
