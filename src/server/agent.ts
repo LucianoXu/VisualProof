@@ -924,7 +924,7 @@ export class AgentApi {
     const job = ex?.job(id) ?? null;
     if (!ex || !job) return fail(404, "There is no such document: it was never asked for, or has left the cache.", "POST /api/agent/export starts one; the same request again finds it while it is kept.");
     if (job.state === "running") return fail(409, "That document is still being typeset.", `Ask again in a few seconds, or wait for GET /api/agent/export/job?id=${job.id} to say done.`, { job }, { "retry-after": "2" });
-    if (job.state === "failed") return fail(409, `That document could not be typeset: ${job.error ?? "XeLaTeX failed"}.`, "Its job has the end of XeLaTeX's log (GET /api/agent/export/job).", { job });
+    if (job.state === "failed") return fail(409, `That document could not be typeset: ${(job.error ?? "XeLaTeX failed").replace(/\.$/, "")}.`, "Its job has the end of XeLaTeX's log (GET /api/agent/export/job).", { job });
     const f = ex.file(id, w);
     if (!f) return fail(404, "That document has left the cache.", "Ask for it again: POST /api/agent/export.");
     return { status: 200, body: null, file: f };

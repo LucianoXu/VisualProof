@@ -412,3 +412,24 @@ test("the Export window follows the board on show: another view, or the view at 
   modal.boardChanged();
   assert.equal(asked.length, 3);
 });
+
+test("a typesetting that fails, or a request refused, says why in one sentence", async () => {
+  for (const [said, shown] of [
+    ["XeLaTeX: Undefined control sequence.", "Typesetting failed: XeLaTeX: Undefined control sequence."],
+    ["There is no view vx.", "Typesetting failed: There is no view vx."],
+    ["the server could not be reached", "Typesetting failed: the server could not be reached."],
+  ]) {
+    const el = box();
+    const modal = new ExportModal(box(), el, {
+      view: () => ({ id: "va", title: "A", heading: "A", fixed: false, plan: { count: 3, sectionCount: 1, outside: { count: 0, by: [] } } }),
+      saved: () => undefined,
+      save: () => {},
+      head: async () => ({ title: "A", author: "" }),
+      start: async () => said.startsWith("XeLaTeX") ? { id: "j", state: "failed", error: said } : said,
+      poll: async () => "not here",
+    });
+    modal.open();
+    await (modal as unknown as { generate(): Promise<void> }).generate();
+    assert.ok(el.innerHTML.includes(`<div class="banner bad">${shown}</div>`), el.innerHTML);
+  }
+});
