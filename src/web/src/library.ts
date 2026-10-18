@@ -2,8 +2,8 @@
 // the bar's Library. A file is added by anyone who can write a note — uploaded (chosen, or dropped
 // on the list), or by URL, which the server fetches once and keeps (an arXiv abstract's address
 // gives its PDF) — and listed with its record: its title (the PDF's own, else the file's name;
-// renamed here), its type, size and pages, who added it and when (written in Chinese, the owner's
-// decision of 2026-10-11), and where it came from. Opening one shows it in the reference window
+// renamed here), its type, size and pages, who added it and when (written in English whatever the
+// browser's language, the owner's decision of 2026-10-11: `libraryDate`), and where it came from. Opening one shows it in the reference window
 // (web/src/paperwin.ts). Removing a file archives it: it leaves the list, its links say so, and it
 // is restored from "Archived". A file whose record came through the review's logs from another
 // server, and whose bytes this one lacks, says so and takes only bytes of its hash.
