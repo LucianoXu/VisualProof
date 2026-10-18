@@ -1,6 +1,8 @@
 // Where the page gets its data: the live server, or a snapshot carried inside the page itself
 // (`visualproof export`), which opens from disk with no server at all.
 
+import type { BuildStatus } from "../../shared/build.ts";
+import type { DeployStatus } from "../../shared/deploy.ts";
 import type { UpdateStatus } from "./guide.ts";
 import type { Outline } from "../../shared/doc/outline.ts";
 import type { BoardMemory } from "../../shared/board.ts";
@@ -47,6 +49,10 @@ export interface Status {
   error?: string;
   /** the server's "Open in editor" template (`--editor`, shared/editor.ts); a snapshot has none */
   editor?: string | null;
+  /** the build status of the project's files, and how far a build going on is */
+  build?: BuildStatus | null;
+  /** the branch the server follows and builds itself (DeploySpec): the loading page says what it does */
+  deploy?: DeployStatus;
 }
 
 export interface Source {

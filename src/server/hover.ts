@@ -644,6 +644,15 @@ export class LeanHover {
     this.reset();
     if (p) end(p);
   }
+
+  /** The project's toolchain changed (a new commit of the branch the server follows:
+   *  server/deploy.ts): Lean stops, and starts at the next question with the new toolchain's `lean`
+   *  and LEAN_PATH. */
+  toolchainChanged(): void {
+    this.stop();
+    this.env = null;
+    this.failure = null;
+  }
 }
 
 /** Null after `ms`: what a question for Lean is raced against. */

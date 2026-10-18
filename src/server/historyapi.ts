@@ -24,6 +24,7 @@ import type { History } from "./history.ts";
 import type { Identity } from "./versions.ts";
 import type { LastHad, LostAnswer } from "../shared/lostfound.ts";
 import type { HistoryDiff } from "../shared/pastgraph.ts";
+import type { DeployStatus } from "../shared/deploy.ts";
 
 /** What the endpoints read: the live server has it all. */
 /** Who makes a move: a person or an agent by name, and someone invited by a personal link by the
@@ -53,6 +54,9 @@ export interface HistoryWorld {
   lostAndFound?(): LostAnswer;
   lastHad?(name: string): LastHad | null;
   archiveEntries?(keys: string[], on: boolean, who: Mover): { status: number; body: unknown };
+  /** the branch followed and its builds (DeploySpec), what agents are told beside the snapshots;
+   *  null for a workspace */
+  following?(): DeployStatus | null;
 }
 
 const no = (status: number, error: string): Answer => ({ status, body: { error } });
@@ -182,7 +186,10 @@ export function historyAnswer(w: HistoryWorld, a: Ask, refuse: (a: Ask) => Answe
   }
   if (path === "") {
     const latest = h.latest();
-    return ok({ snapshots: h.list(), current: latest?.id ?? null, diskBytes: h.diskBytes() });
+    // agents are told the branch's builds too (DeploySpec decision 11): the page has them with the
+    // build status
+    const following = a.path.startsWith("/api/agent/") ? w.following?.() : null;
+    return ok({ snapshots: h.list(), current: latest?.id ?? null, diskBytes: h.diskBytes(), ...(following ? { following } : {}) });
   }
   if (path === "/graph") {
     const id = snapshotOf(w, a, "id", true);
@@ -249,6 +256,7 @@ export function historyWorld(world: Partial<HistoryWorld>): HistoryWorld {
     lostAndFound: () => world.lostAndFound?.() ?? { lost: [], migrations: [], archived: [], aside: { entries: 0, modules: [] }, count: 0 },
     lastHad: (name) => world.lastHad?.(name) ?? null,
     archiveEntries: (keys, on, who) => world.archiveEntries?.(keys, on, who) ?? { status: 404, body: { error: "not found" } },
+    following: () => world.following?.() ?? null,
   };
 }
 

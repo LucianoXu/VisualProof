@@ -56,6 +56,10 @@ import { RESTART_STATUS, supervise } from "./supervise.ts";
 import { stopChildren } from "./children.ts";
 import { filmStatus, serveFilm, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
+import { branchProblem, branchToFollow, DEFAULT_POLL_MINUTES, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, lockDeployment, MIN_POLL_MINUTES, parseRemote, recordedDefault } from "./deploy.ts";
+import type { DeployFolder, Remote } from "./deploy.ts";
+import { shortCommit, slimDeploy } from "../shared/deploy.ts";
+import type { DeployStatus } from "../shared/deploy.ts";
 
 interface Options {
   cmd: "serve" | "export" | "purge-file" | "doctor" | "artwork";
@@ -103,12 +107,19 @@ interface Options {
   /** serve: what the server does with VisualProof's own releases (UpdateSpec decision 2): takes a
    *  patch of its minor by itself, tells of a newer one, or neither */
   updates: UpdateMode;
+  /** serve: a git address where the project goes (DeploySpec decision 1): the remote whose branch
+   *  the server follows and builds; null for a folder */
+  remote: Remote | null;
+  /** --branch: the branch followed; null: the remote's default branch */
+  branch: string | null;
+  /** --poll: how often the remote is asked, in minutes; null: DEFAULT_POLL_MINUTES */
+  poll: number | null;
 }
 
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
  *  to stdout with status 0. */
 function usage(code = 2): never {
-  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project> [--root Name]... [--port 4173] [--host 127.0.0.1]
+  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project | git URL> [--branch name] [--poll ${DEFAULT_POLL_MINUTES}] [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
@@ -124,6 +135,18 @@ function usage(code = 2): never {
 
   Reads what \`lake build\` left in <lean-project>/.lake. It never builds the project, and writes
   nothing into it.
+
+  A git URL where the project goes (https://github.com/owner/repo, ssh://…, git@host:owner/repo, or
+  file:///path for a repository on this machine): the server follows that branch of the repository
+  in a clone of its own in the cache, never a workspace, and builds each new commit itself —
+  \`lake exe cache get\` where the project is on Mathlib, then \`lake build\` — one at a time, the
+  newest commit pushed meanwhile the only one built after it; the board shows the last build
+  meanwhile. Git's own credentials (an SSH key, a deploy key, a credential helper): VisualProof keeps
+  none, and nothing waits on a prompt. Whoever can push to the branch runs code on this machine, as
+  the server's user (SECURITY.md): run it as a user of its own, and protect the branch.
+  --branch the branch followed (default: the remote's default branch); never a pull request's or
+           a fork's
+  --poll   how often the remote is asked for the branch's head, in minutes (default ${DEFAULT_POLL_MINUTES})
 
   --root   what to read: a library of the lakefile (the modules Lake builds of it) or a module;
            repeatable. By default the lakefile's default targets.
@@ -239,7 +262,7 @@ function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto" };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -290,6 +313,17 @@ function parseArgs(argv: string[]): Options {
       if (!Number.isInteger(n) || n < 0 || n > 256) usage();
       o.jobs = n;
     }
+    else if (a === "--branch" && cmd === "serve") o.branch = val();
+    else if (a === "--poll" && cmd === "serve") {
+      const v = val();
+      const m = Number(v);
+      // said in a line, as --screen is
+      if (!/^\d+(\.\d+)?$/.test(v) || m < MIN_POLL_MINUTES || m > 1440) {
+        console.error(`visualproof: --poll ${v}: say how often the remote is asked, in minutes, from ${MIN_POLL_MINUTES} to 1440 (a day)`);
+        process.exit(2);
+      }
+      o.poll = m;
+    }
     else if (a === "--updates" && cmd === "serve") {
       const mode = val();
       if (!UPDATE_MODES.includes(mode as UpdateMode)) usage();
@@ -311,6 +345,32 @@ function parseArgs(argv: string[]): Options {
     else usage();
   }
   if ((!o.path && cmd !== "doctor") || (cmd === "export" && !o.out) || (cmd === "artwork" && !o.recipe)) usage();
+  // a git address where the project goes: the branch followed and built (DeploySpec decisions 1,
+  // 10 and 11), its address and branch checked before anything is run
+  if (o.path && isGitAddress(o.path)) {
+    if (cmd !== "serve") {
+      console.error(`visualproof ${cmd}: ${o.path.slice(0, 200)} is a git address: only serve follows a branch. Give the folder of its clone, which serve names as it starts (its "clone:" line).`);
+      process.exit(2);
+    }
+    const r = parseRemote(o.path);
+    if ("error" in r) {
+      console.error(`visualproof: ${r.error}`);
+      process.exit(2);
+    }
+    if (o.graph) {
+      console.error("visualproof: --graph does not go with a git address: the server builds what it shows");
+      process.exit(2);
+    }
+    const why = o.branch === null ? null : branchProblem(o.branch);
+    if (why) {
+      console.error(`visualproof: --branch ${why}`);
+      process.exit(2);
+    }
+    o.remote = r;
+  } else if (o.branch !== null || o.poll !== null) {
+    console.error("visualproof: --branch and --poll go with a git address (serve https://github.com/owner/repo): a folder is read as its owner's builds leave it");
+    process.exit(2);
+  }
   // read-only for whoever comes, beside those the key or a link lets in: without a key, everyone is in
   // already; behind a sign-in, there is nobody else
   if (o.publicRead && (!o.accessKeyFile || o.identityHeader)) {
@@ -931,6 +991,8 @@ export class App {
         if (this.readOnlyOf.get(req) !== undefined) {
           delete st.log;
           st.review = { ...(st.review as object), folder: undefined };
+          // a branch's build log is not a read-only reader's (DeploySpec decision 11)
+          if (st.deploy) st.deploy = slimDeploy(st.deploy as DeployStatus);
         }
         return sendJson(res, st);
       }
@@ -1071,6 +1133,10 @@ export class App {
       // the project's git source and commit as git says them now, not as the build was read (an
       // artwork's foot, ExportSpec decision 19; the owner's decision of 2026-10-15)
       if (path === "/api/git") {
+        // following a branch, the commit of the build on show, on that branch: what is checked out
+        // meanwhile is the build going on (DeploySpec decision 12)
+        const shown = live.shownCommit();
+        if (shown !== undefined) return sendJson(res, { git: shown && { source: live.deploy!.status(false).source, commit: shown.hash, branch: shown.branch } });
         if (!this.gitRead || Date.now() - this.gitRead.at >= this.gitFreshMs) this.gitRead = { git: gitSource(live.project.root), at: Date.now() };
         return sendJson(res, { git: this.gitRead.git });
       }
@@ -1400,7 +1466,7 @@ async function main(): Promise<void> {
   // an installed package's server runs under the supervisor, which stays while it restarts into
   // another version (UpdateSpec decision 5); `--updates off`, and a checkout, run it as they are
   if (o.cmd === "serve" && FROM_PACKAGE && o.updates !== "off" && process.env.VISUALPROOF_SUPERVISED !== "1") {
-    const site = projectDirs(resolve(o.path), o.site, o.cache).site;
+    const site = o.remote ? deploySiteOf(o) : projectDirs(resolve(o.path), o.site, o.cache).site;
     process.exit(await supervise({ installedRoot: PACKAGE_ROOT, cacheRoot: o.cache ? resolve(o.cache) : cacheHome(), argv: process.argv.slice(2), site, mode: o.updates }));
   }
   // a stop asked before the server can stop gracefully (it reads the project, takes the site) ends
@@ -1414,19 +1480,24 @@ async function main(): Promise<void> {
   // a live server outlives any one failed task: log it and keep serving (a picture is no server:
   // whatever fails ends it, with status 1)
   if (o.cmd !== "artwork") process.on("unhandledRejection", (e) => console.error("unhandled:", e instanceof Error ? e.message : e));
+  // following a branch (DeploySpec): its clone in the cache, made at the first start, is the project
+  const deploy = o.remote ? await openDeployment(o) : null;
+  if (o.remote && !deploy) return;
   let project: Project;
   try {
-    project = openProject(o.path, o.roots, o.graph === null);
+    // a branch's clone is read before its build: the server builds it
+    project = openProject(deploy ? deploy.folder.checkout : o.path, o.roots, !deploy && o.graph === null);
   } catch (e) {
     if (e instanceof ProjectError) {
-      console.error(`visualproof: ${e.message}`);
+      console.error(`visualproof: ${deploy ? `${deploy.branch} of ${deploy.remote.source ?? deploy.remote.url}, at ${shortCommit(deploy.head)}: ` : ""}${e.message}`);
       return endNotTheCode(1);
     }
     throw e;
   }
   // a picture: the site read, never made, locked or written (ExportSpec decision 21)
   if (o.cmd === "artwork") return artworkCommand(project, o);
-  const dirs = projectDirs(project.root, o.site, o.cache);
+  // a branch's site is the address's and the branch's, wherever the cache is
+  const dirs = { ...projectDirs(project.root, o.site, o.cache), ...(deploy && o.site === null ? { site: deploySite(deploy.remote, deploy.branch) } : {}) };
   openSite(dirs.site);
   mkdirSync(dirs.cache, { recursive: true });
   // one server at a time writes a site; an export only reads it
@@ -1500,6 +1571,28 @@ async function main(): Promise<void> {
     live.invites.close();
     live.readOnly.close();
   });
+  // the branch followed: asked every --poll minutes, each new head built in turn (DeploySpec)
+  const deployment = deploy
+    ? new Deployment({
+        remote: deploy.remote,
+        branch: deploy.branch,
+        folder: deploy.folder,
+        project,
+        roots: o.roots,
+        everyMs: (o.poll ?? DEFAULT_POLL_MINUTES) * 60_000,
+        head: deploy.head,
+        hooks: {
+          reading: () => live.reading,
+          // the usage pass of the build before is cut short: what it finished is kept
+          starting: () => live.usage.cancel(),
+          toolchainChanged: () => hover.toolchainChanged(),
+          // the pages are told at the live loop's next look, within a second
+          changed: () => {},
+          log: (l) => live.say(l),
+        },
+      })
+    : null;
+  live.deploy = deployment;
   const exporter = new Exporter(dirs.cache);
   const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, exporter, o.publicUrl, o.publicRead, o.allowedHosts);
   const server = createServer((req, res) => app.handle(req, res));
@@ -1522,6 +1615,8 @@ async function main(): Promise<void> {
     stopping = true;
     exitStatus = status;
     updates.stop();
+    // a build going on is stopped with the programs, and done again at the next start
+    deployment?.stop();
     server.close();
     live.end(why);
     hover.stop();
@@ -1582,11 +1677,57 @@ async function main(): Promise<void> {
       `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : `anyone who reaches the port, by its address, localhost${[...(o.publicUrl ? [urlHost(o.publicUrl)] : []), ...o.allowedHosts].map((n) => `, ${n}`).join("")} (other names are refused: --allowed-host)`}`,
     );
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
+    if (deployment) {
+      const d = deployment.status(true);
+      console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min`);
+      console.log(`  clone: ${deployment.folder.checkout}`);
+      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : `none yet: the first, of ${shortCommit(deploy!.head)}, starts now, and the page says so until it is done`}; their logs in ${deployment.folder.logs}`);
+    }
     recordVersion(live, version, supervised);
     process.send?.({ vp: "listening", version });
     updates.start();
   });
   live.start();
+  deployment?.start();
+}
+
+/** The site a branch's server keeps, as the supervisor finds it (UpdateSpec decision 7): `--site`,
+ *  else the address's and the branch's — the default branch as it was last asked, without the network;
+ *  null at a first start without --branch, which the server alone resolves. */
+function deploySiteOf(o: Options): string | null {
+  if (o.site !== null) return resolve(o.site);
+  const branch = o.branch ?? recordedDefault(o.cache ? resolve(o.cache) : cacheHome(), o.remote!.url);
+  return branch ? deploySite(o.remote!, branch) : null;
+}
+
+/** A branch's deployment as the server starts (DeploySpec decisions 1–2): the branch (the remote's
+ *  default where none is given), its folder in the cache taken for this server, its clone made at
+ *  the first start. Null where it cannot be had: said, and the server ends, which is not its code. */
+async function openDeployment(o: Options): Promise<{ remote: Remote; branch: string; folder: DeployFolder; head: string } | null> {
+  const remote = o.remote!;
+  const cacheRoot = o.cache ? resolve(o.cache) : cacheHome();
+  const branch = await branchToFollow(remote, o.branch, cacheRoot);
+  if (typeof branch !== "string") {
+    console.error(`visualproof: ${remote.source ?? remote.url}: ${branch.error}`);
+    endNotTheCode(1);
+    return null;
+  }
+  const folder = deployFolder(cacheRoot, remote, branch);
+  try {
+    process.on("exit", lockDeployment(folder, remote, branch));
+  } catch (e) {
+    if (!(e instanceof DeployBusy)) throw e;
+    console.error(`visualproof: ${e.message}`);
+    endNotTheCode(1);
+    return null;
+  }
+  const c = await ensureClone(remote, branch, folder, (l) => console.log(l));
+  if ("error" in c) {
+    console.error(`visualproof: ${c.error}`);
+    endNotTheCode(1);
+    return null;
+  }
+  return { remote, branch, folder, head: c.commit };
 }
 
 /** What the server does with its releases, for its first lines (UpdateSpec decisions 2–4, 13). */

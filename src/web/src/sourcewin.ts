@@ -91,6 +91,11 @@ export interface SourceHooks {
   /** the link that opens declaration `i` of graph `g` in the reader's editor: at `at` (line and
    *  column from 1) in the file as it is now, else at its compiled place; null when there is none */
   editorLink(g: Graph, i: number, at?: { line: number; col: number }): string | null;
+  /** following a branch on GitHub (DeploySpec decision 13): the link to lines `from` to `to` (from 1)
+   *  of `file` at `commit`; null where the server follows no branch on GitHub */
+  githubLink?(file: string, commit: string, from: number, to: number): string | null;
+  /** following a branch, the commit whose build the graph of now was read from */
+  builtCommit?(): string | null;
   /** the past graph `g` is (a board of a past build), with that build in words; null for the graph
    *  of now */
   pastOf(g: Graph): { past: PastGraph; when: string } | null;
@@ -826,11 +831,14 @@ export class SourceWindow implements SourcePane {
       ? `<span class="sw-pinned" role="img" aria-label="Pinned" title="Pinned: it stays on ${escapeHtml(v.name)}, whatever is selected">${PIN}</span>`
       : `<button class="icon sw-pin" data-sw-pin aria-label="Pin" title="Pin: keep this window on ${escapeHtml(v.name)}; the next source you open (Space) opens in a new window beside it">${PIN}</button>`;
     // the editor opens the file as it is now: at the compiled place, unless the window found the
-    // declaration somewhere else in a file that changed since
+    // declaration somewhere else in a file that changed since; GitHub, the build's own text at its
+    // commit, where the text shown is that commit's
+    let remote: { href: string; commit: string } | null = null;
     const head = (where: string, editor: string | null) =>
       `<div class="sw-head">${pinned ? "" : nav()}<span class="dot ${kindDot(v.kind, ext)}"></span><span class="sw-name" title="${escapeHtml(v.name)}">${short}</span>` +
       `<span class="sw-ns">${escapeHtml(parts.slice(0, -1).join("."))}</span><span class="sw-loc">${where}</span>` +
       (editor ? editorAnchor(editor) : "") +
+      (remote ? githubAnchor(remote.href, remote.commit) : "") +
       `<span class="sw-acts">${pin}<button class="icon" data-sw-collapse aria-label="Collapse" title="Collapse to one line (or double-click the title bar)">${COLLAPSE}</button>` +
       `<button class="icon sw-close" data-sw-close aria-label="Close" title="${pinned ? "Close (Esc)" : "Close (Esc, or Space)"}">✕</button></span></div>`;
     // `final`: the declaration's own frame, not what stands for it while its code is read
@@ -880,6 +888,12 @@ export class SourceWindow implements SourcePane {
       }
       this.code = { file: shot.file, start: shot.start, lines: shot.lines };
       this.resolve = shot.resolve;
+      // the text kept is that commit's own: the build read from a clean checkout of it
+      const pc = then.past.snapshot.commit;
+      if (pc && !pc.dirty && !pc.guessed && (got.from === "tree" || got.from === `git:${pc.hash}`)) {
+        const href = this.hooks.githubLink?.(shot.file, pc.hash, shot.start + 1, shot.end + 1);
+        if (href) remote = { href, commit: pc.hash };
+      }
       // what the pointer is over is asked of nobody: names show what the build knew of them
       this.shown = { module: v.module, start: shot.start, hash: "" };
       const notes = [`<div class="banner sw-then">${escapeHtml(pastNote(then.when, commit, got.check))}</div>`];
@@ -922,6 +936,12 @@ export class SourceWindow implements SourcePane {
     }
     const text = lines.slice(at.start, at.end + 1).join("\n");
     this.code = { file: src.file, start: at.start, lines: text.split("\n") };
+    // the file is the build's text: at the build's commit, these lines
+    const built = this.hooks.builtCommit?.();
+    if (built && !edited) {
+      const href = this.hooks.githubLink?.(src.file, built, at.start + 1, at.end + 1);
+      if (href) remote = { href, commit: built };
+    }
     // names in source are mostly written short: resolved, as Lean would by default, in the
     // namespaces around the declaration and what the file opens before it — and as Lean said,
     // where it has been asked already
@@ -1129,4 +1149,10 @@ function offsetIn(root: Node, node: Node, off: number): number {
   r.setStart(root, 0);
   r.setEnd(node, off);
   return r.toString().length;
+}
+
+/** "Open on GitHub" (DeploySpec decision 13): the declaration's lines in the build's commit, in a
+ *  tab of its own. */
+function githubAnchor(href: string, commit: string): string {
+  return `<a class="link editor-link gh-link" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="These lines at ${escapeHtml(commit.slice(0, 7))}, the commit of the build shown, on GitHub">Open on GitHub</a>`;
 }
