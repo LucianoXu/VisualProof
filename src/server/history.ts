@@ -35,6 +35,7 @@ import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import type { GitSource, Kind, RawGraph, RawNode } from "../shared/graph.ts";
 import type { Project } from "./project.ts";
+import { endsLine } from "./lostfound.ts";
 import { SourceStore, summarize } from "./sourcestore.ts";
 import type { ModuleShape, SourceMap, SourceRef, SourcesSummary } from "./sourcestore.ts";
 import { ownName, refIdentity, versionOf } from "./versions.ts";
@@ -568,7 +569,8 @@ export class History {
 
   private save(info: SnapshotInfo): void {
     this.infos.set(info.id, info);
-    appendFileSync(this.indexFile, JSON.stringify(info) + "\n");
+    // after a line cut short, on a line of its own: the line cut short alone is lost
+    appendFileSync(this.indexFile, (endsLine(this.indexFile) ? "" : "\n") + JSON.stringify(info) + "\n");
   }
 
   private readGz<T>(file: string): T {
