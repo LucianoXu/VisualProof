@@ -273,6 +273,9 @@ test("a guest cannot take a link holder's name: told why, wherever a name is nee
     assert.equal(taken.status, 409);
     assert.equal(taken.json!.taken, true);
     assert.match(taken.json!.error, /“Bob” is the name of someone invited with a personal link: choose another/);
+    // nor in a Unicode form, nor with characters nobody sees: a zero-width space or joiner, a soft
+    // hyphen, a direction mark
+    for (const look of ["Ｂｏｂ", "Bob\u200b", "B\u200do\u00adb", "\u202eBob", "\ufeffBob\u2060"]) assert.equal((await S.ask("POST", "/api/identity", { name: look })).status, 409, JSON.stringify(look));
     assert.deepEqual((await S.ask("POST", "/api/identity", { name: "Alice" })).json, { ok: true, name: "Alice" });
     // a page that kept the name is told, and is taken for one without a name
     const id = await S.ask("GET", "/api/identity", undefined, asBob);

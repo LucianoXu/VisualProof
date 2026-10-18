@@ -24,7 +24,7 @@ import { Identities, layoutAuthor } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import type { GitSource } from "../shared/graph.ts";
 import { MAX_MEMORY_BYTES, readProjectView, Views } from "./views.ts";
-import { cleanView, defaultAgentName, validSession, withoutArtwork } from "../shared/collab.ts";
+import { cleanView, defaultAgentName, nameKey, validSession, withoutArtwork } from "../shared/collab.ts";
 import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
@@ -525,7 +525,7 @@ export class App {
     if (b.to !== undefined && b.to !== null && typeof b.to !== "string") return sendJson(res, { error: "to is a reader's id, as presence lists them; left out, everyone." }, 400);
     const person = this.ids.person(req);
     // one request every 30 s per person — their personal link, else their name — and per page
-    const key = person ? `p:${person.id}` : `n:${me.trim().normalize("NFKC").toLowerCase()}`;
+    const key = person ? `p:${person.id}` : `n:${nameKey(me)}`;
     const a = live.asks.ask({ name: me, verified: !!person, agent: false, from: page.id, stream: b.token as string, rate: [key, `s:${b.token as string}`] }, typeof b.to === "string" ? { page: b.to } : { everyone: true });
     if ("ok" in a) {
       const { report: _, ...sent } = a.ok;
