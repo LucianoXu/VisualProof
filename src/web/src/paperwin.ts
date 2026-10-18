@@ -666,9 +666,15 @@ export class PaperWin {
   private async find(q: string): Promise<void> {
     const out = this.findEl.querySelector<HTMLElement>(".pw-found")!;
     if (!(this.view instanceof PdfView)) return;
-    out.textContent = "Finding…";
+    // the server finds two characters or more (GET /api/library/search): one is not "Not found"
+    const short = q.replace(/\s+/g, " ").trim().length < 2;
+    out.textContent = short ? "" : "Finding…";
     const r = await this.view.search(q);
     this.more = !!r?.more;
+    if (short) {
+      out.textContent = q.trim() ? "Two letters at least" : "";
+      return;
+    }
     out.textContent = !r ? "Its text cannot be read" : r.n ? `1 / ${r.n}${r.more ? "+" : ""}` : "Not found";
   }
 
