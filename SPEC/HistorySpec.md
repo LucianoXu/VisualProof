@@ -93,6 +93,12 @@ is TCBSpec decision 3's.
     what is lit, on that graph.
 18. **Browsing is personal and followable**, as a camera is. A follower's own drag on the timeline,
     or leaving the mode, ends following.
+    - **At the latest, a new build is followed** (the owner's decision of 2026-10-18): a reader at the
+      latest build when a new one is read goes on to it, as the board does with the mode closed, and
+      is never left on what has become a past build. Someone at a build they chose stays there, a
+      view kept at a build stays kept, and a follower goes where the reader they follow goes. What
+      the reader has stays: the selection, the panel, the camera where the declarations survive.
+      What changed is told as ever, by the build status and Activity.
 19. **A view's graph version** is an option of the view, the latest by default. **Keep this version
     in this view** sets it for everyone; **Save as new view** makes a view of it; a clock badge marks a
     kept view. Browsing is personal; saving is explicit.
@@ -221,6 +227,14 @@ agents need level full. Pages are sent `lost` (`{rev, count, lost}`) and read th
 - **Following**: presence carries `history: {snapshot}` as it carries the camera (none from a private
   reader). The follower's own drag, a step or a press on the bar ends it; reading a count's list does
   not.
+- **A new build** (decision 18's notes, web/src/past.ts, `onNewBuild`): when the list of builds is read
+  again (`history`, or a new graph on show), a reader aimed at the build that was the latest is aimed
+  at the new latest, and its board is the board of now, which the new graph replaces as any open
+  page's. Not where the view on show is kept at that build, nor while following someone: presence
+  brings the followed reader's build. Those following the reader are told the build it is at now.
+  Every page, the mode open or not, asks `/diff` from the build before to the new one for its
+  renames: the selection follows those (a rename of a declaration nothing was said of is in the
+  history alone, decision 10) as it follows the renames in force.
 
 ### A view's version
 

@@ -789,7 +789,11 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   ring, what changed since has an amber ring, what was renamed a teal one with its name now on its
   card. A board of a past build holds that build's declarations alone (the owner's decision,
   2026-10-10). Where you are in it is
-  yours, as your camera is, and someone following you sees the same build. At another build than
+  yours, as your camera is, and someone following you sees the same build. At the latest build, a
+  new one takes you with it, as it does the board with the Time Machine closed: the board stays the
+  board of now, your selection and camera with it, and the pill and Activity say what changed (the
+  owner's decision, 2026-10-18); at a build you chose, or on a view kept at a build, you stay, and
+  following someone, you go where they go. At another build than
   the view's own it is a preview, which nobody arranges: **Keep this version** keeps the view at
   that build for everyone on it (a clock on its tab), **Save as new view** makes a view of it and
   goes there. A view kept at a past build is a view as any (the owner's decision, 2026-10-10):
