@@ -1595,10 +1595,10 @@ async function artwork(project: Project, o: Options, fail: (why: string) => neve
   // the site's layout memory read and never written, nor the views laid out written to the cache;
   // without a site, none read: the board as a new site lays it out
   const prep = await prepare(project, dirs, o.graph, log, { ...(ex ? { extraction: ex } : {}), readOnlySite: true, ...(site ? {} : { freshLayout: true }) });
-  const kept = site ? readProjectView(site, LAYOUT_VERSION) : { view: null };
+  const kept = site ? readProjectView(site, LAYOUT_VERSION) : { view: null, notes: 0 };
   if (kept.why) console.error(`visualproof artwork: the site's views cannot be read (${kept.why}): the Project view as a new site has it`);
   const review = site ? new ReviewStore(project.root, site).data : null;
-  const a = makeArtwork(prep, review, projectView(kept.view), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root });
+  const a = makeArtwork(prep, review, projectView(kept.view), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root, projectNotes: kept.notes });
   if (!("svg" in a)) {
     for (const p of a.problems) console.error(`visualproof artwork: ${p}`);
     process.exit(1);
