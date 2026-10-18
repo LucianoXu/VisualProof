@@ -2641,7 +2641,7 @@ async function boot(): Promise<void> {
     if (b.id !== stickiesOn) stickies.reset();
     stickiesOn = b.id;
     stickies.render();
-    outline.setLayout(L);
+    outline.setLayout(L, `${b.id}\u0000${m}`);
     canvas.setBuild(b.past ? null : build?.files ?? null);
     // the whole project's layout holds the outside world; a scope without it hides it
     canvas.setShowExternals(b.bs.whole ? b.bs.outside : true);
