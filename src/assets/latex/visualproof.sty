@@ -269,7 +269,9 @@
 % by its number
 \newenvironment{vpReferences}{\par\addvspace{22pt plus 8pt minus 4pt}\needspace{6\baselineskip}%
   \phantomsection\hypertarget{vp-references}{}\label{vp-references}\bookmark[dest=vp-references,level=0]{References}%
-  {\raggedright\sffamily\bfseries\Large References\par}\nopagebreak\vspace{6pt}\small\setlength\parskip{4pt}}{\par}
+  {\raggedright\sffamily\bfseries\Large References\par}\nopagebreak\vspace{6pt}\small\setlength\parskip{4pt}%
+  % ragged: a title, an upload name and a hash break nowhere, and justified they spread the rest
+  \raggedright}{\par}
 \newcommand\vpReference[5]{\par\noindent\hangindent=2em\hangafter=1
   \makebox[2em][l]{(#1)}\textit{#2}. #4; #3.\hskip 0.5em{\footnotesize\color{vpMuted}SHA-256 \vpMono{#5}…}\par}
 
