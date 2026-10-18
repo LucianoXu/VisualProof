@@ -131,7 +131,8 @@ export interface DataSource {
   /** a module's text at a past build, the snapshot `snapshot`'s (GET /api/history/source), or why
    *  it is not kept; a snapshot of the page keeps no history */
   pastSource(snapshot: number, module: string): Promise<PastSource | PastSourceMissing>;
-  /** the review (ReviewSpec.md), whole */
+  /** the review (ReviewSpec.md), whole: tagged with its revision, which the browser keeps, so that
+   *  a page that has it (a reload) is answered 304 */
   review(): Promise<ReviewState>;
   /** record an opinion, a target, a trusted prefix, a key declaration; resolves to what changed
    *  (null: nothing did, it was so already), rejects with the reason it was refused */

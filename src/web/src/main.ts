@@ -31,7 +31,7 @@ import { litKeyEdges } from "../../shared/keys.ts";
 import { keyMarked, keyMarks, under, validPrefix } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
-import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest } from "../../shared/review.ts";
+import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewRev } from "../../shared/review.ts";
 import { reviewCount, trustSplit } from "../../shared/reviewqueue.ts";
 import { scopeWith, scopeWithout } from "../../shared/scopeedit.ts";
 import { newNoteId, noteExcerpt, withCarry } from "../../shared/sticky.ts";
@@ -49,7 +49,8 @@ import type { Target, VisitorPoint } from "./canvas.ts";
 import { ContextMenu, menuItems } from "./ctxmenu.ts";
 import type { MenuContext, MenuTarget, TrustTo } from "./ctxmenu.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
-import { dataSource, reviewState } from "./data.ts";
+import { dataSource } from "./data.ts";
+import { WholeReview } from "./reviewread.ts";
 import type { DataSource, ReviewState, ViewAnswer } from "./data.ts";
 import { exactContext, judgedText } from "../../shared/context.ts";
 import type { ModuleContexts } from "../../shared/context.ts";
@@ -2264,13 +2265,17 @@ async function boot(): Promise<void> {
     stickies.render();
     if (followed) selectionFollowed();
   };
-  /** The whole review (on connecting, or where events came in between): taken unless this page
-   *  holds that revision already. */
+  /** The whole review (where this page holds another revision than the server's, or events came in
+   *  between): taken unless this page holds that revision already. */
   const takeWhole = (st: ReviewState) => {
     if (st.epoch === review.epoch && st.rev <= review.rev) return;
     review = st;
     reviewChanged();
   };
+  /** The whole review read again (GET /api/review, which a page holding it is answered 304): where
+   *  the event stream says the server holds another revision, and where a change cannot be applied;
+   *  one reading out at a time (web/src/reviewread.ts). */
+  const wholeReview = new WholeReview(data.review, takeWhole, () => review);
   /** A change of the review (shared/review.ts, ReviewChange): its events applied to the review this
    *  page holds when it is the one they follow; once only, whether it came as the answer to this
    *  page's request or as the event every page gets. Anything else — a change missed, another run
@@ -2285,12 +2290,14 @@ async function boot(): Promise<void> {
     };
     const events = c.epoch === review.epoch && c.base === review.rev && c.events ? c.events.map(read).filter((e) => e !== null) : null;
     if (!events || events.some((e) => typeof e === "string")) {
-      void data.review().then(takeWhole, () => {});
+      void wholeReview.fetch();
       return;
     }
+    // a replay that changed nothing (a new graph's reading, server/review.ts): the revision moves on
+    const same = !events.length && JSON.stringify(c.problems) === JSON.stringify(review.problems);
     for (const e of events as ReviewEvent[]) applyEvent(review.data, e);
     review = { ...review, rev: c.rev, problems: c.problems, error: problemsText(c.problems) };
-    reviewChanged();
+    if (!same) reviewChanged();
   };
 
   /** How many are lit on the board as the selection bar counts them: what is not trusted, the
@@ -3295,7 +3302,9 @@ async function boot(): Promise<void> {
     });
     // a build read: the Time Machine's timeline has a tick more (HistorySpec, the snapshots)
     es.addEventListener("history", () => void tm.historyChanged());
-    es.addEventListener("review", (e) => takeWhole(reviewState(JSON.parse((e as MessageEvent).data))));
+    // which review the server holds (as the stream opens, and at a change that is no delta): read
+    // again where this page holds another; what changes comes as deltas
+    es.addEventListener("review-rev", (e) => wholeReview.told(JSON.parse((e as MessageEvent).data) as ReviewRev));
     es.addEventListener("review-delta", (e) => takeChange(JSON.parse((e as MessageEvent).data)));
     es.addEventListener("extracting", () => {
       updating = true;

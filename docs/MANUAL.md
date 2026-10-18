@@ -215,8 +215,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - Pages far from the server wait on bytes, so the page's files and the graph are sent gzipped with
   a tag of their content: a browser that has them is answered 304 and loads in a second (14 KB
   instead of 727 KB for flt-regular, most of which is the page's own code). The edges go packed (shared/edgecodec.ts, a quarter of the
-  bytes); JSON answers over 2 KB go gzipped. Brotli would be smaller still, but browsers take it
-  only over HTTPS.
+  bytes); JSON answers over 2 KB go gzipped. The review goes gzipped too, tagged with its revision:
+  the event stream says only which revision the server holds and what changes, so a page reads the
+  whole review as it loads, and again only where it missed a change (a reload of an unchanged
+  review is answered 304). Brotli would be smaller still, but browsers take it only over HTTPS.
 - `docs/deploy/visualproof.service.example` is an example systemd user unit that serves a project this
   way: copy it and fill in its placeholders (it says how).
 - `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data

@@ -991,8 +991,8 @@ export class App {
       // an agent may use the page's own endpoints too: the same rules hold there (AgentSpec)
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
-      // logs that cannot be read
-      if (path === "/api/review" && req.method === "GET") return sendJsonText(res, live.review.wholeText());
+      // logs that cannot be read; tagged with its revision, compressed once a revision
+      if (path === "/api/review" && req.method === "GET") return sendReview(req, res, live.review);
       if (path === "/api/review" && req.method === "POST") {
         // an opinion, a target, a trusted prefix or a key declaration is recorded under the
         // reader's name (CollabSpec decision 3), not one in the body; what it is about is
@@ -1298,7 +1298,7 @@ export function sendJson(res: ServerResponse, body: unknown, code = 200, headers
   sendJsonText(res, JSON.stringify(body), code, headers);
 }
 
-/** The same, of an answer written as JSON already (the whole review, server/review.ts). */
+/** The same, of an answer written as JSON already. */
 function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Record<string, string> = {}): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
   // a small answer is not worth compressing; a status with its build log, a source file, are; a
@@ -1310,6 +1310,43 @@ function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Re
   }
   res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...headers });
   res.end(text);
+}
+
+/** the whole review compressed, under the tag of the revision it is of, per review */
+const reviewGz = new WeakMap<ReviewStore, { tag: string; gz: Promise<Buffer> }>();
+
+/** The whole review (GET /api/review), tagged with its run and its revision (server/review.ts): a
+ *  page that has it is answered 304, which a reload is, and one whose review fell behind is sent it
+ *  compressed — once a revision, off the server's thread when it is large, the same bytes for every
+ *  page (a review of 5,000 opinions on Sphere-Packing-Lean: 8.5 MB of JSON, 1.1 MB sent). */
+function sendReview(req: IncomingMessage, res: ServerResponse, review: ReviewStore): void {
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
+  const tag = review.tag();
+  const head = { "content-type": "application/json", "cache-control": "private, no-cache", etag: tag, vary: "accept-encoding" };
+  if (fresh(req, tag)) {
+    res.writeHead(304, head);
+    return void res.end();
+  }
+  const text = review.wholeText();
+  if (text.length <= JSON_GZIP_FROM || !acceptsGzip(req)) {
+    res.writeHead(200, head);
+    return void res.end(text);
+  }
+  let c = reviewGz.get(review);
+  if (c?.tag !== tag) {
+    const gz = text.length < JSON_GZIP_AWAY_FROM ? Promise.resolve(gzipSync(text)) : new Promise<Buffer>((ok, fail) => gzip(text, (e, b) => (e ? fail(e) : ok(b))));
+    reviewGz.set(review, (c = { tag, gz }));
+    // a compression that failed is tried again by the next page that asks
+    gz.catch(() => reviewGz.get(review)?.gz === gz && reviewGz.delete(review));
+  }
+  c.gz.then(
+    (gz) => {
+      if (res.headersSent || res.destroyed) return;
+      res.writeHead(200, { ...head, "content-encoding": "gzip" });
+      res.end(gz);
+    },
+    (e: Error) => res.destroy(e),
+  );
 }
 
 /** Send a text that is not JSON (the agents' documentation, the MCP server's file), compressed

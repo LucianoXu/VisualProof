@@ -36,7 +36,7 @@ import { ReadOnlyLinks } from "./readonly.ts";
 import { Talk } from "./talk.ts";
 import { Asks } from "./askfollow.ts";
 import type { ReviewChange, ReviewStore } from "./review.ts";
-import type { ReviewData } from "../shared/review.ts";
+import type { ReviewData, ReviewRev } from "../shared/review.ts";
 import { BuildTracker, importable, outputStamp, scanModules, sourceStamp } from "./status.ts";
 import type { BuildStatus, ModuleInfo } from "./status.ts";
 import { Views } from "./views.ts";
@@ -104,8 +104,8 @@ interface Stream {
    *  read-only reader nor an agent */
   toldAll: boolean;
   /** what may wait to be sent before it is closed (push): MAX_BUFFERED beyond its hello, which a
-   *  page reads first however large it is (the whole review: megabytes, with thousands of opinions);
-   *  MAX_BUFFERED once the hello is read */
+   *  page reads first however large it is (the views, every file's build status: 0.4 MB on
+   *  NavierStokesAndEuler); MAX_BUFFERED once the hello is read */
   room: number;
   /** what was written to it since its hello, while that is not all read */
   after: number;
@@ -400,7 +400,11 @@ export class Live {
 
   /** The review changed (server/review.ts tells it): every open page gets what changed — the new
    *  events, which it applies to the review it holds (`review-delta`), or, where events came in
-   *  between, the whole review (`review`). Changes made in one turn (an agent's batch of advice)
+   *  between, the revision alone (`review-rev`), at which the page reads the whole review (GET
+   *  /api/review, compressed and tagged). The stream never carries the whole review: with thousands
+   *  of opinions it is megabytes, and it went uncompressed to every page, which read it again from
+   *  GET /api/review besides (5.4 MB to each page of a review of 5,000 opinions on
+   *  NavierStokesAndEuler, 0.7 MB compressed). Changes made in one turn (an agent's batch of advice)
    *  go out as one. A new target's TCB is where its timeline starts; it has no view until a click
    *  gives it one (ViewSpec decision 29). */
   reviewChanged(c: ReviewChange): void {
@@ -415,7 +419,7 @@ export class Live {
     const last = cs[cs.length - 1];
     const deltas = cs.every((c, k) => c.events !== null && (k === 0 || c.base === cs[k - 1].rev));
     if (deltas) this.send("review-delta", { epoch: last.epoch, base: cs[0].base, rev: last.rev, events: cs.flatMap((c) => c.events!), problems: last.problems, error: this.review.error });
-    else this.send("review", this.review.whole());
+    else this.send("review-rev", this.reviewRev());
     this.timeline.reviewChanged(this.review.data);
     // a target a move brought from another name takes that name's view over; a target unmarked is
     // unlinked from its view
@@ -1098,8 +1102,9 @@ export class Live {
     // reads again the boards it has open
     this.write(res, "views", { views: this.views.list(), changes: [], all: true });
     if (this.build) this.write(res, "build", this.build);
-    // the whole review once; what changes after comes as deltas
-    this.push(st, this.reviewHello());
+    // the review's revision: a page that holds another reads the whole review (GET /api/review);
+    // what changes after comes as deltas
+    this.write(res, "review-rev", this.reviewRev());
     const g = this.graphInfo();
     if (g) this.write(res, "graph", g);
     if (this.extracting) this.write(res, "extracting", {});
@@ -1111,14 +1116,9 @@ export class Live {
     st.after = 0;
   }
 
-  /** the whole review as a stream's hello says it, in bytes, and the text it was made from */
-  private reviewBytes: { text: string; bytes: Buffer } | null = null;
-  /** The whole review as every stream's hello says it: made into bytes once a revision, not once a
-   *  stream (a hundred pages opening at once, a review of 7.6 MB, had the server 5 s encoding it). */
-  private reviewHello(): Buffer {
-    const text = this.review.wholeText();
-    if (this.reviewBytes?.text !== text) this.reviewBytes = { text, bytes: Buffer.from(`event: review\ndata: ${text}\n\n`) };
-    return this.reviewBytes.bytes;
+  /** Which review the server holds (`review-rev`): its run and its revision. */
+  private reviewRev(): ReviewRev {
+    return { epoch: this.review.epoch, rev: this.review.rev };
   }
 
   private write(res: ServerResponse, event: string, data: unknown): void {
@@ -1135,9 +1135,10 @@ export class Live {
   }
 
   /** Write to a stream, unless what it has not read yet passed MAX_BUFFERED beyond its hello (`room`):
-   *  then it is closed instead, and its page reconnects to the present state. A review of 5,000
-   *  opinions on Sphere-Packing-Lean is 7 MB: counted against MAX_BUFFERED, it closed every page's
-   *  stream as it opened, and the pages reconnected every two seconds, never live. */
+   *  then it is closed instead, and its page reconnects to the present state. A hello counted against
+   *  MAX_BUFFERED (in 0.4.3 it carried the whole review, 7 MB for 5,000 opinions on
+   *  Sphere-Packing-Lean) closed every page's stream as it opened, and the pages reconnected every two
+   *  seconds, never live. */
   private push(st: Stream, text: string | Buffer): void {
     const waiting = st.res.writableLength;
     // all that waits was written since the hello: the hello is read
