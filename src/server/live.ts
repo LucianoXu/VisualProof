@@ -4,7 +4,9 @@
 // Two speeds, on purpose. Build status is cheap (a few stats and hashes) and goes out every
 // second it changes, so a page shows "building 12 / 40" while Lean works. The graph is expensive
 // and only meaningful between builds, so it is re-extracted once the outputs stop moving; until
-// then the page keeps the last good graph and says how old it is.
+// then the page keeps the last good graph and says how old it is. With nothing happening, the
+// loop asks which compiles run, and looks at the files only when a watch says something moved
+// (server/buildwatch.ts): a server at rest costs next to nothing.
 //
 // The extractor's graph is served as soon as it is ready; the usage pass (server/usage.ts) then
 // elaborates the modules whose result is not cached, and its findings — the notation each unit is
@@ -37,7 +39,8 @@ import { Talk } from "./talk.ts";
 import { Asks } from "./askfollow.ts";
 import type { ReviewChange, ReviewStore } from "./review.ts";
 import type { ReviewData, ReviewRev } from "../shared/review.ts";
-import { BuildTracker, importable, outputStamp, scanModules, sourceStamp } from "./status.ts";
+import { BuildTracker, compiling, importable, probeAll, scanModules, stampOf } from "./status.ts";
+import { BuildWatch, moduleDirs, shouldLook } from "./buildwatch.ts";
 import type { BuildStatus, ModuleInfo } from "./status.ts";
 import { Views } from "./views.ts";
 import type { ViewPlaces } from "./views.ts";
@@ -67,6 +70,9 @@ import type { StoredEvent } from "../shared/timeline.ts";
 const TICK = 1000;
 /** outputs quiet this long, and no compile running: the build is over */
 const SETTLE = 2500;
+/** how long a watch's news of a change a look found may take before the look counts as one it
+ *  missed (server/buildwatch.ts) */
+const MISS_GRACE_MS = 500;
 const PING = 15000;
 /** Event streams, which every change goes to: at most this many open at once, and this many per
  *  page (`session`: a reload, a lost connection coming back), its oldest closed for a new one. */
@@ -136,6 +142,12 @@ export class Live {
   private lastStamp = "";
   private extractedStamp = "";
   private quietSince = 0;
+  /** what tells the loop to look at the files (server/buildwatch.ts) */
+  private buildWatch = new BuildWatch((l) => this.say(l));
+  /** when the files were last looked at, the compiles that ran then, and the status as last sent */
+  private lastLook = 0;
+  private lastRunning = "";
+  private buildText = "";
 
   build: BuildStatus | null = null;
   graph: (GraphInfo & { prep: Prepared }) | null = null;
@@ -483,24 +495,51 @@ export class Live {
   }
 
   private async tick(): Promise<void> {
+    const running = await compiling(this.project);
     const now = Date.now();
-    const stampOf = () => `${outputStamp(this.project, this.mods)}#${sourceStamp(this.project, this.mods)}`;
-    let st = stampOf();
+    const runs = [...running].sort().join(" ");
+    // the files are looked at only when something says to (server/buildwatch.ts)
+    const heard = this.buildWatch.dirty;
+    const look = shouldLook({
+      heard,
+      polling: this.buildWatch.polling !== null,
+      running: running.size,
+      runsChanged: runs !== this.lastRunning,
+      active: !!this.build?.active,
+      sinceMove: now - this.quietSince,
+      sinceLook: now - this.lastLook,
+      unread: this.lastStamp !== this.extractedStamp,
+      settle: SETTLE,
+      tick: TICK,
+    });
+    if (!look) return;
+    this.buildWatch.dirty = false;
+    this.lastLook = now;
+    this.lastRunning = runs;
+    let probes = probeAll(this.project, this.mods);
+    let st = stampOf(probes);
+    // the first look is not a change: a project at rest is read at once
+    const moved = st !== this.lastStamp && this.lastStamp !== "";
+    // a change no watch told of, unless its news is on its way still (through the event loop; after
+    // a moment, on macOS): one more and the watches are given up
+    if (moved && !heard && this.buildWatch.polling === null) setTimeout(() => this.buildWatch.dirty || this.buildWatch.missed(), MISS_GRACE_MS).unref();
     if (st !== this.lastStamp || this.mods.size === 0) {
       // sources or outputs moved: files may have appeared, and the import graph changed
       this.project.files = indexSources(this.project.root);
       this.mods = scanModules(this.project);
-      st = stampOf();
+      probes = probeAll(this.project, this.mods);
+      st = stampOf(probes);
     }
-    // the first look is not a change: a project at rest is read at once
-    const moved = st !== this.lastStamp && this.lastStamp !== "";
+    this.buildWatch.watch(moduleDirs(this.project, this.mods), this.project.root);
     this.lastStamp = st;
     if (moved) this.quietSince = now;
 
-    const build = await this.tracker.status(this.mods);
-    const before = this.build && JSON.stringify(this.build);
+    // the status as JSON once a look, compared with what went out last
+    const build = await this.tracker.status(this.mods, probes, running);
+    const text = JSON.stringify(build);
     this.build = build;
-    if (JSON.stringify(build) !== before) {
+    if (text !== this.buildText) {
+      this.buildText = text;
       this.send("build", build);
       this.timeline.buildStatus(build);
     }

@@ -327,7 +327,10 @@ While `serve` runs, it follows the builds you run yourself:
   (`Offline` when the server cannot be reached), followed by ` · reading…` while a new graph is
   read, ` · partial graph` while some modules are missing from it, or ` · reading notation…` while
   the usage pass runs; click it (or press `b`) for the list of files and why, and click a file to
-  fly to it.
+  fly to it. At rest this costs next to nothing: the server watches the folders of the project's
+  files and the compiles running, and looks at the files when something moves (and every 30 s
+  besides). On a network or FUSE filesystem, which does not tell of changes made elsewhere, it looks
+  at them every second instead, as its log says (`watch: …`).
 - **A new graph when a build settles**, swapped into the open page: same camera, same folds, same
   selection. Nodes that existed keep their place; new ones are fitted in beside their cluster.
   `Re-layout` (⚙ Board, over the side panel's tree) starts the board afresh: its pins are dropped, other boards keep theirs.
