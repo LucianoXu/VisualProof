@@ -98,6 +98,7 @@ import type { ReviewStore } from "./review.ts";
 import { SERVER_WRITER } from "./review.ts";
 import { appended, ReviewApi } from "./reviewapi.ts";
 import { lakeTextHash } from "./status.ts";
+import type { DeployStatus } from "../shared/deploy.ts";
 import type { Views } from "./views.ts";
 import type { Talk } from "./talk.ts";
 import { MAX_AGENT, MAX_STATUS, MAX_WAIT_S, THREAD } from "./talk.ts";
@@ -216,6 +217,11 @@ export interface World {
   library?: Library;
   /** the requests to follow going on (CollabSpec decision 10, server/askfollow.ts) */
   asks?: Asks;
+  /** following a branch (DeploySpec): the commit of the graph on show; undefined for a workspace,
+   *  whose commit git says as it is now */
+  shownCommit?(): { hash: string; branch: string } | null | undefined;
+  /** the branch followed and its builds (DeploySpec); null for a workspace */
+  following?(): DeployStatus | null;
 }
 
 /** Lean, asked about a name where a module is imported (server/hover.ts): what its hover says
@@ -743,7 +749,8 @@ export class AgentApi {
         settings: st.settings,
         source,
         fileOf: (module) => v.modules.get(module)?.file ?? null,
-        build: { fingerprint: this.world.graph?.fingerprint ?? null, commit: commitOf(root) },
+        // a branch's build is of its commit, not of what is checked out meanwhile (DeploySpec)
+        build: { fingerprint: this.world.graph?.fingerprint ?? null, commit: shownOr(this.world.shownCommit?.(), root) },
         ...(tv !== undefined ? { titles: titleContext(this.world) } : {}),
         board: boardSpots({ g: v.g, review, rec, memory: this.world.views?.book.memoryOf(rec.id, rec.clustering) ?? null, whole: v.meta.layouts?.[rec.clustering], notes }),
         files,
@@ -3265,6 +3272,11 @@ function clampInt(s: string | null, dflt: number, lo: number, hi: number): numbe
 /** The project's commit, where it is a git repository: `git rev-parse`, which only reads (and is
  *  told to take no lock), asked at most once every ten seconds. Null where git is not there or the
  *  project is not a repository. */
+/** The commit a document of the graph on show is of: a branch's build's, else what git says now. */
+function shownOr(shown: { hash: string; branch: string } | null | undefined, root: string): { hash: string; branch: string | null } | null {
+  return shown === undefined ? commitOf(root) : shown;
+}
+
 export function commitOf(root: string): { hash: string; branch: string | null } | null {
   const now = Date.now();
   const was = commits.get(root);

@@ -72,7 +72,9 @@ import { applyOwn, followedOf, presenceOf } from "./surfaces.ts";
 import type { PageParts } from "./surfaces.ts";
 import { Activity } from "./activity.ts";
 import { LostAndFound } from "./lostfound.ts";
-import { popHtml, stamp } from "./buildpop.ts";
+import { deployWaiting, popHtml, stamp, stepPill } from "./buildpop.ts";
+import type { DeployStatus } from "../../shared/deploy.ts";
+import { githubBlob } from "../../shared/deploy.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
 import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
@@ -176,6 +178,8 @@ interface GraphInfo {
   missing: string[];
   /** the usage pass on this graph's build (server/live.ts) */
   usage?: { state: "pending" | "done" | "off"; failed: number };
+  /** following a branch (DeploySpec): the commit whose build the graph was read from */
+  commit?: string;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -185,6 +189,15 @@ async function waitReady(data: DataSource): Promise<{ graph: GraphInfo | null; e
     const st = await data.status();
     log.textContent = (st.log ?? []).slice(-8).join("\n");
     if (st.state === "ready") return { graph: (st as { graph?: GraphInfo }).graph ?? null, editor: st.editor ?? null };
+    // a server that builds what it shows (DeploySpec decision 7) says what it is doing, and what
+    // failed, until a build can be read: never a dead end
+    if (st.deploy) {
+      const w = deployWaiting(st.deploy, { state: st.state, error: st.error, progress: st.build?.progress ?? null });
+      $("#loader-title").textContent = w.title;
+      if (w.log !== null) log.textContent = w.log;
+      await new Promise((r) => setTimeout(r, 1000));
+      continue;
+    }
     if (st.state === "error") {
       $("#loader-title").textContent = "Could not read the project";
       log.textContent = st.error ?? "";
@@ -264,6 +277,9 @@ async function boot(): Promise<void> {
   /** while something is said where the hint is (`say`), until it goes */
   let saying: ReturnType<typeof setTimeout> | null = null;
   let build: BuildStatus | null = null;
+  /** the branch the server follows and builds itself (DeploySpec), as it last said; null for a
+   *  workspace */
+  let deploy: DeployStatus | null = null;
   let updating = false;
   let extractError: string | null = null;
   let offline = false;
@@ -856,6 +872,9 @@ async function boot(): Promise<void> {
     forward: () => history.forward(),
     steps: () => steps,
     editorLink: (G, i, at) => editor.href(G, i, at),
+    // following a branch on GitHub (DeploySpec decision 13): the build's lines there
+    githubLink: (file, commit, from, to) => (deploy?.github ? githubBlob(deploy.github, commit, file, from, to) : null),
+    builtCommit: () => graphInfo?.commit ?? null,
     pinned: () => sources.pinned.map((p) => p.rect()),
     top: () => pairTop(),
     say: (text) => say(text),
@@ -3065,11 +3084,16 @@ async function boot(): Promise<void> {
     } else if (build?.active) {
       cls = "building";
       const p = build.progress;
-      text = p ? `Building ${p.done} / ${p.total}` : "Building";
+      // a branch's build: its step, where Lake says nothing of its progress (DeploySpec)
+      text = p ? `Building ${p.done} / ${p.total}` : deploy?.building ? stepPill(deploy.building) : "Building";
       if (p?.current.length) text += ` · ${shortName(p.current[0])}${p.current.length > 1 ? ` +${p.current.length - 1}` : ""}`;
     } else if (c && c.failed + c.unbuilt > 0) {
       cls = "bad";
       text = `${c.failed + c.unbuilt} failed` + (c.blocked ? ` · ${c.blocked} blocked` : "");
+    } else if (deploy?.last && !deploy.last.ok) {
+      // a branch's build that failed with no file to show it (its lakefile, a fetch)
+      cls = "bad";
+      text = `${deploy.last.retry ? "Not built" : "Build failed"} · ${deploy.last.commit.slice(0, 7)}`;
     } else if (c && c.stale > 0) {
       cls = "stale";
       text = `${c.stale} out of date`;
@@ -3110,9 +3134,12 @@ async function boot(): Promise<void> {
       stateLabel: STATE_LABEL,
       builds: data.lost ? builds : null,
       lost: lostDrawer.counts,
+      deploy,
     });
     // drawn again as the build goes on: the keyboard keeps its place in it
     keepFocus(pop, () => (pop.innerHTML = html));
+    // a build's log is read from its end, where it says what failed
+    for (const l of pop.querySelectorAll<HTMLElement>(".bp-log")) l.scrollTop = l.scrollHeight;
   };
 
   /** Show a file: its cluster where the board clusters by file, else its first declaration. The
@@ -3303,6 +3330,11 @@ async function boot(): Promise<void> {
     // which review the server holds (as the stream opens, and at a change that is no delta): read
     // again where this page holds another; what changes comes as deltas
     es.addEventListener("review-rev", (e) => wholeReview.told(JSON.parse((e as MessageEvent).data) as ReviewRev));
+    // the branch's builds (DeploySpec): the pill and the popover say them
+    es.addEventListener("deploy", (e) => {
+      deploy = JSON.parse((e as MessageEvent).data);
+      renderBuild();
+    });
     es.addEventListener("review-delta", (e) => takeChange(JSON.parse((e as MessageEvent).data)));
     es.addEventListener("extracting", () => {
       updating = true;

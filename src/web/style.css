@@ -1494,8 +1494,19 @@ details.lf-archived > summary { cursor: pointer; }
 .bp-when { min-width: 104px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bp-notes { margin-left: auto; color: var(--text-3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the history above, the graph on show and its files below */
-.bp-build + .pop-h, .bp-btns + .pop-h { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.bp-build + .pop-h, .bp-btns + .pop-h, .bp-deploy + .pop-h { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .pop-ok { padding: 4px; }
+/* a branch the server follows and builds (DeploySpec): under the head, its builds */
+.bp-deploy { margin: 0 4px 10px; font-size: 12px; line-height: 1.45; }
+.bp-deploy .mono { font: 11.5px var(--mono); }
+.bp-deploy a { color: var(--accent); text-decoration: none; }
+.bp-deploy a:hover { text-decoration: underline; }
+.bp-follow, .bp-next, .bp-last { color: var(--text-2); margin: 0 0 8px; }
+.bp-deploy .banner { margin: 0 0 8px; }
+.bp-log {
+  margin: 0 0 8px; max-height: 14em; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--code-bg);
+  font: 10.5px/1.45 var(--mono); color: var(--text-2); white-space: pre-wrap; word-break: break-word;
+}
 .pf {
   display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent; text-align: left;
   padding: 4px 6px; border-radius: 7px; font-size: 12px;

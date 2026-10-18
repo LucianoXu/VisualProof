@@ -296,6 +296,14 @@ export function stampOf(probes: Map<string, Probe>): string {
   return parts.join("|");
 }
 
+/** The same of the outputs alone: what a build wrote, which is all a followed branch's tree is read
+ *  for (DeploySpec decision 5). */
+export function outputsOf(probes: Map<string, Probe>): string {
+  const parts: string[] = [];
+  for (const [name, pr] of probes) parts.push(`${name}:${pr.olean}:${pr.trace}`);
+  return parts.join("|");
+}
+
 /** The Lake hash of the text a module's present build was compiled from, if it has a build: what
  *  the graph says about the module's declarations (their places in the file among them) is about
  *  that text. */

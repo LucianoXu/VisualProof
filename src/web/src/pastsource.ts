@@ -20,6 +20,9 @@ export interface PastSource {
   text: string;
   lake: string | null;
   check: "lake" | "places";
+  /** where the text was found (HistorySpec, "On disk"): the working tree as the build was read
+   *  (`tree`), a commit (`git:<hash>`), the texts kept already (`kept`) */
+  from?: string | null;
   snapshot: number;
 }
 

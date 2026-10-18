@@ -10,8 +10,8 @@ proof uses, what it reaches outside the project being assumed ([Concepts](#conce
 is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/CanvasSpec.md),
 [ReviewSpec.md](../SPEC/ReviewSpec.md), [CollabSpec.md](../SPEC/CollabSpec.md), [AgentSpec.md](../SPEC/AgentSpec.md),
 [ViewSpec.md](../SPEC/ViewSpec.md), [TCBSpec.md](../SPEC/TCBSpec.md), [ExportSpec.md](../SPEC/ExportSpec.md),
-[HistorySpec.md](../SPEC/HistorySpec.md), [AttachmentSpec.md](../SPEC/AttachmentSpec.md) and
-[PhoneSpec.md](../SPEC/PhoneSpec.md).
+[HistorySpec.md](../SPEC/HistorySpec.md), [AttachmentSpec.md](../SPEC/AttachmentSpec.md),
+[PhoneSpec.md](../SPEC/PhoneSpec.md) and [DeploySpec.md](../SPEC/DeploySpec.md).
 
 ## Start here
 
@@ -20,7 +20,9 @@ is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/Canv
 2. **Build, then serve**: `lake build` in the project (VisualProof never builds it; on Mathlib,
    `lake exe cache get` first), then `visualproof serve <project>`, and open
    http://127.0.0.1:4173/. The first visit starts a short
-   tour on the project itself; `?` holds the tips and every key.
+   tour on the project itself; `?` holds the tips and every key. Or serve a branch of a git
+   repository, `visualproof serve https://github.com/<owner>/<repo>`, which the server builds
+   itself at each commit ([Following a branch](#following-a-branch)).
 3. **Review a theorem**, in five minutes:
    1. Find it (`/` searches names, statements and docstrings), click it, and **☆ Mark as target**
       in its panel: from now on its review is counted, in the Targets list at the top of the side
@@ -111,7 +113,8 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - The project must have been built: VisualProof reads what `lake build` left in `.lake/` and
   never builds the project. A build in progress or a broken one is shown as such (see Live), with
   the last graph that could be read. It writes nothing into the project: what it keeps is in the
-  site's folder and the cache (below).
+  site's folder and the cache (below). A git URL in its place follows a branch instead, which the
+  server builds itself (Following a branch, below).
 - Modules to read come from the default targets: `defaultTargets` in `lakefile.toml`, or the
   libraries marked `@[default_target]` in `lakefile.lean` (read as text, never run). A library
   stands for the modules Lake builds of it: its `globs` (`A`, `A.+` its submodules, `A.*` both),
@@ -254,6 +257,70 @@ The README says how to install the `visualproof` command. A checkout also runs a
   drawn yet. A poster step by step, the recipe's choices explained: [A poster from the command
   line](#a-poster-from-the-command-line).
 
+### Following a branch
+
+```bash
+visualproof serve https://github.com/<owner>/<repo>               # its default branch
+visualproof serve git@github.com:<owner>/<repo>.git --branch main --poll 5
+```
+
+With a git URL where the project goes, the server follows that branch of the repository and builds
+what it shows itself ([SPEC/DeploySpec.md](../SPEC/DeploySpec.md)): the board shows what is on the
+branch, one build per commit, never someone's half-edited working tree — the way to serve a project
+to a team. It needs git, besides elan.
+
+- **The address**: `https://host/owner/repo`, `ssh://…`, git's `git@host:owner/repo.git`, or
+  `file:///path/to/repo.git` for a repository on this machine. Never `http://` or `git://`, and
+  never a user name, password or token in the address: the credentials are git's own (an SSH key, a
+  deploy key, a credential helper), and VisualProof keeps none. Nothing ever waits on a prompt: a
+  credential git cannot find, or an SSH host whose key is not in `known_hosts`, is a failure, said
+  as such.
+- **`--branch <name>`**: the branch followed, by default the remote's default branch (asked at each
+  start, and remembered for a start without the network). Only that branch is ever fetched: never a
+  pull request's or a fork's.
+- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/<repo>/`, one per URL and
+  branch, made at the first start; never your workspace. The site is the URL's and the branch's
+  (`~/.local/share/visualproof/sites/<repo>-<hash>/`) unless `--site` says otherwise. One server
+  follows a branch with a cache at a time. The other commands (`export`, `artwork`, `doctor`,
+  `purge-file`) take the clone's folder, which the server names as it starts (`clone:`).
+- **`--poll <minutes>`** (default 2): how often the remote is asked for the branch's head (`git
+  ls-remote`). Each new head is built: fetched, checked out detached, `lake exe cache get` where the
+  project is on Mathlib, then `lake build` (of what `--root` names, else the default targets) —
+  **one build at a time**; heads pushed meanwhile are not queued: **only the newest is built after
+  it**. A commit is built once, whatever came of it; one that could not be fetched is tried again at
+  the next look.
+- **Meanwhile the board keeps answering**, showing the last build: the pill says the build's step
+  (`Fetching a1b2c3d`, `Mathlib's cache · a1b2c3d`, `Building 12 / 40 · …`), and once it is read,
+  the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
+  its buttons, the branch and the remote, when it was last asked, the build going on and what it
+  says now, the newest commit waiting, and the last build that ended: when, how long, and — where it
+  failed — why, with the end of its log (to those let in fully: never a read-only reader). A failed
+  build shows its failed files as any failed build does, in the Status colours and the popover, the
+  board reading what could be; `Build failed · a1b2c3d` where no file says it (a lakefile that does
+  not elaborate). The history keeps each build's commit, on the branch, so that the Time Machine's
+  ruler has a long tick per commit; a failing commit whose build compiled nothing new is no new
+  build. Each build's whole log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
+- **The first start** clones the branch (the terminal says it), then builds its head; until a build
+  can be read, the page says what is being done (`The first build of github.com/A/B (main) at
+  a1b2c3d: lake build, 3 of 8 files…`), and where it failed, why and what comes next, with the end
+  of the log. It never stops waiting: the board appears as soon as a build can be read.
+- **Restarts**: the clone and what is built stay in the cache. A build going on holds the updater's
+  restart into a patch (see Updates) until it ends; one cut short anyway (or by a stop) is done
+  again by the next server, Lake keeping what it had finished. A server whose last build is whole
+  shows it at once.
+- **Open on GitHub**: where the remote is github.com, the source window links each declaration to
+  its lines in the build's commit (`blob/<commit>/<file>#L12-L17`), where the text shown is that
+  commit's; the popover links the branch and each commit.
+- **Safety** ([SECURITY.md](../SECURITY.md)): **whoever can push to that branch runs code on this
+  machine** — the lakefile, and what elaboration runs — as the server's user. Run it as a user of
+  its own, give that user a deploy key that only reads the repository, and protect the branch.
+  There is no sandbox yet. `docs/deploy/visualproof-branch.service.example` is a systemd unit for it.
+- Times, on a machine with a fast connection: [quote4](https://github.com/leanprover-community/quote4)
+  (14 modules, no dependency) cloned in 1 s, its first build 25 s (elan fetching its toolchain), its
+  board 35 s after the start; [flt-regular](https://github.com/leanprover-community/flt-regular)
+  (27 modules on Mathlib) cloned in 1 s, Mathlib's cache (9,055 files) and its build 1 min 12 s, its
+  board with notation 1 min 50 s after the start; a restart, its board in a second.
+
 ### Updates
 
 A server follows VisualProof's own releases (SPEC/UpdateSpec.md). It asks the npm registry, through
@@ -329,7 +396,8 @@ for the sphere packing formalization (the showcase before it), stays the floor.
 
 ## Live
 
-While `serve` runs, it follows the builds you run yourself:
+While `serve` runs, it follows the builds you run yourself (and, following a branch, those it runs
+itself: Following a branch):
 
 - **Build status, every second.** The pill beside the project name says `Built`,
   `Building 12 / 40 · <file>`, `2 failed · 5 blocked`, `3 out of date` or `Built · 4 with sorry`
