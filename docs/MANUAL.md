@@ -808,7 +808,7 @@ The informal references that explain the formal code — papers, and photos too 
   abstract page says; never an address of a private or local network) — or dropped on the canvas,
   which makes a note carrying it; a file added otherwise comes with a note on the ring of the
   canvas. Each file is listed with its title (the PDF's own, else its name; Rename), type, pages,
-  size, who added it and when (the date written in Chinese) and where it came from; Archive hides it, and Archived
+  size, who added it and when (the date written in English, "Oct 11, 2026") and where it came from; Archive hides it, and Archived
   restores it: nothing is deleted. The bytes stay in the site's folder, stored once by their
   SHA-256 (`<site>/files/<sha256>`), never in the project; the record and every link are events of the
   review's logs, and name the file by its hash. A server that

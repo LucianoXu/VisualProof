@@ -180,6 +180,7 @@ test("files dropped at once make notes of the project, each carrying its file, b
   assert.deepEqual(spacedPlaces({ ring: 45 }, [500, 0], 2, 15, drawn(WHOLE), nb), [{ ring: 45 }, { ring: 45 }]);
   // each file added to the library, then a note carrying it, its title as its text
   const said: string[] = [];
+  const refusals: string[] = [];
   const written: ProjectNote[] = [];
   const taken: unknown[] = [];
   const answers: Record<string, Uploaded> = {
@@ -195,6 +196,7 @@ test("files dropped at once make notes of the project, each carrying its file, b
     write: async (n: ProjectNote) => (written.push(n), null),
     still: () => true,
     say: (t: string) => void said.push(t),
+    refused: (why: string) => void refusals.push(why),
     by: "Alice",
     lost: () => {},
   };
@@ -207,6 +209,8 @@ test("files dropped at once make notes of the project, each carrying its file, b
   assert.ok(written.every((n) => invalidProjectNoteOps([{ op: "pnote", note: n }]) === null), "a note of the project, as a page writes one");
   assert.equal(taken.length, 1, "the file's record applied at once, before its note");
   assert.ok(said.some((t) => t === "page.html: This is no PDF, PNG, JPEG, WebP or GIF."), "a file refused says why");
+  // and is told apart, to be said again with the notes made, which say over it
+  assert.deepEqual(refusals, ["page.html: This is no PDF, PNG, JPEG, WebP or GIF."]);
   // a note refused (a preview of a view), or another board shown: no more
   written.length = 0;
   assert.deepEqual(await notesOfFiles(files, places, { ...deps, write: async (n: ProjectNote) => (written.push(n), "refused") }), []);

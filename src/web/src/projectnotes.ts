@@ -23,6 +23,9 @@ export interface FileNotes {
   /** whether the board the files were dropped on is still on show */
   still(): boolean;
   say(text: string): void;
+  /** a file the library refused, and why: what is said once all are done, so that a later word
+   *  does not leave it unsaid */
+  refused?(why: string): void;
   /** the name the reader writes under, and that the server took none from the page */
   by: string | null;
   lost(): void;
@@ -41,6 +44,7 @@ export async function notesOfFiles(files: readonly File[], places: readonly { mo
     if (!r.ok) {
       if (r.who) d.lost();
       d.say(`${file.name}: ${r.error}`);
+      d.refused?.(`${file.name}: ${r.error}`);
       continue;
     }
     if (r.change) d.take(r.change);
