@@ -552,14 +552,19 @@ async function boot(): Promise<void> {
     inReview: (r, i) => flow.inReview(r, i),
     isKey: (r, i) => flow.isKey(r, i),
     keyProgress: (i) => flow.keyProgress(i),
-    keyView: (i) => {
-      // a view made from the board on show: at its build, leaving the Time Machine for it; focused
-      // on the target it is made from (ViewSpec decision 28)
-      void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
-        if (ok === true) commit();
-        else if (typeof ok === "string") say(ok);
-      });
-    },
+    // a view made from the board on show: at its build, leaving the Time Machine for it; focused on
+    // the target it is made from (ViewSpec decision 28). A read-only reader makes no views, and is
+    // not offered one (CollabSpec decision 11)
+    ...(reader
+      ? {}
+      : {
+          keyView: (i: number) => {
+            void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
+              if (ok === true) commit();
+              else if (typeof ok === "string") say(ok);
+            });
+          },
+        }),
     go: (i) => go(i),
     openSource: (name, from, to, quoted, root) => openSourceAt(name, from, to, quoted, root),
   });
