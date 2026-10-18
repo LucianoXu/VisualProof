@@ -21,7 +21,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DeployBuild, DeployStatus, DeployStep } from "../shared/deploy.ts";
@@ -432,17 +432,25 @@ export function onMathlib(root: string): boolean {
 /** A build's log: everything its programs wrote, in `logs/<commit>.log` of the deployment (a build
  *  done again writes it again), and its end for the pages, where the clone's folder reads `.` and the
  *  home `~`, colours and redrawn lines taken out. */
-class BuildLog {
+export class BuildLog {
   readonly file: string;
   private fd: number | null = null;
   private lines: string[] = [];
   private partial = "";
-  private root: string;
+  /** the clone's path as the log may write it, the longest first: Lean prints the path resolved
+   *  (macOS's /var is /private/var), git and Lake the one given */
+  private roots: string[];
 
   constructor(dir: string, commit: string, root: string) {
     mkdirSync(dir, { recursive: true });
     this.file = join(dir, `${commit}.log`);
-    this.root = root;
+    let real = root;
+    try {
+      real = realpathSync(root);
+    } catch {
+      // not there yet: the path as given
+    }
+    this.roots = [...new Set([real, root])].sort((a, b) => b.length - a.length);
     try {
       this.fd = openSync(this.file, "w", 0o600);
     } catch {
@@ -481,7 +489,8 @@ class BuildLog {
   tail(n = TAIL_LINES): string {
     const last = this.partial.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").split("\r").pop()!.trimEnd();
     const home = homedir();
-    let t = [...this.lines, ...(last ? [last] : [])].slice(-n).join("\n").split(this.root).join(".");
+    let t = [...this.lines, ...(last ? [last] : [])].slice(-n).join("\n");
+    for (const r of this.roots) t = t.split(r).join(".");
     if (home && home.length > 1) t = t.split(home).join("~");
     return t.length > TAIL_CHARS ? `…${t.slice(-TAIL_CHARS)}` : t;
   }

@@ -6,11 +6,11 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { askRemote, branchProblem, branchToFollow, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, lockDeployment, noPrompts, gitEnv, parseRemote, recordedDefault } from "../src/server/deploy.ts";
+import { askRemote, branchProblem, branchToFollow, BuildLog, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, lockDeployment, noPrompts, gitEnv, parseRemote, recordedDefault } from "../src/server/deploy.ts";
 import type { Remote } from "../src/server/deploy.ts";
 import { openProject } from "../src/server/project.ts";
 import { stopChildren } from "../src/server/children.ts";
@@ -432,4 +432,16 @@ test("the popover, the pill and the loading page say the branch's builds", () =>
   assert.equal(nothing.log, failed.last.tail);
   assert.equal(githubBlob("A/B", "c".repeat(40), "Fixture/Leaf Two.lean", 3, 7), `https://github.com/A/B/blob/${"c".repeat(40)}/Fixture/Leaf%20Two.lean#L3-L7`);
   assert.equal(githubBlob("A/B", "c", "M.lean", 3, 3), "https://github.com/A/B/blob/c/M.lean#L3");
+});
+
+test("a build's log names the clone '.', by the path given and by the path resolved", () => {
+  // macOS: the temporary folder is /var/…, which Lean prints resolved, /private/var/…
+  const real = join(ROOT, "real-clone");
+  mkdirSync(real, { recursive: true });
+  const link = join(ROOT, "linked-clone");
+  symlinkSync(real, link);
+  const log = new BuildLog(join(ROOT, "log-names"), "c0ffee", link);
+  log.text(`$ lake build M\nerror: ${real}/M.lean:1:0: unknown identifier 'oops'\n${link}/N.lean: built\n`);
+  log.close();
+  assert.equal(log.tail(), "$ lake build M\nerror: ./M.lean:1:0: unknown identifier 'oops'\n./N.lean: built");
 });
