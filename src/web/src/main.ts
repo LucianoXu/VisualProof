@@ -81,7 +81,7 @@ import { reducedMotion } from "./tipcards.ts";
 import { kindDot, ringed } from "./axiomring.ts";
 import { keepFocus } from "./keepfocus.ts";
 import { Legend } from "./legend.ts";
-import { applyTheme, themeChoices } from "./theme.ts";
+import { applyTheme, holdTheme, themeChoices } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
@@ -1198,10 +1198,8 @@ async function boot(): Promise<void> {
     if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
     else delete document.body.dataset.artStyle;
     artReach();
-    if (a) {
-      linear.hide("reader", "followed");
-      document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
-    } else applyTheme();
+    if (a) linear.hide("reader", "followed");
+    holdTheme(a ? (a.style === "board" ? a.theme : "dark") : null);
     canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
     applyScheme();
     syncEdges();

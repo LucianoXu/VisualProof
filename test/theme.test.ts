@@ -1,0 +1,161 @@
+// The theme (web/src/theme.ts; CanvasSpec, "Zoom, theme and the ⋯ menu"): light, dark or as the
+// system is, in force at once whoever changes it — the reader, the system while it is followed, an
+// artwork's look, which holds it while its mode is on — and what draws in the theme's colours itself
+// drawn again in the new ones, in either direction: the board's overview edges among them, whose
+// drawing is kept while what they show is the same.
+
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { test } from "node:test";
+import type { ViewMeta, ViewNode } from "../src/shared/graph.ts";
+import { SITE_STMT } from "../src/shared/graph.ts";
+import { computeLayout } from "../src/shared/layout.ts";
+import { Graph } from "../src/shared/viewgraph.ts";
+import { cssTheme, SvgContext } from "../src/web/src/artwork.ts";
+import { GraphCanvas, themeOf } from "../src/web/src/canvas.ts";
+
+const css = readFileSync(join(import.meta.dirname, "../src/web/style.css"), "utf8");
+
+/** Three namespaces, each using the one before: edges between clusters, which the overview draws. */
+function board(): GraphCanvas {
+  const nodes: ViewNode[] = [
+    { name: "A.a", kind: "def", module: "M", ax: 0, hash: "1" },
+    { name: "A.b", kind: "def", module: "M", ax: 0, hash: "2" },
+    { name: "B.c", kind: "theorem", module: "M", ax: 0, hash: "3" },
+    { name: "B.d", kind: "theorem", module: "M", ax: 0, hash: "4" },
+    { name: "C.e", kind: "theorem", module: "M", ax: 0, hash: "5" },
+  ];
+  const edges = new Int32Array([2, 0, SITE_STMT, 3, 1, SITE_STMT, 4, 2, SITE_STMT, 4, 3, SITE_STMT]);
+  const meta = { nodes, projectCount: 5, axioms: [], axiomSets: [[]], layouts: {}, edgeCount: 4 } as unknown as ViewMeta;
+  const g = new Graph(meta, edges);
+  const none = () => {};
+  const pen = new SvgContext((t) => t.length * 6, "sans-serif");
+  const C = new GraphCanvas(null, null, null, g, { nodeClick: none, clusterClick: none, backgroundClick: none, hover: none, pinsChanged: none, foldChanged: none }, { w: 800, h: 600, theme: themeOf(cssTheme(css, false)), ctx: pen as unknown as CanvasRenderingContext2D });
+  C.setGraph(g);
+  C.setLayout(computeLayout("namespace", nodes, edges), { nodes: {}, clusters: {} }, [], "namespace");
+  C.setShowExternals(true);
+  const cam = C.fitCam({ x: 0, y: 0, w: 800, h: 600 });
+  if (cam) C.jumpTo(cam);
+  C.settle();
+  return C;
+}
+
+/** The overview's edges as drawn: each end's colour, without its alpha. */
+function overviewEnds(C: GraphCanvas): string[] {
+  const L = C.gl.drawn().find((l) => l.name === "overview");
+  assert.ok(L && L.count > 0, "the overview draws edges");
+  const out = new Set<string>();
+  const hex = (v: number) => Math.round(v * 255);
+  for (let n = 0; n < L.count; n++) {
+    const o = n * L.stride;
+    out.add(`${hex(L.data[o + 12])},${hex(L.data[o + 13])},${hex(L.data[o + 14])}`);
+    out.add(`${hex(L.data[o + 16])},${hex(L.data[o + 17])},${hex(L.data[o + 18])}`);
+  }
+  return [...out].sort();
+}
+
+const ends = (dark: boolean) => {
+  const th = themeOf(cssTheme(css, dark));
+  const rgb = (c: number[]) => c.slice(0, 3).map((v) => Math.round(v * 255)).join(",");
+  return [rgb(th.edgeFrom), rgb(th.edgeTo)].sort();
+};
+
+test("the board's overview edges are drawn again in the new theme's colours, light to dark and back, though what they show is the same", () => {
+  const C = board();
+  assert.deepEqual(overviewEnds(C), ends(false));
+  assert.notDeepEqual(ends(false), ends(true), "the themes' edges differ");
+  C.setTheme(themeOf(cssTheme(css, true)));
+  C.settle();
+  assert.deepEqual(overviewEnds(C), ends(true), "light to dark");
+  C.setTheme(themeOf(cssTheme(css, false)));
+  C.settle();
+  assert.deepEqual(overviewEnds(C), ends(false), "dark to light");
+});
+
+/** A stand-in for the browser theme.ts runs in: <html>'s data-theme, the system's preference (which
+ *  the test changes), the stored choice, and a MutationObserver that sees data-theme being set. */
+function browser() {
+  const watchers: (() => void)[] = [];
+  const dataset = new Proxy({} as Record<string, string>, {
+    set(t, k: string, v: string) {
+      t[k] = v;
+      if (k === "theme") queueMicrotask(() => watchers.forEach((f) => f()));
+      return true;
+    },
+  });
+  const os = { matches: false, listeners: [] as (() => void)[] };
+  const store = new Map<string, string>();
+  const g = globalThis as Record<string, unknown>;
+  g.document = { documentElement: { dataset } };
+  g.matchMedia = () => ({ get matches() { return os.matches; }, addEventListener: (_: string, f: () => void) => os.listeners.push(f) });
+  g.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v), removeItem: (k: string) => store.delete(k) };
+  g.MutationObserver = class {
+    f: () => void;
+    constructor(f: () => void) {
+      this.f = f;
+    }
+    observe() {
+      watchers.push(() => this.f());
+    }
+  };
+  return {
+    dataset,
+    /** the system turns dark or light */
+    system: (dark: boolean) => {
+      os.matches = dark;
+      os.listeners.forEach((f) => f());
+    },
+  };
+}
+
+test("the theme follows whoever changes it: the reader's choice, the system's under As the system, an artwork's look held over both; what draws in its colours is told of each change, once", async () => {
+  const b = browser();
+  // a module of its own, in the stand-in browser: the board's import of it above ran without one
+  const fresh = new URL("../src/web/src/theme.ts?browser", import.meta.url).href;
+  const T = (await import(fresh)) as typeof import("../src/web/src/theme.ts");
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const told: string[] = [];
+  T.applyTheme();
+  T.onThemeChange(() => told.push(b.dataset.theme));
+  assert.equal(T.themeChoice(), "light", "light by default");
+  assert.equal(b.dataset.theme, "light");
+  // the reader's choice, in either direction
+  T.setTheme("dark");
+  await tick();
+  T.setTheme("light");
+  await tick();
+  assert.deepEqual(told, ["dark", "light"]);
+  // the system's is followed only under As the system, both ways
+  b.system(true);
+  await tick();
+  assert.equal(b.dataset.theme, "light", "the reader chose light");
+  T.setTheme("system");
+  await tick();
+  assert.equal(b.dataset.theme, "dark");
+  b.system(false);
+  await tick();
+  assert.equal(b.dataset.theme, "light");
+  b.system(true);
+  await tick();
+  assert.deepEqual(told, ["dark", "light", "dark", "light", "dark"]);
+  // an artwork's look holds its theme: the system changing does not undo it, nor does the reader's
+  // choice; let go, the choice is in force again (here the system's, which changed meanwhile)
+  T.holdTheme("light");
+  await tick();
+  b.system(true);
+  T.setTheme("dark");
+  await tick();
+  assert.equal(b.dataset.theme, "light", "held");
+  T.setTheme("system");
+  b.system(false);
+  b.system(true);
+  await tick();
+  T.holdTheme(null);
+  await tick();
+  assert.equal(b.dataset.theme, "dark");
+  // the same theme set again is no change
+  b.dataset.theme = "dark";
+  await tick();
+  assert.deepEqual(told, ["dark", "light", "dark", "light", "dark", "light", "dark"]);
+});

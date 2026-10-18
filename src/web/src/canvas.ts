@@ -30,6 +30,7 @@ import { artNameId } from "../../shared/collab.ts";
 import type { ArtStyle } from "../../shared/collab.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
+import { onThemeChange } from "./theme.ts";
 import { clusterTroubles, ST_APPROVED, ST_COMMENTED, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { LEAF_R, Scene } from "./scene.ts";
@@ -463,6 +464,8 @@ export class GraphCanvas {
   private overviewStyled = "";
   private overviewStyle = 0;
   private overviewDrawn = "";
+  /** counts the themes the board has been drawn in (setTheme): the overview's drawing is of one */
+  private themeSerial = 0;
   /** the reader's visitors (setVisitors), and those of them selected (ringed as a selected point is) */
   private visitors: VisitorPoint[] = [];
   private visitorSel: number[] = [];
@@ -508,11 +511,9 @@ export class GraphCanvas {
       return;
     }
     this.theme = readTheme();
-    // light or dark changed (the reader's choice, or the system's): the colours are read again
-    new MutationObserver(() => {
-      this.theme = readTheme();
-      this.invalidate();
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    // light or dark changed (the reader's choice, the system's, an artwork's look): the colours are
+    // read again
+    onThemeChange(() => this.setTheme(readTheme()));
     new ResizeObserver(() => this.resize()).observe(this.canvas);
     this.resize();
     this.bindInput();
@@ -541,6 +542,14 @@ export class GraphCanvas {
 
   request(): void {
     this.dirty = true;
+  }
+
+  /** The board's colours are `th` now (the theme on show changed): everything is drawn again in them,
+   *  the overview's edges too, whose drawing is otherwise kept while what it shows is the same. */
+  setTheme(th: Theme): void {
+    this.theme = th;
+    this.themeSerial++;
+    this.invalidate();
   }
 
   /** Without a browser (ExportSpec decision 21): draw until nothing more comes — the scene at rest,
@@ -2627,7 +2636,7 @@ export class GraphCanvas {
       const p = Q.points.get(point)!;
       return { looks: p.looks, index: Q.indexOf(p), w, scale: dimNow / (p.dim ? DIM : 1) };
     });
-    const drawn = `${this.overviewStyle}|${dim}|${W.map((x) => `${Q.points.get(x.point)!.serial}:${x.w.toFixed(3)}`).join(",")}`;
+    const drawn = `${this.themeSerial}|${this.overviewStyle}|${dim}|${W.map((x) => `${Q.points.get(x.point)!.serial}:${x.w.toFixed(3)}`).join(",")}`;
     if (drawn === this.overviewDrawn) return;
     this.overviewDrawn = drawn;
     const c0: RGBA = [0, 0, 0, 0], c1: RGBA = [0, 0, 0, 0];

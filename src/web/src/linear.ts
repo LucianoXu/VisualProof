@@ -47,6 +47,7 @@ import type { Graph } from "../../shared/viewgraph.ts";
 import { boardOrder } from "../../shared/doc/order.ts";
 import type { GraphCanvas, OrderBody, PinMove } from "./canvas.ts";
 import { LEAF_R } from "./scene.ts";
+import { onThemeChange } from "./theme.ts";
 
 export interface LinearHooks {
   /** the outline of the board on show, or why there is none */
@@ -220,6 +221,8 @@ export class LinearForm {
     el.addEventListener("contextmenu", (e) => this.context(e));
     el.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
     window.addEventListener("resize", () => this.request());
+    // what it drew is in the theme's colours, read as it draws: drawn again in the new theme's
+    onThemeChange(() => this.request());
   }
 
   get shown(): boolean {
