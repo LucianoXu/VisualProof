@@ -73,7 +73,7 @@ import type { FitBox, Ring, RingItem } from "../../shared/ring.ts";
 import { AUTO_COLLAPSE_PX, noteExcerpt, noteLook, noteMarkers, placeAt, placeIn as viewPlaceIn } from "../../shared/sticky.ts";
 import type { NoteCard, NoteCarry, NoteDecl, NotePlace, PlaceCluster, StickyNote } from "../../shared/sticky.ts";
 import { BOT } from "./agentmark.ts";
-import type { NotePicture } from "./artwork.ts";
+import type { CardFile, NotePicture } from "./artwork.ts";
 import type { GraphCanvas } from "./canvas.ts";
 import { dragKeyHeld, MAC, menuClick } from "./drag.ts";
 import { escapeHtml } from "./highlight.ts";
@@ -285,6 +285,50 @@ interface Drawn {
    *  second, not every frame: thousands of declarations move only while the board moves) */
   centre: [number, number] | null;
   centreAt: number;
+}
+
+/** The files an open card carries, as it shows them (carryHtml), for a picture of the board
+ *  (Stickies.asDrawn): each box, its drawing as the page drew it — a data URL, none where it is not
+ *  drawn or cannot be read — and its words. */
+function cardFiles(card: HTMLElement): CardFile[] {
+  const out: CardFile[] = [];
+  for (const a of card.querySelectorAll<HTMLElement>(".sk-att")) {
+    const ar = a.getBoundingClientRect();
+    if (!(ar.width > 0)) continue;
+    const pic = a.querySelector<HTMLImageElement>("img");
+    let image: CardFile["image"] = null;
+    if (pic?.complete && pic.naturalWidth) {
+      const pr = pic.getBoundingClientRect();
+      const src = pictureOf(pic, pr.width);
+      if (src) image = { x: pr.left, y: pr.top, w: pr.width, h: pr.height, src };
+    }
+    const words = [...a.querySelectorAll<HTMLElement>(".sk-att-title, .sk-att-meta, .sk-att-cap, .sk-att-why, .sk-att-arch")].flatMap((el) => {
+      const r = el.getBoundingClientRect(), st = getComputedStyle(el);
+      const px = parseFloat(st.fontSize) || 11;
+      const text = el.innerText.trim();
+      if (!text || !(r.width > 0)) return [];
+      // its words start inside its padding
+      const pl = parseFloat(st.paddingLeft) || 0, pt = parseFloat(st.paddingTop) || 0, pb = parseFloat(st.paddingBottom) || 0;
+      return [{ x: r.left + pl, y: r.top + pt, w: r.width - pl - (parseFloat(st.paddingRight) || 0), h: r.height - pt - pb, text, px, weight: Number(st.fontWeight) || 400, line: parseFloat(st.lineHeight) || px * 1.3, colour: st.color }];
+    });
+    out.push({ x: ar.left, y: ar.top, w: ar.width, h: ar.height, bg: getComputedStyle(a).backgroundColor, image, words });
+  }
+  return out;
+}
+
+/** A picture the page drew, as a data URL at twice the size it is drawn at most (a picture of the
+ *  board is drawn at more pixels than the screen's); null where the browser will not read it back. */
+function pictureOf(img: HTMLImageElement, drawn: number): string | null {
+  const k = Math.min(1, (2 * drawn) / img.naturalWidth);
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(img.naturalWidth * k));
+  c.height = Math.max(1, Math.round(img.naturalHeight * k));
+  try {
+    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/png");
+  } catch {
+    return null;
+  }
 }
 
 /** What a note on the ring is about, in a few words: the declarations and clusters a file it carries
@@ -1390,6 +1434,8 @@ export class Stickies {
           by: by?.innerText.trim() ?? "",
           textColour: cs.color,
           byColour: by ? style(by).color : cs.color,
+          ...(text ? { textBottom: text.getBoundingClientRect().bottom } : {}),
+          files: cardFiles(d.card),
         };
         const ln = !d.lead.hidden ? ends(d.lead) : null;
         if (ln) {
