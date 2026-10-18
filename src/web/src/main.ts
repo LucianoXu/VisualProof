@@ -4106,12 +4106,14 @@ async function boot(): Promise<void> {
       sources.toggle(selected());
       if (together && !sources.following) papers.win.close();
     } else if (e.key === "Escape") {
-      // what passes first: a question about trust, a popover, the views menu, a list of the Time
-      // Machine; then the source window that follows the selection, the timeline, the Time
-      // Machine, and the selection. A pinned window closes by Esc with the focus in it, or by its ✕.
+      // what passes first: a question about trust, a popover, the views menu or the focus's, a list
+      // of the Time Machine; then the source window that follows the selection, the timeline, the
+      // Time Machine, and the selection. A pinned window closes by Esc with the focus in it, or by
+      // its ✕.
       if (trust.open) trust.close();
       else if (buildPop.open) buildPop.toggle(false);
       else if (tabs.open) tabs.toggle(false);
+      else if (focusMenu.open) focusMenu.toggle(false);
       else if (boardPop.open || trustPop.open || eyesPop.open) for (const p of [boardPop, trustPop, eyesPop]) p.toggle(false);
       else if (tm.listShown) tm.closeListNow();
       else if (sources.following) sources.close(sources.following);
