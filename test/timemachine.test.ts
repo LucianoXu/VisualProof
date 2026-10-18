@@ -6,7 +6,7 @@
 // the snapshot's graph served in parts, kept.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -1148,4 +1148,20 @@ test("a view kept at a build the page has not heard of: the list of builds is re
   } finally {
     Object.assign(g, saved);
   }
+});
+
+test("a view kept at a past build and focused on a target: its note under the review strip, not hidden by it (HistorySpec decision 19)", () => {
+  const web = (f: string) => readFileSync(new URL(`../src/web/${f}`, import.meta.url), "utf8");
+  const css = web("style.css").replace(/\/\*[^]*?\*\//g, "");
+  // the note is placed under the strip's height, on a larger screen, a phone and a tall screen alike
+  const tops = [...css.matchAll(/(?<!,\s*)#tm-kept\s*\{([^}]*)\}/g)].map((m) => /top:\s*([^;]+);/.exec(m[1])?.[1]);
+  assert.deepEqual(tops, ["calc(110px + var(--lens-h, 0px))", "calc(100px + var(--lens-h, 0px))", "calc(108px + var(--lens-h, 0px))"]);
+  // what is said for a moment goes under both
+  assert.match(css, /\.hint\.say\.below \{ top: calc\(118px \+ var\(--strip-h, 38px\)\); \}/);
+  const main = web("src/main.ts");
+  assert.match(main, /setProperty\("--lens-h", `\$\{lens\}px`\)/);
+  assert.match(main, /setProperty\("--strip-h", `\$\{lens \+ kept\}px`\)/);
+  assert.match(main, /hint\.classList\.toggle\("below", !\$\("#lensbar"\)\.hidden \|\| !\$\("#tm-kept"\)\.hidden\)/);
+  // a tall screen's board starts under the lower of the two
+  assert.match(web("src/phone.ts"), /const strip = \[\$\("tm-kept"\), \$\("lensbar"\)\]\.find/);
 });

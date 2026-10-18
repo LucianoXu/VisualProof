@@ -1320,12 +1320,18 @@ async function boot(): Promise<void> {
     // the panel, or the timeline's drawer in its place; the selection bar heads that column, which
     // it moves down by its height
     const open = $("#panel").classList.contains("open") || $("#activity").classList.contains("open") || $("#lostfound").classList.contains("open");
-    // the review strip, or the note of a view kept at a past build, in the same place
-    const strip = !$("#lensbar").hidden || !$("#tm-kept").hidden;
+    // the review strip, and under it the note of a view kept at a past build: a kept view focused
+    // on a target has both (HistorySpec decision 19)
+    const height = (id: string) => ($(id).hidden ? 0 : $(id).offsetHeight + 6);
+    const lens = height("#lensbar"), kept = height("#tm-kept");
+    const strip = lens + kept > 0;
+    // the note's height too, where it is the second
+    const second = lens && kept;
     const bar = $("#selbar");
     document.body.style.setProperty("--selbar-h", bar.hidden ? "0px" : `${bar.offsetHeight + 8}px`);
-    // on a phone the selection bar goes under the strip
-    document.body.style.setProperty("--strip-h", strip ? `${$(!$("#lensbar").hidden ? "#lensbar" : "#tm-kept").offsetHeight + 6}px` : "0px");
+    document.body.style.setProperty("--lens-h", `${lens}px`);
+    // on a phone the selection bar goes under them both
+    document.body.style.setProperty("--strip-h", `${lens + kept}px`);
     // a phone (web/src/phone.ts): the side panel is a drawer, the panel a sheet from the bottom,
     // the selection bar across the top, the legend and the zoom's box at the bottom
     const sheet = $("#panel").classList.contains("open") ? $("#panel").offsetHeight : 0;
@@ -1333,7 +1339,7 @@ async function boot(): Promise<void> {
       ? {
           left: 0,
           right: 0,
-          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 : 12) : bar.getBoundingClientRect().bottom + 12,
+          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 + second : 12) : bar.getBoundingClientRect().bottom + 12,
           bottom: sheet ? sheet + 8 : 56,
         }
       : isTall()
@@ -1343,7 +1349,7 @@ async function boot(): Promise<void> {
           left: side.width ? side.right + 8 : 0,
           // offsetWidth, not the bounding box: the panel may still be sliding in
           right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,
-          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 : 28),
+          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 + second : 28),
           bottom: 48,
         };
     // the zoom buttons keep to the canvas's bottom right, the review strip to its middle; where the
@@ -2295,14 +2301,14 @@ async function boot(): Promise<void> {
     b.addEventListener("blur", () => modeTip(null));
   }
 
-  /** Something said for a moment where the hint is (below the review strip, where it shows): the
-   *  hint shows nothing otherwise. */
+  /** Something said for a moment where the hint is (below the review strip and the note of a kept
+   *  view, where they show): the hint shows nothing otherwise. */
   const say = (text: string) => {
     const hint = $("#hint");
     if (saying) clearTimeout(saying);
     hint.textContent = text;
     hint.classList.add("say");
-    hint.classList.toggle("below", !$("#lensbar").hidden);
+    hint.classList.toggle("below", !$("#lensbar").hidden || !$("#tm-kept").hidden);
     hint.hidden = false;
     saying = setTimeout(() => {
       saying = null;
