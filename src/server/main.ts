@@ -922,7 +922,7 @@ export class App {
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
       // logs that cannot be read
-      if (path === "/api/review" && req.method === "GET") return sendJson(res, live.review.whole());
+      if (path === "/api/review" && req.method === "GET") return sendJsonText(res, live.review.wholeText());
       if (path === "/api/review" && req.method === "POST") {
         // an opinion, a target, a trusted prefix or a key declaration is recorded under the
         // reader's name (CollabSpec decision 3), not one in the body; what it is about is
@@ -1220,7 +1220,12 @@ function tooLarge(req: IncomingMessage, res: ServerResponse, body: object): void
  *  large, answered as it was read) is not heard. */
 export function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Record<string, string> = {}): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
-  const text = JSON.stringify(body);
+  sendJsonText(res, JSON.stringify(body), code, headers);
+}
+
+/** The same, of an answer written as JSON already (the whole review, server/review.ts). */
+function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Record<string, string> = {}): void {
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
   // a small answer is not worth compressing; a status with its build log, a source file, are; a
   // large one is compressed off the server's thread, which meanwhile answers others
   if (text.length > JSON_GZIP_FROM && acceptsGzip(res.req)) {

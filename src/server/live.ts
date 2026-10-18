@@ -1091,7 +1091,7 @@ export class Live {
     this.write(res, "views", { views: this.views.list(), changes: [], all: true });
     if (this.build) this.write(res, "build", this.build);
     // the whole review once; what changes after comes as deltas
-    this.write(res, "review", this.review.whole());
+    this.push(st, this.reviewHello());
     const g = this.graphInfo();
     if (g) this.write(res, "graph", g);
     if (this.extracting) this.write(res, "extracting", {});
@@ -1101,6 +1101,16 @@ export class Live {
     else this.lostChanged();
     st.room = MAX_BUFFERED + res.writableLength;
     st.after = 0;
+  }
+
+  /** the whole review as a stream's hello says it, in bytes, and the text it was made from */
+  private reviewBytes: { text: string; bytes: Buffer } | null = null;
+  /** The whole review as every stream's hello says it: made into bytes once a revision, not once a
+   *  stream (a hundred pages opening at once, a review of 7.6 MB, had the server 5 s encoding it). */
+  private reviewHello(): Buffer {
+    const text = this.review.wholeText();
+    if (this.reviewBytes?.text !== text) this.reviewBytes = { text, bytes: Buffer.from(`event: review\ndata: ${text}\n\n`) };
+    return this.reviewBytes.bytes;
   }
 
   private write(res: ServerResponse, event: string, data: unknown): void {
@@ -1120,7 +1130,7 @@ export class Live {
    *  then it is closed instead, and its page reconnects to the present state. A review of 5,000
    *  opinions on Sphere-Packing-Lean is 7 MB: counted against MAX_BUFFERED, it closed every page's
    *  stream as it opened, and the pages reconnected every two seconds, never live. */
-  private push(st: Stream, text: string): void {
+  private push(st: Stream, text: string | Buffer): void {
     const waiting = st.res.writableLength;
     // all that waits was written since the hello: the hello is read
     if (st.room > MAX_BUFFERED && st.room !== Infinity && waiting <= st.after) st.room = MAX_BUFFERED;

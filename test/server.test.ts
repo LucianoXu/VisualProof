@@ -175,8 +175,8 @@ function fakeResponse() {
       r.status = status;
       return r;
     },
-    write(text: string) {
-      r.written.push(text);
+    write(text: string | Buffer) {
+      r.written.push(String(text));
       return true;
     },
     end(text?: string) {
@@ -237,7 +237,7 @@ test("a stream's hello, however large, is read before it counts as not reading; 
     const open = () => {
       const r = fakeResponse();
       const write = r.write;
-      r.write = (text: string) => ((r.writableLength += text.length), write(text));
+      r.write = (text: string | Buffer) => ((r.writableLength += text.length), write(text));
       S.live.subscribe(r as unknown as ServerResponse, null);
       return Object.assign(r, { read: (n: number) => void (r.writableLength = Math.max(0, r.writableLength - n)) });
     };
@@ -268,6 +268,33 @@ test("a stream's hello, however large, is read before it counts as not reading; 
     event();
     assert.equal(reading.destroyed, true);
     assert.equal((S.live.status() as Json).streams.closedForNotReading, 2);
+  } finally {
+    await S.close();
+  }
+});
+
+test("the whole review is written as JSON once a revision: every stream's hello and GET /api/review carry the one text, made again after a change", async () => {
+  const S = await site();
+  try {
+    const review = S.live.review;
+    let made = 0;
+    const whole = review.whole.bind(review);
+    review.whole = () => (made++, whole());
+    const open = () => {
+      const r = fakeResponse();
+      S.live.subscribe(r as unknown as ServerResponse, null);
+      return r;
+    };
+    const hello = (r: ReturnType<typeof fakeResponse>) => r.written.find((t) => t.startsWith("event: review\n"))!;
+    const [a, b] = [open(), open()];
+    const asked = await S.ask("GET", "/api/review");
+    assert.equal(made, 1, "once for two hellos and a page's ask");
+    assert.equal(hello(a), hello(b));
+    assert.deepEqual(JSON.parse(hello(a).slice("event: review\ndata: ".length)), asked.json);
+    review.append({ name: "Alice", agent: false }, { op: "target", name: "N.b", by: "Alice", on: true }, "tc");
+    const c = open();
+    assert.equal(made, 2, "a change: written again");
+    assert.ok(JSON.parse(hello(c).slice("event: review\ndata: ".length)).data.targets["N.b"]);
   } finally {
     await S.close();
   }
