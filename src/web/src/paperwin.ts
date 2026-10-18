@@ -494,6 +494,8 @@ export class PaperWin {
       // a clip makes a note, which a past board takes though it takes no link (ViewSpec decision 26)
       const clipNo = clip ? (f.archived ? "This file is archived: restore it from the Library to clip it." : this.hooks.cannotNote()) : null;
       const clipping = !!clip && !clipNo && !this.linking;
+      // why no clip is not said again where it is why no link (a read-only page refuses both alike)
+      const said = "refused" in offer && offer.refused === clipNo;
       const field =
         "subject" in offer || clipping
           ? `<input class="pw-label" value="${e(label)}" maxlength="200" aria-label="The label" title="The link's label, as the panel lists it, or the note's text: e.g. Theorem 3, p. 12">`
@@ -510,7 +512,7 @@ export class PaperWin {
               : `<span class="pw-pick-no">Select a declaration or a cluster on the board to link it here.</span>`;
       const clipBtn = clipping
         ? `<button class="rv-btn${"subject" in offer ? "" : " primary"}" data-pw-clip title="A note of the project carrying this region of page ${clip!.page}, in the cluster of what is selected on the board (else on the ring), its text the label">Clip to a note</button>`
-        : clip && clipNo && !this.linking && !("subject" in offer)
+        : clip && clipNo && !this.linking && !("subject" in offer) && !said
           ? `<span class="pw-pick-no">${e(clipNo)}</span>`
           : "";
       this.pickEl.innerHTML = field + link + clipBtn;
