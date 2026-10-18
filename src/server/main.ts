@@ -30,6 +30,7 @@ import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
 import { packEdges } from "../shared/edgecodec.ts";
 import { Access, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
+import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
@@ -90,7 +91,7 @@ interface Options {
   /** the most the library's files may take, in bytes (AttachmentSpec, "Implementation notes") */
   libraryLimit: number;
   /** --public: whoever comes without the key or a link of their own is a read-only reader
-   *  (CollabSpec decision 11), where they would be answered 404 */
+   *  (CollabSpec decision 11), where they would be turned away (decision 7) */
   publicRead: boolean;
   /** purge-file: the file whose bytes go */
   sha: string | null;
@@ -182,14 +183,16 @@ function usage(code = 2): never {
   --access-key-file  let in only those given the link http://<host>:<port>/k/<key>, the key being
            what the file holds (one is made there, readable by its owner alone, if there is none).
            The link leaves a cookie in the browser; agents send Authorization: Bearer <key>.
-           Anything else is answered 404. Over plain HTTP the key crosses the network in the
-           clear: it keeps out who was not given the link, not who can watch the traffic.
+           Anything else is answered 404, but a browser asking for a page, which is shown one
+           that says the site is private and nothing of it. Over plain HTTP the key crosses the
+           network in the clear: it keeps out who was not given the link, not who can watch the
+           traffic.
            Share also gives an AI agent a token of its own (vpa_…), which reaches /api/agent only,
            and a person a link of their own (/i/vpp_…), which lets them in and says who they are,
            and anyone a read-only link (/r/vpr_…), which lets them see and change nothing shared.
 
   --public  with --access-key-file: whoever comes without the key or a link of their own is let
-           in read-only, rather than answered 404: they see the project, its review and its
+           in read-only, rather than turned away: they see the project, its review and its
            history, change nothing that is shared, and are seen by nobody. For a project anyone
            may read (a showcase); never for a private one.
 
@@ -679,13 +682,16 @@ export class App {
   /** A personal link opened (CollabSpec decision 9): the browser is given the cookie that lets its
    *  holder in, as who the link says, and goes on to the page — the token leaves the address, and a
    *  place after it (a fragment) comes along. A revoked link says so; anything else is answered as
-   *  any address nobody was given. */
-  private enter(req: IncomingMessage, res: ServerResponse, token: string): void {
+   *  any address nobody was given. On a server with a key, a browser is shown the page of a link
+   *  that does not open the site instead (CollabSpec decision 7), which says neither which it was
+   *  nor who revoked it — unless the key or a link of its own lets it in, and it may be told. */
+  private enter(req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
     const c = this.ids.header ? null : this.live.invites.check(token);
     if (c && "ok" in c) {
       res.writeHead(303, { location: "/", "set-cookie": this.live.invites.cookie(c.ok), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
+    if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
     if (c) return sendText(req, res, revokedWords(c.record, "personal") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
@@ -693,15 +699,23 @@ export class App {
   /** A read-only link opened (CollabSpec decision 11): the browser is given the cookie that lets
    *  its holder read, and goes on to the page — the token leaves the address, and a place after it
    *  (a fragment) comes along. A revoked link says so; anything else, and any link on a server
-   *  open to all or behind a sign-in, which have none, is answered as an address nobody was given. */
-  private enterReadOnly(req: IncomingMessage, res: ServerResponse, token: string): void {
+   *  open to all or behind a sign-in, which have none, is answered as an address nobody was given;
+   *  to a browser, on a server with a key, as a personal link's (enter). */
+  private enterReadOnly(req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
     const c = this.access && !this.ids.header ? this.live.readOnly.check(token) : null;
     if (c && "ok" in c) {
       res.writeHead(303, { location: "/", "set-cookie": this.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
+    if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
     if (c) return sendText(req, res, revokedWords(c.link, "read-only") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
+  }
+
+  /** Whether the key's cookie or a personal link in force lets a request in: someone who sees the
+   *  site's people, and may be told who revoked a link. */
+  private letIn(req: IncomingMessage): boolean {
+    return !!this.ids.person(req) || this.access?.admit(req, "/") === "in";
   }
 
   /** Who the reader is (POST /api/identity {name}): the name someone invited by a personal link goes
@@ -734,8 +748,10 @@ export class App {
 
   /** A request for a name this server without a key does not answer (CollabSpec decision 12): 403,
    *  saying which option lets the name in; and, once per name, the server's console says it too,
-   *  for whoever runs it behind a proxy that forwards the name people reach it by. */
-  private refuseHost(req: IncomingMessage, res: ServerResponse): void {
+   *  for whoever runs it behind a proxy that forwards the name people reach it by. A browser asking
+   *  for a page is shown a page that says so (the owner's decision of 2026-10-18), which does not
+   *  repeat the name: it is the requester's, any text at all. */
+  private refuseHost(req: IncomingMessage, res: ServerResponse, path: string): void {
     const raw = req.headers.host ?? "";
     const name = /^\[/.test(raw) ? raw : raw.replace(/:\d{1,5}$/, "");
     const shown = /^[A-Za-z0-9._\-[\]:]{1,253}$/.test(name) ? name : null;
@@ -743,6 +759,7 @@ export class App {
       this.refusedHosts.add(shown.toLowerCase());
       console.error(`refused a request for ${shown}: without an access key this server answers only its addresses, localhost, --public-url's host and the --allowed-host names; --allowed-host ${shown} lets this one in`);
     }
+    if (asksForPage(req, path)) return sendAccessPage(res, "host");
     sendText(req, res, `This server answers only the names it is meant to be reached by${shown ? `, and ${shown} is not one of them` : ""}. Whoever runs it can let a name in with --allowed-host${shown ? ` ${shown}` : " <name>"}.\n`, "text/plain; charset=utf-8", 403);
   }
 
@@ -832,7 +849,7 @@ export class App {
     // decision of 2026-10-18): a page whose own name was made to resolve to this machine (DNS
     // rebinding) is refused whatever it asks — the page, its data, the event stream, the agents'
     // API, the MCP server's file
-    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res);
+    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res, path);
     // every route; whatever one throws, handle() answers
     {
       // an agent's own token (server/tokens.ts) lets it into its API alone: the page and the page's
@@ -852,10 +869,10 @@ export class App {
       // a personal link (CollabSpec decision 9, server/invites.ts): it lets its holder in, as who
       // it says, and its cookie does from then on; a revoked one's cookie is forgotten, and lets
       // nobody in
-      if (path.startsWith(INVITE_PATH)) return this.enter(req, res, path.slice(INVITE_PATH.length));
+      if (path.startsWith(INVITE_PATH)) return this.enter(req, res, path.slice(INVITE_PATH.length), path);
       // a read-only link (CollabSpec decision 11, server/readonly.ts): its cookie lets its holder
       // read, where nothing else lets them in
-      if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length));
+      if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length), path);
       const link = this.ids.link(req);
       const cookies: string[] = link && "ended" in link ? [live.invites.forget()] : [];
       const ro = this.access && !this.ids.header ? live.readOnly.ofCookie(req.headers.cookie) : null;
@@ -867,18 +884,35 @@ export class App {
           const reader = ro && "ok" in ro ? ro.ok.id : this.publicRead && !this.ids.header ? "public" : null;
           // a page whose link was revoked, which nothing else lets in, is told so (CollabSpec
           // decisions 9 and 11): its requests are answered 410 with who revoked it and when, and the
-          // page, reloaded, says it in words; the cookie is forgotten there, once it has been said
+          // page, reloaded, says the link no longer opens the site (decision 7: to a browser, the
+          // page of a link that does not, which names nobody); the cookie is forgotten there, once
+          // it has been said
           const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? revokedWords(link.record, "personal") : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
           if (revoked) {
+            if (asksForPage(req, path)) {
+              res.setHeader("set-cookie", cookies);
+              return sendAccessPage(res, "link");
+            }
             if (path === "/" || path === "/index.html") {
               res.setHeader("set-cookie", cookies);
               return sendText(req, res, revoked + "\n", "text/plain; charset=utf-8", 410);
             }
             return sendJson(res, { error: revoked, revoked: true }, 410);
           }
+          // nothing lets them in: a browser asking for a page is told the site is private, or that
+          // its link (`/k/…`, a key replaced) does not open it (CollabSpec decision 7, the owner's
+          // decision of 2026-10-18); anything else is answered as if there were nothing here
           if (reader === null || this.ids.kind(req) === "agent") {
             if (cookies.length) res.setHeader("set-cookie", cookies);
+            if (asksForPage(req, path)) return sendAccessPage(res, path.startsWith(KEY_PATH) ? "link" : "private");
             return sendJson(res, { error: "not found" }, 404);
+          }
+          // a link of the key's that is not the key, opened where the address, or a read-only link,
+          // lets them read: the page of a link that does not open the site, which says whether the
+          // address alone does (--public)
+          if (path.startsWith(KEY_PATH) && asksForPage(req, path)) {
+            if (cookies.length) res.setHeader("set-cookie", cookies);
+            return sendAccessPage(res, "link", this.publicRead);
           }
           this.readOnlyOf.set(req, reader);
           // the page renews a read-only link's cookie, as a personal link's
