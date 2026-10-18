@@ -12,7 +12,7 @@
 
 import { execFile } from "node:child_process";
 import { tracked } from "./children.ts";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { plainPunctuation, wordsText } from "../shared/library.ts";
@@ -195,14 +195,22 @@ function upper(starts: number[], at: number): number {
 const WIDTHS = [400, 800, 1200, 1600, 2000];
 export const clampWidth = (w: number) => WIDTHS.find((x) => x >= w) ?? WIDTHS[WIDTHS.length - 1];
 
+/** The most clips kept of a file, the oldest going first. A page is kept at a few widths, bounded by
+ *  the file; but anyone who reads — a read-only reader, whoever comes to a `--public` site — may ask
+ *  for any region of any page, and each was kept for good, filling the disk. The clips notes carry
+ *  are asked again and again, and stay. */
+export const MAX_CLIPS = 500;
+
 /** A PDF's words, pages and images, kept in `cacheDir/<sha>/`. */
 export class PdfReader {
   readonly cacheDir: string;
   private words = new Map<string, Promise<PageWords[]>>();
   private infos = new Map<string, Promise<PdfInfo>>();
+  private maxClips: number;
 
-  constructor(cacheDir: string) {
+  constructor(cacheDir: string, maxClips = MAX_CLIPS) {
     this.cacheDir = cacheDir;
+    this.maxClips = maxClips;
   }
 
   private dir(sha: string): string {
@@ -267,7 +275,16 @@ export class PdfReader {
     const w = clampWidth(width);
     const r = region.map((x) => Math.round(x * 1e4) / 1e4);
     const kept = join(this.dir(sha), `clip-${page}-${r.join("_")}-w${w}.png`);
-    if (existsSync(kept)) return readFileSync(kept);
+    if (existsSync(kept)) {
+      try {
+        // asked for again: the last to go (atime is not kept on every system)
+        const now = new Date();
+        utimesSync(kept, now, now);
+        return readFileSync(kept);
+      } catch {
+        // pruned meanwhile: drawn again
+      }
+    }
     // the resolution at which the region is `w` pixels wide, within reason
     const dpi = Math.min(600, Math.max(36, (w / ((r[2] - r[0]) * size.w)) * 72));
     const px = (v: number, of: number) => Math.round((v * of * dpi) / 72);
@@ -280,7 +297,26 @@ export class PdfReader {
     } finally {
       rmSync(`${tmp}.png`, { force: true });
     }
-    return readFileSync(kept);
+    const out = readFileSync(kept);
+    this.pruneClips(sha);
+    return out;
+  }
+
+  /** The clips kept of a file beyond the most there may be go, those drawn or asked for longest
+   *  ago first (a clip asked for again is touched). */
+  private pruneClips(sha: string): void {
+    const d = join(this.cacheDir, sha);
+    let clips: { f: string; t: number }[];
+    try {
+      clips = readdirSync(d)
+        .filter((f) => f.startsWith("clip-"))
+        .map((f) => ({ f, t: statSync(join(d, f)).mtimeMs }));
+    } catch {
+      return;
+    }
+    if (clips.length <= this.maxClips) return;
+    clips.sort((a, b) => a.t - b.t);
+    for (const c of clips.slice(0, clips.length - this.maxClips)) rmSync(join(d, c.f), { force: true });
   }
 
   /** What is kept of a file goes (its bytes purged). */

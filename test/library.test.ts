@@ -17,7 +17,7 @@ import { applyEvent, emptyReview, logFileName, readEvent } from "../src/shared/r
 import type { ReviewData, ReviewEvent } from "../src/shared/review.ts";
 import type { SnapGraph } from "../src/server/history.ts";
 import { carryClusterLinks, clusterMovedTo, Library } from "../src/server/library.ts";
-import { usefulTitle } from "../src/server/poppler.ts";
+import { PdfReader, usefulTitle } from "../src/server/poppler.ts";
 import { ReviewStore, SERVER_LOG } from "../src/server/review.ts";
 import { MAGIC, tinyPdf } from "./pdf.ts";
 import { site } from "./site.ts";
@@ -258,6 +258,30 @@ test("a page's text with the place of every word, a search through the file, a p
     assert.equal((await S.ask("GET", `/api/library/text?sha=${sha}&page=9`)).status, 400);
   } finally {
     await S.close();
+  }
+});
+
+test("the clips kept of a file are bounded, the oldest going first, a clip asked for again kept", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-clips-"));
+  try {
+    const file = join(dir, "paper.pdf");
+    writeFileSync(file, PDF);
+    const reader = new PdfReader(join(dir, "cache"), 3);
+    const size = { w: 612, h: 792 };
+    const clip = (k: number) => reader.clip("f".repeat(64), file, 1, size, [0.1, 0.01 * k, 0.5, 0.01 * k + 0.1], 400);
+    const kept = () => readdirSync(join(dir, "cache", "f".repeat(64))).filter((f) => f.startsWith("clip-")).sort();
+    await clip(1);
+    await clip(2);
+    await clip(3);
+    assert.equal(kept().length, 3);
+    // the first asked for again: the second is the oldest now
+    await new Promise((ok) => setTimeout(ok, 20));
+    await clip(1);
+    await new Promise((ok) => setTimeout(ok, 20));
+    await clip(4);
+    assert.deepEqual(kept(), ["clip-1-0.1_0.01_0.5_0.11-w400.png", "clip-1-0.1_0.03_0.5_0.13-w400.png", "clip-1-0.1_0.04_0.5_0.14-w400.png"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
