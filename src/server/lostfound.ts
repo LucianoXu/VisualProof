@@ -80,8 +80,9 @@ export class Archive {
   }
 }
 
-/** Whether a file is empty, missing, or ends with a line break. */
-function endsLine(file: string): boolean {
+/** Whether a file is empty, missing, or ends with a line break: what is appended to one that does not
+ *  (a line cut short as the server stopped) starts a line of its own (server/renames.ts too). */
+export function endsLine(file: string): boolean {
   let fd: number;
   try {
     fd = openSync(file, "r");
