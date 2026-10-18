@@ -30,6 +30,7 @@
 
 import type { ClusterMode, Layout, ViewMeta, ViewNode } from "./graph.ts";
 import { clusterTree, computeLayout, memoryOf, regroup, stabilize, withLocal } from "./layout.ts";
+import { hypot } from "./libm.ts";
 import type { LayoutMemory } from "./layout.ts";
 import type { PlaceOp, Pins } from "./places.ts";
 import { evaluate, within } from "./query.ts";
@@ -312,7 +313,7 @@ export function reframePins(g: { n: number; nodes: { name: string }[] }, before:
     return w;
   };
   const r = (v: number) => Math.round(v * 10) / 10;
-  const away = (x1: number, y1: number, x2: number, y2: number) => Math.hypot(x1 - x2, y1 - y2) > 0.5;
+  const away = (x1: number, y1: number, x2: number, y2: number) => hypot(x1 - x2, y1 - y2) > 0.5;
   let extra = 0;
   // the same after, parents first, with the pins as they are made
   const wa: [number, number][] = [];

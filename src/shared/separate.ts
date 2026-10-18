@@ -8,6 +8,8 @@
 // their neighbours through a hash grid kept in typed arrays, so a drop in a cluster of 2,000
 // declarations settles in milliseconds rather than rebuilding everything every round.
 
+import { hypot } from "./libm.ts";
+
 export interface Bodies {
   n: number;
   x: Float64Array;
@@ -145,7 +147,7 @@ export class Separator {
       }
       if (limit) {
         for (let k = 0; k < B.n; k++) {
-          const d = Math.hypot(B.x[k], B.y[k]);
+          const d = hypot(B.x[k], B.y[k]);
           if (d > limit[k]) {
             B.x[k] *= limit[k] / d;
             B.y[k] *= limit[k] / d;

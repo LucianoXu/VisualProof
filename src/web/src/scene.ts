@@ -19,6 +19,7 @@
 
 import type { Layout } from "../../shared/graph.ts";
 import type { Motion } from "./motion.ts";
+import { hypot } from "../../shared/libm.ts";
 import { type Bodies, Separator } from "../../shared/separate.ts";
 
 /** A disc in a cluster's coordinates: what room is held for (Scene.setHeld). */
@@ -442,7 +443,7 @@ export class Scene {
   private inside(p: number, r: number, lx: number, ly: number): [number, number] {
     if (p < 0) return [lx, ly];
     const room = Math.max(0, this.homeR[p] - this.padOf(p) - r);
-    const d = Math.hypot(lx, ly);
+    const d = hypot(lx, ly);
     return d > room ? [(lx * room) / d, (ly * room) / d] : [lx, ly];
   }
 
@@ -553,9 +554,9 @@ export class Scene {
     const DENSITY = 0.72;
     let area = 0;
     for (const it of (shrunk ? items : []).filter((x) => !x.pinned).sort((a, b) => a.hx * a.hx + a.hy * a.hy - (b.hx * b.hx + b.hy * b.hy))) {
-      const len = Math.hypot(it.hx, it.hy);
+      const len = hypot(it.hx, it.hy);
       const ux = len > 1e-6 ? it.hx / len : 1, uy = len > 1e-6 ? it.hy / len : 0;
-      area += (Math.PI * (it.r + GAP / 2) ** 2) / DENSITY;
+      area += (Math.PI * ((it.r + GAP / 2) * (it.r + GAP / 2))) / DENSITY;
       const d = Math.min(len, Math.max(0, Math.sqrt(area / Math.PI) - it.r));
       it.x = ux * d;
       it.y = uy * d;
@@ -578,7 +579,7 @@ export class Scene {
     const inward = shrunk && !grown && !pinned;
     const room = self >= 0 ? homeR - this.padOf(self) : Infinity;
     const limit = Float64Array.from(items, (it) => {
-      const len = Math.hypot(it.hx, it.hy);
+      const len = hypot(it.hx, it.hy);
       return inward ? len : Math.max(len, room - it.r);
     });
     const sep = this.separator;
@@ -615,7 +616,7 @@ export class Scene {
     });
     let extent = 0;
     for (const it of items) {
-      extent = Math.max(extent, Math.hypot(it.x, it.y) + it.r);
+      extent = Math.max(extent, hypot(it.x, it.y) + it.r);
       if (it.c >= 0) {
         this.ancCX[it.c] = it.x;
         this.ancCY[it.c] = it.y;
@@ -658,15 +659,15 @@ export class Scene {
     const idx = Array.from({ length: n }, (_, j) => j);
     const B: Bodies = { n, x, y, r, pinned, seq, big: Int32Array.from(idx.filter((j) => r[j] > LEAF_R + 0.1)), small: Int32Array.from(idx.filter((j) => r[j] <= LEAF_R + 0.1)) };
     const room = self >= 0 ? homeR - this.padOf(self) : Infinity;
-    const limit = Float64Array.from(idx, (j) => Math.max(Math.hypot(x[j], y[j]), room - r[j]));
+    const limit = Float64Array.from(idx, (j) => Math.max(hypot(x[j], y[j]), room - r[j]));
     // how far the children reach before they make way: the circle grows by what they are pushed out
     let reach = 0;
-    for (let j = 0; j < nk; j++) reach = Math.max(reach, Math.hypot(x[j], y[j]) + r[j]);
+    for (let j = 0; j < nk; j++) reach = Math.max(reach, hypot(x[j], y[j]) + r[j]);
     // only what a held disc covers makes way: overlaps the board's own arrangement has are its own
     // (a layout may hold some), and stay as they are where the held discs cover nothing
     let covers = false;
     for (let h = nk; h < n && !covers; h++)
-      for (let j = 0; j < n && !covers; j++) if (j !== h && Math.hypot(x[j] - x[h], y[j] - y[h]) < r[j] + r[h] - 0.5) covers = true;
+      for (let j = 0; j < n && !covers; j++) if (j !== h && hypot(x[j] - x[h], y[j] - y[h]) < r[j] + r[h] - 0.5) covers = true;
     const sep = this.separator;
     if (covers) {
       sep.separate(B, 64, limit);
@@ -688,7 +689,7 @@ export class Scene {
     if (self < 0) return 0;
     let pushed = 0, own = 0;
     for (let j = 0; j < n; j++) {
-      const d = Math.hypot(x[j], y[j]) + r[j];
+      const d = hypot(x[j], y[j]) + r[j];
       if (j < nk) pushed = Math.max(pushed, d);
       else own = Math.max(own, d);
     }
@@ -799,14 +800,14 @@ export class Scene {
       if (this.rep[c] >= 0) continue;
       let reach = 0;
       const x = this.cwx[c], y = this.cwy[c];
-      for (const k of this.kidsC[c]) reach = Math.max(reach, Math.hypot(this.cwx[k] - x, this.cwy[k] - y) + this.drawnR[k]);
+      for (const k of this.kidsC[c]) reach = Math.max(reach, hypot(this.cwx[k] - x, this.cwy[k] - y) + this.drawnR[k]);
       for (const i of this.kidsN[c]) {
         if (this.nodeRep[i] >= 0) continue;
-        reach = Math.max(reach, Math.hypot(this.nwx[i] - x, this.nwy[i] - y) + LEAF_R);
+        reach = Math.max(reach, hypot(this.nwx[i] - x, this.nwy[i] - y) + LEAF_R);
       }
       // what is held in it is inside it too: a visitor's temporary clusters (setHeld)
       const held = this.held.get(c), at = this.heldAt.get(c);
-      if (held && at) for (let j = 0; j < held.length; j++) reach = Math.max(reach, (Math.hypot(at[2 * j], at[2 * j + 1]) + held[j].r) * this.scale[c]);
+      if (held && at) for (let j = 0; j < held.length; j++) reach = Math.max(reach, (hypot(at[2 * j], at[2 * j + 1]) + held[j].r) * this.scale[c]);
       this.drawnR[c] = Math.max(this.curR[c], reach > 0 ? reach + MARGIN : 0);
     }
   }

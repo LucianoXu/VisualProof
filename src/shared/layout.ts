@@ -12,9 +12,16 @@
 //
 // A board may hide levels of its tree (ViewSpec decision 24): a hidden cluster's sub-clusters and
 // declarations sit in its parent, and the tree is laid out as it then is.
+//
+// The same graph gives the same picture on every engine: the server's Node, the page's browser, a
+// follower's other browser. Engines round sines, logarithms and lengths each their own way in the
+// last digit, and the settling below makes a different picture of a different last digit, so the
+// layout computes them itself (shared/libm.ts) from the operations every engine rounds alike; its
+// sorts are total orders, and nothing in it reads the clock or a random number.
 
 import { packEnclose, packSiblings } from "d3-hierarchy";
 import type { Cluster, ClusterMode, Layout, ViewNode } from "./graph.ts";
+import { acos, cos, hypot, log1p, sin } from "./libm.ts";
 import { type Bodies, Separator } from "./separate.ts";
 
 const LEAF_R = 5;
@@ -147,7 +154,7 @@ function potentials(c: TNode): Float64Array {
   const diag = new Float64Array(m);
   const join = (a: number, b: number, ab: number, ba: number) => {
     const tot = ab + ba;
-    const g = Math.log1p(tot);
+    const g = log1p(tot);
     const drop = (ab - ba) / tot;
     rhs[a] += g * drop;
     diag[a] += g;
@@ -203,6 +210,12 @@ const separator = new Separator(2 * LEAF_R + GAP);
 /** declarations sit on a hexagonal lattice this far apart: touching, with room for rounding */
 const PITCH = 2 * LEAF_R + 0.3;
 
+const sq = (v: number) => v * v;
+/** the directions a sub-cluster is tried in round a placed one */
+const ANGLES = 24;
+const COS = Float64Array.from({ length: ANGLES }, (_, s) => cos((2 * Math.PI * s) / ANGLES));
+const SIN = Float64Array.from({ length: ANGLES }, (_, s) => sin((2 * Math.PI * s) / ANGLES));
+
 /**
  * The children settle into a disc by potential, the highest on top. Each one's height is where the
  * area of everything above it ends (the share of a disc above a chord). Sub-clusters, largest
@@ -214,10 +227,10 @@ function settle(items: Item[], phi: Float64Array): void {
   const n = items.length;
   const order = [...items.keys()].sort((p, q) => phi[q] - phi[p] || p - q);
   let total = 0;
-  for (const it of items) total += Math.PI * (it.r + 0.3) ** 2;
+  for (const it of items) total += Math.PI * sq(it.r + 0.3);
   const R = Math.sqrt(total / (Math.PI * 0.78));
   // the share of a unit disc's area above the chord at height t
-  const above = (t: number) => (Math.acos(t) - t * Math.sqrt(1 - t * t)) / Math.PI;
+  const above = (t: number) => (acos(t) - t * Math.sqrt(1 - t * t)) / Math.PI;
   const heightOf = (f: number) => {
     let lo = -1, hi = 1;
     for (let k = 0; k < 40; k++) {
@@ -230,7 +243,7 @@ function settle(items: Item[], phi: Float64Array): void {
   const share = new Float64Array(n);
   let acc = 0;
   for (const k of order) {
-    const a = Math.PI * (items[k].r + 0.3) ** 2;
+    const a = Math.PI * sq(items[k].r + 0.3);
     share[k] = heightOf((acc + a / 2) / total);
     acc += a;
   }
@@ -270,24 +283,22 @@ function settle(items: Item[], phi: Float64Array): void {
   const free = (x: number, y: number, r: number) => {
     for (let j = 0; j < px.length; j++) {
       const need = r + pr[j] + 0.3;
-      if ((x - px[j]) ** 2 + (y - py[j]) ** 2 < need * need) return false;
+      if (sq(x - px[j]) + sq(y - py[j]) < need * need) return false;
     }
     return true;
   };
-  const cost = (x: number, y: number, t: number) => (y - t) ** 2 + 0.3 * x * x;
-  const ANGLES = 24;
+  const cost = (x: number, y: number, t: number) => sq(y - t) + 0.3 * x * x;
   for (const k of big) {
     const r = items[k].r;
     const t = ty[k];
     let bx = 0, by = t, best = free(0, t, r) ? 0 : Infinity;
     if (best > 0) {
       // touching one of the placed discs nearest the target
-      const near = px.map((_, j) => j).sort((a, b) => Math.hypot(px[a], py[a] - t) - pr[a] - (Math.hypot(px[b], py[b] - t) - pr[b])).slice(0, 12);
+      const near = px.map((_, j) => j).sort((a, b) => hypot(px[a], py[a] - t) - pr[a] - (hypot(px[b], py[b] - t) - pr[b])).slice(0, 12);
       for (const j of near) {
         const d = r + pr[j] + 0.3;
         for (let s = 0; s < ANGLES; s++) {
-          const a = (2 * Math.PI * s) / ANGLES;
-          const x = px[j] + d * Math.cos(a), y = py[j] + d * Math.sin(a);
+          const x = px[j] + d * COS[s], y = py[j] + d * SIN[s];
           const c = cost(x, y, t);
           if (c < best && free(x, y, r)) {
             best = c;
@@ -353,7 +364,7 @@ function settle(items: Item[], phi: Float64Array): void {
           let ok = true;
           for (let q = 0; q < px.length && ok; q++) {
             const need = pr[q] + LEAF_R + 0.3;
-            if ((x - px[q]) ** 2 + (y - py[q]) ** 2 < need * need) ok = false;
+            if (sq(x - px[q]) + sq(y - py[q]) < need * need) ok = false;
           }
           if (ok) cells.push([x, y, d2]);
         }
@@ -672,7 +683,7 @@ class Occupancy {
     for (let i = gx - 1; i <= gx + 1; i++) {
       for (let j = gy - 1; j <= gy + 1; j++) {
         for (const [px, py] of this.cells.get(`${i},${j}`) ?? []) {
-          if ((px - x) ** 2 + (py - y) ** 2 < SPACING * SPACING) return false;
+          if (sq(px - x) + sq(py - y) < SPACING * SPACING) return false;
         }
       }
     }
@@ -684,14 +695,14 @@ class Occupancy {
  *  sub-clusters the spot must stay out of. */
 function nearestFree(occ: Occupancy, x: number, y: number, discs: { x: number; y: number; r: number }[] = []): [number, number] {
   const ok = (px: number, py: number) =>
-    occ.free(px, py) && discs.every((d) => (d.x - px) ** 2 + (d.y - py) ** 2 >= (d.r + LEAF_R) ** 2);
+    occ.free(px, py) && discs.every((d) => sq(d.x - px) + sq(d.y - py) >= sq(d.r + LEAF_R));
   if (ok(x, y)) return [x, y];
   for (let ring = 1; ring < 400; ring++) {
     const n = 6 * ring;
     for (let k = 0; k < n; k++) {
       const a = (2 * Math.PI * k) / n;
-      const px = x + Math.cos(a) * ring * SPACING;
-      const py = y + Math.sin(a) * ring * SPACING;
+      const px = x + cos(a) * ring * SPACING;
+      const py = y + sin(a) * ring * SPACING;
       if (ok(px, py)) return [px, py];
     }
   }
@@ -708,7 +719,7 @@ export function stabilize(fresh: Layout, nodes: ViewNode[], mem: LayoutMemory | 
   if (survivors < nodes.length * 0.5) return fresh;
   const MOVE = 0.1;
   // the top level has no circle: heights there are measured against the extent of everything
-  const extent = (xs: [number, number, number][]) => Math.max(1, ...xs.map(([x, y, r]) => Math.hypot(x, y) + r));
+  const extent = (xs: [number, number, number][]) => xs.reduce((m, [x, y, r]) => Math.max(m, hypot(x, y) + r), 1);
   const freshTop = extent(fresh.clusters.filter((c) => c.parent < 0).map((c) => [c.x, c.y, c.r]));
   const oldTop = extent(Object.values(mem.clusters));
   /** an offset in a frame of radius `r`, kept if its height did not move much */
@@ -774,7 +785,7 @@ export function stabilize(fresh: Layout, nodes: ViewNode[], mem: LayoutMemory | 
     occ.add(x[i], y[i]);
     // a disc grows to hold what was placed outside it, and so do the discs around it
     for (let k = c; k >= 0; k = cs[k].parent) {
-      const d = Math.hypot(x[i] - cs[k].x, y[i] - cs[k].y) + LEAF_R + 4;
+      const d = hypot(x[i] - cs[k].x, y[i] - cs[k].y) + LEAF_R + 4;
       if (d > cs[k].r) cs[k].r = round(d);
     }
   });
@@ -877,7 +888,7 @@ export function relax(L: Layout, only?: ReadonlySet<number>): Layout {
           const A = items[a], B = items[b];
           const [ax, ay] = pos(A), [bx, by] = pos(B);
           let dx = bx - ax, dy = by - ay;
-          let d = Math.hypot(dx, dy);
+          let d = hypot(dx, dy);
           // packed discs touch exactly: only a real overlap counts
           const need = A.r + B.r;
           if (d >= need - 0.5) continue;
@@ -904,8 +915,8 @@ export function relax(L: Layout, only?: ReadonlySet<number>): Layout {
     if (separate(kidsC[c], kidsN[c]) === 0) continue;
     // grow to hold what moved
     let reach = 0;
-    for (const k of kidsC[c]) reach = Math.max(reach, Math.hypot(cs[k].lx, cs[k].ly) + cs[k].r);
-    for (const i of kidsN[c]) reach = Math.max(reach, Math.hypot(L.lx[i], L.ly[i]) + LEAF_R);
+    for (const k of kidsC[c]) reach = Math.max(reach, hypot(cs[k].lx, cs[k].ly) + cs[k].r);
+    for (const i of kidsN[c]) reach = Math.max(reach, hypot(L.lx[i], L.ly[i]) + LEAF_R);
     const was = cs[c].r;
     cs[c].r = round(Math.max(cs[c].r, reach + 6));
     // a parent that grew may now cover its siblings: its own parent is looked at in its turn
