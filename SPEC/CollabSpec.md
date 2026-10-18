@@ -47,9 +47,28 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
 6. *Covered by SPEC.md (the server never builds).*
 7. **Access by a link.** With `--access-key-file`, only those given `/k/<key>` get in (SECURITY.md):
    the link leaves a cookie and the key leaves the address; agents send the key as `Authorization:
-   Bearer`, or a token of their own (AgentSpec decision 7); everything else is answered 404. The
+   Bearer`, or a token of their own (AgentSpec decision 7); everything else is answered 404, as if
+   there were nothing here — but a browser asking for a page (below). The
    key's link makes guests; a link per person is decision 9. Share's three tabs: *Public link*
    (`/k/<key>#<the address>`), *Invite a person* (decision 9), *AI agent* (AgentSpec decision 7).
+   - **Who is not let in is told so** (the owner's decision of 2026-10-18): the 404 read, in a
+     browser, as a server that was down. A browser asking for a page that nothing lets in is shown a
+     small page, 403: the wordmark, and that the site is private — open it with the link you were
+     given; if you could open it before, this browser has forgotten the link: open it again. A link
+     that does not open the site — `/k/` and not the key, a personal or read-only link unknown or
+     revoked, the page of a link revoked, reloaded — shows the same page saying the link no longer
+     opens this site: it was replaced or revoked, ask whoever runs it for a new one; with `--public`
+     (decision 11), also that anyone may read the site without one. It never says which of these it
+     was, nor who revoked it and when: only someone who once held a real link could tell revoked
+     from unknown, and the names are the site's. A browser the key or a personal link of its own
+     lets in sees the site's people anyway, and is told who revoked a link and when, as before
+     (decision 9).
+   - **Nothing of the site** is in the page: no project, version, people, counts or anything the
+     site holds; it is the same on every server, and tells whoever comes only that a VisualProof
+     server is there. Self-contained: no script, nothing fetched.
+   - **Everything else keeps its answer**: the API, the event stream, the agents' documentation,
+     files, agents (`Authorization: Bearer`), and whatever does not ask for a page — the 404, and a
+     revoked link's 410.
    - **Exactly what I see**: a switch under the link, on by default, kept per browser, for every
      link Share makes. On, the link carries a snapshot of every followed part ("Surfaces"), the
      camera as the same region of the board fitted to the opener's screen, not the same zoom. Off,
@@ -107,7 +126,7 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       off everyone it reached. Behind `--identity-header` there are none.
     - **Without a token only by the owner's choice.** `--public` (with `--access-key-file`) makes
       everyone who comes without the key or a link of their own a read-only reader, where decision 7
-      answers 404; the read-only link is then the address alone. Without `--public` no address shows
+      turns them away; the read-only link is then the address alone. Without `--public` no address shows
       the project to someone not given a link, so no reader can make a private project public.
     - **What they do stays theirs**: the selection, the tool, the camera, folds, notes opened or
       collapsed, windows, the build browsed in the Time Machine, search, sources and Lean's hovers,
@@ -138,9 +157,14 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
     an IP address (IPv6 in brackets), `localhost` and the names under it, `--public-url`'s host, and
     the names given with `--allowed-host` (repeatable), at any port and in any case; any other name,
     and a request without one, is answered 403 on every route, the page, the event stream and the
-    agents' API alike, saying which option lets a name in. A page reaches an address only as that
-    address, and browsers resolve `localhost` themselves: neither can be a name a page chose. With a
-    key nothing changes: the key keeps out whoever was not given it, by any name. SECURITY.md.
+    agents' API alike, saying which option lets a name in. To a browser asking for a page (decision
+    7) that is a page addressed to whoever runs the server, which does not repeat the name received
+    (the requester's, any text): the server answers only the names it was started for, and
+    `--public-url <its address>` or `--allowed-host <name>` adds one (the owner's decision of
+    2026-10-18); to anything else, plain text naming the name and `--allowed-host`. A page reaches
+    an address only as that address, and browsers resolve `localhost` themselves: neither can be a
+    name a page chose. With a key nothing changes: the key keeps out whoever was not given it, by
+    any name. SECURITY.md.
 
 ## What the page shows
 
@@ -289,9 +313,22 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   carries a quote). Trust changes need a name.
 - **The names without a key** (decision 12, server/access.ts `hostAllowed`): the Host header, its
   port set aside; a name compared in lowercase, without the dot of a fully qualified one
-  (`example.org.`). Refused: 403, plain text naming `--allowed-host`, and the server's console says
-  each name it refused once (twenty at most: whoever asks chooses them). The start says the names
-  answered.
+  (`example.org.`). Refused: 403, plain text naming `--allowed-host` (to a browser asking for a
+  page, the page of decision 7 for it, below), and the server's console says each name it refused
+  once (twenty at most: whoever asks chooses them). The start says the names answered.
+- **The page for whoever is not let in** (decisions 7 and 12, server/accesspage.ts). A browser asking
+  for a page: GET or HEAD; `Accept` with `text/html`, not at q=0 (a navigation's; not a script's
+  fetch, curl or an image); a path that is not the API (`/api`, `/api/…`: the event stream and the
+  agents' documentation are there) nor a file (a name with an extension but `.html`; `/fonts/`,
+  `/tips/`, `/pdfjs/`); neither `Authorization: Bearer` nor `X-VisualProof-Kind: agent` (a sign-in
+  proxy's `Basic`, passed on, is a browser's). Three pages: *private* (nothing lets it in), *link* (a
+  link that does not open the site, or a revoked link's cookie, which is cleared there; with
+  `--public`, a line and a link to `/`), *host* (decision 12). Each the same bytes whatever the
+  server, made from its variant alone: 403, `text/html; charset=utf-8`, `Cache-Control: no-store`,
+  `Vary: Accept`, `Content-Security-Policy: default-src 'none'` with its style allowed by digest (an
+  icon `data:`, no base, no form, no framing), `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `noindex`; the style inline, light and dark by
+  `prefers-color-scheme`, for a phone's width; no script, nothing fetched.
 - **The access cookie** is named per instance, `visualproof_access_<12 hex of a hash of the key>`
   (cookies are per host, not per port); its value is derived from the key, never the key. One under
   the old shared name `visualproof_access` is let in and replaced.
@@ -309,7 +346,9 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   revoked links stay, so their holders' work keeps its name. Opening a link answers 303 to `/` with
   the cookie `visualproof_person_<12 hex of this server's own>`, valued the id and a digest of the
   kept digest (HttpOnly, SameSite=Lax, 400 days, renewed at each load), compared in constant time; it
-  lets the browser in whatever the access key. A revoked link answers 410 (who, when); its cookie admits nobody
+  lets the browser in whatever the access key. A revoked link answers 410 (who, when) — to a browser
+  asking for a page that the key or a personal link of its own does not let in, the page of a link
+  that does not open the site (decision 7), as to a link never made; its cookie admits nobody
   and is cleared. A guest's request giving a holder's name counts as nameless. Making, listing and
   revoking links: 403 to agents, 404 behind `--identity-header`; making and revoking need a name.
   The holder's id travels with what they record (`person`), never with a private reader's layout.
@@ -319,7 +358,8 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   answers 303 to `/` with the cookie `visualproof_readonly_<12 hex of this server's own>`, valued
   the id and a digest of the token (HttpOnly, SameSite=Lax, 400 days, renewed at each load),
   compared in constant time; it admits its holder read-only where nothing else lets them in (the
-  key or a personal link let in fully). A revoked link answers 410 (who, when); its cookie is
+  key or a personal link let in fully). A revoked link answers 410 (who, when), but as a personal
+  link's to a browser (decision 7); its cookie is
   cleared and lets nobody in, and its pages' event streams end. `GET /api/share` tells a read-only
   page `{path, readOnly: true}` (its link, or `/` under `--public`), any other
   `{path, readOnlyLinks, public}`; `/api/share/readonly` lists (GET), makes (POST) and revokes

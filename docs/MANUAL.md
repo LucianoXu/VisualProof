@@ -182,7 +182,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
   <file>` then lets in only those given the link `http://<host>:<port>/k/<key>` (the key is what the
   file holds; one is made there if there is none). The link leaves a cookie in the browser and goes
   on to the page; agents send `Authorization: Bearer <key>`, or a token of their own that Share made
-  (`vpa_…`, which reaches `/api/agent` only); everything else is answered 404. One key for everyone:
+  (`vpa_…`, which reaches `/api/agent` only); everything else is answered 404 — but a browser
+  opening a page without the link, which is shown one saying the site is private and to open it
+  with the link (a link that no longer opens it, a key replaced or a personal or read-only link
+  revoked, says so and to ask for a new one), and nothing of the project. One key for everyone:
   taking someone out means a new key — or invite people one by one with a personal link from Share
   (`/i/vpp_…`, see Together), which lets in only its holder and is revoked on its own; to show the
   project without letting anyone change it, a read-only link (`/r/vpr_…`, see Together). Over plain
@@ -190,7 +193,7 @@ The README says how to install the `visualproof` command. A checkout also runs a
   (`visualproof_access_<12 hex>`, `visualproof_person_<12 hex>`, `visualproof_readonly_<12 hex>`),
   so two servers on one host keep theirs apart.
 - `--public`, with `--access-key-file`: whoever comes without the key or a link of their own is let
-  in read-only (CollabSpec decision 11) instead of answered 404 — the way to put a showcase online.
+  in read-only (CollabSpec decision 11) instead of turned away — the way to put a showcase online.
   They see what a guest sees, change nothing that is shared, and are seen by nobody; agents are
   still let in only by the key or a token of their own. Without it, no address shows the project
   to someone not given a link, so no reader can make a private project public. Not with
@@ -200,8 +203,9 @@ The README says how to install the `visualproof` command. A checkout also runs a
   address. Without it, the prompt carries the address the person's browser used.
 - `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
   for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
-  and the names given here; any other name is answered 403, so that a web page cannot reach it by
-  making its own name resolve to this machine (DNS rebinding, [SECURITY.md](../SECURITY.md)). Give
+  and the names given here; any other name is answered 403 (a browser is shown a page that says
+  so, and these options), so that a web page cannot reach it by making its own name resolve to
+  this machine (DNS rebinding, [SECURITY.md](../SECURITY.md)). Give
   the names a proxy in front of it forwards, or this machine's own name if people use it
   (`--allowed-host lab-server.local`); the server's log says each name it refused once. With a key,
   every name is answered, the key keeping everyone else out.
@@ -1134,7 +1138,8 @@ what each one looks at stays their own.
   force — who made each and when, when it was last used, **Show link** (or a click on it), and
   **Revoke** (pressed twice, under your name), which closes every page it opened at once — then the
   personal links in force — for whom, who made each and when, when it was last used, **Revoke**
-  (pressed twice), which cuts it off at once — then the agents' tokens in force: who made each and when, when it expires,
+  (pressed twice), which cuts it off at once (their page then says the link no longer opens the
+  site, naming nobody; a browser that has the guest link too stays, as a guest) — then the agents' tokens in force: who made each and when, when it expires,
   when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy,
   and **Revoke** (pressed twice).
 - **Your name**, at the top right: opinions, pins and re-layouts are recorded under it. A click
