@@ -4,6 +4,7 @@
 
 import type { Layout } from "../../shared/graph.ts";
 import { escapeHtml } from "./highlight.ts";
+import { keepFocus } from "./keepfocus.ts";
 
 export interface OutlineHooks {
   /** a click on a row: its cluster clicked with the tool (shift held or not) */
@@ -86,18 +87,23 @@ export class Outline {
       const inactive = this.hooks.isCollapsed(c);
       rows.push(
         `<div class="o-row${inactive ? " folded" : ""}${this.hooks.picked(c) ? " on" : ""}" data-c="${c}" style="padding-left:${8 + depth * 12}px" title="${escapeHtml(cl.key)}">` +
-          `<span class="tw">${has ? (this.open.has(c) ? "▾" : "▸") : ""}</span>` +
-          `<span class="o-label">${escapeHtml(cl.label)}</span>` +
+          // the arrow opens or folds a level of the list, the name selects: each a button, for the
+          // keyboard as for the pointer
+          (has
+            ? `<button class="tw" type="button" aria-expanded="${this.open.has(c)}" aria-label="What ${escapeHtml(cl.label)} holds">${this.open.has(c) ? "▾" : "▸"}</button>`
+            : `<span class="tw"></span>`) +
+          `<button class="o-label" type="button">${escapeHtml(cl.label)}</button>` +
           (this.hooks.stateOf(c) ? `<span class="o-st ${this.hooks.stateOf(c)}"></span>` : "") +
           `<span class="o-count">${cl.count}</span>` +
           this.hooks.trustCell(c) +
           `<button class="o-hide" data-hide title="Hide this level, for everyone on this board: what it holds moves up into its parent (⚙ Board shows it again)" aria-label="Hide this level">${HIDE_MARK}</button>` +
-          `<button class="fold" title="${folded ? "Unfold" : "Fold"} on the canvas">${folded ? "○" : "●"}</button>` +
+          `<button class="fold" title="${folded ? "Unfold" : "Fold"} on the canvas" aria-label="${folded ? "Unfold" : "Fold"} ${escapeHtml(cl.label)} on the canvas">${folded ? "○" : "●"}</button>` +
           `</div>`,
       );
       if (has && this.open.has(c)) for (const k of this.kids[c]) walk(k, depth + 1);
     };
     for (const c of this.top) walk(c, 0);
-    this.el.innerHTML = rows.join("");
+    // drawn again as the reader goes (a level opened, a cluster selected): the focus stays on its row
+    keepFocus(this.el, () => (this.el.innerHTML = rows.join("")));
   }
 }
