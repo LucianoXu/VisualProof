@@ -2540,6 +2540,8 @@ body.tm #tabs, body.tm .views-wrap, body.tm .vb-gap, body.tm .light-l { display:
 .tm-when { flex: none; font-size: 12px; white-space: nowrap; color: var(--text); }
 .tm-when .mono { font: 11.5px var(--mono); color: var(--text-2); }
 .tm-latest { font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: var(--code-bg); color: var(--text-2); }
+/* a build that could not read some files (web/src/past.ts, unreadWords) */
+.tm-unread { flex: none; font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 159, 10, 0.13); color: var(--banner-warn); }
 .tm-wait { color: var(--text-3); font-style: italic; }
 .tm-sum { flex: 0 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; font-size: 12px; white-space: nowrap; }
 .tm-n {

@@ -36,7 +36,7 @@ import { menuItems } from "../src/web/src/ctxmenu.ts";
 import { LayoutQueue } from "../src/web/src/layoutqueue.ts";
 import type { LayoutWorker } from "../src/web/src/layoutqueue.ts";
 import { layOut } from "../src/web/src/layoutworker.ts";
-import { keepInView, markWords, maxScroll, nearestTick, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, pastGraph, pastMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline } from "../src/web/src/past.ts";
+import { keepInView, markWords, maxScroll, nearestTick, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, pastGraph, pastMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline, unreadWords } from "../src/web/src/past.ts";
 import type { HistoryDiff, Snapshot, SnapshotNodes } from "../src/web/src/past.ts";
 import { pressActs } from "../src/web/src/surfaces.ts";
 import type { PageEl } from "../src/web/src/surfaces.ts";
@@ -1148,6 +1148,21 @@ test("a view kept at a build the page has not heard of: the list of builds is re
   } finally {
     Object.assign(g, saved);
   }
+});
+
+test("a build that could not read some files says so on the bar: what they held is on none of its boards and counts as no change", () => {
+  assert.equal(unreadWords([]), null, "a build that read every file says nothing");
+  const one = unreadWords(["M.Tagged"])!;
+  assert.equal(one.label, "1 file unread");
+  assert.match(one.tip, /^A file could not be read at this build \(a failed file, or what imports one\): M\.Tagged\. What it held/);
+  const many = unreadWords(Array.from({ length: 10 }, (_, i) => `M.F${i}`))!;
+  assert.equal(many.label, "10 files unread");
+  assert.match(many.tip, /M\.F7, and 2 more\. What they held is on none of its boards, and is not counted as changed\.$/);
+  // the bar says it after what changed since, latest or not: where room is short the counts keep theirs
+  const tm = readFileSync(new URL("../src/web/src/timemachine.ts", import.meta.url), "utf8");
+  const sum = tm.slice(tm.indexOf("private summaryHtml("), tm.indexOf("private changesHtml("));
+  assert.match(sum, /unreadWords\(this\.snaps\.find\(\(x\) => x\.id === id\)\?\.missing \?\? \[\]\)/);
+  assert.match(sum, /return this\.changesHtml\(id\) \+ unread;/);
 });
 
 test("a view kept at a past build and focused on a target: its note under the review strip, not hidden by it (HistorySpec decision 19)", () => {
