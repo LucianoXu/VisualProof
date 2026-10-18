@@ -1383,7 +1383,9 @@ details.lf-archived > summary { cursor: pointer; }
 .p-also .avatar { width: 20px; height: 20px; font-size: 9px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .rv-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
-.rv-btn.primary:hover { color: white; filter: brightness(1.08); }
+.rv-btn.primary:hover:not(:disabled) { color: white; filter: brightness(1.08); }
+/* one that cannot be used looks it, as the others do (above): faded, never grey on its colour */
+.rv-btn.primary:disabled { color: white; opacity: 0.45; }
 .tk-ref:hover { text-decoration: underline; background: var(--code-bg); }
 .brand .logo { font-size: 17px; }
 .project { color: var(--text-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
