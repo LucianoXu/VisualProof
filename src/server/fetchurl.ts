@@ -14,7 +14,7 @@ import type { IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
-import { MAX_FILE } from "../shared/library.ts";
+import { MAX_FILE, sizeWords } from "../shared/library.ts";
 
 export interface FetchOptions {
   maxBytes?: number;
@@ -228,8 +228,10 @@ async function guardedFetch(raw: string, kind: keyof typeof KINDS, o: { maxBytes
       return { ok: false, status: 502, error: `The address could not be fetched: ${e instanceof Error ? e.message : String(e)}.` };
     }
     const status = res.statusCode ?? 0;
+    // what is not the file is never read: a redirect's or an error's body, drained, could run on
+    // past the bytes and the time a fetch may take, the fetch answered long since
+    if (status !== 200) res.destroy();
     if ([301, 302, 303, 307, 308].includes(status)) {
-      res.resume();
       const to = res.headers.location;
       if (!to) return { ok: false, status: 502, error: `The address answered ${status} without saying where to.` };
       if (hops >= o.maxRedirects) return { ok: false, status: 502, error: `The address redirected more than ${o.maxRedirects} times.` };
@@ -240,26 +242,27 @@ async function guardedFetch(raw: string, kind: keyof typeof KINDS, o: { maxBytes
       }
       continue;
     }
-    if (status !== 200) {
-      res.resume();
-      return { ok: false, status: 502, error: `The address answered ${status}, not the ${noun}.` };
-    }
+    if (status !== 200) return { ok: false, status: 502, error: `The address answered ${status}, not the ${noun}.` };
     const length = Number(res.headers["content-length"] ?? NaN);
     if (Number.isFinite(length) && length > o.maxBytes) {
       res.destroy();
-      return { ok: false, status: 413, error: `The ${noun} is ${Math.round(length / 1e6)} MB: ${most} is at most ${Math.round(o.maxBytes / 1e6)} MB.` };
+      return { ok: false, status: 413, error: `The ${noun} is ${sizeWords(length)}: ${most} is at most ${sizeWords(o.maxBytes)}.` };
     }
     const body = await readCapped(res, o.maxBytes, deadline);
-    if (typeof body === "string") return { ok: false, status: body === "large" ? 413 : 504, error: body === "large" ? `The ${noun} is larger than ${Math.round(o.maxBytes / 1e6)} MB, the most ${most} may be.` : `The address took too long to send the ${noun}.` };
+    if (typeof body === "string") return { ok: false, status: body === "large" ? 413 : 504, error: body === "large" ? `The ${noun} is larger than ${sizeWords(o.maxBytes)}, the most ${most} may be.` : `The address took too long to send the ${noun}.` };
     const disposition = res.headers["content-disposition"];
     return { ok: true, bytes: body, url, disposition };
   }
 }
 
-/** A request to `url`, connected to the address checked for it and to no other; its answer's head. */
+/** A request to `url`, connected to the address checked for it and to no other; its answer's head,
+ *  within `ms` in all. */
 function connect(url: URL, at: { address: string; family: number }, ms: number, accept: string): Promise<IncomingMessage> {
   return new Promise((ok, no) => {
     const make = url.protocol === "https:" ? httpsRequest : httpRequest;
+    // the socket's `timeout` is idleness alone: a head sent a byte at a time is never idle, and
+    // would hold the fetch past its time for as long as its sender likes
+    const late = setTimeout(() => req.destroy(new Error("no answer in time")), ms);
     const req = make(
       url,
       {
@@ -273,10 +276,16 @@ function connect(url: URL, at: { address: string; family: number }, ms: number, 
         }) as never,
         timeout: ms,
       },
-      ok,
+      (res) => {
+        clearTimeout(late);
+        ok(res);
+      },
     );
     req.on("timeout", () => req.destroy(new Error("no answer in time")));
-    req.on("error", no);
+    req.on("error", (e) => {
+      clearTimeout(late);
+      no(e);
+    });
     req.end();
   });
 }

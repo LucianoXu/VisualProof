@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import { arxivId, arxivPdf, blockedAddress, citationTitle, defaultAllowed, fetchPage, fetchUrl, MAX_PAGE } from "../src/server/fetchurl.ts";
@@ -167,6 +168,56 @@ test("only http and https; the loopback refused as it resolves, and at a redirec
     assert.equal(((await fetchUrl(`${S.base}/missing`, loopbackOnly)) as { status: number }).status, 502);
   } finally {
     await S.close();
+  }
+});
+
+test("a fetch's time is the whole of it, the answer's head included; what is not the file is never read on", { timeout: 15_000 }, async () => {
+  // a head sent a byte at a time is never idle, and a redirect's body may never end: both on a socket
+  // of the test's own, which counts what it still sends once the fetch has answered
+  let sent = 0;
+  const socks = new Set<import("node:net").Socket>();
+  const raw = createNetServer((sock) => {
+    socks.add(sock);
+    sock.on("error", () => {});
+    sock.once("data", (d) => {
+      const path = d.toString().split(" ")[1];
+      // for three seconds at most, so that a fetch that waits for the end still ends
+      const until = Date.now() + 3000;
+      const tick = (f: () => void) => {
+        const t = setInterval(() => (sock.destroyed ? clearInterval(t) : Date.now() > until ? sock.destroy() : f()), 5);
+      };
+      if (path === "/trickle") {
+        sock.write("HTTP/1.1 200 OK\r\nX-Slow: ");
+        tick(() => sock.write("a"));
+      } else if (path === "/endless" || path === "/error") {
+        sock.write(`HTTP/1.1 ${path === "/error" ? "500 Internal Server Error" : "302 Found\r\nLocation: /nothing"}\r\nTransfer-Encoding: chunked\r\n\r\n`);
+        const chunk = Buffer.alloc(64 * 1024, 0x61);
+        tick(() => {
+          sock.write(`${chunk.length.toString(16)}\r\n`);
+          sock.write(chunk);
+          sock.write("\r\n");
+          sent += chunk.length;
+        });
+      } else sock.end("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    });
+  });
+  await new Promise<void>((ok) => raw.listen(0, "127.0.0.1", ok));
+  const base = `http://127.0.0.1:${(raw.address() as AddressInfo).port}`;
+  try {
+    const t0 = Date.now();
+    const slow = await fetchUrl(`${base}/trickle`, { ...loopbackOnly, timeoutMs: 400 });
+    assert.equal(slow.ok, false);
+    assert.ok(Date.now() - t0 < 2000, `answered after ${Date.now() - t0} ms, not within its 400`);
+    for (const path of ["/endless", "/error"]) {
+      const r = await fetchUrl(`${base}${path}`, loopbackOnly);
+      assert.equal((r as { status: number }).status, 502);
+      const then = sent;
+      await new Promise((ok) => setTimeout(ok, 300));
+      assert.ok(sent - then < 1024 * 1024, `${path}: ${sent - then} bytes more read after the fetch answered`);
+    }
+  } finally {
+    for (const s of socks) s.destroy();
+    await new Promise((ok) => raw.close(ok));
   }
 });
 
