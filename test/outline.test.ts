@@ -13,7 +13,7 @@ function layout(cs: [string, number, number][]): Layout {
 
 /** The tree as it is drawn: each row's label, `+` before an open one's. */
 function rows(el: { innerHTML: string }): string[] {
-  return [...el.innerHTML.matchAll(/<span class="tw">([^<]*)<\/span><span class="o-label">([^<]*)</g)].map((m) => (m[1] === "▾" ? "+" : "") + m[2]);
+  return [...el.innerHTML.matchAll(/<(?:span|button) class="tw"[^>]*>([^<]*)<\/(?:span|button)><button class="o-label"[^>]*>([^<]*)</g)].map((m) => (m[1] === "▾" ? "+" : "") + m[2]);
 }
 
 test("the tree's open rows are each board's: a board shown again has them as left, a new one opens its largest part", () => {
