@@ -35,9 +35,12 @@
   --surface: rgba(255, 255, 255, 0.78);
   --surface-solid: #ffffff;
   --line: rgba(0, 0, 0, 0.08);
+  /* the text, at least 4.5:1 on every surface it is written on (WCAG AA; the owner's QA of 0.4.4
+     found the third at 2.5:1, #a1a1a6): the second 5.8:1 on the ground and 6.4:1 on a solid
+     surface, the third 4.5:1 and 4.9:1, a step apart (L* 40 and 47; #6e6e73 the second before) */
   --text: #1d1d1f;
-  --text-2: #6e6e73;
-  --text-3: #a1a1a6;
+  --text-2: #5f5f64;
+  --text-3: #707075;
   --disc: rgba(0, 0, 0, 0.022);
   --disc-line: rgba(0, 0, 0, 0.07);
   --label: rgba(29, 29, 31, 0.55);
@@ -49,7 +52,9 @@
   --grad-tcb: linear-gradient(100deg, #5e5ce6, #bf5af2);
   --grad-dep: linear-gradient(100deg, #0a84ff, #64d2ff);
   --grad-app: linear-gradient(100deg, #ff9f0a, #ff375f);
-  --accent: #7d5cf0;
+  /* the accent, also the colour of links and of what is lit: 4.5:1 on the ground (#7d5cf0 before,
+     4.1:1) */
+  --accent: #7655e9;
   /* the mark of someone invited by a personal link (CollabSpec decision 9): the accent, apart from
      every colour of the review's status */
   --verified: #6a4be0;
@@ -168,9 +173,12 @@
   --surface: rgba(23, 27, 37, 0.84);
   --surface-solid: #181c26;
   --line: rgba(170, 185, 255, 0.11);
+  /* the text at least 4.5:1 wherever it is written, a code block's tint included (the third 4.5:1
+     there, 5.1:1 on a solid surface; #6e6e73 before, 3.4:1); the accent 6.2:1 (it had no dark value,
+     3.8:1) */
   --text: #eef0f6;
   --text-2: #a4a9ba;
-  --text-3: #7f8597;
+  --text-3: #878d9f;
   --accent: #a08cff;
   --verified: #ab97ff;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.45);
@@ -204,6 +212,11 @@
   --status-unreviewed: #6c6f7a;
   --status-trusted: #35664f;
   /* the review, the banners, the code, a past graph's marks, the notes' dots */
+  /* commented's blue and what goes wrong, written as text (a count, an error): 4.7:1 and 5.0:1 on a
+     surface (3.8:1 and 4.3:1 as the light theme has them); the Comment button over it still takes
+     its white text at 4.5:1 */
+  --rv-commented: #5085e0;
+  --bad: #ec5a5f;
   --rv-trusted: #7f9cbf;
   --rv-advice-approve: rgba(80, 200, 130, 0.55);
   --rv-advice-comment: #8aaef0;
