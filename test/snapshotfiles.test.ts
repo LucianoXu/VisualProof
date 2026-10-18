@@ -43,10 +43,16 @@ test("the reference window in a snapshot of the page opens no file and fetches n
   };
   try {
     const host = { innerHTML: "", textContent: "" };
-    const win = { turn: 0, view: null, file: null, page: 0, pages: 0, host, unpick() {}, hooks: { noFiles: () => "A snapshot of the page carries the library's records and links, not its files: open it on the server." } };
+    // the find bar, whose search of the file shown before is put away
+    const input = { dataset: { done: "1" } as Record<string, string> };
+    const found = { textContent: "3 of 7" };
+    const findEl = { querySelector: (s: string) => (s === "input" ? input : found) };
+    const win = { turn: 0, view: null, file: null, page: 0, pages: 0, host, findEl, unpick() {}, hooks: { noFiles: () => "A snapshot of the page carries the library's records and links, not its files: open it on the server." } };
     await (PaperWin.prototype as unknown as { load(f: FileRecord): Promise<void> }).load.call(win, record("pdf"));
     assert.deepEqual(fetched, []);
     assert.match(host.innerHTML, /<b>Review plan<\/b>.*not its files: open it on the server\./);
+    assert.equal(input.dataset.done, undefined);
+    assert.equal(found.textContent, "");
   } finally {
     g.fetch = was;
   }
