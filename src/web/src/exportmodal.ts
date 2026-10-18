@@ -157,6 +157,9 @@ export class ExportModal {
   open(): void {
     this.settings = common(this.hooks.saved()?.settings);
     this.view = this.hooks.view();
+    // a job followed before the window last closed is not this opening's: its answer, coming late,
+    // is not shown here (it may be another view's)
+    this.turn++;
     this.job = null;
     this.head = "";
     this.el.hidden = false;

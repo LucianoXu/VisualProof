@@ -433,3 +433,28 @@ test("a typesetting that fails, or a request refused, says why in one sentence",
     assert.ok(el.innerHTML.includes(`<div class="banner bad">${shown}</div>`), el.innerHTML);
   }
 });
+
+test("a document asked for before the window closed is not shown when it opens again, on another view", async () => {
+  const el = box();
+  const plan = { count: 3, sectionCount: 1, outside: { count: 0, by: [] } };
+  let view: ExportView = { id: "va", title: "A", heading: "A", fixed: false, plan };
+  let answer: (j: { id: string; state: "done"; pages: number; ms: number }) => void = () => {};
+  const modal = new ExportModal(box(), el, {
+    view: () => view,
+    saved: () => undefined,
+    save: () => {},
+    head: async () => ({ title: view.title, author: "" }),
+    // typesetting A takes a while
+    start: () => new Promise((ok) => (answer = ok)),
+    poll: async () => "not here",
+  });
+  modal.open();
+  const going = (modal as unknown as { generate(): Promise<void> }).generate();
+  modal.close();
+  view = { id: "vb", title: "B", heading: "B", fixed: false, plan };
+  modal.open();
+  answer({ id: "jA", state: "done", pages: 2, ms: 900 });
+  await going;
+  assert.match(el.innerHTML, /“B”/);
+  assert.ok(!/Download PDF|jA/.test(el.innerHTML), "A's document is not B's window's");
+});
