@@ -1112,7 +1112,8 @@ what each one looks at stays their own.
   marks and trust keep your name, and need one. Private, your dot beside the name is hollow and an
   eye is struck through. The browser keeps the choice for all its tabs; it changes at once.
 - **Who else is here**: their initials beside your name, faded when they are away. Rest on one to
-  see where they are; click to follow them. What they see is followed; how you look at it is yours
+  see where they are; click for their menu, **Follow** them or **Ask … to follow me** (an agent's
+  initials follow it at once). What they see is followed; how you look at it is yours
   (CollabSpec decision 4): you take their view (in a tab opened for it if need be), their build in
   the Time Machine, camera, tool, selection and focus, what their panel tells of, their source
   windows and reference window (each opened, collapsed and closed with theirs, placed as your
@@ -1124,6 +1125,14 @@ what each one looks at stays their own.
   selecting text, copying it. When it ends, what you were shown stays, yours. On the canvas their
   selection carries a ring of their colour with their initials; the panel says who else is looking
   at a declaration.
+- **Asking others to follow you** (CollabSpec decision 10), to show them something: **Ask everyone
+  to follow me** in the menu under your name, or **Ask … to follow me** in a person's menu (all
+  their pages), once every 30 s, with a name and visible. Each page asked shows a banner at the top,
+  "Alice asks you to follow · Follow · Not now", in your colour, for 30 s; Esc is Not now, and the
+  banner never takes the keys from someone typing. **Follow** follows you, ending any other
+  following. You see each answer on their initials (✓ following, ✕ declined, – no answer) and in a
+  line ("2 following, 1 declined"), for a little while after: private readers are asked too, and
+  only counted. Agents at advise and full ask too; agents and read-only readers cannot be asked.
 - **Pins are shared per view**: what you drop is everyone's on that board when you let go, and
   comes to every page on it; **Re-layout** drops the board's pins, for everyone, after asking.
 - **Agents** (AgentSpec, [docs/agent-api/](agent-api/README.md)): an AI agent works through a JSON API under
