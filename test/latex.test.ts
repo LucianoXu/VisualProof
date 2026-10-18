@@ -386,6 +386,30 @@ test("the first page: the head card, the contents in two columns, and the body f
   assert.match(p2.text, /not printed .*«added/);
 });
 
+test("a section's heading is kept with what follows it, its first subsection's heading too: never alone at the foot of a page", { skip: !haveXelatex ? "xelatex is not installed" : !havePdftotext && "pdftotext is not installed" }, async () => {
+  // sections that hold a subsection first, each after a declaration of another length, so that
+  // some of them come near the foot of a page
+  const s = sample();
+  const one = (s.items.find((x) => x.t === "section") as { section: Section }).section.items.find((x) => x.t === "decl") as { decl: DeclEntry };
+  const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const groups: Section[] = [...L].map((c, i) => {
+    const filler: DeclEntry = { ...one.decl, id: `F${c}.f`, name: `F${c}.f`, short: "f", doc: null, code: codeOf(Array.from({ length: 1 + ((i * 7) % 13) }, (_, k) => `def f${k} : Nat := ${k}`).join("\n")) };
+    const inner: Section = { id: `section:G${c}.I`, key: `G${c}.I`, title: `Inner${c}${c}`, level: 2, items: [{ t: "decl", decl: filler }] };
+    return { id: `section:G${c}`, key: `G${c}`, title: `Group${c}${c}`, level: 1, items: [{ t: "section", section: inner }] };
+  });
+  const doc: DocModel = { ...s, settings: { ...s.settings, contents: false }, items: groups.map((section): Item => ({ t: "section", section })) };
+  const ex = new Exporter(state);
+  const job = await ex.wait(ex.compile(renderLatex(doc)).id);
+  assert.equal(job?.state, "done", job?.error);
+  const pdf = ex.file(job!.id, "pdf")!.body;
+  const pageOf = new Map<string, number>();
+  for (let p = 1; p <= job!.pages!; p++) {
+    const text = spawnSync("pdftotext", ["-f", String(p), "-l", String(p), "-", "-"], { input: pdf, encoding: "utf8" }).stdout;
+    for (const m of text.matchAll(/(Group|Inner)([A-Z])\2/g)) if (!pageOf.has(m[0])) pageOf.set(m[0], p);
+  }
+  for (const c of L) assert.equal(pageOf.get(`Group${c}${c}`), pageOf.get(`Inner${c}${c}`), `Group${c}${c} and its first subsection on one page`);
+});
+
 test("the typeset document has every glyph: no character is missing from its fonts", { skip: haveXelatex ? false : "xelatex is not installed" }, async () => {
   // typeset by hand to read the log, which the exporter does not keep for a document that worked
   const dir = mkdtempSync(join(state, "glyphs-"));
