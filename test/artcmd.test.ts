@@ -230,6 +230,12 @@ test("visualproof artwork: a saved graph and a recipe to an SVG and a PNG, the s
     const cased = run({ ...RECIPE, selection: { name: "N.T" } }, "Cased");
     assert.equal(cased.status, 1);
     assert.match(cased.stderr, /no declaration N\.T in the graph \(did you mean N\.t\?\)/);
+    // a screen it cannot draw on, said in a line
+    for (const screen of ["600x400", "1920", "20000x1200"]) {
+      const odd = run(RECIPE, "Odd", ["--screen", screen]);
+      assert.equal(odd.status, 2);
+      assert.match(odd.stderr, new RegExp(`^visualproof artwork: --screen ${screen}: .*from 640x480 to 10000x10000\n$`));
+    }
     // a folder that is not there, said before anything is drawn; whatever fails, status 1
     const nowhere = run(RECIPE, join("nowhere", "Pic"));
     assert.equal(nowhere.status, 1);

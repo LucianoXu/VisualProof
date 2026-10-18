@@ -248,8 +248,13 @@ function parseArgs(argv: string[]): Options {
     else if (a === "--png" && cmd === "artwork") o.png = true;
     else if (a === "--svg" && cmd === "artwork") o.svg = true;
     else if (a === "--screen" && cmd === "artwork") {
-      const m = /^(\d+)x(\d+)$/.exec(val());
-      if (!m || +m[1] < 640 || +m[2] < 480 || +m[1] > 10000 || +m[2] > 10000) usage();
+      const v = val();
+      const m = /^(\d+)x(\d+)$/.exec(v);
+      // said in a line, as --public-url is, rather than the whole usage
+      if (!m || +m[1] < 640 || +m[2] < 480 || +m[1] > 10000 || +m[2] > 10000) {
+        console.error(`visualproof artwork: --screen ${v}: give the screen's width and height in pixels, e.g. 1920x1200, from 640x480 to 10000x10000`);
+        process.exit(2);
+      }
       o.screen = { w: +m[1], h: +m[2] };
     }
     else if (a === "--public-url") {
