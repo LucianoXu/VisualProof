@@ -1996,8 +1996,6 @@ async function boot(): Promise<void> {
     artwork: () => art.open(),
     artworkOnly: () => !!data.snapshot,
   });
-  // a snapshot of the page makes pictures of its board, not documents (ExportSpec decision 19)
-  if (data.snapshot) $("#export-btn").title = "Artwork: the board as a picture, PNG or SVG (a snapshot's documents are the server's)";
   // a snapshot of the page carries the links, not the library's files (they are the server's)
   if (data.snapshot) $("#library-btn").hidden = true;
 
@@ -2550,7 +2548,12 @@ async function boot(): Promise<void> {
    *  the build on show), the note of a view kept at a build. */
   const syncPast = () => {
     document.body.classList.toggle("past", pastShown());
-    $("#export-btn").title = pastShown() ? "Export: this view at the build on show, as a document typeset with LaTeX" : "Export: this view as a document, typeset with LaTeX";
+    // a snapshot of the page makes pictures of its board, not documents (ExportSpec decision 19)
+    $("#export-btn").title = data.snapshot
+      ? "Artwork: the board as a picture, PNG or SVG (a snapshot's documents are the server's)"
+      : pastShown()
+        ? "Export: this view at the build on show, as a document typeset with LaTeX; or the board as a picture (Artwork)"
+        : "Export: this view as a document, typeset with LaTeX; or the board as a picture (Artwork)";
     tm.renderKept();
     syncInsets();
   };
