@@ -180,6 +180,8 @@ export class LinearForm {
   private byY: Row[] = [];
   /** each declaration a folded section holds: the section's row, which stands for it */
   private under = new Map<number, Row>();
+  /** the arcs last worked out (arcPairs), and what from */
+  private arcsOf: { from: unknown[]; pairs: { a: Row; b: Row; lit: boolean; key?: true }[] } | null = null;
   /** the sections the reader folded (true) or opened (false), by key; the others as FOLD_MORE says */
   private folds = new Map<string, boolean>();
   private height = 0;
@@ -529,6 +531,7 @@ export class LinearForm {
     }
     if (this.t === 0 && this.target === 0) {
       this.el.hidden = true;
+      this.arcsOf = null;
       return;
     }
     this.paint();
@@ -734,9 +737,14 @@ export class LinearForm {
    *  one that uses to the one it uses, a folded section's members' ending at its row; each lit as
    *  the board lights it (canvas.edgeLit: between two lit declarations, of the sites the mode
    *  follows), so that the line and the board say the same. Under the Keys step, the board's key
-   *  graph instead lights its own links, dashed (`key`). */
+   *  graph instead lights its own links, dashed (`key`). Worked out again only when the graph, the
+   *  rows, the key links or what the board lights (its lit set and mode, which edgeLit answers from
+   *  and canvas.setActivation sets anew) changed, not at every frame: on NavierStokesAndEuler's
+   *  Project view, 61,000 rows and 5 million edges, that was 130 ms a frame. */
   private arcPairs(): { a: Row; b: Row; lit: boolean; key?: true }[] {
     const g = this.hooks.graph();
+    const from = [g, this.rows, this.under, this.hooks.keyLinks(), this.canvas.active, this.canvas.mode];
+    if (this.arcsOf && from.every((x, i) => x === this.arcsOf!.from[i])) return this.arcsOf.pairs;
     const rowOf = new Map<number, Row>();
     for (const r of this.rows) if (r.kind === "decl" && r.k >= 0) rowOf.set(r.k, r);
     for (const [i, r] of this.under) rowOf.set(i, r);
@@ -766,6 +774,7 @@ export class LinearForm {
         out.push({ a: ra, b: rb, lit: true, key: true });
       }
     }
+    this.arcsOf = { from, pairs: out };
     return out;
   }
 

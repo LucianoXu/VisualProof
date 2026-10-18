@@ -35,6 +35,8 @@ function setup(
   const outDst = Int32Array.from(sorted.map(([, t]) => t));
   const outSite = Uint8Array.from(sorted.map((e) => e[2] ?? SITE_STMT));
   const byName = new Map(names.map((n, i) => [n, i]));
+  // one graph, as the board's is until it changes
+  const graph = { byName, outStart, outDst, outSite };
   const calls: unknown[] = [];
   const canvas = {
     layout: { clusters: [{ key: "A" }, { key: "A.B" }] },
@@ -70,7 +72,7 @@ function setup(
   return import("../src/web/src/linear.ts").then(({ LinearForm }) => {
     const f = new LinearForm(el as never, canvas as never, {
       outline: async () => (asked++, structuredClone(outline)),
-      graph: () => ({ byName, outStart, outDst, outSite }) as never,
+      graph: () => graph as never,
       noteSpot: (id: string) => opts.noteAt?.(id) ?? [5, 5],
       lit: opts.lit ?? (() => false),
       // as the board lights an edge: between two lit, of the sites `opts.sites` (all by default)
@@ -412,6 +414,31 @@ test("an arc is lit as the board lights its edge: between two lit declarations, 
   };
   assert.deepEqual(pairs(), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit"]);
   assert.deepEqual(pairs([top, 1]), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1 lit key"]);
+});
+
+test("the arcs are worked out once, not at every frame: again when the rows, the key links or what the board lights change", async () => {
+  const { outline, names } = many(3);
+  const top = names.length - 1;
+  const lit = (i: number) => i === top || i === 0;
+  const { f } = await setup(outline, null, { names, edges: [[top, 0, SITE_STMT], [0, 1, SITE_BODY]], lit });
+  await f.show("reader");
+  const first = f.arcPairs();
+  assert.equal(f.arcPairs(), first, "the same, frame after frame");
+  // another selection: the board's lit set is set anew (canvas.setActivation), and so its mode
+  f.canvas.active = new Uint8Array(names.length);
+  const relit = f.arcPairs();
+  assert.notEqual(relit, first);
+  assert.equal(f.arcPairs(), relit);
+  f.canvas.mode = "deps";
+  assert.notEqual(f.arcPairs(), relit);
+  const keyed = f.arcPairs();
+  f.hooks.keyLinks = () => [top, 1];
+  assert.notEqual(f.arcPairs(), keyed);
+  assert.ok(f.arcPairs().some((p: { key?: true }) => p.key));
+  // the outline read again: other rows
+  const before = f.arcPairs();
+  f.setOutline(structuredClone(outline));
+  assert.notEqual(f.arcPairs(), before);
 });
 
 test("shown as a followed reader's, the form is the follower's own once following ends: ⋯ and the key put it away, and so may the follower's own Export window closing; the window's own form goes with it alone", async () => {
