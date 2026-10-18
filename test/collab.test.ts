@@ -38,6 +38,15 @@ test("behind an authenticating proxy, the name is the header's, and the page's i
   assert.equal(ids.mode, "header");
   assert.equal(ids.who(req({ "x-forwarded-user": "carol@example.org" })), "carol@example.org");
   assert.equal(ids.who(req({ "x-visualproof-name": "Mallory" })), null);
+  // Node reads a header's bytes as Latin-1: a name the proxy wrote in UTF-8 is read as UTF-8, one in
+  // Latin-1 as it is, and MIME encoded-words (Tailscale's, beyond ASCII) are decoded
+  const sent = (s: string) => Buffer.from(s, "utf8").toString("latin1");
+  assert.equal(ids.who(req({ "x-forwarded-user": sent("José García") })), "José García");
+  assert.equal(ids.who(req({ "x-forwarded-user": sent("许英特") })), "许英特");
+  assert.equal(ids.who(req({ "x-forwarded-user": "José" })), "José");
+  assert.equal(ids.who(req({ "x-forwarded-user": "=?utf-8?q?Jos=C3=A9_Garc=C3=ADa?=" })), "José García");
+  assert.equal(ids.who(req({ "x-forwarded-user": `=?UTF-8?B?${Buffer.from("许英特").toString("base64")}?=` })), "许英特");
+  assert.equal(ids.who(req({ "x-forwarded-user": "Jos=C3=A9" })), "Jos=C3=A9", "not encoded-words: as it is");
 });
 
 test("presence: the list goes out when it changes, not on every heartbeat", () => {

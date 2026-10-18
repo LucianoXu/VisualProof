@@ -14,6 +14,7 @@
 import { randomBytes } from "node:crypto";
 import type { ServerResponse } from "node:http";
 import type { Invited, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
+import { sameName } from "../shared/collab.ts";
 import type { ViewMeta } from "../shared/graph.ts";
 import { prepare } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
@@ -939,6 +940,13 @@ export class Live {
   invited(name: string): { id: string; name: string } | undefined {
     const r = this.invites.holder(name);
     return r ? { id: r.id, name: r.name } : undefined;
+  }
+
+  /** Whether `name` is an agent's now (sameName): a token in force has it, or an agent on the page
+   *  gives it — nobody's opinion is recorded for an agent, even one that has written nothing yet
+   *  (ReviewSpec decision 8, AgentSpec decision 2). */
+  agentNamed(name: string): boolean {
+    return this.tokens.inForce().some((r) => sameName(r.name, name)) || this.presence.list().some((p) => p.agent && p.name !== null && sameName(p.name, name));
   }
 
   /** The usage pass's contexts of a module (shared/context.ts), when the graph on show has them. */

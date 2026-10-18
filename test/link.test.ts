@@ -604,6 +604,7 @@ test("a target's panel: with no view, as marking leaves it, it says so and offer
     isKey: () => false,
     targetView: () => tv,
     linkHere: (i: number) => linked.push(i),
+    keyView: () => {},
   } as unknown as ReviewHooks;
   const box = new ReviewBox(g, hooks);
   const html = box.html(0, true);

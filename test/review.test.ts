@@ -373,6 +373,7 @@ test("a declaration of the project can be marked as target from its panel; one o
       progress: () => ({ total: 1, approved: 0, commented: 0, stale: 0 }),
       keyProgress: () => ({ total: 1, approved: 0, commented: 0, stale: 0, unreviewed: 1 }),
       queue: () => ({ order: [0], axioms: [] }),
+      keyView: () => {},
     } as unknown as ReviewHooks);
   assert.match(box(false).html(0, true), /data-rv-target>☆ Mark as target</);
   // the server refuses a target outside the project (server/reviewapi.ts): no button to be refused
@@ -390,7 +391,6 @@ test("a declaration of the project can be marked as target from its panel; one o
     progress: () => ({ total: 1, approved: 0, commented: 0, stale: 0 }),
     keyProgress: () => ({ total: 1, approved: 0, commented: 0, stale: 0, unreviewed: 1 }),
     queue: () => ({ order: [0], axioms: [] }),
-    canOpenViews: () => false,
   } as unknown as ReviewHooks);
   assert.doesNotMatch(reader.html(1, true), /data-rv-keyview/);
 });

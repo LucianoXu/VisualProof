@@ -120,6 +120,11 @@ test("the server finds whom an opinion is for: one's own name is one's own, an i
     assert.equal(byAgent.status, 403, JSON.stringify(byAgent.json));
     assert.equal((await give("Olivia", { for: 7 })).status, 400);
     assert.equal((await give("Olivia", { for: "claude" })).status, 400, "an agent's name in any case");
+    // nor for an agent that has written nothing yet: a token in force has its name, or it is on the page
+    S.live.tokens.create({ name: "Olivia's AI", by: "Olivia", level: "advise", days: 1 });
+    assert.equal((await give("Olivia", { for: "Olivia's AI" })).status, 400, "a token's agent");
+    assert.equal((await S.ask("GET", "/api/agent", undefined, { ...as("Scout"), "x-visualproof-kind": "agent" })).status, 200);
+    assert.equal((await give("Olivia", { for: "Scout" })).status, 400, "an agent on the page");
     // an agent at the page's door, saying for: refused
     assert.equal((await give("Claude", { for: "Bob" }, { "x-visualproof-kind": "agent" })).status, 403);
     // a guest already in the logs, written in another case: that guest

@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { ReadOnlyLinks } from "../src/server/readonly.ts";
 import { finalAnswer, ReadOnlyBounds, readOnlyAllows } from "../src/server/readonlygate.ts";
 import { site, stream } from "./site.ts";
+import { tinyPdf } from "./pdf.ts";
 
 const KEY = "k".repeat(40);
 const OWNER = { "x-visualproof-name": "Olivia", authorization: `Bearer ${KEY}` };
@@ -63,9 +64,20 @@ test("a read-only link lets its holder read, by a cookie that is not the token; 
     const again = await enter(S, link.path);
     assert.equal(again.status, 410);
     assert.match(again.text, /revoked by Olivia/);
+    // its page's requests are told who revoked it (410); the page, reloaded, says it in words and
+    // forgets the cookie
     const out = await fetch(S.base + "/api/identity", { headers: { cookie: e.cookie } });
-    assert.equal(out.status, 404);
-    assert.ok(out.headers.getSetCookie().some((c) => c.startsWith(`${S.live.readOnly.cookieName}=;`) && /Max-Age=0/.test(c)));
+    assert.equal(out.status, 410);
+    assert.match(((await out.json()) as { error: string }).error, /^This read-only link was revoked by Olivia on \d{4}-\d\d-\d\d\. Ask whoever gave it to you for a new one\.$/);
+    const told = await fetch(S.base + "/", { headers: { cookie: e.cookie } });
+    assert.equal(told.status, 410);
+    assert.match(await told.text(), /revoked by Olivia/);
+    assert.ok(told.headers.getSetCookie().some((c) => c.startsWith(`${S.live.readOnly.cookieName}=;`) && /Max-Age=0/.test(c)));
+    // with --public the address alone reads: such a page reads on, its cookie forgotten
+    S.app.publicRead = true;
+    const pub = await fetch(S.base + "/api/identity", { headers: { cookie: e.cookie } });
+    assert.deepEqual([pub.status, ((await pub.json()) as { readOnly: unknown }).readOnly], [200, { by: "public" }]);
+    assert.ok(pub.headers.getSetCookie().some((c) => c.startsWith(`${S.live.readOnly.cookieName}=;`)));
   } finally {
     await S.close();
   }
@@ -108,6 +120,31 @@ test("a read-only reader reads what a guest reads, and is refused everything tha
     }
     // nothing was written
     assert.equal(JSON.stringify(S.live.review.whole()), before);
+  } finally {
+    await S.close();
+  }
+});
+
+test("a read-only reader is drawn what the notes show of a PDF, and no other page or region of it", async () => {
+  const S = await site({ key: KEY });
+  try {
+    const up = await fetch(`${S.base}/api/library/upload?name=paper.pdf`, { method: "POST", headers: OWNER, body: new Uint8Array(tinyPdf([["One."], ["Two."]])) });
+    const sha = ((await up.json()) as { file: { sha: string } }).file.sha;
+    const link = (await S.ask("POST", "/api/share/readonly", {}, OWNER)).json!.made.path as string;
+    const { cookie } = await enter(S, link);
+    const get = (q: string, who: Record<string, string> = { cookie }) => fetch(`${S.base}/api/library/${q}`, { headers: who });
+    // the file came with a note of the project, which shows its first page
+    assert.equal((await get(`page?sha=${sha}&page=1&width=400`)).status, 200);
+    assert.equal((await get(`page?sha=${sha}&page=2&width=400`)).status, 403);
+    const clip = `clip?sha=${sha}&page=2&region=0.1,0.05,0.9,0.15&width=800`;
+    assert.equal((await get(clip)).status, 403, "a region no note carries");
+    assert.equal((await get(clip, OWNER)).status, 200, "a guest is drawn any");
+    // a note carries the clip: it is drawn for the reader too
+    assert.equal(S.live.views.arrangeNotes([{ op: "pnote", note: { id: "nclip00000000", text: "this", places: {}, open: true, by: "Olivia", at: "", carries: [{ file: sha, page: 2, region: [0.1, 0.05, 0.9, 0.15] }] } }], null, "Olivia"), null);
+    assert.equal((await get(clip)).status, 200);
+    assert.equal((await get(`clip?sha=${sha}&page=2&region=0.1,0.05,0.9,0.16&width=800`)).status, 403);
+    // the file itself, its text and its search are the reader's to read
+    for (const q of [`file?sha=${sha}`, `text?sha=${sha}&page=2`, `search?sha=${sha}&q=Two`]) assert.equal((await get(q)).status, 200, q);
   } finally {
     await S.close();
   }

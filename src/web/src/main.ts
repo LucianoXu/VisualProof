@@ -555,15 +555,19 @@ async function boot(): Promise<void> {
     inReview: (r, i) => flow.inReview(r, i),
     isKey: (r, i) => flow.isKey(r, i),
     keyProgress: (i) => flow.keyProgress(i),
-    canOpenViews: () => !reader,
-    keyView: (i) => {
-      // a view made from the board on show: at its build, leaving the Time Machine for it; focused
-      // on the target it is made from (ViewSpec decision 28)
-      void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
-        if (ok === true) commit();
-        else if (typeof ok === "string") say(ok);
-      });
-    },
+    // a view made from the board on show: at its build, leaving the Time Machine for it; focused on
+    // the target it is made from (ViewSpec decision 28). A read-only reader makes no views, and is
+    // not offered one (CollabSpec decision 11)
+    ...(reader
+      ? {}
+      : {
+          keyView: (i: number) => {
+            void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
+              if (ok === true) commit();
+              else if (typeof ok === "string") say(ok);
+            });
+          },
+        }),
     go: (i) => go(i),
     openSource: (name, from, to, quoted, root) => openSourceAt(name, from, to, quoted, root),
   });
@@ -3186,8 +3190,13 @@ async function boot(): Promise<void> {
       offline = true;
       renderBuild();
       // refused rather than lost (a server with as many pages open as it serves): the browser does
-      // not try again by itself, so the page does, a while later
-      if (es.readyState === EventSource.CLOSED) setTimeout(listen, 10_000);
+      // not try again by itself, so the page does, a while later — unless the link this page came by
+      // was revoked (CollabSpec decisions 9 and 11), which the server says (410): the page is
+      // reloaded, and says by whom
+      if (es.readyState === EventSource.CLOSED)
+        void fetch("/api/identity")
+          .then((r) => (r.status === 410 ? location.reload() : setTimeout(listen, 10_000)))
+          .catch(() => setTimeout(listen, 10_000));
     };
     es.addEventListener("build", (e) => {
       build = JSON.parse((e as MessageEvent).data);

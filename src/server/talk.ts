@@ -237,9 +237,12 @@ export class Talk {
 
   /** The agent said it leaves (POST /api/agent/view {leave: true}; its MCP server does as it
    *  stops): offline at once, its wait ended, until it waits or asks again; its next wait is a new
-   *  session's. */
-  left(token: string, now = Date.now()): void {
+   *  session's. A leave from another session than the one that waited last (`session`, as
+   *  X-VisualProof-Session says it) is one a newer session replaced, whose client goes now: it
+   *  leaves nothing, the newer one listening on (false). */
+  left(token: string, session: string | null = null, now = Date.now()): boolean {
     const a = this.agent(token);
+    if (session !== null && a.session !== null && a.session !== session) return false;
     a.wait?.end({ gone: true });
     a.lastRequest = 0;
     a.graceUntil = 0;
@@ -248,6 +251,7 @@ export class Talk {
     a.away = true;
     a.before = undefined;
     this.update(token, now);
+    return true;
   }
 
   /** A request of the agent's: it is not offline, and `doing` (when it says something) is what it
