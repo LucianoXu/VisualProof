@@ -127,6 +127,39 @@ test("the dark theme's overview of many edges is drawn fainter by its crowd, the
   assert.deepEqual(drawn(false), drawn(false, 0), "the light theme's as before");
 });
 
+test("reduced motion: one rule ends every transition and animation on the page at once, the flashes that say something held; the camera jumps where it would glide", () => {
+  const text = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const blocks = [...text.matchAll(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?\})\s*\}/g)].map((m) => m[1]);
+  const all = blocks.filter((b) => /^\s*\*, \*::before, \*::after \{/.test(b));
+  assert.equal(all.length, 1, "one page-wide rule");
+  for (const d of ["transition-duration: 0s !important", "transition-delay: 0s !important", "animation-duration: 1ms !important", "animation-iteration-count: 1 !important", "scroll-behavior: auto !important"]) assert.ok(all[0].includes(d), d);
+  // what an animation says is said still: a flash held a moment, the export's bar standing
+  assert.ok(blocks.some((b) => /\.rv-flash[^{]*\{[^}]*animation-duration: 4s !important/.test(b)));
+  assert.ok(blocks.some((b) => /\.ex-bar i \{[^}]*animation: none !important/.test(b)));
+  // the camera: there at once with reduced motion, gliding without it
+  const g = globalThis as Record<string, unknown>;
+  const was = { matchMedia: g.matchMedia, requestAnimationFrame: g.requestAnimationFrame, cancelAnimationFrame: g.cancelAnimationFrame };
+  const frames: (() => void)[] = [];
+  let reduce = true;
+  g.matchMedia = (q: string) => ({ matches: q.includes("reduced-motion") && reduce });
+  g.requestAnimationFrame = (f: () => void) => frames.push(f);
+  g.cancelAnimationFrame = () => {};
+  try {
+    const C = board();
+    const goal = { x: C.cam.x + 300, y: C.cam.y - 200, k: C.cam.k * 2 };
+    C.glideTo(goal, 520);
+    assert.deepEqual(C.cam, goal, "there at once");
+    assert.equal(frames.length, 0, "no frame asked for");
+    reduce = false;
+    const back = { x: goal.x - 300, y: goal.y + 200, k: goal.k / 2 };
+    C.glideTo(back, 520);
+    assert.deepEqual(C.cam, goal, "gliding: not there yet");
+    assert.equal(frames.length, 1);
+  } finally {
+    Object.assign(g, was);
+  }
+});
+
 /** A stand-in for the browser theme.ts runs in: <html>'s data-theme, the system's preference (which
  *  the test changes), the stored choice, and a MutationObserver that sees data-theme being set. */
 function browser() {

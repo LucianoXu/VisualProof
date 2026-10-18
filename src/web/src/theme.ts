@@ -6,6 +6,10 @@
 // What draws in the theme's colours itself — the board's canvas, the linear form — reads them from
 // the page's custom properties as it draws, and keeps what it drew: it draws again when the theme on
 // show changes (onThemeChange), whoever changed it, in either direction.
+//
+// The system's other preference the page follows is reduced motion (reducedMotion): nothing on the
+// page glides then — style.css's one rule for its transitions and animations, and here for what
+// moves by itself (the board's camera, the linear form coming and going).
 
 export type ThemeChoice = "light" | "dark" | "system";
 export type ThemeShown = "light" | "dark";
@@ -15,6 +19,11 @@ const KEY = "visualproof:theme";
 const dark = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
 /** the theme something holds on show over the reader's choice (holdTheme), or none */
 let held: ThemeShown | null = null;
+
+/** Whether the system asks for reduced motion: what would glide is where it goes at once (GuideSpec
+ *  decision 4; the camera, web/src/canvas.ts animate; the linear form, web/src/linear.ts). Read as
+ *  it is asked, so that a change of the setting holds from the next motion. */
+export const reducedMotion = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export function themeChoice(): ThemeChoice {
   try {

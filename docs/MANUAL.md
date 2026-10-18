@@ -554,6 +554,8 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   release you last saw, are kept in this browser for every project: when the server runs a newer one, the page says **What's new** once, and the tips new
   in it are marked.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
+- **Reduced motion** (the system's setting) is followed on the whole page: nothing glides, fades or
+  pulses — the camera, the linear form, the windows and menus are where they go at once.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
 ### On a phone

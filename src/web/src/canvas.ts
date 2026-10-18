@@ -30,7 +30,7 @@ import { artNameId } from "../../shared/collab.ts";
 import type { ArtStyle } from "../../shared/collab.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
-import { onThemeChange } from "./theme.ts";
+import { onThemeChange, reducedMotion } from "./theme.ts";
 import { clusterTroubles, ST_APPROVED, ST_COMMENTED, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { LEAF_R, Scene } from "./scene.ts";
@@ -1690,8 +1690,10 @@ export class GraphCanvas {
     this.animate({ x, y, k }, dur);
   }
 
-  /** The camera carried to `goal` over `dur` ms, easing in and out. */
+  /** The camera carried to `goal` over `dur` ms, easing in and out; with reduced motion there at
+   *  once (theme.ts, reducedMotion): a flight, a fit, the zoom buttons, an artwork's frame closing in. */
   private animate(goal: { x: number; y: number; k: number }, dur: number): void {
+    if (reducedMotion()) return this.jumpTo(goal);
     if (this.anim) cancelAnimationFrame(this.anim);
     const { x, y, k } = goal;
     this.camGoal = { x, y, k };

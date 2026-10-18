@@ -70,6 +70,7 @@ import { editorAnchor } from "./editor.ts";
 import { namespacesOf, resolver, scopeAt } from "./scope.ts";
 import { asideRect, MIN, openBounds, openRect } from "./sources.ts";
 import { kindDot } from "./axiomring.ts";
+import { reducedMotion } from "./theme.ts";
 import type { SourcePane } from "./sources.ts";
 
 export interface SourceHooks {
@@ -608,7 +609,7 @@ export class SourceWindow implements SourcePane {
       l.style.animationDelay = w.since ? `${w.since - now}ms` : "";
       l.classList.add("ln-flash");
     }
-    if (!w.since) lns[span[0]]?.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (!w.since) lns[span[0]]?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
     w.since ||= now;
   }
 
