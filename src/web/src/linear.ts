@@ -485,7 +485,11 @@ export class LinearForm {
 
   private draw(now: number): void {
     this.frame = 0;
-    const dt = Math.min(now - this.last, 50);
+    // the rows' slides and the scroll step 50 ms a frame at most, never jumping; the form's coming
+    // and going by the time gone, so that it takes its 480 ms however slowly the screen draws (the
+    // pointer is not heard until it has come)
+    const elapsed = Math.max(0, now - this.last);
+    const dt = Math.min(elapsed, 50);
     this.last = now;
     // rows making room, or settling, ease to where they go
     if (this.off.size) {
@@ -517,7 +521,7 @@ export class LinearForm {
       }
     }
     if (this.t !== this.target) {
-      const step = dt / EASE_MS;
+      const step = elapsed / EASE_MS;
       this.t = this.target > this.t ? Math.min(this.target, this.t + step) : Math.max(this.target, this.t - step);
       this.request();
     }
@@ -1028,8 +1032,9 @@ export class LinearForm {
   /** Take a row up, where it was pressed: it, and what goes with it, follow the pointer. */
   private lift(row: Row, px: number, py: number): void {
     const sibs = this.siblings(row);
-    // an attached note taken up leaves its declaration's block
-    const blocks = sibs.map((r) => (r === row ? [row] : this.blockOf(r).filter((x) => x !== row)));
+    // it takes what goes with it (a section's rows, a declaration's notes); an attached note taken
+    // up leaves its declaration's block
+    const blocks = sibs.map((r) => (r === row ? this.blockOf(row) : this.blockOf(r).filter((x) => x !== row)));
     const from = sibs.indexOf(row);
     const block = blocks[from] ?? [row];
     const h = Math.max(...block.map((r) => r.y1)) - row.y0;

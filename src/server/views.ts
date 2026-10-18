@@ -223,20 +223,22 @@ function cleanMemory(x: unknown): BoardMemory | null {
  *  nothing written (the artwork command, ExportSpec decision 21; the Views class sets aside a file
  *  it cannot read): null where the site keeps none, or `why` where its views cannot be read. Pins
  *  dropped under another way of laying out mean nothing in this one, as Views reads them. */
-export function readProjectView(siteDir: string, layoutVersion: number): { view: ViewData | null; why?: string } {
+export function readProjectView(siteDir: string, layoutVersion: number): { view: ViewData | null; notes: number; why?: string } {
   const file = join(siteDir, "views.json");
-  if (!existsSync(file)) return { view: null };
+  if (!existsSync(file)) return { view: null, notes: 0 };
   try {
     const raw = JSON.parse(readFileSync(file, "utf8")) as Stored;
+    // the project's notes, every one of which the Project's board shows (AttachmentSpec decision 17)
+    const notes = cleanProjectNotes(raw.notes).length;
     for (const r of Array.isArray(raw.views) ? raw.views : []) {
       const v = readView(r);
       if (typeof v === "string" || v.id !== PROJECT) continue;
       if (raw.layoutVersion !== layoutVersion) v.pins = emptyLayouts();
-      return { view: v };
+      return { view: v, notes };
     }
-    return { view: null };
+    return { view: null, notes };
   } catch (e) {
-    return { view: null, why: e instanceof Error ? e.message : String(e) };
+    return { view: null, notes: 0, why: e instanceof Error ? e.message : String(e) };
   }
 }
 

@@ -657,6 +657,7 @@ async function boot(): Promise<void> {
     relayoutSource: () => sources.following?.relayout(),
     repaint: () => showSelected(),
     readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : reader ? READ_ONLY : null),
+    noFiles: () => (data.snapshot ? "A snapshot of the page carries the library's records and links, not its files: open it on the server." : null),
     // what notes carry (AttachmentSpec decision 12): a clip made into a note, a file attached to one
     cannotNote: () => noteRefused(),
     clip: (c, text) => clipToNote(c, text),
@@ -1032,6 +1033,7 @@ async function boot(): Promise<void> {
     unfold: (c) => canvas.toggleFold(c),
     // the library is the server's now, whatever build the board shows
     file: (sha) => fileOf(review.data, sha),
+    noFiles: () => !!data.snapshot,
     openCarry: (_id, c) => papers.openCarry(c),
   });
   canvas.onFrame = () => stickies.frame();
@@ -2013,8 +2015,6 @@ async function boot(): Promise<void> {
     artwork: () => art.open(),
     artworkOnly: () => !!data.snapshot,
   });
-  // a snapshot of the page makes pictures of its board, not documents (ExportSpec decision 19)
-  if (data.snapshot) $("#export-btn").title = "Artwork: the board as a picture, PNG or SVG (a snapshot's documents are the server's)";
   // a snapshot of the page carries the links, not the library's files (they are the server's)
   if (data.snapshot) $("#library-btn").hidden = true;
 
@@ -2585,7 +2585,12 @@ async function boot(): Promise<void> {
    *  the build on show), the note of a view kept at a build. */
   const syncPast = () => {
     document.body.classList.toggle("past", pastShown());
-    $("#export-btn").title = pastShown() ? "Export: this view at the build on show, as a document typeset with LaTeX" : "Export: this view as a document, typeset with LaTeX";
+    // a snapshot of the page makes pictures of its board, not documents (ExportSpec decision 19)
+    $("#export-btn").title = data.snapshot
+      ? "Artwork: the board as a picture, PNG or SVG (a snapshot's documents are the server's)"
+      : pastShown()
+        ? "Export: this view at the build on show, as a document typeset with LaTeX; or the board as a picture (Artwork)"
+        : "Export: this view as a document, typeset with LaTeX; or the board as a picture (Artwork)";
     tm.renderKept();
     syncInsets();
   };
@@ -2667,6 +2672,7 @@ async function boot(): Promise<void> {
     canvas.setLayout(L, b.rec.pins[m], b.rec.folds[m], m);
     canvas.setFrozen(frozen());
     linear.refresh();
+    exportModal.boardChanged();
     // a note being written stays while its board is drawn again (the review changed what it
     // holds); another board closes it
     if (b.id !== stickiesOn) stickies.reset();

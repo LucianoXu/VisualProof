@@ -229,9 +229,25 @@ export interface NotePicture {
   surface: string;
   /** attached to a declaration: the dashed leader to its point, and the diamond on the point's rim */
   decl: { line: [number, number, number, number]; width: number; colour: string; mark: [number, number]; markPx: number } | null;
-  /** open: its card — its box, colours, text and who wrote it — and the leader from the icon to it */
-  card: { x: number; y: number; w: number; h: number; bg: string; edge: string; accent: string; text: string; by: string; textColour: string; byColour: string } | null;
+  /** open: its card — its box, colours, text and who wrote it, and the files it carries — and the
+   *  leader from the icon to it; its text ends where its element does (`textBottom`), above the
+   *  files */
+  card: { x: number; y: number; w: number; h: number; bg: string; edge: string; accent: string; text: string; by: string; textColour: string; byColour: string; textBottom?: number; files?: CardFile[] } | null;
   lead: { line: [number, number, number, number]; colour: string; dashed: boolean } | null;
+}
+
+/** A file an open card carries, as the card shows it (web/src/sticky.ts, carryHtml): its box, its
+ *  drawing — an image, a clip, a PDF's page; `src` the picture the page drew, as a data URL, null
+ *  where none is drawn — and its words (a title, a page, a caption), each in its box, its size, its
+ *  weight and its colour. */
+export interface CardFile {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  bg: string;
+  image: { x: number; y: number; w: number; h: number; src: string } | null;
+  words: { x: number; y: number; w: number; h: number; text: string; px: number; weight: number; line: number; colour: string }[];
 }
 
 /** A rounded rectangle's path. */
@@ -277,9 +293,10 @@ export function wrapText(text: string, width: number, measure: (s: string) => nu
 
 /** The notes as the board shows them, written with `ctx` in the screen's pixels — over the board in a
  *  PNG, recorded into an SVG: the leader to a declaration and its diamond, the leader to an open card,
- *  the mark (its icon, its dot over it as far as it has turned into one) and the card with its text.
- *  `glyph` draws an icon's glyph, which is SVG: a PNG has it as a picture, an SVG as it is. */
-export function drawNotes(ctx: CanvasRenderingContext2D, notes: readonly NotePicture[], font: string, glyph: (n: NotePicture) => void): void {
+ *  the mark (its icon, its dot over it as far as it has turned into one) and the card with its text
+ *  and the files it carries. `glyph` draws an icon's glyph, which is SVG: a PNG has it as a picture,
+ *  an SVG as it is; `image` a file's drawing, a data URL: a PNG decodes it, an SVG holds it. */
+export function drawNotes(ctx: CanvasRenderingContext2D, notes: readonly NotePicture[], font: string, glyph: (n: NotePicture) => void, image: (src: string, x: number, y: number, w: number, h: number) => void = () => {}): void {
   for (const n of notes) {
     ctx.save();
     if (n.decl) {
@@ -359,12 +376,31 @@ export function drawNotes(ctx: CanvasRenderingContext2D, notes: readonly NotePic
       ctx.textBaseline = "alphabetic";
       ctx.font = `12.5px ${font}`;
       ctx.fillStyle = c.textColour;
-      const lh = 12.5 * 1.45, bottom = c.y + c.h - 6 - (c.by ? 20 : 0);
+      const lh = 12.5 * 1.45, bottom = Math.min(c.y + c.h - 6 - (c.by ? 20 : 0), c.textBottom ?? Infinity);
       let y = c.y + 7 + 12.8;
       for (const line of wrapText(c.text, c.w - 22, (t) => ctx.measureText(t).width)) {
         if (y > bottom + 1) break;
         ctx.fillText(line, c.x + 12, y);
         y += lh;
+      }
+      // the files it carries, under its text: each its box, its drawing, its words
+      for (const f of c.files ?? []) {
+        ctx.fillStyle = f.bg;
+        roundRect(ctx, f.x, f.y, f.w, f.h, 6);
+        ctx.fill();
+        ctx.strokeStyle = c.edge;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        if (f.image) image(f.image.src, f.image.x, f.image.y, f.image.w, f.image.h);
+        for (const w of f.words) {
+          ctx.font = `${w.weight} ${w.px}px ${font}`;
+          ctx.fillStyle = w.colour;
+          // as many lines as its box holds, each on the middle of its line
+          const most = Math.max(1, Math.round(w.h / w.line));
+          wrapText(w.text, w.w + 0.5, (t) => ctx.measureText(t).width)
+            .slice(0, most)
+            .forEach((line, k) => ctx.fillText(line, w.x, w.y + k * w.line + (w.line + w.px * 0.7) / 2));
+        }
       }
       if (c.by) {
         ctx.font = `11px ${font}`;

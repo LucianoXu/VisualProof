@@ -208,31 +208,39 @@
 % what follows: a section of one declaration takes no page of its own. Its heading: the number and
 % the title, sans-serif and bold, smaller at each level; the cluster's key beneath, small and mono.
 % A top section names the running head, as LaTeX's own classes do.
+% Headings that follow one another (a section, then its first subsection) ask for that room once,
+% the first of them: until the first line after the last, nothing asks again (\vp@need) nor lets
+% the page break (\vp@keep), as a subsection's own \needspace under its section's heading would
+% break the page there and leave that heading alone at its foot.
+\newif\ifvp@afterhead
+\newcommand\vp@need[1]{\ifvp@afterhead\else\needspace{#1}\fi}
+\newcommand\vp@keep{\ifvp@afterhead\nopagebreak\fi}
+\newcommand\vp@headdone{\global\vp@afterheadtrue\everypar{\global\vp@afterheadfalse\everypar{}}}
 \newcommand\vp@sectionbreak[1]{\par\addvspace{\ifcase#1\or 22pt plus 8pt minus 4pt\or 16pt plus 6pt minus 3pt\or
-  12pt plus 4pt minus 2pt\else 10pt plus 3pt minus 2pt\fi}\needspace{\ifnum#1<3 14\else 10\fi\baselineskip}}
+  12pt plus 4pt minus 2pt\else 10pt plus 3pt minus 2pt\fi}\vp@need{\ifnum#1<3 14\else 10\fi\baselineskip}}
 \newcommand\vpSection[7]{%
   \vp@sectionbreak{#2}%
-  \phantomsection\hypertarget{#1}{}\label{#1}\bookmark[dest=#1,level=#6]{#7}%
+  \phantomsection\hypertarget{#1}{}\label{#1}\bookmark[dest=#1,level=#6]{#7}\vp@keep
   {\raggedright\sffamily\bfseries\ifcase#2\or\LARGE\or\Large\or\large\else\normalsize\fi
     \ifstrempty{#3}{}{#3\quad}#4\par}\nopagebreak
   \vspace{1pt}{\footnotesize\color{vpMuted}\vpName{#5}\par}\nopagebreak
   \ifnum#2=1 \markright{\ifstrempty{#3}{}{#3\enspace}#4}\fi
-  \vspace{\ifnum#2<3 4pt\else 2pt\fi}}
+  \vspace{\ifnum#2<3 4pt\else 2pt\fi}\vp@headdone}
 % a section's own declarations and notes again after one of its sections, as the board's order may
 % have them: its title at the level of its sections, unnumbered, "continued" after it
 \newcommand\vpSectionResume[2]{%
   \vp@sectionbreak{#1}%
   {\raggedright\sffamily\bfseries\ifcase#1\or\LARGE\or\Large\or\large\else\normalsize\fi
     #2\hskip 0.5em{\mdseries\small\color{vpMuted}continued}\par}\nopagebreak
-  \vspace{\ifnum#1<3 4pt\else 2pt\fi}}
+  \vspace{\ifnum#1<3 4pt\else 2pt\fi}\vp@headdone}
 
 % ------------------------------------------------------------------------------ a declaration
 
 % {id}{short}{kind}: the short name, the kind on the right
 \newenvironment{vpDecl}[3]{%
-  \par\needspace{8\baselineskip}%
+  \par\vp@need{8\baselineskip}%
   \vspace{10pt plus 4pt}%
-  \phantomsection\hypertarget{#1}{}\label{#1}%
+  \phantomsection\hypertarget{#1}{}\label{#1}\vp@keep
   \noindent{\sffamily\bfseries #2}%
   \hfill\vpKind{#3}\par\nopagebreak\vspace{1pt}}{\par}
 \newcommand\vpFullName[1]{\noindent{\footnotesize\vpName{#1}}}
@@ -261,14 +269,16 @@
 % by its number
 \newenvironment{vpReferences}{\par\addvspace{22pt plus 8pt minus 4pt}\needspace{6\baselineskip}%
   \phantomsection\hypertarget{vp-references}{}\label{vp-references}\bookmark[dest=vp-references,level=0]{References}%
-  {\raggedright\sffamily\bfseries\Large References\par}\nopagebreak\vspace{6pt}\small\setlength\parskip{4pt}}{\par}
+  {\raggedright\sffamily\bfseries\Large References\par}\nopagebreak\vspace{6pt}\small\setlength\parskip{4pt}%
+  % ragged: a title, an upload name and a hash break nowhere, and justified they spread the rest
+  \raggedright}{\par}
 \newcommand\vpReference[5]{\par\noindent\hangindent=2em\hangafter=1
   \makebox[2em][l]{(#1)}\textit{#2}. #4; #3.\hskip 0.5em{\footnotesize\color{vpMuted}SHA-256 \vpMono{#5}…}\par}
 
 % ------------------------------------------------------------------------------ notes and figures
 
 % a note of the view, as the document's prose: body text, with room around it
-\newenvironment{vpNote}[1]{\par\addvspace{6pt plus 2pt}\phantomsection\hypertarget{#1}{}}{\par\addvspace{6pt plus 2pt}}
+\newenvironment{vpNote}[1]{\par\addvspace{6pt plus 2pt}\phantomsection\hypertarget{#1}{}\vp@keep}{\par\addvspace{6pt plus 2pt}}
 % a declaration a note names, linked to where the document prints it, with its page
 \newcommand\vpMention[2]{\hyperlink{#1}{\vpInlineCode{#2}}\nobreak\hskip 0.2em{\footnotesize\color{vpMuted}(p.~\pageref*{#1})}}
 % an image or a clip a note carries, where the note is (no float): an image at its own size, a clip at
@@ -278,7 +288,7 @@
 \newsavebox\vp@figbox
 \newlength\vp@figw
 \newcommand\vpFigure[5]{%
-  \par\needspace{8\baselineskip}\vspace{4pt}\noindent
+  \par\vp@need{8\baselineskip}\vspace{4pt}\vp@keep\noindent
   \begin{minipage}{\linewidth}\centering
     \ifstrempty{#2}{\sbox\vp@figbox{\includegraphics{#1}}\setlength\vp@figw{\wd\vp@figbox}}{\setlength\vp@figw{#2}}%
     \ifdim\vp@figw>\linewidth \setlength\vp@figw{\linewidth}\fi

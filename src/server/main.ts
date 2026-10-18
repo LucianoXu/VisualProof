@@ -248,8 +248,13 @@ function parseArgs(argv: string[]): Options {
     else if (a === "--png" && cmd === "artwork") o.png = true;
     else if (a === "--svg" && cmd === "artwork") o.svg = true;
     else if (a === "--screen" && cmd === "artwork") {
-      const m = /^(\d+)x(\d+)$/.exec(val());
-      if (!m || +m[1] < 640 || +m[2] < 480 || +m[1] > 10000 || +m[2] > 10000) usage();
+      const v = val();
+      const m = /^(\d+)x(\d+)$/.exec(v);
+      // said in a line, as --public-url is, rather than the whole usage
+      if (!m || +m[1] < 640 || +m[2] < 480 || +m[1] > 10000 || +m[2] > 10000) {
+        console.error(`visualproof artwork: --screen ${v}: give the screen's width and height in pixels, e.g. 1920x1200, from 640x480 to 10000x10000`);
+        process.exit(2);
+      }
       o.screen = { w: +m[1], h: +m[2] };
     }
     else if (a === "--public-url") {
@@ -1610,10 +1615,10 @@ async function artwork(project: Project, o: Options, fail: (why: string) => neve
   // the site's layout memory read and never written, nor the views laid out written to the cache;
   // without a site, none read: the board as a new site lays it out
   const prep = await prepare(project, dirs, o.graph, log, { ...(ex ? { extraction: ex } : {}), readOnlySite: true, ...(site ? {} : { freshLayout: true }) });
-  const kept = site ? readProjectView(site, LAYOUT_VERSION) : { view: null };
+  const kept = site ? readProjectView(site, LAYOUT_VERSION) : { view: null, notes: 0 };
   if (kept.why) console.error(`visualproof artwork: the site's views cannot be read (${kept.why}): the Project view as a new site has it`);
   const review = site ? new ReviewStore(project.root, site).data : null;
-  const a = makeArtwork(prep, review, projectView(kept.view), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root });
+  const a = makeArtwork(prep, review, projectView(kept.view), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root, projectNotes: kept.notes });
   if (!("svg" in a)) {
     for (const p of a.problems) console.error(`visualproof artwork: ${p}`);
     process.exit(1);

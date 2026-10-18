@@ -98,6 +98,13 @@ function common(s: Partial<DocSettings> | undefined): Common {
   return out;
 }
 
+/** Whether two views on show make the same document: the same view, at the same build. */
+const sameDoc = (a: ExportView | null, b: ExportView | null): boolean => !!a && !!b && a.id === b.id && a.version === b.version && a.when === b.when;
+
+/** A message as a sentence: its full stop, where it has none of its own (XeLaTeX's errors and the
+ *  server's answers end with theirs). */
+const sentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
+
 /** `n` things, with the plural where it is more than one. */
 const count = (n: number, one: string, many = `${one}s`) => `<b>${n.toLocaleString()}</b> ${n === 1 ? one : many}`;
 
@@ -152,6 +159,9 @@ export class ExportModal {
   open(): void {
     this.settings = common(this.hooks.saved()?.settings);
     this.view = this.hooks.view();
+    // a job followed before the window last closed is not this opening's: its answer, coming late,
+    // is not shown here (it may be another view's)
+    this.turn++;
     this.job = null;
     this.head = "";
     this.el.hidden = false;
@@ -159,14 +169,40 @@ export class ExportModal {
     this.render();
     this.hooks.shown?.(true);
     this.el.querySelector<HTMLElement>(".ex-box")?.focus();
+    this.askHead();
+  }
+
+  /** The board on show changed (another view, another build, the view rescoped): the window, open,
+   *  tells of the view on show now, whose outline the linear form draws beside it (ExportSpec
+   *  decisions 5 and 18), and exports that one. A document made of another view, or of another
+   *  build, is put away with its job. */
+  boardChanged(): void {
+    if (this.el.hidden) return;
+    const v = this.hooks.view();
+    if (JSON.stringify(v) === JSON.stringify(this.view)) return;
+    const other = !sameDoc(v, this.view);
+    this.view = v;
+    if (other) {
+      // the job followed, if any, is another document's
+      this.turn++;
+      this.stopTimer();
+      this.job = null;
+      this.head = "";
+      this.askHead();
+    }
+    this.render();
+  }
+
+  /** Ask for the title and the author line of the view on show. */
+  private askHead(): void {
     const v = this.view;
-    if (v)
-      void this.hooks.head(v.id, v.version).then((h) => {
-        // the window still shows that view
-        if (this.view !== v || this.el.hidden) return;
-        this.head = h;
-        this.render();
-      });
+    if (!v) return;
+    void this.hooks.head(v.id, v.version).then((h) => {
+      // the window still shows that view's document
+      if (!sameDoc(this.view, v) || this.el.hidden) return;
+      this.head = h;
+      this.render();
+    });
   }
 
   close(): void {
@@ -240,7 +276,7 @@ export class ExportModal {
       : job.state === "running"
         ? `<div class="ex-prog"><div class="ex-bar"><i></i></div><span>Typesetting with XeLaTeX… <span class="ex-secs">${this.elapsed()}</span></span></div>`
         : job.state === "failed"
-          ? `<div class="banner bad">Typesetting failed: ${esc(job.error ?? "XeLaTeX stopped")}.</div>` + (job.log ? `<details class="ex-log"><summary>XeLaTeX's log</summary><pre>${esc(job.log)}</pre></details>` : "")
+          ? `<div class="banner bad">Typesetting failed: ${esc(sentence(job.error ?? "XeLaTeX stopped"))}</div>` + (job.log ? `<details class="ex-log"><summary>XeLaTeX's log</summary><pre>${esc(job.log)}</pre></details>` : "")
           : `<div class="ex-done"><div><b>${job.pages ?? "?"} page${job.pages === 1 ? "" : "s"}</b>, typeset in ${((job.ms ?? 0) / 1000).toFixed(1)} s.</div>` +
             `<div class="ex-dl"><a class="rv-btn primary" href="/api/export/file?id=${job.id}&what=pdf" download>Download PDF</a>` +
             `<a class="rv-btn" href="/api/export/file?id=${job.id}&what=zip" download title="The .tex, the style file visualproof.sty and the fonts: typeset it yourself, or make the style your own">LaTeX sources (.zip)</a>` +

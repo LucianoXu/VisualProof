@@ -312,6 +312,44 @@ test("a row taken up follows the pointer, off the line too; its siblings make ro
   assert.equal(off("A.a2").dx, 40, "from where it was let go");
 });
 
+test("the form comes in its 480 ms however few frames the screen draws meanwhile", async () => {
+  const { f } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  assert.equal(f.t, 0);
+  // two frames, 300 ms apart: most of the way, then there
+  f.draw(f.last + 300);
+  assert.ok(f.t > 0.6 && f.t < 1, `${f.t}`);
+  f.draw(f.last + 300);
+  assert.equal(f.t, 1, "come: the pointer is heard");
+  // a frame stamped before the ease began moves nothing back
+  f.hide("reader");
+  f.draw(f.last - 5);
+  assert.equal(f.t, 1);
+});
+
+test("a row taken up takes what goes with it along: a section its rows, a declaration its notes", async () => {
+  const { f } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  f.t = 1;
+  const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+  const off = (name: string) => f.off.get(`${row(name).kind}:${name}`);
+  const sy = (y: number) => 24 + (y - f.cam.y);
+  // B (with b1) up above a1: b1 comes with it, as far
+  const b = row("A.B"), a1 = row("A.a1");
+  f.lift(b, 300, sy(b.cy));
+  f.follow(320, sy(a1.y0) - 2);
+  assert.equal(f.drag.at, 0);
+  assert.deepEqual([off("A.B.b1").dy, off("A.B.b1").dx], [off("A.B").dy, off("A.B").dx], "b1 with B");
+  assert.ok(off("A.B").dy < 0);
+  f.cancel();
+  // a1 (with its note on1) down below a2: on1 comes with it; the others make room for both
+  f.lift(a1, 300, sy(a1.cy));
+  const a2 = row("A.a2");
+  f.follow(300, sy(a2.y1) + 30);
+  assert.equal(off("on1").dy, off("A.a1").dy, "its note with it");
+  assert.equal(off("n").ty, -(row("on1").y1 - a1.y0), "the rows passed make room for a1 and its note");
+});
+
 test("let go among declarations alone, each row between where it was and where it went takes the place the one at its index had: the order exactly so, no row on another, the rest unmoved, in one change", async () => {
   const { outline, names } = many(5);
   const { f, calls } = await setup(outline, null, { names });

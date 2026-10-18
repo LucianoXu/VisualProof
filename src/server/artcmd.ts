@@ -46,6 +46,9 @@ export interface ArtworkAsk {
   screen: { w: number; h: number };
   name: string | null;
   root: string;
+  /** how many notes of the project the site keeps: the Project's board shows every one, besides its
+   *  own (none without a site) */
+  projectNotes?: number;
 }
 
 /** What the command made, or why it made nothing: as the agents' API answers (decision 20) — the
@@ -228,7 +231,7 @@ export function makeArtwork(prep: Prepared, review: ReviewData | null, project: 
     },
     targets: s.targets === "chosen" ? s.shownTargets : s.targets === "plain" ? [] : idx.map((j) => g.nodes[j].name),
     selection: sel,
-    notesLeftOut: s.notes ? (project.notes ?? []).length : 0,
+    notesLeftOut: s.notes ? (project.notes ?? []).length + (ask.projectNotes ?? 0) : 0,
     svg,
     file: (kind) => artName(title, kind),
   };
