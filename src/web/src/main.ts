@@ -41,7 +41,7 @@ import { itemOp } from "../../shared/items.ts";
 import type { ItemOp } from "../../shared/items.ts";
 import { derivesOn, existsIn } from "../../shared/noteplace.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
+import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, PROJECT_SCOPE, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
@@ -3201,8 +3201,9 @@ async function boot(): Promise<void> {
     b.addEventListener("click", () => void sync.setClustering(b.dataset.cluster as ClusterMode));
   }
   /** The outside world on this board or not: a condition of its scope, everyone's (a target's
-   *  view's too: ViewSpec decision 28). */
+   *  view's too: ViewSpec decision 28); the Project always holds it (decision 5). */
   const toggleOutside = () => {
+    if (fixedScope(nav.board.rec)) return say(PROJECT_SCOPE);
     void sync.setScope(setOutside(nav.board.rec.scope, withoutOutside(nav.board.rec.scope))).then((why) => why && say(why));
   };
   // the depth of the whole board, one level at a time; the level shown is read from the folds, so

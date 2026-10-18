@@ -1,12 +1,12 @@
 // The board's settings, in the ⚙ Board popover beside the side panel (ViewSpec decisions 8 and 17):
 // which view this is and whether it is kept, and its scope as chips — the set it starts from, then
 // each condition — that anyone on the board can add to, take from, or rewrite as text; a change is
-// everyone's at once. Below them in the popover, the clustering, the depth and Re-layout (main.ts);
+// everyone's at once. The Project's is said alone: it always holds everything (ViewSpec decision 5). Below them in the popover, the clustering, the depth and Re-layout (main.ts);
 // the side panel keeps the cluster tree, with a note over it (`#board-note`).
 
 import { chainOf, describe, describeCondition, fromChain, parseQuery, printQuery, QueryError } from "../../shared/query.ts";
 import type { Condition, Query } from "../../shared/query.ts";
-import { PROJECT } from "../../shared/views.ts";
+import { fixedScope, PROJECT, PROJECT_SCOPE } from "../../shared/views.ts";
 import type { ViewData } from "../../shared/views.ts";
 import { escapeHtml } from "./highlight.ts";
 import { sectionHead } from "./targetlist.ts";
@@ -103,7 +103,12 @@ export class BoardPanel {
     const shut = this.hooks.shut("filter");
     // every board's scope is changed here, a target's view's too (ViewSpec decision 28)
     html += sectionHead("filter", shut, "Filter", escapeHtml(count));
-    if (!shut && this.editing === "text") {
+    if (!shut && fixedScope(v.rec)) {
+      // the Project is never rescoped (ViewSpec decision 5): its scope is said, and nothing offered
+      html +=
+        `<div class="scope" role="group" aria-label="Scope"><span class="schip" title="${escapeHtml(printQuery(v.rec.scope))}">${escapeHtml(describe(base))}</span></div>` +
+        `<div class="scope-help muted">${escapeHtml(PROJECT_SCOPE)}</div>`;
+    } else if (!shut && this.editing === "text") {
       html +=
         `<form class="scope-edit" data-form="text"><input class="scope-input" value="${escapeHtml(printQuery(v.rec.scope))}" spellcheck="false" autocomplete="off" aria-label="The scope, as a query">` +
         `<div class="scope-help muted">all, tcb(A), uses(A), usedBy(A), decl(A), ns(P), file(P), trusted, external, kind(theorem), status(unreviewed), advice(comment), sorry, nonstandard — joined by and, or, except. Enter applies it for everyone; Esc leaves it.</div>` +
