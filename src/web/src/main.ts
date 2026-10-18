@@ -1202,7 +1202,7 @@ async function boot(): Promise<void> {
   // clustering, depth, Re-layout) and what is trusted (Trusted, with how many prefixes).
   const boardPop = new Popover($("#board-btn"), $("#board-pop"), {
     place: () => besideSide($("#board-btn"), $("#board-pop")),
-    changed: (open) => open && boardPanel.render(),
+    changed: (open) => (open ? boardPanel.render() : boardPanel.reset()),
   });
   const trustPop = new Popover($("#trusted-btn"), $("#trust-list"), {
     place: () => besideSide($("#trusted-btn"), $("#trust-list")),

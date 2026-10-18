@@ -155,9 +155,15 @@ export class BoardPanel {
   }
 
   private close(): void {
+    this.reset();
+    this.render();
+  }
+
+  /** The popover closed: what was being done to the scope is left, so that it opens on the chips
+   *  again, not on a list of conditions or a refusal from before. */
+  reset(): void {
     this.editing = null;
     this.error = null;
-    this.render();
   }
 
   private async clicked(e: MouseEvent): Promise<void> {
