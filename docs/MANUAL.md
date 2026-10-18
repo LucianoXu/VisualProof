@@ -558,12 +558,12 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
 - No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of
   the keys. The tour is the phone's own, in the words of fingers.
 
-### On a tall screen
+### On an upright tablet
 
-A screen wider than a phone and at least 1.2 times as high as it is wide — a tablet held upright, a
-narrow window, a monitor turned on its side — gets a larger screen's page, with everything on it,
-placed for the shape ([PhoneSpec.md](../SPEC/PhoneSpec.md), "Tall screens"). The page changes as
-the screen turns, keeping what you were doing.
+A tablet held upright, or a window narrower than 1000 px and at least 1.2 times as high as it is
+wide, gets a larger screen's page, with everything on it, placed for the shape
+([PhoneSpec.md](../SPEC/PhoneSpec.md), "Tall screens"). The page changes as the screen turns,
+keeping what you were doing.
 
 - **☰**, at the left of the view bar, opens the targets and the board's namespaces or folders as a
   drawer, as on a phone; the board has the whole width.
@@ -575,6 +575,26 @@ the screen turns, keeping what you were doing.
   height. They are not dragged: the dock places them.
 - The review strip and the selection bar go across the top, under the view bar; the legend and the
   zoom's buttons sit just above the sheet.
+
+### On an upright monitor
+
+A monitor turned on its side — at least 1000 px wide and 1.2 times as high, used with a mouse —
+gets a desktop's page with its height put to use ([PhoneSpec.md](../SPEC/PhoneSpec.md), "Upright
+monitors"): the board above, with the side panel at its left, and under it a **work area** across
+the screen while something is in it.
+
+- **The panel** is a pane at the work area's left; alone, it takes the whole width. Activity and the
+  lost-and-found open in its place.
+- **Source windows, the reference window and a conversation** form one column at the panel's
+  right, stacked from the top in that order — the reference the tallest, so that a page of a PDF
+  reads well. One window alone takes the column's height; with no declaration selected the column
+  takes the work area's width. They are not dragged: the column places them, and a collapsed one
+  is a pill at its foot.
+- **Splitters**: drag the one above the work area to share the height with the board, the one
+  between the panel and the column, and those between the windows; a double-click gives each its
+  own size again. Your browser keeps what you set.
+- Everything else is as on a larger screen: popovers, menus, keys, the selection bar under the
+  modes, Tips, Export's window, the Time Machine and the tour.
 
 ## Views
 
