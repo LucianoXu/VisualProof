@@ -28,6 +28,7 @@ import type { ReviewData } from "../../shared/review.ts";
 import { needsReview } from "../../shared/reviewqueue.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { Popover } from "./popover.ts";
+import { trapTab } from "./keepfocus.ts";
 import type { InPlace } from "./intip.ts";
 
 /** What the server says of its release and a newer one (UpdateSpec; `GET /api/updates`): a
@@ -259,6 +260,16 @@ function board(): DOMRect {
   return new DOMRect(left, top, Math.max(40, right - left), Math.max(40, bottom - top));
 }
 
+/** The focus given back to what had it, where it is still on show; else to `fallback`'s element.
+ *  Nothing is focused where the focus has gone on elsewhere meanwhile (a field the reader is in). */
+function giveBack(el: Element | null, fallback?: string): void {
+  const a = document.activeElement;
+  if (a && a !== document.body && !$("#help")!.contains(a) && !$("#tour")!.contains(a)) return;
+  const shown = (e: Element | null): e is HTMLElement => e instanceof HTMLElement && e.isConnected && e !== document.body && (typeof e.checkVisibility !== "function" || e.checkVisibility());
+  const to = shown(el) ? el : fallback ? $(fallback) : null;
+  if (shown(to)) to.focus({ preventScroll: true });
+}
+
 /** "1 declaration", "3 declarations" */
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -425,6 +436,10 @@ export class Guide {
   private newShown: string | null | undefined = undefined;
   /** the release the server runs, as its event stream said (UpdateSpec); null until it says */
   private running: string | null = null;
+  /** what had the focus before the sheet opened, and before the tour or a Show me began: given it
+   *  back when they close */
+  private helpOpener: Element | null = null;
+  private tourOpener: Element | null = null;
 
   constructor(store: Store, hooks: GuideHooks) {
     this.store = store;
@@ -513,12 +528,18 @@ export class Guide {
       "keydown",
       (e) => {
         if (this.el.hidden) return;
-        // the tour has the keys while it shows
+        // the tour has the keys while it shows: Tab goes round the card's buttons (Skip, Back, the
+        // three views, Open Tips), Enter or Space presses the one focused, Enter elsewhere and → go
+        // on, ← back, Esc ends it
         e.stopImmediatePropagation();
-        if (e.key === "Escape") this.stop();
+        e.preventDefault();
+        const buttons = [...this.card.querySelectorAll<HTMLElement>("button")];
+        const at = buttons.indexOf(document.activeElement as HTMLElement);
+        if (e.key === "Tab") buttons[(at + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
+        else if ((e.key === "Enter" || e.key === " ") && at >= 0) buttons[at].click();
+        else if (e.key === "Escape") this.stop();
         else if (e.key === "ArrowRight" || e.key === "Enter") this.next();
         else if (e.key === "ArrowLeft") this.back();
-        e.preventDefault();
       },
       true,
     );
@@ -548,6 +569,8 @@ export class Guide {
       }
     });
     this.help.addEventListener("keydown", (e) => {
+      // the sheet is modal: Tab goes round what is in it, never to the page behind its shade
+      if (e.key === "Tab") return trapTab(this.help.querySelector<HTMLElement>(".help-box") ?? this.help, e);
       // the film larger than its place: Esc steps it back, not out of the sheet
       if (e.key === "Escape" && this.film?.back()) {
         e.preventDefault();
@@ -824,6 +847,7 @@ export class Guide {
   start(): void {
     this.hideWelcome();
     this.setDot(false);
+    this.tourOpener = document.activeElement;
     this.kind = "tour";
     this.placeBefore = this.hooks.place();
     this.inPlace.hush();
@@ -939,6 +963,7 @@ export class Guide {
     }
     if (!step) return;
     this.tips.done(tip.key);
+    this.tourOpener = document.activeElement;
     this.kind = "show";
     this.placeBefore = null;
     this.steps = [step];
@@ -1052,6 +1077,9 @@ export class Guide {
   stop(): void {
     if (this.el.hidden) return;
     this.el.hidden = true;
+    // the focus back where it was when the tour began (the help's button, from the menu)
+    giveBack(this.tourOpener);
+    this.tourOpener = null;
     if (this.kind === "tour") {
       this.store.data.guided = true;
       this.store.save();
@@ -1118,11 +1146,13 @@ export class Guide {
     this.tab = tab;
     // a tip asked for by its ⓘ shows, whatever the filter was
     if (tipId) this.filter = "";
+    // what had the focus, given it back when the sheet closes (a sheet drawn again keeps the first)
+    if (this.help.hidden) this.helpOpener = document.activeElement;
     this.help.innerHTML =
-      `<div class="modal-box glass help-box${phone ? " help-touch" : ""}" role="dialog" aria-label="Help" tabindex="-1">` +
+      `<div class="modal-box glass help-box${phone ? " help-touch" : ""}" role="dialog" aria-modal="true" aria-label="Help" tabindex="-1">` +
       `<div class="help-head"><div class="seg help-tabs" role="tablist" aria-label="Help">` +
       `<button role="tab" data-help-tab="tips">Tips</button><button role="tab" data-help-tab="keys">${keysTab}</button></div>` +
-      `<button class="icon" data-help-close title="Close (Esc)">✕</button></div>` +
+      `<button class="icon" data-help-close title="Close (Esc)" aria-label="Close">✕</button></div>` +
       `<div class="help-pane" data-help-pane="tips" role="tabpanel">` +
       // the film of a review, a card per scene (GuideSpec decision 6)
       `<div class="film-h">A review in thirteen scenes</div><div data-film></div>` +
@@ -1221,7 +1251,12 @@ export class Guide {
     // the editor's field lets go of the focus now, not at the next frame: a key pressed right after
     // Esc is a shortcut again, not text typed into a field no one sees
     if (this.help.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-    if (!this.help.hidden) this.hooks.shown(false, null);
+    if (!this.help.hidden) {
+      this.hooks.shown(false, null);
+      // the focus back where it was: the help's button, the ⓘ that opened it, ⋯ on a phone
+      giveBack(this.helpOpener, isPhone() ? "#more-btn" : "#help-btn");
+      this.helpOpener = null;
+    }
     this.film?.stop();
     this.film = null;
     this.startAt = null;
