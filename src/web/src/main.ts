@@ -2685,11 +2685,12 @@ async function boot(): Promise<void> {
 
   /** Zoom in: a view of what is lit, in a tab of its own, with the same selection; at the board's
    *  build (from the Time Machine too, which is left for it), focused as this view is (ViewSpec
-   *  decision 28). */
+   *  decision 28), and, where it is new, clustered as this board is, as a cluster's Zoom in is (one
+   *  found open keeps its own). */
   const zoomIn = async () => {
     const q = zoomOf(selectionQuery(picks));
     if (!q) return;
-    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(picks), shown, cam: null });
+    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(picks), shown, cam: null }, cm());
     if (typeof r === "string") say(r);
     else if (r) {
       canvas.fit(false);
