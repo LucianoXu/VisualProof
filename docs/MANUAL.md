@@ -69,7 +69,7 @@ The words used here are the next part's; the rest of the manual is the reference
   `Classical.choice`, `Quot.sound`). A part of the project, or the whole outside world, can be
   trusted too, and a part of the outside world no longer trusted, its leaves then read as the
   project's definitions are ([Review](#review)). Trusted declarations stay in the TCB, light green
-  on the board, but need no opinion and are not counted — **nor in a TCB's size**: for flt_regular
+  on the board (a dim green in the dark theme), but need no opinion and are not counted — **nor in a TCB's size**: for flt_regular
   above, the selection bar says *8 lit · +11 trusted*, it and the 7 to read, then what is assumed,
   and the panel's Counts *7 in TCB*, *+11 trusted* beneath. The rest of the TCB, with every
   non-standard axiom the theorem reaches, is its **review set**, what its review counts. "Trusted"
@@ -357,7 +357,7 @@ While `serve` runs, it follows the builds you run yourself:
 
 | State | Meaning | On the canvas, in the Status colours |
 |---|---|---|
-| failed | its last build failed (Lake deleted the `.olean`), or it was never built | its declarations dark grey, the file's outline too |
+| failed | its last build failed (Lake deleted the `.olean`), or it was never built | its declarations dark grey (near white in the dark theme), the file's outline too |
 | blocked | something it imports failed; shown as last built | as last built (by review) |
 | out of date | its source changed since it was built, or something under it did | as last built (by review) |
 | building | being compiled now | its declarations sky blue, the file's outline too |
@@ -494,7 +494,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   going back, or to another tab, gives the new view up.
 - **Colours**: by kind, or by **status** — one colour per declaration for where it stands, the
   most urgent winning: being compiled, build failed, contains `sorry`, commented, stale, approved,
-  not yet reviewed (hollow), trusted (CanvasSpec, "Colour schemes"). A view where the review has a
+  not yet reviewed, trusted (CanvasSpec, "Colour schemes"). A view where the review has a
   focus opens in Status, every other view in Kind; switching (`c`, or the legend) is the reader's own, kept per kind of view (and
   seen by whoever follows you). In
   Status each cluster's outline shows its review's progress, an arc for what is approved and one
@@ -558,6 +558,8 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   release you last saw, are kept in this browser for every project: when the server runs a newer one, the page says **What's new** once, and the tips new
   in it are marked.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
+- **Reduced motion** (the system's setting) is followed on the whole page: nothing glides, fades or
+  pulses — the camera, the linear form, the windows and menus are where they go at once.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
 ### On a phone
@@ -773,8 +775,8 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   found by name, under a warning, and opinions wait until the file is compiled again: the graph,
   and an opinion's hash, are about the compiled version.
 - On the canvas, the Status colours say what reviewers said about the present version (bluish
-  green approved, a calm cobalt blue commented, orange stale, hollow grey nobody yet, very light green
-  trusted without review); the rows of a TCB list carry a dot of the same meaning. A target carries
+  green approved, a calm cobalt blue commented, orange stale, mid grey nobody yet, very light green
+  trusted without review — in the dark theme a dim green, the quietest); the rows of a TCB list carry a dot of the same meaning. A target carries
   a gold star. While you type in a field, the shortcut keys are just text.
 - **Renames** ([HistorySpec.md](../SPEC/HistorySpec.md)): at each build the declarations that vanished are
   paired with those that appeared. A rename of high confidence — the same version once names are

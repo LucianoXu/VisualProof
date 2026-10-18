@@ -6,6 +6,7 @@ import { escapeHtml } from "./highlight.ts";
 import { GROUPS, TIPS } from "./tips.ts";
 import type { Tip } from "./tips.ts";
 import { newer } from "./tipstate.ts";
+import { reducedMotion } from "./theme.ts";
 
 export interface TipsContext {
   /** a read-only reader, or a snapshot: no tip that needs changing the review (decision 10) */
@@ -41,7 +42,7 @@ export function matches(t: Tip, filter: string): boolean {
   return words.every((w) => text.includes(w));
 }
 
-export const reducedMotion = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+export { reducedMotion };
 
 /** A tip's or a chapter's actions: Show me where it can be done here, More into the manual. */
 export function actsHtml(showMe: string | undefined, manual: string | undefined, ctx: Pick<TipsContext, "canShow" | "manual">, attr: string): string {

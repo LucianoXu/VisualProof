@@ -2,11 +2,28 @@
 // light unless they chose otherwise, on every platform (the owner's decision of 2026-10-14). The
 // page's colours follow `data-theme` on <html> (style.css); a script in index.html's <head> sets it
 // before the first paint, from the same stored choice, so a dark page never flashes light.
+//
+// What draws in the theme's colours itself — the board's canvas, the linear form — reads them from
+// the page's custom properties as it draws, and keeps what it drew: it draws again when the theme on
+// show changes (onThemeChange), whoever changed it, in either direction.
+//
+// The system's other preference the page follows is reduced motion (reducedMotion): nothing on the
+// page glides then — style.css's one rule for its transitions and animations, and here for what
+// moves by itself (the board's camera, the linear form coming and going).
 
 export type ThemeChoice = "light" | "dark" | "system";
+export type ThemeShown = "light" | "dark";
 
 const KEY = "visualproof:theme";
-const dark = matchMedia("(prefers-color-scheme: dark)");
+// none without a browser: the artwork command reads the board's module, which reads this one
+const dark = typeof matchMedia === "function" ? matchMedia("(prefers-color-scheme: dark)") : null;
+/** the theme something holds on show over the reader's choice (holdTheme), or none */
+let held: ThemeShown | null = null;
+
+/** Whether the system asks for reduced motion: what would glide is where it goes at once (GuideSpec
+ *  decision 4; the camera, web/src/canvas.ts animate; the linear form, web/src/linear.ts). Read as
+ *  it is asked, so that a change of the setting holds from the next motion. */
+export const reducedMotion = (): boolean => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export function themeChoice(): ThemeChoice {
   try {
@@ -18,10 +35,39 @@ export function themeChoice(): ThemeChoice {
   return "light";
 }
 
-/** Put the choice in force: what <html> says, now and (for "system") whenever the system changes. */
+/** Put the choice in force: what <html> says, now and (for "system") whenever the system changes;
+ *  while a theme is held (holdTheme), that one. */
 export function applyTheme(choice: ThemeChoice = themeChoice()): void {
-  const t = choice === "system" ? (dark.matches ? "dark" : "light") : choice;
+  const t = held ?? (choice === "system" ? (dark?.matches ? "dark" : "light") : choice);
   if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
+}
+
+/** Show `t` whatever the reader chose, until it is let go (null): the artwork mode's theme (web/src/
+ *  main.ts, drawLook), which a change of the system's, followed by "As the system", must not undo
+ *  while the mode is on. Let go, the reader's choice is in force again. */
+export function holdTheme(t: ThemeShown | null): void {
+  held = t;
+  applyTheme();
+}
+
+const followers: (() => void)[] = [];
+let watching: MutationObserver | null = null;
+let shown: string | undefined;
+
+/** Call `f` whenever the theme on show changes, light to dark or back: by the reader's choice, the
+ *  system's while it is followed, an artwork's look. It is read from <html> itself, so that no way of
+ *  changing it is missed; setting it to what it is already is no change. */
+export function onThemeChange(f: () => void): void {
+  followers.push(f);
+  if (watching || typeof MutationObserver === "undefined") return;
+  shown = document.documentElement.dataset.theme;
+  watching = new MutationObserver(() => {
+    const now = document.documentElement.dataset.theme;
+    if (now === shown) return;
+    shown = now;
+    for (const g of followers) g();
+  });
+  watching.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 }
 
 export function setTheme(choice: ThemeChoice): void {
@@ -35,7 +81,7 @@ export function setTheme(choice: ThemeChoice): void {
   applyTheme(choice);
 }
 
-dark.addEventListener("change", () => {
+dark?.addEventListener("change", () => {
   if (themeChoice() === "system") applyTheme("system");
 });
 

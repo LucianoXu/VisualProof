@@ -30,7 +30,7 @@ export const STATUS_COLORS = {
   commented: "#2a62c0",
   stale: "#e69f00",
   approved: "#009e73",
-  unreviewed: "#c7c7cc",
+  unreviewed: "#a6a29c",
   trusted: "#b3e2c2",
 } as const;
 

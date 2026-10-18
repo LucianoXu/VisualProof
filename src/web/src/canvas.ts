@@ -14,11 +14,11 @@ import type { ClusterMode, Layout } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { rgba } from "./gl/gl.ts";
 import type { RGBA } from "./gl/gl.ts";
-import { FLAG_DASHED, FLAG_GLOW, FLAG_HALO, FLAG_RADIAL, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle, segment } from "./gl/renderer.ts";
+import { BUNDLE_STRIDE, FLAG_DASHED, FLAG_GLOW, FLAG_HALO, FLAG_RADIAL, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle, segment } from "./gl/renderer.ts";
 import { joinChains, pathOf } from "./bundles.ts";
 import { EdgeQueue } from "./edgequeue.ts";
 import type { EdgeWorker } from "./edgequeue.ts";
-import { DIM, aim, blendPoints, ease, weightGap, zoomPoint } from "./overview.ts";
+import { DIM, OVERVIEW_CROWD, aim, blendPoints, ease, weightGap, zoomPoint } from "./overview.ts";
 import type { Weighted, Weights } from "./overview.ts";
 import { MODE_SITES } from "../../shared/viewgraph.ts";
 import type { Graph, Mode } from "../../shared/viewgraph.ts";
@@ -30,7 +30,8 @@ import { artNameId } from "../../shared/collab.ts";
 import type { ArtStyle } from "../../shared/collab.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
-import { ST_APPROVED, ST_BUILDING, ST_COMMENTED, ST_FAILED, ST_SORRY, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
+import { onThemeChange, reducedMotion } from "./theme.ts";
+import { clusterTroubles, ST_APPROVED, ST_COMMENTED, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { LEAF_R, Scene } from "./scene.ts";
 import { AXIOM_AT, AXIOM_OUT, AXIOM_W, kindDot, LIT, outside, pickRadius, ringed } from "./axiomring.ts";
@@ -198,6 +199,9 @@ export interface Theme {
   /** the two ends of an edge: the declaration that uses, and the one it uses */
   edgeFrom: RGBA;
   edgeTo: RGBA;
+  /** how much fainter edges are drawn as more of them are drawn at once, beyond what every theme
+   *  does (crowdFade): `--edge-crowd`, 0 for nothing more */
+  edgeCrowd: number;
   kind: Record<string, RGBA>;
   ext: RGBA;
   lit: RGBA;
@@ -236,6 +240,7 @@ export function themeOf(v: (name: string) => string): Theme {
     pin: rgba(v("--label")),
     edgeFrom: rgba(v("--edge-from")),
     edgeTo: rgba(v("--edge-to")),
+    edgeCrowd: Math.max(0, parseFloat(v("--edge-crowd")) || 0),
     kind,
     ext: rgba(v("--k-external")),
     lit: rgba(v("--accent")),
@@ -258,6 +263,15 @@ function sameTarget(a: Target, b: Target): boolean {
   return a.k === (b as typeof a).k;
 }
 
+/** How much fainter each of `n` edges drawn at once is, beyond what every theme does, where more than
+ *  `from` are: (from / n)^crowd, the theme's `crowd` (Theme.edgeCrowd; 1 for a crowd of 0). Edges
+ *  that cross add up towards the colour of their mix, at full opacity once enough of them do: on the
+ *  light ground a dense bundle reads as ink, on the dark one as light — the orange and the blue of
+ *  hundreds of edges a pink-white haze. The dark theme has them step back as they grow many. */
+export function crowdFade(n: number, from: number, crowd: number): number {
+  return crowd > 0 && n > from ? (from / n) ** crowd : 1;
+}
+
 /** A colour at `k` of its opacity. */
 const fade = (c: RGBA, k: number): RGBA => [c[0], c[1], c[2], c[3] * k];
 
@@ -271,23 +285,6 @@ const CARD_CAP = 180;
 /** position ids kept past the scene's for the visitors and their temporary clusters, whose edges are
  *  bundled through them (web/src/visits.ts, visitChain) */
 const VISIT_SLOTS = 256;
-
-/** A file cluster's own build trouble, as a Status code (failed, building, sorry), or -1: what its
- *  outline shows in the Status scheme. Trouble inherited from below (blocked, out of date because
- *  something under it changed) is left out, so that one failure does not ring every file above it. */
-function troubleOf(f: FileStatus | undefined): number {
-  switch (f?.state) {
-    case "failed":
-    case "unbuilt":
-      return ST_FAILED;
-    case "building":
-      return ST_BUILDING;
-    case "sorry":
-      return ST_SORRY;
-    default:
-      return -1;
-  }
-}
 
 /** A press, until it is let go. On a target with the layout locked, `pan` holds where the camera
  *  was: a drag pans, a click still selects and a double-click still folds. */
@@ -380,7 +377,8 @@ export class GraphCanvas {
   private sceneDirty = true;
   private anim: number | null = null;
   private repSeen = -1;
-  /** each file cluster's own build trouble (troubleOf), for its outline in the Status scheme */
+  /** each cluster's own build trouble (status.ts, clusterTroubles), -1 for none: its outline in the
+   *  Status scheme */
   private clusterTrouble = new Int8Array(0);
   private files = new Map<string, FileStatus>();
   /** how the layout on show clusters: a file's own build trouble outlines its cluster only when
@@ -479,6 +477,8 @@ export class GraphCanvas {
   private overviewStyled = "";
   private overviewStyle = 0;
   private overviewDrawn = "";
+  /** counts the themes the board has been drawn in (setTheme): the overview's drawing is of one */
+  private themeSerial = 0;
   /** the reader's visitors (setVisitors), and those of them selected (ringed as a selected point is) */
   private visitors: VisitorPoint[] = [];
   private visitorSel: number[] = [];
@@ -524,11 +524,9 @@ export class GraphCanvas {
       return;
     }
     this.theme = readTheme();
-    // light or dark changed (the reader's choice, or the system's): the colours are read again
-    new MutationObserver(() => {
-      this.theme = readTheme();
-      this.invalidate();
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    // light or dark changed (the reader's choice, the system's, an artwork's look): the colours are
+    // read again
+    onThemeChange(() => this.setTheme(readTheme()));
     new ResizeObserver(() => this.resize()).observe(this.canvas);
     this.resize();
     this.bindInput();
@@ -557,6 +555,14 @@ export class GraphCanvas {
 
   request(): void {
     this.dirty = true;
+  }
+
+  /** The board's colours are `th` now (the theme on show changed): everything is drawn again in them,
+   *  the overview's edges too, whose drawing is otherwise kept while what it shows is the same. */
+  setTheme(th: Theme): void {
+    this.theme = th;
+    this.themeSerial++;
+    this.invalidate();
   }
 
   /** Without a browser (ExportSpec decision 21): draw until nothing more comes — the scene at rest,
@@ -814,11 +820,9 @@ export class GraphCanvas {
 
   private recomputeStates(): void {
     if (!this.layout) return;
-    this.clusterTrouble = new Int8Array(this.layout.clusters.length);
-    // in the file layout a cluster is a module (or a directory of them); under namespaces a
-    // cluster's key is a namespace, which can read like a module's name without being its file
-    if (this.clustering !== "module") return;
-    this.layout.clusters.forEach((c, k) => (this.clusterTrouble[k] = troubleOf(this.files.get(c.key))));
+    // in the file layout a cluster is a module (or a directory of them); under namespaces none has
+    // an outline of its own
+    this.clusterTrouble = clusterTroubles(this.layout.clusters, this.clustering, this.files);
   }
 
   setLayout(layout: Layout, places: PinState, foldedKeys: string[], clustering: ClusterMode): void {
@@ -1686,8 +1690,10 @@ export class GraphCanvas {
     this.animate({ x, y, k }, dur);
   }
 
-  /** The camera carried to `goal` over `dur` ms, easing in and out. */
+  /** The camera carried to `goal` over `dur` ms, easing in and out; with reduced motion there at
+   *  once (theme.ts, reducedMotion): a flight, a fit, the zoom buttons, an artwork's frame closing in. */
   private animate(goal: { x: number; y: number; k: number }, dur: number): void {
+    if (reducedMotion()) return this.jumpTo(goal);
     if (this.anim) cancelAnimationFrame(this.anim);
     const { x, y, k } = goal;
     this.camGoal = { x, y, k };
@@ -2225,7 +2231,9 @@ export class GraphCanvas {
     sel.clear();
     if (act && this.edges.length && this.art?.edges !== "none") {
       const count = this.edges.length / 3;
-      const fade = count < 250 ? 1 : Math.max(0.25, Math.sqrt(250 / count));
+      // the theme's own fading (crowdFade) from fewer: a selection's edges are bundled into few
+      // trunks, a hundred of them already one bright band
+      const fade = (count < 250 ? 1 : Math.max(0.25, Math.sqrt(250 / count))) * crowdFade(count, 100, th.edgeCrowd);
       const width = count > 4000 ? 1 : 1.6;
       const rep = S.nodeRep;
       const id = (i: number) => (rep[i] >= 0 ? rep[i] : S.nc + i);
@@ -2645,7 +2653,7 @@ export class GraphCanvas {
       const p = Q.points.get(point)!;
       return { looks: p.looks, index: Q.indexOf(p), w, scale: dimNow / (p.dim ? DIM : 1) };
     });
-    const drawn = `${this.overviewStyle}|${dim}|${W.map((x) => `${Q.points.get(x.point)!.serial}:${x.w.toFixed(3)}`).join(",")}`;
+    const drawn = `${this.themeSerial}|${this.overviewStyle}|${dim}|${W.map((x) => `${Q.points.get(x.point)!.serial}:${x.w.toFixed(3)}`).join(",")}`;
     if (drawn === this.overviewDrawn) return;
     this.overviewDrawn = drawn;
     const c0: RGBA = [0, 0, 0, 0], c1: RGBA = [0, 0, 0, 0];
@@ -2659,6 +2667,15 @@ export class GraphCanvas {
       [c1[0], c1[1], c1[2], c1[3]] = [to[0], to[1], to[2], (styled ? to[3] : 1) * alpha];
       bundlePath(L, P.path, 8 * j, P.len[j], beta, width, c0, c1);
     });
+    // the theme's own fading with their number (crowdFade), from the number at which the overview's
+    // choice starts fading them (web/src/overview.ts, looksOf)
+    const k = crowdFade(L.count, OVERVIEW_CROWD, this.theme.edgeCrowd);
+    if (k < 1)
+      for (let n = 0; n < L.count; n++) {
+        const o = n * BUNDLE_STRIDE;
+        L.data[o + 15] *= k;
+        L.data[o + 19] *= k;
+      }
   }
 
   /** The colours of a bundled edge from `a` to `b` (ids of the scene's clusters, and of its

@@ -37,6 +37,7 @@ import type { LineDiff } from "./linediff.ts";
 import { renderComment } from "./markdown.ts";
 import { membersOf } from "./trust.ts";
 import { invitedNames, VERIFIED } from "./verified.ts";
+import { reducedMotion } from "./theme.ts";
 import { MAX_NAME, sameName } from "../../shared/collab.ts";
 
 /** "3 h ago", for an opinion. */
@@ -522,7 +523,7 @@ export class ReviewBox {
     el.classList.add("rv-flash");
     if (!f.shown.has(root)) {
       f.shown.add(root);
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
     }
     f.since ||= now;
     return true;
