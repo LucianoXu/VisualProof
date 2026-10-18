@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzipSync, gzip, gzipSync } from "node:zlib";
 import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
 import { makeArtwork, pngOf, projectView } from "./artcmd.ts";
@@ -1218,13 +1218,15 @@ function tooLarge(req: IncomingMessage, res: ServerResponse, body: object): void
 
 /** Send a JSON answer, once: a handler that answers after something else already did (a body too
  *  large, answered as it was read) is not heard. */
-function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Record<string, string> = {}): void {
+export function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Record<string, string> = {}): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
   const text = JSON.stringify(body);
-  // a small answer is not worth compressing; a status with its build log, a source file, are
+  // a small answer is not worth compressing; a status with its build log, a source file, are; a
+  // large one is compressed off the server's thread, which meanwhile answers others
   if (text.length > JSON_GZIP_FROM && acceptsGzip(res.req)) {
     res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", "content-encoding": "gzip", vary: "accept-encoding", ...headers });
-    return void res.end(gzipSync(text));
+    if (text.length < JSON_GZIP_AWAY_FROM) return void res.end(gzipSync(text));
+    return void gzip(text, (e, gz) => (e ? res.destroy(e) : res.end(gz)));
   }
   res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...headers });
   res.end(text);
@@ -1270,6 +1272,10 @@ export function reachedAt(req: IncomingMessage): string {
 
 /** characters from which a JSON answer is sent compressed */
 const JSON_GZIP_FROM = 2048;
+/** characters from which a JSON answer is compressed off the server's thread: a snapshot's whole
+ *  graph on NavierStokesAndEuler (GET /api/agent/history/graph, 105 MB of JSON) was 2 to 3 s of
+ *  compressing, every page and agent waiting meanwhile */
+export const JSON_GZIP_AWAY_FROM = 1 << 20;
 
 /** the graph's parts as sent, each tagged once (a graph's buffers live as long as it does) */
 const gzTags = new WeakMap<Buffer, string>();

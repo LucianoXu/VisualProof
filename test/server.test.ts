@@ -24,6 +24,7 @@ import type { ClusterMode, Layout, ViewMeta, ViewNode } from "../src/shared/grap
 import { LAYOUT_VERSION, SITE_STMT } from "../src/shared/graph.ts";
 import { computeLayout } from "../src/shared/layout.ts";
 import { isPackedEdges, unpackEdges } from "../src/shared/edgecodec.ts";
+import { JSON_GZIP_AWAY_FROM, sendJson } from "../src/server/main.ts";
 import { site, SOURCE, stream } from "./site.ts";
 import type { Json } from "./site.ts";
 
@@ -327,6 +328,37 @@ test("what a page has already is not sent again; the page's files, the graph and
   } finally {
     await S.close();
   }
+});
+
+test("a large JSON answer is compressed off the server's thread: the thread answers others meanwhile, the answer the same", async () => {
+  /** an answer as sendJson writes it: its head, then its body, and when */
+  const answer = () => {
+    const r = { head: null as Record<string, string> | null, body: null as Buffer | null, ended: false };
+    const res = {
+      headersSent: false,
+      writableEnded: false,
+      req: { headers: { "accept-encoding": "gzip" } },
+      writeHead: (_code: number, head: Record<string, string>) => void (r.head = head),
+      end: (b: Buffer) => {
+        r.body = b;
+        r.ended = true;
+      },
+      destroy: (e: Error) => assert.fail(e),
+    };
+    return { r, res: res as unknown as ServerResponse };
+  };
+  const large = { items: Array.from({ length: JSON_GZIP_AWAY_FROM / 8 }, (_, i) => `item ${i}`) };
+  assert.ok(JSON.stringify(large).length > JSON_GZIP_AWAY_FROM);
+  const a = answer();
+  sendJson(a.res, large);
+  assert.equal(a.r.head?.["content-encoding"], "gzip");
+  assert.equal(a.r.ended, false, "not compressed on the server's thread");
+  // a small one, meanwhile: at once
+  const b = answer();
+  sendJson(b.res, { items: large.items.slice(0, 1000) });
+  assert.equal(b.r.ended, true);
+  for (let k = 0; k < 200 && !a.r.ended; k++) await new Promise((ok) => setTimeout(ok, 10));
+  assert.deepEqual(JSON.parse(gunzipSync(a.r.body!).toString("utf8")), large);
 });
 
 test("export: people and agents typeset the document of a view and fetch it; an agent has one job at a time", async () => {
