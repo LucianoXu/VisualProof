@@ -326,7 +326,7 @@ export class OverviewModel {
     const Y = (id: number) => (id < nc ? S.cwy[id] : S.nwy[id - nc]);
     // many bundles share the screen: the more there are, the fainter each; with a selection the
     // overview steps back so the selection's own edges read
-    const crowd = Math.min(1, Math.sqrt(400 / Math.max(1, n)));
+    const crowd = Math.min(1, Math.sqrt(OVERVIEW_CROWD / Math.max(1, n)));
     const fade = (ask.dim ? DIM : 1) * crowd;
     // few edges in view (zoomed in): even a single one clearly visible
     const floor = 0.05 + 0.3 * Math.min(1, Math.max(0, (1200 - nIn) / 900));
@@ -352,6 +352,10 @@ export class OverviewModel {
     return looks;
   }
 }
+
+/** The number of bundles past which the more there are, the fainter each (looksOf); a theme's own
+ *  fading with their number starts there too (web/src/canvas.ts, crowdFade). */
+export const OVERVIEW_CROWD = 400;
 
 /** How much a selection dims the overview, so that its own edges read, the rest still seen faintly:
  *  on the board and in an artwork alike (the owner's decision of 2026-10-15; 0.12 before). */

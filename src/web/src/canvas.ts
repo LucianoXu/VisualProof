@@ -14,11 +14,11 @@ import type { ClusterMode, Layout } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { rgba } from "./gl/gl.ts";
 import type { RGBA } from "./gl/gl.ts";
-import { FLAG_DASHED, FLAG_GLOW, FLAG_HALO, FLAG_RADIAL, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle, segment } from "./gl/renderer.ts";
+import { BUNDLE_STRIDE, FLAG_DASHED, FLAG_GLOW, FLAG_HALO, FLAG_RADIAL, FLAG_SHADED, Renderer, UNIT_DOT, UNIT_WORLD, bundle, bundlePath, circle, segment } from "./gl/renderer.ts";
 import { joinChains, pathOf } from "./bundles.ts";
 import { EdgeQueue } from "./edgequeue.ts";
 import type { EdgeWorker } from "./edgequeue.ts";
-import { DIM, aim, blendPoints, ease, weightGap, zoomPoint } from "./overview.ts";
+import { DIM, OVERVIEW_CROWD, aim, blendPoints, ease, weightGap, zoomPoint } from "./overview.ts";
 import type { Weighted, Weights } from "./overview.ts";
 import { MODE_SITES } from "../../shared/viewgraph.ts";
 import type { Graph, Mode } from "../../shared/viewgraph.ts";
@@ -199,6 +199,9 @@ export interface Theme {
   /** the two ends of an edge: the declaration that uses, and the one it uses */
   edgeFrom: RGBA;
   edgeTo: RGBA;
+  /** how much fainter edges are drawn as more of them are drawn at once, beyond what every theme
+   *  does (crowdFade): `--edge-crowd`, 0 for nothing more */
+  edgeCrowd: number;
   kind: Record<string, RGBA>;
   ext: RGBA;
   lit: RGBA;
@@ -237,6 +240,7 @@ export function themeOf(v: (name: string) => string): Theme {
     pin: rgba(v("--label")),
     edgeFrom: rgba(v("--edge-from")),
     edgeTo: rgba(v("--edge-to")),
+    edgeCrowd: Math.max(0, parseFloat(v("--edge-crowd")) || 0),
     kind,
     ext: rgba(v("--k-external")),
     lit: rgba(v("--accent")),
@@ -257,6 +261,15 @@ function sameTarget(a: Target, b: Target): boolean {
   if (a.kind === "node") return a.i === (b as typeof a).i;
   if (a.kind === "cluster") return a.c === (b as typeof a).c;
   return a.k === (b as typeof a).k;
+}
+
+/** How much fainter each of `n` edges drawn at once is, beyond what every theme does, where more than
+ *  `from` are: (from / n)^crowd, the theme's `crowd` (Theme.edgeCrowd; 1 for a crowd of 0). Edges
+ *  that cross add up towards the colour of their mix, at full opacity once enough of them do: on the
+ *  light ground a dense bundle reads as ink, on the dark one as light — the orange and the blue of
+ *  hundreds of edges a pink-white haze. The dark theme has them step back as they grow many. */
+export function crowdFade(n: number, from: number, crowd: number): number {
+  return crowd > 0 && n > from ? (from / n) ** crowd : 1;
 }
 
 /** A colour at `k` of its opacity. */
@@ -2216,7 +2229,9 @@ export class GraphCanvas {
     sel.clear();
     if (act && this.edges.length && this.art?.edges !== "none") {
       const count = this.edges.length / 3;
-      const fade = count < 250 ? 1 : Math.max(0.25, Math.sqrt(250 / count));
+      // the theme's own fading (crowdFade) from fewer: a selection's edges are bundled into few
+      // trunks, a hundred of them already one bright band
+      const fade = (count < 250 ? 1 : Math.max(0.25, Math.sqrt(250 / count))) * crowdFade(count, 100, th.edgeCrowd);
       const width = count > 4000 ? 1 : 1.6;
       const rep = S.nodeRep;
       const id = (i: number) => (rep[i] >= 0 ? rep[i] : S.nc + i);
@@ -2650,6 +2665,15 @@ export class GraphCanvas {
       [c1[0], c1[1], c1[2], c1[3]] = [to[0], to[1], to[2], (styled ? to[3] : 1) * alpha];
       bundlePath(L, P.path, 8 * j, P.len[j], beta, width, c0, c1);
     });
+    // the theme's own fading with their number (crowdFade), from the number at which the overview's
+    // choice starts fading them (web/src/overview.ts, looksOf)
+    const k = crowdFade(L.count, OVERVIEW_CROWD, this.theme.edgeCrowd);
+    if (k < 1)
+      for (let n = 0; n < L.count; n++) {
+        const o = n * BUNDLE_STRIDE;
+        L.data[o + 15] *= k;
+        L.data[o + 19] *= k;
+      }
   }
 
   /** The colours of a bundled edge from `a` to `b` (ids of the scene's clusters, and of its

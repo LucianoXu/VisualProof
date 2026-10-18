@@ -13,7 +13,7 @@ import { SITE_STMT } from "../src/shared/graph.ts";
 import { computeLayout } from "../src/shared/layout.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
 import { cssTheme, SvgContext } from "../src/web/src/artwork.ts";
-import { GraphCanvas, themeOf } from "../src/web/src/canvas.ts";
+import { crowdFade, GraphCanvas, themeOf } from "../src/web/src/canvas.ts";
 
 const css = readFileSync(join(import.meta.dirname, "../src/web/style.css"), "utf8");
 
@@ -71,6 +71,60 @@ test("the board's overview edges are drawn again in the new theme's colours, lig
   C.setTheme(themeOf(cssTheme(css, false)));
   C.settle();
   assert.deepEqual(overviewEnds(C), ends(false), "dark to light");
+});
+
+test("on the dark ground edges step back as they grow many, on the light one as they did; their ends saturated there", () => {
+  const light = themeOf(cssTheme(css, false)), dark = themeOf(cssTheme(css, true));
+  assert.equal(light.edgeCrowd, 0, "the light theme: nothing more");
+  assert.ok(dark.edgeCrowd > 0);
+  for (const n of [10, 100, 400, 2000, 50000]) assert.equal(crowdFade(n, 100, light.edgeCrowd), 1);
+  // nothing below the number it starts from, then fainter the more there are, never nothing
+  assert.equal(crowdFade(100, 100, dark.edgeCrowd), 1);
+  assert.equal(crowdFade(40, 100, dark.edgeCrowd), 1);
+  let was = 1;
+  for (const n of [150, 313, 1000, 5000]) {
+    const k = crowdFade(n, 100, dark.edgeCrowd);
+    assert.ok(k < was && k > 0, `${n}: ${k}`);
+    was = k;
+  }
+  assert.ok(Math.abs(crowdFade(400, 100, 0.5) - 0.5) < 1e-12);
+  // the dark ends saturated, so that many mix into a colour: the paler blue before (#748ffc, 0.53)
+  // mixed with its orange into a pink-white
+  const sat = (c: number[]) => Math.max(...c.slice(0, 3)) - Math.min(...c.slice(0, 3));
+  for (const k of ["edgeFrom", "edgeTo"] as const) assert.ok(sat(dark[k]) >= 0.6, `${k}: ${dark[k]}`);
+});
+
+test("the dark theme's overview of many edges is drawn fainter by its crowd, the light theme's as before", () => {
+  // a board of many clusters and an edge between each two: past the overview's 400 bundles
+  const nodes: ViewNode[] = [];
+  const pairs: number[] = [];
+  for (let c = 0; c < 40; c++) for (let j = 0; j < 2; j++) nodes.push({ name: `N${c}.d${j}`, kind: "def", module: "M", ax: 0, hash: `${c}.${j}` });
+  for (let a = 0; a < 40; a++) for (let b = 0; b < a; b++) pairs.push(2 * a, 2 * b + 1, SITE_STMT);
+  const edges = new Int32Array(pairs);
+  const g = new Graph({ nodes, projectCount: nodes.length, axioms: [], axiomSets: [[]], layouts: {}, edgeCount: pairs.length / 3 } as unknown as ViewMeta, edges);
+  const drawn = (dark: boolean, crowd?: number) => {
+    const none = () => {};
+    const th = themeOf(cssTheme(css, dark));
+    if (crowd !== undefined) th.edgeCrowd = crowd;
+    const C = new GraphCanvas(null, null, null, g, { nodeClick: none, clusterClick: none, backgroundClick: none, hover: none, pinsChanged: none, foldChanged: none }, { w: 1600, h: 1000, theme: th, ctx: new SvgContext((t) => t.length * 6, "sans-serif") as unknown as CanvasRenderingContext2D });
+    C.setGraph(g);
+    C.setLayout(computeLayout("namespace", nodes, edges), { nodes: {}, clusters: {} }, [], "namespace");
+    C.setShowExternals(true);
+    const cam = C.fitCam({ x: 0, y: 0, w: 1600, h: 1000 });
+    if (cam) C.jumpTo(cam);
+    C.settle();
+    const L = C.gl.drawn().find((l) => l.name === "overview")!;
+    const alphas: number[] = [];
+    for (let n = 0; n < L.count; n++) alphas.push(L.data[n * L.stride + 15]);
+    return alphas;
+  };
+  const plain = drawn(true, 0), stepped = drawn(true);
+  assert.ok(plain.length > 400, `${plain.length} bundles`);
+  assert.equal(stepped.length, plain.length, "the same edges");
+  const k = crowdFade(plain.length, 400, themeOf(cssTheme(css, true)).edgeCrowd);
+  assert.ok(k < 1);
+  stepped.forEach((a, j) => assert.ok(Math.abs(a - plain[j] * k) < 1e-6, `bundle ${j}`));
+  assert.deepEqual(drawn(false), drawn(false, 0), "the light theme's as before");
 });
 
 /** A stand-in for the browser theme.ts runs in: <html>'s data-theme, the system's preference (which

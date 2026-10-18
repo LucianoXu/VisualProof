@@ -53,9 +53,14 @@
   /* the mark of someone invited by a personal link (CollabSpec decision 9): the accent, apart from
      every colour of the review's status */
   --verified: #6a4be0;
-  /* an edge runs from the declaration that uses (from) to the one it uses (to) */
+  /* an edge runs from the declaration that uses (from) to the one it uses (to); the overview's
+     edges take only their hue, at opacities of their own (web/src/overview.ts, looksOf) */
   --edge-from: rgba(240, 110, 20, 0.85);
   --edge-to: rgba(59, 91, 219, 0.85);
+  /* how much fainter each edge is drawn as more are drawn at once, beyond what the board does in
+     every theme (web/src/canvas.ts, crowdFade): none on the light ground, where edges that cross
+     add up to ink */
+  --edge-crowd: 0;
 
   --k-def: #0a84ff;
   --k-abbrev: #40c8e0;
@@ -175,8 +180,13 @@
   --disc: rgba(150, 170, 255, 0.045);
   --disc-line: rgba(160, 178, 255, 0.15);
   --label: rgba(226, 231, 246, 0.62);
-  --edge-from: rgba(255, 140, 80, 0.6);
-  --edge-to: rgba(120, 138, 255, 0.68);
+  /* the edges: on the dark ground the edges that cross add up to light, a dense bundle of orange
+     and blue a pink-white haze. Their ends are deeper and more saturated than the light theme's,
+     so that where many cross they mix into a colour rather than into white, and they step back as
+     they grow many: (from / n)^0.6 past a hundred of a selection's, past the overview's 400 */
+  --edge-from: rgba(255, 116, 38, 0.55);
+  --edge-to: rgba(90, 112, 255, 0.62);
+  --edge-crowd: 0.6;
   --target-star-edge: rgba(0, 0, 0, 0.55);
   --k-theorem: #8b7fd0;
   --k-notation: #b89b74;
