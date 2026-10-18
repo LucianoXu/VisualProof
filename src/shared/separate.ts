@@ -205,6 +205,10 @@ export class BoxGrid {
     let n = m;
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) n = this.cell(i, j, n);
     // each once
+    if (this.token >= 0x3fffffff) {
+      this.stamp.fill(0);
+      this.token = 0;
+    }
     const t = ++this.token;
     const stamp = this.stamp, found = this.found;
     let k = 0;
@@ -500,6 +504,11 @@ export class Separator {
     let budget = small ? (moved[a] ? list.length : nMovedSmall) : list.length - p - 1;
     if (budget === 0) return false;
     if (!(4 * this.lookCells(B, a, qx, qy, small) <= budget)) return this.plain(B, p, small, after, nMovedSmall);
+    if (this.turn >= 0x3fffffff) {
+      // the marks start again before they could wrap round
+      this.seen.fill(0);
+      this.turn = 0;
+    }
     const t = ++this.turn;
     this.nRects = 0;
     let nc = this.gather(B, a, qx, qy, small, after, t, 0, 0);
