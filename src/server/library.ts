@@ -244,6 +244,9 @@ export class LibraryApi {
     if (had) {
       let restored = {};
       if (had.archived) {
+        // the same bytes again restore the file, as Restore does: what others made, an agent
+        // restores at level full only (decision 20), whichever way it asks
+        if (this.mayChange(had, who, "This file")) return fail(403, `${had.title} is in the library already, archived by ${had.archived.by}; it was added by ${had.by}: an agent restores what others made at level full only.`, "Ask a person to restore it from the library's archive, or for a token at level full.");
         const r = this.record({ op: "file-restore", sha: put.sha }, who);
         const no = this.written(r);
         if (no) return no;
