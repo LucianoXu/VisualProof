@@ -31,7 +31,7 @@ export const SOURCE = "namespace N\ndef a : Nat := 0\ndef b : Nat := a\nend N\n"
 
 /** A project whose graph has one module, M, beside two files that are no module of it (an old
  *  copy, a CI script); a live server on it, with a graph of its own, serving on a free port. */
-export async function site(opts: { key?: string; exporter?: boolean; agents?: AgentLevel; publicUrl?: string; publicRead?: boolean; identityHeader?: string } = {}) {
+export async function site(opts: { key?: string; exporter?: boolean; agents?: AgentLevel; publicUrl?: string; publicRead?: boolean; identityHeader?: string; allowedHosts?: string[] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "vp-server-"));
   writeFileSync(join(dir, "lean-toolchain"), "leanprover/lean4:v4.33.1\n");
   writeFileSync(join(dir, "M.lean"), SOURCE);
@@ -64,7 +64,7 @@ export async function site(opts: { key?: string; exporter?: boolean; agents?: Ag
   const live = new Live(project, dirs, null, new ReviewStore(dir, join(dir, "review")));
   live.graph = { version: 1, fingerprint: "f", at: "", missing: [], prep: { fingerprint: "f", cached: true, metaGz: gzipSync(JSON.stringify(meta)), edgesGz: gzipSync(Buffer.from(edges.buffer)) } };
   const hover = new LeanHover(project, dirs.cache);
-  const app = new App(live, hover, new Identities(opts.identityHeader ?? null), new AgentApi(live, hover, opts.agents ?? "full"), opts.key ? new Access(opts.key) : null, opts.exporter ? new Exporter(dirs.cache) : null, opts.publicUrl ?? null, opts.publicRead ?? false);
+  const app = new App(live, hover, new Identities(opts.identityHeader ?? null), new AgentApi(live, hover, opts.agents ?? "full"), opts.key ? new Access(opts.key) : null, opts.exporter ? new Exporter(dirs.cache) : null, opts.publicUrl ?? null, opts.publicRead ?? false, opts.allowedHosts ?? []);
   const server: Server = createServer((req, res) => app.handle(req, res));
   await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;

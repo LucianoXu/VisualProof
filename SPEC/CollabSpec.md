@@ -131,6 +131,16 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
     - **Share's tabs** become *Guest link* (decision 7's *Public link*, renamed: it makes guests),
       *Read-only link*, *Invite a person* and *AI agent*. "Exactly what I see" (decision 7) holds for
       a read-only link as for the others.
+12. **Without a key, only the names it is reached at** (the owner's decision of 2026-10-18). A server
+    without `--access-key-file` lets in whoever reaches its port — and so any web page a browser on
+    that machine opens, by DNS rebinding: the page's own name made to resolve to the machine, its
+    scripts read and write the server as their own site. Such a server answers a request only for
+    an IP address (IPv6 in brackets), `localhost` and the names under it, `--public-url`'s host, and
+    the names given with `--allowed-host` (repeatable), at any port and in any case; any other name,
+    and a request without one, is answered 403 on every route, the page, the event stream and the
+    agents' API alike, saying which option lets a name in. A page reaches an address only as that
+    address, and browsers resolve `localhost` themselves: neither can be a name a page chose. With a
+    key nothing changes: the key keeps out whoever was not given it, by any name. SECURITY.md.
 
 ## What the page shows
 
@@ -277,6 +287,11 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
 - **The timeline**: `<site>/events.jsonl`, appended; the last 90 days and at most 5,000 events. The
   review's and the library's events are read from the logs, not stored there (a library event never
   carries a quote). Trust changes need a name.
+- **The names without a key** (decision 12, server/access.ts `hostAllowed`): the Host header, its
+  port set aside; a name compared in lowercase, without the dot of a fully qualified one
+  (`example.org.`). Refused: 403, plain text naming `--allowed-host`, and the server's console says
+  each name it refused once (twenty at most: whoever asks chooses them). The start says the names
+  answered.
 - **The access cookie** is named per instance, `visualproof_access_<12 hex of a hash of the key>`
   (cookies are per host, not per port); its value is derived from the key, never the key. One under
   the old shared name `visualproof_access` is let in and replaced.
