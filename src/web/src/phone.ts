@@ -124,7 +124,8 @@ const DOCKED = "#windows > :is(.sw-win, .pw-win, #following.talking):not(.collap
 export function tallInsets(): { left: number; right: number; top: number; bottom: number } {
   const $ = (id: string) => document.getElementById(id);
   const bar = $("selbar")!;
-  const strip = [$("lensbar"), $("tm-kept")].find((e) => e && !e.hidden);
+  // the note of a kept view sits under the review strip where both show
+  const strip = [$("tm-kept"), $("lensbar")].find((e) => e && !e.hidden);
   const under = !bar.hidden ? bar.getBoundingClientRect().bottom : strip ? strip.getBoundingClientRect().bottom : $("viewbar")!.getBoundingClientRect().bottom;
   // the sheet or the dock: offsetHeight, not the bounding box, as either may still be sliding in
   let low = 0;

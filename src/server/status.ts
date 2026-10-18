@@ -252,7 +252,9 @@ export class BuildTracker {
   private p: Project;
   /** when outputs were last seen changing, to bridge the gaps between compile processes */
   private lastChange = 0;
-  private lastStamp = "";
+  /** each module's outputs as last seen (outputsMoved), and when; null before the first look */
+  private seen: Map<string, string> | null = null;
+  private seenAt = 0;
   private buildStart = 0;
   private expected: Set<string> | null = null;
 
@@ -264,12 +266,7 @@ export class BuildTracker {
     const p = this.p;
     const now = Date.now();
     const running = await compiling(p);
-    // only outputs moving count as a build: an edit to a source is not one
-    const st = outputStamp(p, mods);
-    if (st !== this.lastStamp) {
-      if (this.lastStamp) this.lastChange = now;
-      this.lastStamp = st;
-    }
+    if (this.outputsMoved(mods, now)) this.lastChange = now;
     const active = running.size > 0 || now - this.lastChange < 2500;
 
     const probes = new Map<string, Probe>();
@@ -353,6 +350,29 @@ export class BuildTracker {
     const counts = { ok: 0, sorry: 0, failed: 0, unbuilt: 0, building: 0, queued: 0, stale: 0, blocked: 0 } as Record<FileState, number>;
     for (const f of files) counts[f.state]++;
     return { active, progress, files, counts };
+  }
+
+  /** Whether the build's outputs moved since the last look: only outputs moving count as a build.
+   *  An edit to a source is not one, nor a file the project gains or loses while nothing is written
+   *  (an import added of a file not built yet, one taken out): a module new to the list moved only
+   *  where what it has was written since the last look. The first look is no change. */
+  private outputsMoved(mods: Map<string, ModuleInfo>, now: number): boolean {
+    const was = this.seen;
+    const since = this.seenAt;
+    const next = new Map<string, string>();
+    let moved = false;
+    for (const m of mods.values()) {
+      const base = join(this.p.libDir, ...m.name.split("."));
+      const olean = mtime(base + ".olean"), trace = mtime(base + ".trace");
+      const s = `${olean}:${trace}`;
+      next.set(m.name, s);
+      if (!was) continue;
+      const before = was.get(m.name);
+      if (before === undefined ? Math.max(olean ?? 0, trace ?? 0) > since : before !== s) moved = true;
+    }
+    this.seen = next;
+    this.seenAt = now;
+    return moved;
   }
 }
 

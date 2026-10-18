@@ -87,7 +87,7 @@ import { ReviewFlow } from "./reviewqueue.ts";
 import { SearchBox } from "./search.ts";
 import { SelectionBar } from "./selbar.ts";
 import type { LitCount } from "./selbar.ts";
-import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
+import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, followRenames, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Shown, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -1329,12 +1329,18 @@ async function boot(): Promise<void> {
     // the panel, or the timeline's drawer in its place; the selection bar heads that column, which
     // it moves down by its height
     const open = $("#panel").classList.contains("open") || $("#activity").classList.contains("open") || $("#lostfound").classList.contains("open");
-    // the review strip, or the note of a view kept at a past build, in the same place
-    const strip = !$("#lensbar").hidden || !$("#tm-kept").hidden;
+    // the review strip, and under it the note of a view kept at a past build: a kept view focused
+    // on a target has both (HistorySpec decision 19)
+    const height = (id: string) => ($(id).hidden ? 0 : $(id).offsetHeight + 6);
+    const lens = height("#lensbar"), kept = height("#tm-kept");
+    const strip = lens + kept > 0;
+    // the note's height too, where it is the second
+    const second = lens && kept;
     const bar = $("#selbar");
     document.body.style.setProperty("--selbar-h", bar.hidden ? "0px" : `${bar.offsetHeight + 8}px`);
-    // on a phone the selection bar goes under the strip
-    document.body.style.setProperty("--strip-h", strip ? `${$(!$("#lensbar").hidden ? "#lensbar" : "#tm-kept").offsetHeight + 6}px` : "0px");
+    document.body.style.setProperty("--lens-h", `${lens}px`);
+    // on a phone the selection bar goes under them both
+    document.body.style.setProperty("--strip-h", `${lens + kept}px`);
     // a phone (web/src/phone.ts): the side panel is a drawer, the panel a sheet from the bottom,
     // the selection bar across the top, the legend and the zoom's box at the bottom
     const sheet = $("#panel").classList.contains("open") ? $("#panel").offsetHeight : 0;
@@ -1342,7 +1348,7 @@ async function boot(): Promise<void> {
       ? {
           left: 0,
           right: 0,
-          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 : 12) : bar.getBoundingClientRect().bottom + 12,
+          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 + second : 12) : bar.getBoundingClientRect().bottom + 12,
           bottom: sheet ? sheet + 8 : 56,
         }
       : isTall()
@@ -1352,7 +1358,7 @@ async function boot(): Promise<void> {
           left: side.width ? side.right + 8 : 0,
           // offsetWidth, not the bounding box: the panel may still be sliding in
           right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,
-          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 : 28),
+          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 + second : 28),
           bottom: 48,
         };
     // the zoom buttons keep to the canvas's bottom right, the review strip to its middle; where the
@@ -2141,7 +2147,22 @@ async function boot(): Promise<void> {
   /** The review changed, once per change whoever made it (this reader, someone else, the logs on disk):
    *  everything that shows it follows. A board whose scope reads the review (trusted, statuses,
    *  advice) may hold another set now: the board on show is drawn again at once. */
+  /** What the reader selected follows a rename of it (web/src/selection.ts, followRenames): a build
+   *  that renamed it, or a move that says so, which may come before or after the new graph. True
+   *  where it did; the board is drawn again by the caller. */
+  const followSelection = (): boolean => {
+    const r = followRenames(picks, shown, review.data.renamed, (name) => present.byName.has(name));
+    if (r.picks === picks && r.shown === shown) return false;
+    ({ picks, shown } = r);
+    return true;
+  };
+  /** Where a selection that followed a rename is told: the address, and those following. */
+  const selectionFollowed = () => {
+    writeAddress(false);
+    people.report();
+  };
   const reviewChanged = () => {
+    const followed = followSelection();
     targetTcbs.clear();
     views.reviewChanged();
     if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => boardPanel.render());
@@ -2151,7 +2172,7 @@ async function boot(): Promise<void> {
     // what is lit reads the review when a pick does (key declarations, trust, statuses), and the
     // key graph's edges under Keys always: lit again; else what shows the review is drawn again
     const q = selectionQuery(picks);
-    if (S.mode === "keys" || (q && readsReview(q))) apply();
+    if (followed || S.mode === "keys" || (q && readsReview(q))) apply();
     else {
       outline.render();
       // a visitor's colour by status, and its diamond, are the review's too
@@ -2166,6 +2187,7 @@ async function boot(): Promise<void> {
     papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
     stickies.render();
+    if (followed) selectionFollowed();
   };
   /** The whole review (on connecting, or where events came in between): taken unless this page
    *  holds that revision already. */
@@ -2304,8 +2326,8 @@ async function boot(): Promise<void> {
     b.addEventListener("blur", () => modeTip(null));
   }
 
-  /** Something said for a moment where the hint is (below the review strip, where it shows): the
-   *  hint shows nothing otherwise. */
+  /** Something said for a moment where the hint is (below the review strip and the note of a kept
+   *  view, where they show): the hint shows nothing otherwise. */
   const say = (text: string) => {
     const hint = $("#hint");
     if (saying) clearTimeout(saying);
@@ -2313,7 +2335,7 @@ async function boot(): Promise<void> {
     hint.hidden = false;
     hint.textContent = text;
     hint.classList.add("say");
-    hint.classList.toggle("below", !$("#lensbar").hidden);
+    hint.classList.toggle("below", !$("#lensbar").hidden || !$("#tm-kept").hidden);
     saying = setTimeout(() => {
       saying = null;
       hint.hidden = true;
@@ -2921,10 +2943,13 @@ async function boot(): Promise<void> {
     views.graphChanged();
     tm.presentChanged();
     targetTcbs.clear();
+    // a declaration selected that this build renamed: the selection is on its name now
+    const followed = followSelection();
     // the board on show again, of the new graph (showBoard takes it as `g`)
     await nav.redraw();
     trust.render();
     activity.changed();
+    if (followed) selectionFollowed();
   };
 
   // ---------------------------------------------------------------- build status

@@ -149,6 +149,20 @@ test("timeline: a build that settled says what failed, was fixed, got or lost a 
     const again = new Timeline(dir, () => {});
     assert.equal(again.events.length, 3);
     assert.ok(existsSync(join(dir, "tcb-baselines.json")));
+    // D renamed D2, its version the same (HistorySpec decision 11), found at the build's first graph,
+    // which waits for the usage pass and is not compared: the graph that is (the build read again)
+    // finds no rename of its own, and knows it from the renames in force
+    review.renamed = { D2: "D" };
+    const renamedBuild = prep([{ name: "T", hash: "t" }, { name: "D2", hash: "d2" }, { name: "F", hash: "f" }, { name: "P", hash: "p2" }], [0, 1, SITE_STMT, 1, 2, SITE_BODY, 0, 3, SITE_PROOF]);
+    t.graphChanged(renamedBuild, review);
+    assert.equal(sent.length, 3, "a rename is no change of the TCB: nothing added, nothing removed");
+    // the target renamed too, by hand (a move with rename), then the next build
+    review.targets = { T2: review.targets.T };
+    review.renamed = { D2: "D", T2: "T" };
+    t.graphChanged(prep([{ name: "T2", hash: "t" }, { name: "D2", hash: "d3" }, { name: "F", hash: "f" }, { name: "P", hash: "p2" }], [0, 1, SITE_STMT, 1, 2, SITE_BODY, 0, 3, SITE_PROOF]), review);
+    const r = sent[3];
+    assert.ok(r?.kind === "tcb", JSON.stringify(r));
+    assert.deepEqual([r.target, r.changed, r.added, r.removed], ["T2", ["D2"], [], []], "the target keeps its baseline under its name now");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

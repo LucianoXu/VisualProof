@@ -275,6 +275,16 @@ test("a migration is kept with what undoes it, and its undoing is kept too", () 
     const again = new Renames(dir);
     assert.equal(again.get("m1")?.undone?.by, "Bob");
     assert.equal(again.migrations.length, 1);
+    // the server stopped while writing a line: the line cut short alone is lost, never the migration
+    // written after it, nor the pairs found after one cut short in renames.jsonl
+    appendFileSync(join(dir, "migrations.jsonl"), '{"id":"m2","at":"2026-10');
+    appendFileSync(join(dir, "renames.jsonl"), '{"snap":3,"pa');
+    const cut = new Renames(dir);
+    cut.migrated({ at: at(1), from: "A.g", to: "A.h", snap: 3, by: "VisualProof", auto: "same version", rename: true, review: true, carried: { opinions: 2, targets: 0, keys: 1, notes: 1, pins: 2, scopes: 0, reviewViews: 0 }, views: [] });
+    cut.record(4, [{ from: "A.h", to: "A.i", confidence: "high", why: "same version" }]);
+    const read = new Renames(dir);
+    assert.deepEqual(read.migrations.map((x) => [x.id, x.from, x.to]), [["m1", "A.f", "A.g"], ["m2", "A.g", "A.h"]]);
+    assert.deepEqual(read.found.get(4)?.map((p) => p.to), ["A.i"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

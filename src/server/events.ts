@@ -130,23 +130,35 @@ export class Timeline {
   /** A new graph: every target's TCB is compared with the one it had, and a change is an event.
    *  `renamed`: the renames found against the build before (HistorySpec.md), old name → new: a
    *  declaration renamed is the same one, neither removed nor added, and a target renamed keeps its
-   *  baseline. */
+   *  baseline. So are the renames in force (the review's `renamed`, followed on to the name the
+   *  graph has): a build's first graph waits for the usage pass and is not compared, so the graph
+   *  that is (the usage pass's, the build read again) finds no renames of its own; and a move made
+   *  by hand renames too. */
   graphChanged(prep: Prepared, review: ReviewData, renamed: ReadonlyMap<string, string> = new Map()): void {
     const meta: ViewMeta = JSON.parse(gunzipSync(prep.metaGz).toString("utf8"));
     const raw = gunzipSync(prep.edgesGz);
     const edges = new Int32Array(new Uint8Array(raw).buffer);
-    this.index = new TcbIndex(meta.nodes, edges);
+    const index = (this.index = new TcbIndex(meta.nodes, edges));
     // a baseline kept before versions holds the kernel's hashes (server/versions.ts): one that is
     // the kernel's hash of the content there now is that content's version
     const kernel = new Map<string, string>();
     for (const v of meta.nodes) if (v.kernel && v.hash) kernel.set(v.name, v.kernel);
-    if (renamed.size) {
+    const ahead = new Map(renamed);
+    for (const [to, from] of Object.entries(review.renamed ?? {})) if (!ahead.has(from)) ahead.set(from, to);
+    /** a name of a baseline as the graph has it now: renamed on where it is gone (a loop, which a log
+     *  edited by hand could make, is cut short) */
+    const nameNow = (k: string): string => {
+      let n = k;
+      for (let i = 0; i < 1000 && !index.byName.has(n) && ahead.has(n); i++) n = ahead.get(n)!;
+      return index.byName.has(n) ? n : k;
+    };
+    if (ahead.size) {
       for (const t of Object.keys(this.baselines)) {
         const b = this.baselines[t];
         const now = byName<string>();
-        for (const k of Object.keys(b)) now[renamed.get(k) ?? k] = b[k];
+        for (const k of Object.keys(b)) now[nameNow(k)] = b[k];
         delete this.baselines[t];
-        this.baselines[renamed.get(t) ?? t] = now;
+        this.baselines[nameNow(t)] = now;
       }
     }
     for (const target of Object.keys(review.targets)) {

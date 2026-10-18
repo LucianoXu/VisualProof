@@ -258,6 +258,20 @@ export function markWords(marks: number, now?: string): string[] {
   return out;
 }
 
+/** What the bar says of a build that could not read some of the project's files (its snapshot's
+ *  `missing`: a failed file, what imports one): what they held is on none of its boards and counts as
+ *  no change against now (HistorySpec decision 6), so that it is not taken for gone. Null for a build
+ *  that read them all. */
+export function unreadWords(missing: readonly string[]): { label: string; tip: string } | null {
+  const n = missing.length;
+  if (!n) return null;
+  const which = missing.slice(0, 8).join(", ") + (n > 8 ? `, and ${n - 8} more` : "");
+  return {
+    label: `${n} file${n === 1 ? "" : "s"} unread`,
+    tip: `${n === 1 ? "A file" : `${n} files`} could not be read at this build (a failed file, or what imports one): ${which}. What ${n === 1 ? "it" : "they"} held is on none of its boards, and is not counted as changed.`,
+  };
+}
+
 /** The marks of the declarations of a board (`toFull`: board → past graph), in the board's
  *  numbering, and the names now of those renamed. */
 export function boardMarks(p: PastGraph, n: number, toFull: (j: number) => number): { marks: Uint8Array; now: Map<number, string> } {
