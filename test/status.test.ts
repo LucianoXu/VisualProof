@@ -2,11 +2,14 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { openProject } from "../src/server/project.ts";
+import type { Project } from "../src/server/project.ts";
 import { BuildTracker, importable, lakeTextHash, parseImports, scanModules } from "../src/server/status.ts";
+import type { ModuleInfo } from "../src/server/status.ts";
 import { copyFixture, leanAtLeast } from "./fixturecopy.ts";
 
 let haveLake = true;
@@ -104,4 +107,46 @@ test("states follow edits and builds", { skip: !haveLake }, async () => {
   edit("Fixture/Use.lean", "helper n = n := sorry", "helper n = n := rfl");
   build();
   assert.deepEqual(await states(), clean);
+});
+
+test("only outputs written are a build: a file the project gains or loses while nothing is written is not (docs/LAKE.md)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "vp-active-"));
+  try {
+    const lib = join(root, ".lake", "build", "lib", "lean");
+    mkdirSync(join(root, "P"), { recursive: true });
+    mkdirSync(join(lib, "P"), { recursive: true });
+    const p = { root, name: "p", toolchain: "tc", roots: ["P"], libDir: lib, files: new Map() } as Project;
+    const mod = (name: string, imports: string[] = []): ModuleInfo => ({ name, file: name.split(".").join("/") + ".lean", imports });
+    const built = (name: string, at: number) => {
+      const base = join(lib, ...name.split("."));
+      for (const ext of [".olean", ".trace"]) {
+        writeFileSync(base + ext, "");
+        utimesSync(base + ext, at / 1000, at / 1000);
+      }
+    };
+    for (const n of ["P", "P.A"]) writeFileSync(join(root, mod(n).file), "");
+    const long = Date.now() - 60_000;
+    built("P", long);
+    built("P.A", long);
+    const t = new BuildTracker(p);
+    const mods = new Map([["P", mod("P", ["P.A"])], ["P.A", mod("P.A")]]);
+    assert.equal((await t.status(mods)).active, false, "the first look is no change");
+    // an import of a file not built yet: the project gains a module, nothing is written
+    writeFileSync(join(root, "P/B.lean"), "");
+    const more = new Map([...mods, ["P.B", mod("P.B")]]);
+    more.set("P", mod("P", ["P.A", "P.B"]));
+    const s = await t.status(more);
+    assert.equal(s.active, false, "no build runs");
+    assert.equal(s.files.find((f) => f.module === "P.B")?.state, "unbuilt");
+    // taken out again: nothing written either
+    assert.equal((await t.status(mods)).active, false);
+    // back in the list, with outputs written long ago (a file built before and imported again): no build
+    built("P.B", long);
+    assert.equal((await t.status(more)).active, false);
+    // Lake writes P.B's outputs: a build
+    built("P.B", Date.now());
+    assert.equal((await t.status(more)).active, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
