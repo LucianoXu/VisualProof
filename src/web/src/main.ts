@@ -4228,13 +4228,16 @@ async function boot(): Promise<void> {
    *  chosen, as a click and a mode's button would, but without a step in the history each, and
    *  without anything a tip in place counts as the reader's doing. */
   const tourSelect = (i: number) => {
-    if (selected() === i) return reveal(i);
-    if (toView(i) < 0) visitOn(i, selected());
-    const p = pickDecl(g.nodes[i].name);
-    picks = [p];
-    shown = shownOf(p);
-    apply();
+    if (selected() !== i) {
+      if (toView(i) < 0) visitOn(i, selected());
+      const p = pickDecl(g.nodes[i].name);
+      picks = [p];
+      shown = shownOf(p);
+      apply();
+    }
     reveal(i);
+    // with reduced motion nothing in the tour glides (GuideSpec decision 4): the camera is there at once
+    if (reducedMotion()) canvas.arrive();
   };
   const tourTool = (m: Tool) => {
     if (m === S.mode) return;
