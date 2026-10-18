@@ -36,7 +36,7 @@ import { menuItems } from "../src/web/src/ctxmenu.ts";
 import { LayoutQueue } from "../src/web/src/layoutqueue.ts";
 import type { LayoutWorker } from "../src/web/src/layoutqueue.ts";
 import { layOut } from "../src/web/src/layoutworker.ts";
-import { keepInView, markWords, maxScroll, nearestTick, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, pastGraph, pastMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline, unreadWords } from "../src/web/src/past.ts";
+import { keepInView, markWords, maxScroll, nearestTick, onNewBuild, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, pastGraph, pastMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline, unreadWords } from "../src/web/src/past.ts";
 import type { HistoryDiff, Snapshot, SnapshotNodes } from "../src/web/src/past.ts";
 import { pressActs } from "../src/web/src/surfaces.ts";
 import type { PageEl } from "../src/web/src/surfaces.ts";
@@ -729,6 +729,96 @@ test("the mode: opened at the latest or at a build, stepped, left; which build e
     assert.equal(tm.snapshot, 1);
     assert.equal(tm.shown, 2);
     assert.equal(tm.snapshotFor(other), 2);
+  } finally {
+    Object.assign(g, saved);
+  }
+});
+
+test("a new build: a reader at the latest goes on to it; one at a build they chose, on a view kept at it, or following someone stays (the owner's decision of 2026-10-18)", async () => {
+  // the rule: the build aimed at, the latest before and after the list was read again
+  assert.equal(onNewBuild(3, 3, 4, { following: false }), 4, "at the latest: on to the new one");
+  assert.equal(onNewBuild(2, 3, 4, { following: false }), null, "at a build chosen: stays");
+  assert.equal(onNewBuild(3, 3, 4, { kept: 3, following: false }), null, "on a view kept at the build: stays, kept");
+  assert.equal(onNewBuild(3, 3, 4, { kept: 2, following: false }), 4, "on a view kept elsewhere, browsed to the latest: on");
+  assert.equal(onNewBuild(3, 3, 4, { following: true }), null, "following: where the followed reader is, as presence says");
+  assert.equal(onNewBuild(3, 3, 3, { following: false }), null, "the same build read again: nothing new");
+  assert.equal(onNewBuild(null, 3, 4, { following: false }), null);
+
+  // on the page: the list read again as the server says a build was read (`history`)
+  const g = globalThis as Record<string, unknown>;
+  const saved = { window: g.window, document: g.document, fetch: g.fetch };
+  const el = (): Record<string, unknown> => {
+    const classList = { add() {}, remove() {}, contains: () => false, toggle() {} };
+    const e: Record<string, unknown> = { hidden: true, innerHTML: "", textContent: "", title: "", style: {}, dataset: {}, classList, addEventListener() {}, setAttribute() {}, querySelectorAll: () => [], contains: () => false, getBoundingClientRect: () => ({ left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 }) };
+    const part = { ...e };
+    e.querySelector = () => part;
+    part.querySelector = () => part;
+    return e;
+  };
+  g.window = { addEventListener() {} };
+  g.document = { body: { classList: { add() {}, remove() {}, toggle() {} } }, documentElement: { clientWidth: 1400 } };
+  const N = now();
+  const snaps = [snap(1, T0), snap(2, T0 + 5 * H), snap(3, T0 + 9 * H)];
+  g.fetch = async (url: string) => ({ ok: true, json: async () => (url === "/api/history" ? { snapshots: [...snaps], current: snaps.length } : {}) });
+  try {
+    const { TimeMachine } = await import("../src/web/src/timemachine.ts");
+    const book = new ViewBook();
+    let told = 0;
+    // each reader's page, on a view of its own; the follower's says it follows someone
+    const followers = new Set<unknown>();
+    type Page = InstanceType<typeof TimeMachine>;
+    const page = (v = book.create("B", "Alice", { scope: parseQuery("ns(B)") }) as ViewData): Page => {
+      const tm: Page = new TimeMachine(el() as never, el() as never, el() as never, {
+        present: () => N, meta: () => N.meta, review: () => emptyReview(), board: () => ({ id: v.id, rec: v }) as never, title: () => "B",
+        redraw: async () => {}, memory: async () => null, changed: () => told++, go: () => true, say: () => {}, keep: async () => null, saveAs: async () => null,
+        following: () => followers.has(tm),
+        newBuild: (from, to) => news.push([from, to]),
+      });
+      return tm;
+    };
+    // each page is told of a new build, the Time Machine open or not: the selection follows its renames
+    const news: [number, number][] = [];
+    const kept = book.create("B kept", "Alice", { scope: parseQuery("ns(B)") }) as ViewData;
+    const latestView = book.create("B latest", "Alice", { scope: parseQuery("ns(B)") }) as ViewData;
+    const build = async (tms: Page[]) => {
+      snaps.push(snap(snaps.length + 1, T0 + (10 + snaps.length) * H));
+      for (const tm of tms) await tm.historyChanged();
+    };
+    // four readers: at the latest; at a build they chose; on the view kept at the build they are at;
+    // following someone at the latest
+    const atLatest = page(latestView), atPast = page(), onKept = page(kept), follower = page();
+    kept.version = 3;
+    for (const tm of [atLatest, atPast, onKept, follower]) await tm.open();
+    void atPast.show(2);
+    followers.add(follower);
+    const at = (tm: Page) => tm.snapshot;
+    told = 0;
+    await build([atLatest, atPast, onKept, follower]);
+    assert.deepEqual(news, [[3, 4], [3, 4], [3, 4], [3, 4]]);
+    assert.equal(at(atLatest), 4, "at the latest: the new build, the board of now");
+    assert.equal(atLatest.snapshotFor(latestView), null, "no past board of the build before");
+    assert.equal(atLatest.shown, 4);
+    assert.ok(told >= 1, "those following it are told where it is");
+    assert.equal(at(atPast), 2, "at a past build: it stays");
+    assert.equal(at(onKept), 3, "on a view kept at its build: it stays, the view kept");
+    assert.equal(kept.version, 3);
+    assert.equal(onKept.snapshotFor(kept), 3);
+    assert.equal(at(follower), 3, "following: not on by itself");
+    // the followed reader went on: presence brings their build, and the follower goes there
+    await follower.show(4);
+    assert.equal(at(follower), 4);
+    // the build read again (the usage pass's graph): nothing new, nobody moves
+    await atLatest.historyChanged();
+    assert.equal(at(atLatest), 4);
+    assert.equal(news.length, 4, "no new build");
+    // with the Time Machine closed, the board is the board of now, whatever comes; a view kept at a
+    // build stays at it
+    await atLatest.close();
+    await onKept.close();
+    await build([atLatest, onKept]);
+    assert.equal(atLatest.snapshotFor(latestView), null);
+    assert.equal(onKept.snapshotFor(kept), 3);
+    assert.deepEqual(news.slice(4), [[4, 5], [4, 5]], "told with the Time Machine closed too");
   } finally {
     Object.assign(g, saved);
   }

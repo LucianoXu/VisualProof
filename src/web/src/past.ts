@@ -221,6 +221,19 @@ export function latestOf(snaps: readonly Snapshot[]): Snapshot | null {
   return best;
 }
 
+/** Where a reader in the Time Machine goes once the server has read a new build (the owner's decision
+ *  of 2026-10-18, HistorySpec decision 18): one at the latest build goes on to the new latest, so
+ *  that a new build is never left behind as a past one; one at a build they chose stays there, and so
+ *  does one on a view kept at the build they are at (it stays kept), and one following someone,
+ *  whose build presence brings. `at` is the build aimed at, `before` and `now` the latest builds
+ *  before and after the list was read again, `kept` the build the view on show is kept at. The build
+ *  to go to, or null to stay. */
+export function onNewBuild(at: number | null, before: number | null, now: number | null, o: { kept?: number; following: boolean }): number | null {
+  if (at === null || now === null || before === now || at !== before) return null;
+  if (o.following || o.kept === at) return null;
+  return now;
+}
+
 // ------------------------------------------------------------------------------------ the graph
 
 /** The memory a past board is laid out from where it has none of its own (shared/layout.ts,

@@ -249,4 +249,11 @@ test("the page follows a rename of what is selected at a new graph and at the mo
   assert.match(changed, /const followed = followSelection\(\);/);
   assert.match(changed, /if \(followed \|\| S\.mode === "keys"/);
   assert.match(changed, /if \(followed\) selectionFollowed\(\);/);
+  // and the renames of declarations nothing was said of, in the history alone: asked for at each new
+  // build, followed as they come
+  const follow = main.slice(main.indexOf("const followSelection = "), main.indexOf("const selectionFollowed = "));
+  assert.match(follow, /for \(const \[from, to\] of buildRenames\) if \(!Object\.hasOwn\(renamed, to\)\) renamed\[to\] = from;/);
+  assert.match(follow, /fetch\(`\/api\/history\/diff\?from=\$\{from\}&to=\$\{to\}&most=20000`\)/);
+  assert.match(follow, /if \(!followSelection\(\)\) return;\s*apply\(\);\s*selectionFollowed\(\);/);
+  assert.match(main, /newBuild: \(from, to\) => void newBuild\(from, to\),/);
 });

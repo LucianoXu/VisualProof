@@ -356,6 +356,8 @@ async function boot(): Promise<void> {
     },
     saveAs: (snapshot) => saveVersion(snapshot),
     frozen: () => (reader ? READ_ONLY : null),
+    following: () => people.following,
+    newBuild: (from, to) => void newBuild(from, to),
   });
   /** The board on show is of a past graph: a view kept at a past build, or the Time Machine's. It is
    *  a board as any other (the owner's decision of 2026-10-10), but for the review: a past build is
@@ -2158,10 +2160,32 @@ async function boot(): Promise<void> {
    *  that renamed it, or a move that says so, which may come before or after the new graph. True
    *  where it did; the board is drawn again by the caller. */
   const followSelection = (): boolean => {
-    const r = followRenames(picks, shown, review.data.renamed, (name) => present.byName.has(name));
+    // the renames in force, and those the builds read since the page opened found of declarations
+    // nothing was said of, which are in the history alone (HistorySpec decision 10)
+    const renamed: Record<string, string> = Object.assign(Object.create(null), review.data.renamed);
+    for (const [from, to] of buildRenames) if (!Object.hasOwn(renamed, to)) renamed[to] = from;
+    const r = followRenames(picks, shown, renamed, (name) => present.byName.has(name));
     if (r.picks === picks && r.shown === shown) return false;
     ({ picks, shown } = r);
     return true;
+  };
+  /** The renames the history found from each build to the next one read while the page is open,
+   *  old name → new (GET /api/history/diff): what the selection follows besides the renames in force */
+  const buildRenames = new Map<string, string>();
+  /** A new build was read (the Time Machine read the list again, web/src/timemachine.ts): its renames
+   *  are asked for, and the selection follows them, whether the new graph is on show yet or not. */
+  const newBuild = async (from: number, to: number) => {
+    try {
+      const r = await fetch(`/api/history/diff?from=${from}&to=${to}&most=20000`);
+      const d = r.ok ? ((await r.json()) as { renamed?: unknown }) : null;
+      if (!Array.isArray(d?.renamed)) return;
+      for (const p of d.renamed) if (Array.isArray(p) && typeof p[0] === "string" && typeof p[1] === "string") buildRenames.set(p[0], p[1]);
+    } catch {
+      return;
+    }
+    if (!followSelection()) return;
+    apply();
+    selectionFollowed();
   };
   /** Where a selection that followed a rename is told: the address, and those following. */
   const selectionFollowed = () => {
