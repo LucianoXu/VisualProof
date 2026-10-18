@@ -198,6 +198,13 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
   address. Without it, the prompt carries the address the person's browser used.
+- `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
+  for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
+  and the names given here; any other name is answered 403, so that a web page cannot reach it by
+  making its own name resolve to this machine (DNS rebinding, [SECURITY.md](../SECURITY.md)). Give
+  the names a proxy in front of it forwards, or this machine's own name if people use it
+  (`--allowed-host lab-server.local`); the server's log says each name it refused once. With a key,
+  every name is answered, the key keeping everyone else out.
 - `--library-limit <GB>` (default 2): the most the project's library of papers and images may take,
   all its files together (see References). `visualproof purge-file <path> <sha256>` deletes a
   file's bytes from the library for good (a file added by mistake); nothing else does. Poppler

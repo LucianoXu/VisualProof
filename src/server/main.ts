@@ -29,7 +29,7 @@ import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
 import { packEdges } from "../shared/edgecodec.ts";
-import { Access, KEY_PATH, loadKey } from "./access.ts";
+import { Access, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
@@ -84,6 +84,9 @@ interface Options {
   /** the server's address as people reach it, for the prompt Share makes for an agent; null: the
    *  address the person's browser used */
   publicUrl: string | null;
+  /** --allowed-host: the names a server without an access key answers besides its addresses,
+   *  localhost and --public-url's (CollabSpec decision 12) */
+  allowedHosts: string[];
   /** the most the library's files may take, in bytes (AttachmentSpec, "Implementation notes") */
   libraryLimit: number;
   /** --public: whoever comes without the key or a link of their own is a read-only reader
@@ -109,7 +112,8 @@ function usage(code = 2): never {
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
-                                         [--public-url https://host] [--library-limit GB] [--updates auto|notify|off]
+                                         [--public-url https://host] [--allowed-host name]... [--library-limit GB]
+                                         [--updates auto|notify|off]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Name]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
@@ -192,6 +196,13 @@ function usage(code = 2): never {
   --public-url  the address people reach this server at, when it is not the one their browser
            sends (a proxy in front): the prompt Share makes for an agent tells it this address.
 
+  --allowed-host  without --access-key-file, a name this server is reached by; repeatable. A
+           server without a key answers only requests for an IP address, localhost (and the names
+           under it), --public-url's host and these: any other name is answered 403, so that a web
+           page that makes its own name resolve to this machine (DNS rebinding) cannot use it. Give
+           the names people reach it by: a proxy's in front of it, this machine's own. With a key,
+           the key keeps everyone else out, whatever the name.
+
   --updates  what the server does with VisualProof's own releases, asked of the npm registry
            (through npm) at start and once a day: auto (the default) — a patch of the version it
            runs (0.4.x) is downloaded into the cache and taken at a quiet moment, nobody on a page,
@@ -228,7 +239,7 @@ function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto" };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto" };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -265,6 +276,15 @@ function parseArgs(argv: string[]): Options {
       }
       o.publicUrl = u.replace(/\/+$/, "");
     }
+    else if (a === "--allowed-host" && cmd === "serve") {
+      const h = val();
+      // a name, as a Host header gives it without its port (CollabSpec decision 12)
+      if (!/^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?)*\.?$/.test(h)) {
+        console.error(`visualproof: --allowed-host ${h}: give a name this server is reached by, without a scheme or a port, e.g. vp.example.org`);
+        process.exit(2);
+      }
+      o.allowedHosts.push(h);
+    }
     else if (a === "--jobs") {
       const n = Number(val());
       if (!Number.isInteger(n) || n < 0 || n > 256) usage();
@@ -297,6 +317,9 @@ function parseArgs(argv: string[]): Options {
     console.error("visualproof: --public lets in read-only whoever has no key: it needs --access-key-file, and does not go with --identity-header");
     process.exit(2);
   }
+  // the names a server without a key answers: with one, the key keeps everyone else out whatever
+  // the name (CollabSpec decision 12)
+  if (o.allowedHosts.length && o.accessKeyFile) console.warn("visualproof: --allowed-host changes nothing with --access-key-file: the key lets in whoever has it, by any name");
   if (cmd === "purge-file" && !validSha(o.sha)) {
     console.error("visualproof purge-file: give the file's SHA-256, 64 hex digits, as the page's library shows it.");
     process.exit(2);
@@ -333,6 +356,13 @@ export class App {
   /** --public: whoever comes without the key or a link of their own reads only (CollabSpec
    *  decision 11) */
   publicRead: boolean;
+  /** without a key, the names this server answers besides its addresses and localhost
+   *  (server/access.ts, hostAllowed): --public-url's host and every --allowed-host; null: every
+   *  name, the key keeping everyone else out */
+  hostNames: string[] | null;
+  /** the names refused as Host, said once each in the server's console (a few: whoever asks
+   *  chooses them) */
+  private refusedHosts = new Set<string>();
   /** the read-only readers' requests, by the read-only link they came by, or "public" */
   private readOnlyOf = new WeakMap<IncomingMessage, string>();
   /** what read-only readers may cost the server: Lean's answers, their documents */
@@ -341,7 +371,7 @@ export class App {
    *  version alone is told (a test's server) */
   updates: Updates | null = null;
 
-  constructor(live: Live, hover: LeanHover, ids: Identities, agents: AgentApi, access: Access | null, exporter: Exporter | null = null, publicUrl: string | null = null, publicRead = false) {
+  constructor(live: Live, hover: LeanHover, ids: Identities, agents: AgentApi, access: Access | null, exporter: Exporter | null = null, publicUrl: string | null = null, publicRead = false, allowedHosts: string[] = []) {
     this.live = live;
     this.hover = hover;
     this.ids = ids;
@@ -355,6 +385,7 @@ export class App {
     agents.exporter = exporter;
     this.publicUrl = publicUrl;
     this.publicRead = publicRead && access !== null;
+    this.hostNames = access ? null : [...(publicUrl ? [urlHost(publicUrl)] : []), ...allowedHosts];
     this.bounds = new ReadOnlyBounds((id) => this.exporter?.job(id)?.state === "running");
   }
 
@@ -701,6 +732,20 @@ export class App {
     return sendJson(res, { ok: true, name: done.name, person: Invites.info(done) });
   }
 
+  /** A request for a name this server without a key does not answer (CollabSpec decision 12): 403,
+   *  saying which option lets the name in; and, once per name, the server's console says it too,
+   *  for whoever runs it behind a proxy that forwards the name people reach it by. */
+  private refuseHost(req: IncomingMessage, res: ServerResponse): void {
+    const raw = req.headers.host ?? "";
+    const name = /^\[/.test(raw) ? raw : raw.replace(/:\d{1,5}$/, "");
+    const shown = /^[A-Za-z0-9._\-[\]:]{1,253}$/.test(name) ? name : null;
+    if (shown && this.refusedHosts.size < 20 && !this.refusedHosts.has(shown.toLowerCase())) {
+      this.refusedHosts.add(shown.toLowerCase());
+      console.error(`refused a request for ${shown}: without an access key this server answers only its addresses, localhost, --public-url's host and the --allowed-host names; --allowed-host ${shown} lets this one in`);
+    }
+    sendText(req, res, `This server answers only the names it is meant to be reached by${shown ? `, and ${shown} is not one of them` : ""}. Whoever runs it can let a name in with --allowed-host${shown ? ` ${shown}` : " <name>"}.\n`, "text/plain; charset=utf-8", 403);
+  }
+
   /** The answer to a request that needs a name and has none: the page asks for one (`who`). Where
    *  the name the page gives is a personal link holder's, it says so, and the page asks for
    *  another. */
@@ -783,6 +828,11 @@ export class App {
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
     const live = this.live;
+    // without a key, only the names this server is reached at (CollabSpec decision 12, the owner's
+    // decision of 2026-10-18): a page whose own name was made to resolve to this machine (DNS
+    // rebinding) is refused whatever it asks — the page, its data, the event stream, the agents'
+    // API, the MCP server's file
+    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res);
     // every route; whatever one throws, handle() answers
     {
       // an agent's own token (server/tokens.ts) lets it into its API alone: the page and the page's
@@ -1451,7 +1501,7 @@ async function main(): Promise<void> {
     live.readOnly.close();
   });
   const exporter = new Exporter(dirs.cache);
-  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, exporter, o.publicUrl, o.publicRead);
+  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, exporter, o.publicUrl, o.publicRead, o.allowedHosts);
   const server = createServer((req, res) => app.handle(req, res));
   const version = packageVersion();
   // run by the supervisor, which starts it again in another version (UpdateSpec decision 5)
@@ -1529,7 +1579,7 @@ async function main(): Promise<void> {
     console.log(`  agents: ${o.agents} — their API is http://${o.host}:${o.port}/api/agent`);
     console.log(`  usage pass: ${o.graph ? "none for a saved graph" : o.jobs > 0 ? `${o.jobs} module(s) at a time` : "off (--jobs 0)"}`);
     console.log(
-      `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : "anyone who reaches the port"}`,
+      `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : `anyone who reaches the port, by its address, localhost${[...(o.publicUrl ? [urlHost(o.publicUrl)] : []), ...o.allowedHosts].map((n) => `, ${n}`).join("")} (other names are refused: --allowed-host)`}`,
     );
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
     recordVersion(live, version, supervised);

@@ -12,7 +12,9 @@ that describe the API itself. The rules are in the [index](README.md).
 - **A server that lets in only those given its link** (`--access-key-file`) answers 404 to
   everything, `/api/agent` included, unless the request carries `Authorization: Bearer <key>` (the
   key is the last part of the link you were given, `…/k/<key>`) or an agent token of its own,
-  `Authorization: Bearer vpa_…`.
+  `Authorization: Bearer vpa_…`. **A server without a key** answers only its IP addresses,
+  `localhost` and the names it was given (`--public-url`, `--allowed-host`): another name is 403,
+  in plain text — use the address your prompt gives.
 - Every answer is JSON — but the documentation, the MCP server's file and install text, and the
   files you download. **Every error
   is `{error, hint}`**: what went wrong and what to do. A name that does not exist answers 404 with
