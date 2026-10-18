@@ -169,6 +169,9 @@ export interface World {
   /** the holder of a personal link in force who goes by `name` (an opinion recorded for them,
    *  ReviewSpec decision 8) */
   invited?(name: string): { id: string; name: string } | undefined;
+  /** whether `name` is an agent's now, a token in force or an agent on the page: nobody's opinion is
+   *  recorded for it (ReviewSpec decision 8) */
+  agentNamed?(name: string): boolean;
   timeline: { events: StoredEvent[]; add(e: NewEvent): StoredEvent };
   /** the Project view's pins (ViewSpec decision 5): what `place`, `pins` and `undo` are about */
   places: { data: PlacesData; apply(ops: PlaceOp[], who?: { by: string | null; agent?: boolean }): boolean; authorOf(mode: ClusterMode, kind: "node" | "cluster", key: string): PinAuthor | null };
