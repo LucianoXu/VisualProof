@@ -222,6 +222,9 @@ test("the head card: the project, the build and its commit, the toolchain, the t
   const s = sample();
   const none = renderLatex({ ...s, head: { ...s.head, commit: null, outside: { count: 0, by: [] } } });
   assert.ok(!none.includes("\\vpCardRow{Commit}") && !none.includes("Also on this view"));
+  // counted in thousands, as the Export window counts them
+  const large = renderLatex({ ...s, head: { ...s.head, outside: { count: 2640, by: [{ name: "Mathlib", count: 2210 }, { name: "Init", count: 430 }] } } });
+  assert.match(large, /\{2,640 declarations from outside the project \(Mathlib 2,210, Init 430\), not printed\}/);
   // many libraries: the six largest named, the rest together
   const many = renderLatex({ ...s, head: { ...s.head, outside: { count: 8, by: "ABCDEFGH".split("").map((name) => ({ name, count: 1 })) } } });
   assert.match(many, /8 declarations from outside the project \(A 1, B 1, C 1, D 1, E 1, F 1, others 2\)/);
