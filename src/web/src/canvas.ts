@@ -33,6 +33,7 @@ import { Motion } from "./motion.ts";
 import { ST_APPROVED, ST_BUILDING, ST_COMMENTED, ST_FAILED, ST_SORRY, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { LEAF_R, Scene } from "./scene.ts";
+import { AXIOM_AT, AXIOM_OUT, AXIOM_W, kindDot, LIT, outside, pickRadius, ringed } from "./axiomring.ts";
 import type { PinState } from "./scene.ts";
 import { markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED } from "./past.ts";
 import { clearOfBoxes } from "./visitors.ts";
@@ -138,6 +139,8 @@ export interface VisitorPoint {
   place: VisitPlace | null;
   /** a declaration's kind (KINDS), or "external" */
   kind: string;
+  /** an axiom, of the project or outside it: ringed (web/src/axiomring.ts) */
+  axiom?: boolean;
   /** its state in the Status scheme (web/src/status.ts) */
   status: number;
   target: boolean;
@@ -1615,6 +1618,11 @@ export class GraphCanvas {
     this.request();
   }
 
+  /** The camera where it is gliding to, at once (reduced motion: GuideSpec decision 4). */
+  arrive(): void {
+    if (this.camGoal) this.jumpTo(this.camGoal);
+  }
+
   /** Zoom by `f` around the middle of the unobstructed area (the zoom buttons, + and -). */
   zoomBy(f: number): void {
     const cx = this.insets.left + (this.w - this.insets.left - this.insets.right) / 2;
@@ -2246,8 +2254,12 @@ export class GraphCanvas {
       if (!this.visibleNode(i) || (act && act[i])) continue;
       if (style === "stars") {
         const x = this.px[i], y = this.py[i];
+        // an axiom is a ring here too (web/src/axiomring.ts), round its star
+        const ring = ringed(this.g.nodes[i].kind);
         if (this.g.isExt(i)) {
-          circle(dots, x, y, 0.6, UNIT_DOT, [0.72, 0.77, 0.88, 0.4 * dim]);
+          const faint: RGBA = [0.72, 0.77, 0.88, 0.4 * dim];
+          circle(dots, x, y, 0.6, UNIT_DOT, faint);
+          if (ring) circle(dots, x, y, 0.6, UNIT_DOT, [0, 0, 0, 0], faint, AXIOM_W, 0, AXIOM_AT);
           continue;
         }
         const c = this.colorOf(i);
@@ -2255,6 +2267,7 @@ export class GraphCanvas {
         const k = 0.65 + 1.15 * (Math.log1p(this.g.inStart[i + 1] - this.g.inStart[i]) / Math.log1p(most));
         circle(glow, x, y, k * 3.4, UNIT_DOT, fade(star, 0.2), null, 0, FLAG_GLOW);
         circle(dots, x, y, k, UNIT_DOT, star);
+        if (ring) circle(dots, x, y, k, UNIT_DOT, [0, 0, 0, 0], star, AXIOM_W, 0, AXIOM_AT);
         continue;
       }
       if (style === "cells") {
@@ -2265,9 +2278,10 @@ export class GraphCanvas {
     }
     if (style === "stars") this.constellations(figures, act);
     // a pinned point carries a thin ring: where it is was chosen by hand. Nothing else rings a
-    // point but a past graph's marks; status is the Status scheme's (decided 2026-10-08)
+    // point but a past graph's marks and an axiom's own ring, inside them; status is the Status
+    // scheme's (decided 2026-10-08)
     for (let i = 0; i < this.g.n; i++) {
-      if (this.visibleNode(i) && S.isPinned(i)) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], th.pin, 1, 0, 2.5);
+      if (this.visibleNode(i) && S.isPinned(i)) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], th.pin, 1, 0, 2.5 + outside(this.g.nodes[i].kind));
     }
     // on a past graph, what changed since and what was renamed since have a ring of their own
     const M = this.pastMarks;
@@ -2275,9 +2289,10 @@ export class GraphCanvas {
       for (let i = 0; i < this.g.n; i++) {
         if (!(M[i] & (PAST_CHANGED | PAST_RENAMED)) || !this.visibleNode(i)) continue;
         const faded = act && !act[i] ? 0.45 : 1;
-        if (M[i] & PAST_CHANGED) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], fade(th.tmChanged, faded), 1.6, 0, 2.2);
+        const out = outside(this.g.nodes[i].kind);
+        if (M[i] & PAST_CHANGED) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], fade(th.tmChanged, faded), 1.6, 0, 2.2 + out);
         // a rename is the lighter news: its ring is thinner and fainter than a change's
-        if (M[i] & PAST_RENAMED) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], fade(th.tmRenamed, 0.7 * faded), 1.1, 0, M[i] & PAST_CHANGED ? 4.4 : 2.2);
+        if (M[i] & PAST_RENAMED) circle(rings, this.px[i], this.py[i], 1, UNIT_DOT, [0, 0, 0, 0], fade(th.tmRenamed, 0.7 * faded), 1.1, 0, (M[i] & PAST_CHANGED ? 4.4 : 2.2) + out);
       }
   }
 
@@ -2369,17 +2384,26 @@ export class GraphCanvas {
     // own colour. Lit, it is drawn lit as any point is, its mark a ring around it: a faint point read
     // as one left out of the selection
     const m = this.pastMarks?.[i] ?? 0;
+    // an axiom is a ring (the owner's decision of 2026-10-18: web/src/axiomring.ts): round its point
+    // a gap apart, in the point's colour, lit or not, outside the project too; a past mark outside it
+    const kind = this.g.nodes[i].kind;
+    const ring = ringed(kind);
     if (lit) {
-      circle(L, x, y, 1.4, UNIT_DOT, c, this.theme.bg, 1.5, 0, 0.75);
-      if (m & PAST_GHOST) circle(L, x, y, 1.4, UNIT_DOT, [0, 0, 0, 0], this.theme.tmGone, 1.3, 0, 2.6);
+      // the lit point's halo of the canvas's colour is the ring's gap
+      circle(L, x, y, LIT, UNIT_DOT, c, this.theme.bg, 1.5, 0, 0.75);
+      if (ring) circle(L, x, y, LIT, UNIT_DOT, [0, 0, 0, 0], c, AXIOM_W, 0, AXIOM_AT);
+      if (m & PAST_GHOST) circle(L, x, y, LIT, UNIT_DOT, [0, 0, 0, 0], this.theme.tmGone, 1.3, 0, 2.6 + outside(kind));
       return;
     }
     if (m & PAST_GHOST) {
       circle(L, x, y, 1, UNIT_DOT, a(0.28 * alpha), fade(this.theme.tmGone, alpha), 1.5, 0, -0.4);
+      if (ring) circle(L, x, y, 1, UNIT_DOT, [0, 0, 0, 0], a(0.5 * alpha), AXIOM_W, 0, AXIOM_AT);
       return;
     }
     if (this.g.isExt(i)) circle(L, x, y, 0.8, UNIT_DOT, [0, 0, 0, 0], a(alpha), 1.3, 0, -0.6);
     else circle(L, x, y, 1, UNIT_DOT, a(alpha));
+    // round a point of one, so that the ring of one outside the project stands where a dot's would
+    if (ring) circle(L, x, y, 1, UNIT_DOT, [0, 0, 0, 0], a(alpha), AXIOM_W, 0, AXIOM_AT);
   }
 
   private draw(): void {
@@ -2664,7 +2688,7 @@ export class GraphCanvas {
       const shut = S.rep[t.c] === t.c;
       circle(C, S.cwx[t.c], S.cwy[t.c], S.drawnR[t.c], UNIT_WORLD, [a[0], a[1], a[2], shut ? 0 : 0.05], [a[0], a[1], a[2], 0.9], 2, 0, shut ? 3 : 0, 6);
     } else if (this.visibleNode(t.i)) {
-      circle(P, this.px[t.i], this.py[t.i], 1, UNIT_DOT, [0, 0, 0, 0], [a[0], a[1], a[2], 0.95], 2, 0, 3.5);
+      circle(P, this.px[t.i], this.py[t.i], 1, UNIT_DOT, [0, 0, 0, 0], [a[0], a[1], a[2], 0.95], 2, 0, 3.5 + outside(this.g.nodes[t.i].kind));
     }
   }
 
@@ -2735,12 +2759,15 @@ export class GraphCanvas {
     // hidden, its room kept
     const nameAt = (i: number, text: string, w: number, force = false): boolean => {
       const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
-      const x0 = sx + dotR + 2, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
+      // an axiom's name stands clear of its ring (web/src/axiomring.ts), its halo too, lit or not
+      const kind = this.g.nodes[i].kind;
+      const off = ringed(kind) ? outside(kind) + 1 + (this.active?.[i] ? (LIT - 1) * dotR : 0) : 0;
+      const x0 = sx + dotR + 2 + off, y0 = sy - 7, x1 = x0 + w + 2, y1 = sy + 5;
       if (!force && !free(x0, y0, x1, y1)) return false;
       take(x0, y0, x1, y1);
       const id = art ? artNameId("decl", this.g.nodes[i].name) : "";
       if (hidden(id)) return false;
-      write(text, sx + dotR + 3, sy + 3.5, id);
+      write(text, sx + dotR + 3 + off, sy + 3.5, id);
       return true;
     };
     const shown = (i: number) => {
@@ -3071,7 +3098,9 @@ export class GraphCanvas {
       if (on && !this.keyOf[j]?.some((t) => on.has(t))) continue;
       if (this.visibleNode(i)) {
         const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
-        if (onScreen(sx, sy, 12)) diamond(sx - dotR - R * 0.4, sy - dotR - R * 0.3, R);
+        // an axiom's: outside its ring (web/src/axiomring.ts)
+        const out = outside(this.g.nodes[i].kind) * 0.71;
+        if (onScreen(sx, sy, 12)) diamond(sx - dotR - out - R * 0.4, sy - dotR - out - R * 0.3, R);
         continue;
       }
       const c = S.nodeRep[i];
@@ -3119,7 +3148,7 @@ export class GraphCanvas {
       if (i < 0 || i >= this.g.n) continue;
       if (this.visibleNode(i)) {
         const [sx, sy] = this.toScreen(this.px[i], this.py[i]);
-        if (onScreen(sx, sy, 30)) mark(sx, sy, Math.max(7, dotR + 4), m);
+        if (onScreen(sx, sy, 30)) mark(sx, sy, pickRadius(dotR, this.g.nodes[i].kind), m);
         continue;
       }
       const c = S.nodeRep[i];
@@ -3244,8 +3273,16 @@ export class GraphCanvas {
       const c = this.scheme === "status" ? th.status[v.status] ?? th.status[ST_UNREVIEWED] : v.kind === "external" ? th.ext : th.kind[v.kind] ?? th.ext;
       ctx.fillStyle = css(th.bg);
       ctx.beginPath();
-      ctx.arc(x, y, R + 3, 0, 2 * Math.PI);
+      ctx.arc(x, y, R + 3 + (v.axiom ? AXIOM_OUT : 0), 0, 2 * Math.PI);
       ctx.fill();
+      // an axiom's ring (web/src/axiomring.ts), solid in its colour outside the visitor's dashed one
+      if (v.axiom) {
+        ctx.lineWidth = AXIOM_W;
+        ctx.strokeStyle = css(c, 0.9);
+        ctx.beginPath();
+        ctx.arc(x, y, R + 1.75 + AXIOM_AT, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
       ctx.fillStyle = css(c, 0.9);
       ctx.beginPath();
       ctx.arc(x, y, R - 1.5, 0, 2 * Math.PI);
@@ -3342,7 +3379,7 @@ export class GraphCanvas {
       if (i < 0 || i >= this.g.n) return null;
       if (this.visibleNode(i)) {
         const [x, y] = this.toScreen(this.px[i], this.py[i]);
-        return [x, y, dotR + 4, -1 - i];
+        return [x, y, dotR + 4 + outside(this.g.nodes[i].kind), -1 - i];
       }
       const c = S.nodeRep[i];
       if (c < 0 || !this.clusterVisible(c)) return null;
@@ -3417,7 +3454,8 @@ export class GraphCanvas {
   private drawSelection(dotR: number): void {
     const S = this.scene;
     const k = this.cam.k;
-    const pointR = Math.max(7, dotR + 4);
+    /** round a point, clear of an axiom's ring */
+    const pointR = (i: number) => pickRadius(dotR, this.g.nodes[i].kind);
     /** a folded cluster's ring: round its card while it has one, else round its body */
     const body = (c: number): Mark => {
       const b = this.clusterBoxes.get(c);
@@ -3432,13 +3470,13 @@ export class GraphCanvas {
         // hidden in a folded cluster: ringed on its card, as a declaration there is
         if (W.vrep[t.k] >= 0) return this.clusterVisible(W.vrep[t.k]) ? body(W.vrep[t.k]) : null;
         const [x, y] = this.toScreen(W.vx[t.k], W.vy[t.k]);
-        return { x, y, r: this.visitorR() + 5 };
+        return { x, y, r: this.visitorR() + 5 + (this.visitors[t.k]?.axiom ? AXIOM_OUT : 0) };
       }
       if (t.kind === "node") {
         if (t.i < 0 || t.i >= this.g.n) return null;
         if (!this.visibleNode(t.i)) return S.nodeRep[t.i] < 0 ? null : body(S.nodeRep[t.i]);
         const [x, y] = this.toScreen(this.px[t.i], this.py[t.i]);
-        return { x, y, r: pointR };
+        return { x, y, r: pointR(t.i) };
       }
       if (t.c < 0 || t.c >= S.nc || !this.clusterVisible(t.c)) return null;
       if (S.rep[t.c] >= 0) return body(S.rep[t.c]);
@@ -3588,9 +3626,9 @@ export class GraphCanvas {
     this.leaders = [];
     this.clusterBoxes.clear();
     // the selection has no card, but nothing covers its rings either (drawSelection)
-    const lr = Math.max(7, dotR + 4) + 4;
     for (const i of chosen) {
       if (!this.visibleNode(i)) continue;
+      const lr = pickRadius(dotR, this.g.nodes[i].kind) + 4;
       const [lx, ly] = this.toScreen(this.px[i], this.py[i]);
       grid.add(lx - lr, ly - lr, lx + lr, ly + lr);
     }
@@ -3598,8 +3636,9 @@ export class GraphCanvas {
     const box0 = this.canvas.getBoundingClientRect();
     for (const r of this.ev.covers?.() ?? []) if (r.width && r.height) grid.add(r.left - box0.left, r.top - box0.top, r.right - box0.left, r.bottom - box0.top);
     // the lit points themselves
-    const pr = Math.max(3, dotR) + 2;
     for (const i of activeDots) {
+      // an axiom's ring with it
+      const pr = Math.max(3, dotR) + 2 + outside(this.g.nodes[i].kind);
       const [x, y] = this.toScreen(this.px[i], this.py[i]);
       grid.add(x - pr, y - pr, x + pr, y + pr);
     }
@@ -3667,7 +3706,7 @@ export class GraphCanvas {
     // its dot has its point's colour, in the scheme in force (style.css, .card.s-*); nothing else on
     // a card tells of its status
     const st = this.scheme === "status" ? ` ss s-${STATUSES[this.statusCode[i] ?? ST_UNREVIEWED]}` : "";
-    el.className = `card k-${g.isExt(i) ? "external" : v.kind}${st}${this.targetList.includes(i) ? " target" : this.keyList.includes(i) ? " key" : ""}`;
+    el.className = `card ${kindDot(v.kind, g.isExt(i))}${st}${this.targetList.includes(i) ? " target" : this.keyList.includes(i) ? " key" : ""}`;
     el.dataset.node = String(i);
     // on a past graph, its marks against now: a renamed one's name now among them
     const marks = this.pastMarks?.[i] ?? 0;

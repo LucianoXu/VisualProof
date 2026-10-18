@@ -262,6 +262,10 @@ export function linkRefused(v: { id: string; version?: number }, target: string)
  *  target's view's too (decision 28). */
 export const fixedScope = (v: { id: string }): boolean => v.id === PROJECT;
 
+/** Why the Project's scope is not changed (ViewSpec decision 5: never rescoped, the outside world
+ *  included). */
+export const PROJECT_SCOPE = "The Project always holds everything: Duplicate it for a board that holds less.";
+
 /** Why a view cannot be kept at a past build, or null. The Project and a target's view always show
  *  the latest: the one is everyone's way in, and on the other the review is given, which a past
  *  graph cannot take; Save as new view keeps a build in a view of its own. */
@@ -719,10 +723,13 @@ export class ViewBook {
   /** A view's scope changed by `by`. A scope changed is work done on the board, as a pin dropped is:
    *  a view not kept yet is kept by it (ViewSpec decision 6), so that what was added to it or taken
    *  out of it from the canvas's menu outlives the pages that had it open. A rename carried into the
-   *  scope (`keep` false: server/views.ts, moveDeclaration) is no one's work and keeps nothing. */
+   *  scope (`keep` false: server/views.ts, moveDeclaration) is no one's work and keeps nothing. The
+   *  Project's scope stays `all` (ViewSpec decision 5), whoever asks: the page, an agent, a
+   *  snapshot. */
   setScope(id: string, scope: Query, by: string | null, keep = true): Change[] | string | null {
     const v = this.find(id);
     if (typeof v === "string") return v;
+    if (fixedScope(v)) return sameQuery(v.scope, scope) ? null : PROJECT_SCOPE;
     if (sameQuery(v.scope, scope)) return null;
     v.scope = scope;
     const change: Change = { id, what: "scope", by };

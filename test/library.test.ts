@@ -17,7 +17,7 @@ import { applyEvent, emptyReview, logFileName, readEvent } from "../src/shared/r
 import type { ReviewData, ReviewEvent } from "../src/shared/review.ts";
 import type { SnapGraph } from "../src/server/history.ts";
 import { carryClusterLinks, clusterMovedTo, Library } from "../src/server/library.ts";
-import { usefulTitle } from "../src/server/poppler.ts";
+import { PdfReader, usefulTitle } from "../src/server/poppler.ts";
 import { ReviewStore, SERVER_LOG } from "../src/server/review.ts";
 import { MAGIC, tinyPdf } from "./pdf.ts";
 import { site } from "./site.ts";
@@ -261,6 +261,30 @@ test("a page's text with the place of every word, a search through the file, a p
   }
 });
 
+test("the clips kept of a file are bounded, the oldest going first, a clip asked for again kept", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-clips-"));
+  try {
+    const file = join(dir, "paper.pdf");
+    writeFileSync(file, PDF);
+    const reader = new PdfReader(join(dir, "cache"), 3);
+    const size = { w: 612, h: 792 };
+    const clip = (k: number) => reader.clip("f".repeat(64), file, 1, size, [0.1, 0.01 * k, 0.5, 0.01 * k + 0.1], 400);
+    const kept = () => readdirSync(join(dir, "cache", "f".repeat(64))).filter((f) => f.startsWith("clip-")).sort();
+    await clip(1);
+    await clip(2);
+    await clip(3);
+    assert.equal(kept().length, 3);
+    // the first asked for again: the second is the oldest now
+    await new Promise((ok) => setTimeout(ok, 20));
+    await clip(1);
+    await new Promise((ok) => setTimeout(ok, 20));
+    await clip(4);
+    assert.deepEqual(kept(), ["clip-1-0.1_0.01_0.5_0.11-w400.png", "clip-1-0.1_0.03_0.5_0.13-w400.png", "clip-1-0.1_0.04_0.5_0.14-w400.png"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /** A review replayed from library events and moves, as the logs give them. */
 function replayed(events: unknown[]): ReviewData {
   const d = emptyReview();
@@ -381,6 +405,13 @@ test("a quote keeps a little of the text around it, and is found again by it whe
   // line breaks and case read loosely
   assert.ok(findQuote("let a be\nan ADVERSARY.", { text: "Let A be an adversary." }));
   assert.equal(findQuote(page, { text: "absent words" }), null);
+  // typography read as typed, as a quote written by hand or by an agent is: ’ as ', – and − as -
+  const typeset = "Let p be regular. Kummer’s lemma. If u ≡ n (mod p) then u = v^p – a unit “in” K − 0.";
+  const k = typeset.indexOf("Kummer’s");
+  assert.deepEqual(findQuote(typeset, { text: "Kummer's lemma." }), { start: k, end: k + "Kummer’s lemma.".length });
+  assert.ok(findQuote(typeset, { text: 'v^p - a unit "in" K - 0.' }));
+  // where the text has the very characters, they are found first, as before
+  assert.deepEqual(findQuote("It's a test: it’s the one.", { text: "it’s" }), { start: 13, end: 17 });
   assert.equal(defaultLabel({ page: 4, quote: { text: "Let A be an adversary that makes many queries" } }, "pdf"), "p. 4 “Let A be an adversary that…”");
   assert.equal(defaultLabel({ region: [0, 0, 1, 1] }, "png"), "A region of the image");
 });

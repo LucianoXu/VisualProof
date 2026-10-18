@@ -230,6 +230,12 @@ test("visualproof artwork: a saved graph and a recipe to an SVG and a PNG, the s
     const cased = run({ ...RECIPE, selection: { name: "N.T" } }, "Cased");
     assert.equal(cased.status, 1);
     assert.match(cased.stderr, /no declaration N\.T in the graph \(did you mean N\.t\?\)/);
+    // a screen it cannot draw on, said in a line
+    for (const screen of ["600x400", "1920", "20000x1200"]) {
+      const odd = run(RECIPE, "Odd", ["--screen", screen]);
+      assert.equal(odd.status, 2);
+      assert.match(odd.stderr, new RegExp(`^visualproof artwork: --screen ${screen}: .*from 640x480 to 10000x10000\n$`));
+    }
     // a folder that is not there, said before anything is drawn; whatever fails, status 1
     const nowhere = run(RECIPE, join("nowhere", "Pic"));
     assert.equal(nowhere.status, 1);
@@ -250,11 +256,15 @@ test("visualproof artwork with a site: its folds read and drawn under a selectio
     mkdirSync(site);
     // the Project view folding N, the cluster of every declaration; a selection lights one of them
     const view = { id: "project", name: null, scope: { op: "all" }, clustering: "namespace", pins: { namespace: { clusters: {}, nodes: {} }, module: { clusters: {}, nodes: {} } }, folds: { namespace: ["N"], module: [] }, hidden: { namespace: [], module: [] }, by: null, at: new Date(0).toISOString(), kept: true };
-    writeFileSync(join(site, "views.json"), JSON.stringify({ layoutVersion: LAYOUT_VERSION, views: [view] }));
+    // and two notes of the project, which its board shows and the command does not draw yet
+    const note = (id: string) => ({ id, text: "A note.", places: {}, open: true, by: "Alice", at: new Date(0).toISOString() });
+    writeFileSync(join(site, "views.json"), JSON.stringify({ layoutVersion: LAYOUT_VERSION, views: [view], notes: [note("n00000001"), note("n00000002")] }));
     const before = filesOf(site);
     const lit = run({ ...RECIPE, targets: "all" }, "Folded", ["--site", site]);
     assert.equal(lit.status, 0, lit.stderr);
     assert.match(lit.stdout, /selection: tcb of N\.t/);
+    assert.doesNotMatch(lit.stdout, /notes:/, "no note said where the recipe asks for none");
+    assert.match(run({ ...RECIPE, targets: "all", notes: true }, "Noted", ["--site", site]).stdout, /notes: 2 on the board, not drawn/, "the project's notes, said");
     assert.ok(readFileSync(join(dir, "Folded.png")).length > 0);
     const unfolded = run({ ...RECIPE, targets: "all" }, "Unfolded");
     assert.equal(unfolded.status, 0, unfolded.stderr);

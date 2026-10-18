@@ -11,6 +11,8 @@
 import { PROJECT } from "../../shared/views.ts";
 import type { ViewSummary } from "../../shared/views.ts";
 import { escapeHtml } from "./highlight.ts";
+import { firstControl } from "./popover.ts";
+import { focusBack } from "./keepfocus.ts";
 import type { Tab } from "./store.ts";
 
 export interface TabsHooks {
@@ -78,12 +80,20 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** The menu asking for the view's new name, and why the last one was refused. */
 type Asking = { error?: string } | null;
 
+/** how long a view's board is laid out before the tabs mark it busy, as the Time Machine's bar marks
+ *  a build loading (web/src/timemachine.ts): a quick one never blinks the mark */
+export const BUSY_AFTER_MS = 150;
+
 export class Tabs {
   private el: HTMLElement;
   private btn: HTMLElement;
   private menu: HTMLElement;
   private hooks: TabsHooks;
   private asking: Asking = null;
+  /** a view's board is being laid out off the page's thread, the board on show staying meanwhile
+   *  (web/src/views.ts): the bar's busy mark, from a moment after it starts */
+  private busyOn = false;
+  private busyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(el: HTMLElement, btn: HTMLElement, menu: HTMLElement, hooks: TabsHooks) {
     this.el = el;
@@ -102,7 +112,11 @@ export class Tabs {
       const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-tab]");
       if (tab && e.button === 1 && tab.dataset.tab !== PROJECT) this.hooks.close(tab.dataset.tab!);
     });
-    btn.addEventListener("click", () => this.toggle());
+    btn.addEventListener("click", (e) => {
+      this.toggle();
+      // opened from the keyboard: its first item takes the focus, as a menu's does
+      if (this.open && e.detail === 0) firstControl(this.menu)?.focus();
+    });
     menu.addEventListener("click", (e) => void this.clicked(e));
     menu.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -146,10 +160,34 @@ export class Tabs {
           `</button>`
         );
       })
-      .join("");
+      .join("") +
+      // the Time Machine's busy mark (web/src/timemachine.ts), where the view's tab will be
+      (this.busyOn ? `<span class="tab tab-wait tm-wait" title="Laying out this view: the board shows the one before until it is ready"><i class="tm-spin"></i>laying out</span>` : "");
+    this.el.classList.toggle("busy", this.busyOn);
+    this.el.setAttribute("aria-busy", String(this.busyOn));
     // the tab on show stays in sight
     this.el.querySelector<HTMLElement>(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
     if (this.open) this.renderMenu();
+  }
+
+  /** A view's board is being laid out, or no longer: the busy mark, shown BUSY_AFTER_MS after it
+   *  starts. */
+  busy(on: boolean): void {
+    if (!on) {
+      if (this.busyTimer) clearTimeout(this.busyTimer);
+      this.busyTimer = null;
+      if (this.busyOn) {
+        this.busyOn = false;
+        this.render();
+      }
+      return;
+    }
+    if (this.busyOn || this.busyTimer) return;
+    this.busyTimer = setTimeout(() => {
+      this.busyTimer = null;
+      this.busyOn = true;
+      this.render();
+    }, BUSY_AFTER_MS);
   }
 
   private short(target: string): string {
@@ -162,6 +200,8 @@ export class Tabs {
   }
 
   toggle(open = this.menu.hidden): void {
+    // closed with the focus in it (Esc): back to Views
+    if (!open) focusBack(this.menu, this.btn);
     this.menu.hidden = !open;
     this.btn.classList.toggle("on", open);
     this.asking = null;

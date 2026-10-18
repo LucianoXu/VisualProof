@@ -175,7 +175,9 @@ The README says how to install the `visualproof` command. A checkout also runs a
   `https://github.com/ORG/REPO/blob/main/{rel}#L{line}`. A reader can set their own in the `?`
   sheet (kept in that browser, per project). Snapshots carry none.
 - `--identity-header <header>`: behind a proxy that signs people in (Tailscale, oauth2-proxy,
-  Cloudflare Access), names come from that header instead of the page (see Together). Only when the proxy is the only way in: the header is believed as it comes.
+  Cloudflare Access), names come from that header instead of the page (see Together): UTF-8, or
+  MIME encoded-words (`=?utf-8?q?…?=`, as Tailscale writes a name beyond ASCII). Only when the proxy
+  is the only way in: the header is believed as it comes.
 - `--host 0.0.0.0` serves beyond this machine (the default is `127.0.0.1`); `--access-key-file
   <file>` then lets in only those given the link `http://<host>:<port>/k/<key>` (the key is what the
   file holds; one is made there if there is none). The link leaves a cookie in the browser and goes
@@ -196,6 +198,13 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
   address. Without it, the prompt carries the address the person's browser used.
+- `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
+  for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
+  and the names given here; any other name is answered 403, so that a web page cannot reach it by
+  making its own name resolve to this machine (DNS rebinding, [SECURITY.md](../SECURITY.md)). Give
+  the names a proxy in front of it forwards, or this machine's own name if people use it
+  (`--allowed-host lab-server.local`); the server's log says each name it refused once. With a key,
+  every name is answered, the key keeping everyone else out.
 - `--library-limit <GB>` (default 2): the most the project's library of papers and images may take,
   all its files together (see References). `visualproof purge-file <path> <sha256>` deletes a
   file's bytes from the library for good (a file added by mistake); nothing else does. Poppler
@@ -476,6 +485,9 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   selection among what this board holds — laid out on its own by the same rules (see Views).
   Inside it everything works as anywhere. It is greyed out where it would change nothing: nothing
   lit, or this board holds just what is lit already. A cluster's panel has a Zoom in of its own.
+  A large view takes a moment to lay out (seconds, for tens of thousands of declarations): the board
+  you are on stays and answers meanwhile, the tabs say *laying out* where the new tab will be, and
+  going back, or to another tab, gives the new view up.
 - **Colours**: by kind, or by **status** — one colour per declaration for where it stands, the
   most urgent winning: being compiled, build failed, contains `sorry`, commented, stale, approved,
   not yet reviewed (hollow), trusted (CanvasSpec, "Colour schemes"). A view where the review has a
@@ -483,7 +495,11 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   seen by whoever follows you). In
   Status each cluster's outline shows its review's progress, an arc for what is approved and one
   for what is commented. The **legend** at the bottom left folds to a chip naming the scheme; open,
-  it counts the board's declarations per colour. No rings tell of status on the canvas.
+  it counts the board's declarations per colour. No rings tell of status on the canvas. **An axiom
+  is a ring**, in either scheme: its dot has a ring of its own colour around it, a gap apart, on the
+  board, in an artwork, in the legend, the panel and the search, so that it is told by its shape
+  where its colour is not (to a red-green colour-blind reader the Kind palette's axiom red and
+  structure green are one colour).
 - `/` searches names, statements and docstrings (every word must be found; name matches first,
   then statements, then docstrings, each with the matching words highlighted in a snippet). A
   name Lean generated from a command finds the declaration it is folded into ("also declares").
@@ -491,7 +507,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   source (its window opened or closed), `Esc` close what is open, then clear the selection, `f`
   fit, `+` / `−` zoom (also the buttons at the bottom right), `[` / `]` fold or open one level
   (also the Depth buttons), `e` the outside world on this board
-  (for everyone on it), `g` edges, `l` the lock, `c` colours by kind or status, `b` build status,
+  (for everyone on it; the Project always holds it), `g` edges, `l` the lock, `c` colours by kind or status, `b` build status,
   `p` a frame meter, `a` / `m` approve, comment (see Review), `k` mark as key for the focus, `t` the Time Machine (`←` / `→` a build before or after,
   `Home` / `End` the first or the last), `Shift F10` (or the ContextMenu key) the menu on the
   selection, `?` the help menu.
@@ -556,12 +572,12 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
 - No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of
   the keys. The tour is the phone's own, in the words of fingers.
 
-### On a tall screen
+### On an upright tablet
 
-A screen wider than a phone and at least 1.2 times as high as it is wide — a tablet held upright, a
-narrow window, a monitor turned on its side — gets a larger screen's page, with everything on it,
-placed for the shape ([PhoneSpec.md](../SPEC/PhoneSpec.md), "Tall screens"). The page changes as
-the screen turns, keeping what you were doing.
+A tablet held upright, or a window narrower than 1000 px and at least 1.2 times as high as it is
+wide, gets a larger screen's page, with everything on it, placed for the shape
+([PhoneSpec.md](../SPEC/PhoneSpec.md), "Tall screens"). The page changes as the screen turns,
+keeping what you were doing.
 
 - **☰**, at the left of the view bar, opens the targets and the board's namespaces or folders as a
   drawer, as on a phone; the board has the whole width.
@@ -573,6 +589,26 @@ the screen turns, keeping what you were doing.
   height. They are not dragged: the dock places them.
 - The review strip and the selection bar go across the top, under the view bar; the legend and the
   zoom's buttons sit just above the sheet.
+
+### On an upright monitor
+
+A monitor turned on its side — at least 1000 px wide and 1.2 times as high, used with a mouse —
+gets a desktop's page with its height put to use ([PhoneSpec.md](../SPEC/PhoneSpec.md), "Upright
+monitors"): the board above, with the side panel at its left, and under it a **work area** across
+the screen while something is in it.
+
+- **The panel** is a pane at the work area's left; alone, it takes the whole width. Activity and the
+  lost-and-found open in its place.
+- **Source windows, the reference window and a conversation** form one column at the panel's
+  right, stacked from the top in that order — the reference the tallest, so that a page of a PDF
+  reads well. One window alone takes the column's height; with no declaration selected the column
+  takes the work area's width. They are not dragged: the column places them, and a collapsed one
+  is a pill at its foot.
+- **Splitters**: drag the one above the work area to share the height with the board, the one
+  between the panel and the column, and those between the windows; a double-click gives each its
+  own size again. Your browser keeps what you set.
+- Everything else is as on a larger screen: popovers, menus, keys, the selection bar under the
+  modes, Tips, Export's window, the Time Machine and the tour.
 
 ## Views
 
@@ -597,7 +633,8 @@ lock, edges, the linear form, theme), the top holds your tabs and your mode.
   of X*, *what X uses*, *what uses X*, *key declarations of T* (`key(T)`), a namespace or a folder, with conditions (*except what is
   trusted*, *without the outside world*, *only not yet reviewed*, *only what an agent comments on*,
   …). `+` adds one, `×` takes one off, a click on the first chip writes the scope as a query
-  (`tcb(A.t) except trusted except external`). A change is everyone's on that board.
+  (`tcb(A.t) except trusted except external`). A change is everyone's on that board. The Project's
+  scope stays *everything*: Duplicate it for a board that holds less.
 - **Hidden levels** (ViewSpec decision 24): a cluster's row in the side panel (the struck-through
   eye under the pointer) or its panel has **Hide this level**: its sub-clusters and declarations
   move up into its parent, for everyone on the board, and nothing on the board moves; the top level
@@ -766,7 +803,11 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   ring, what changed since has an amber ring, what was renamed a teal one with its name now on its
   card. A board of a past build holds that build's declarations alone (the owner's decision,
   2026-10-10). Where you are in it is
-  yours, as your camera is, and someone following you sees the same build. At another build than
+  yours, as your camera is, and someone following you sees the same build. At the latest build, a
+  new one takes you with it, as it does the board with the Time Machine closed: the board stays the
+  board of now, your selection and camera with it, and the pill and Activity say what changed (the
+  owner's decision, 2026-10-18); at a build you chose, or on a view kept at a build, you stay, and
+  following someone, you go where they go. At another build than
   the view's own it is a preview, which nobody arranges: **Keep this version** keeps the view at
   that build for everyone on it (a clock on its tab), **Save as new view** makes a view of it and
   goes there. A view kept at a past build is a view as any (the owner's decision, 2026-10-10):
@@ -807,7 +848,7 @@ The informal references that explain the formal code — papers, and photos too 
   abstract page says; never an address of a private or local network) — or dropped on the canvas,
   which makes a note carrying it; a file added otherwise comes with a note on the ring of the
   canvas. Each file is listed with its title (the PDF's own, else its name; Rename), type, pages,
-  size, who added it and when (the date written in Chinese) and where it came from; Archive hides it, and Archived
+  size, who added it and when (the date written in English, "Oct 11, 2026") and where it came from; Archive hides it, and Archived
   restores it: nothing is deleted. The bytes stay in the site's folder, stored once by their
   SHA-256 (`<site>/files/<sha256>`), never in the project; the record and every link are events of the
   review's logs, and name the file by its hash. A server that
@@ -1110,7 +1151,8 @@ what each one looks at stays their own.
   marks and trust keep your name, and need one. Private, your dot beside the name is hollow and an
   eye is struck through. The browser keeps the choice for all its tabs; it changes at once.
 - **Who else is here**: their initials beside your name, faded when they are away. Rest on one to
-  see where they are; click to follow them. What they see is followed; how you look at it is yours
+  see where they are; click for their menu, **Follow** them or **Ask … to follow me** (an agent's
+  initials follow it at once). What they see is followed; how you look at it is yours
   (CollabSpec decision 4): you take their view (in a tab opened for it if need be), their build in
   the Time Machine, camera, tool, selection and focus, what their panel tells of, their source
   windows and reference window (each opened, collapsed and closed with theirs, placed as your
@@ -1122,6 +1164,14 @@ what each one looks at stays their own.
   selecting text, copying it. When it ends, what you were shown stays, yours. On the canvas their
   selection carries a ring of their colour with their initials; the panel says who else is looking
   at a declaration.
+- **Asking others to follow you** (CollabSpec decision 10), to show them something: **Ask everyone
+  to follow me** in the menu under your name, or **Ask … to follow me** in a person's menu (all
+  their pages), once every 30 s, with a name and visible. Each page asked shows a banner at the top,
+  "Alice asks you to follow · Follow · Not now", in your colour, for 30 s; Esc is Not now, and the
+  banner never takes the keys from someone typing. **Follow** follows you, ending any other
+  following. You see each answer on their initials (✓ following, ✕ declined, – no answer) and in a
+  line ("2 following, 1 declined"), for a little while after: private readers are asked too, and
+  only counted. Agents at advise and full ask too; agents and read-only readers cannot be asked.
 - **Pins are shared per view**: what you drop is everyone's on that board when you let go, and
   comes to every page on it; **Re-layout** drops the board's pins, for everyone, after asking.
 - **Agents** (AgentSpec, [docs/agent-api/](agent-api/README.md)): an AI agent works through a JSON API under

@@ -120,6 +120,16 @@ export class ReviewStore {
     return { epoch: this.epoch, rev: this.rev, data: this.data, problems: this.problems, error: this.error };
   }
 
+  /** the whole review as JSON, and the revision it is of */
+  private wholeJson: { rev: number; text: string } | null = null;
+  /** The whole review as JSON, written once a revision: every page's event stream opens with it and
+   *  every page that loads asks for it, and with thousands of opinions it is megabytes (7.6 MB for
+   *  5,000 on Sphere-Packing-Lean: 50 ms each time, a hundred pages opening held the server 5 s). */
+  wholeText(): string {
+    if (this.wholeJson?.rev !== this.rev) this.wholeJson = { rev: this.rev, text: JSON.stringify(this.whole()) };
+    return this.wholeJson.text;
+  }
+
   /** The file a writer's events go to (shared/review.ts, logFileName). */
   fileOf(w: Writer): string {
     return w.server ? SERVER_LOG : logFileName(w.name, w.agent, w.person ?? null);

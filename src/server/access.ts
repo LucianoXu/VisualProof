@@ -12,10 +12,17 @@
 // Cookies are not kept per port: every server on one host shares a browser's cookie jar. So the
 // cookie is named per instance, by a digest of its key, and two servers on one host do not put
 // each other's readers out; its value is made from the key too, never the key itself.
+//
+// Without a key, whoever reaches the port is in — and a web page any browser on this machine opens
+// can reach it too, by DNS rebinding: its name made to resolve to this machine, the page's scripts
+// then ask this server as their own origin, and read the answers. So a server without a key answers
+// only the names it is reached at (CollabSpec decision 12, the owner's decision of 2026-10-18):
+// hostAllowed, below.
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
+import { isIPv4, isIPv6 } from "node:net";
 
 /** where the link points: `/k/<key>` */
 export const KEY_PATH = "/k/";
@@ -103,4 +110,30 @@ function cookieOf(req: IncomingMessage, name: string): string | null {
     if (eq > 0 && part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
   }
   return null;
+}
+
+/** A name as Host headers and the options give it, compared: lowercase, without the dot of a name
+ *  written fully qualified (`example.org.`). */
+const hostKey = (name: string) => name.toLowerCase().replace(/\.$/, "");
+
+/** Whether a server without an access key answers a request for `host`, its Host header
+ *  (CollabSpec decision 12, the owner's decision of 2026-10-18): an IP address (IPv6 in brackets),
+ *  which a page's scripts reach only as that address, never as a name they made resolve to it;
+ *  `localhost` and the names under it, which browsers resolve to this machine themselves; and the
+ *  names in `names` — `--public-url`'s host and every `--allowed-host`. Any port; any case. A
+ *  request without a Host is not answered, nor is a Host that is no name. */
+export function hostAllowed(host: string | undefined, names: readonly string[]): boolean {
+  const m = /^(?:\[([0-9A-Fa-f:.]+)\]|([A-Za-z0-9._-]+))(?::\d{1,5})?$/.exec(host ?? "");
+  if (!m) return false;
+  if (m[1] !== undefined) return isIPv6(m[1]);
+  const name = hostKey(m[2]);
+  if (!name) return false;
+  if (isIPv4(name) || name === "localhost" || name.endsWith(".localhost")) return true;
+  return names.some((n) => hostKey(n) === name);
+}
+
+/** The name `--public-url` gives, as hostAllowed compares it (its port is not part of it). */
+export function urlHost(url: string): string {
+  const h = new URL(url).hostname;
+  return h.startsWith("[") ? h.slice(1, -1) : h;
 }

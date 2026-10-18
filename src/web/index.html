@@ -134,7 +134,7 @@
   <div id="tm-list" class="glass" role="dialog" aria-label="What changed since" hidden></div>
   <div id="tm-kept" class="glass" hidden></div>
   <div id="trust-pop" class="glass" role="dialog" aria-label="Trust without review" hidden></div>
-  <div id="hint" class="hint" hidden></div>
+  <div id="hint" class="hint" role="status" aria-live="polite" hidden></div>
   <div id="mode-tip" class="mode-tip glass" role="tooltip" hidden></div>
   <!-- the review strip, wherever the review has a focus: one line of progress -->
   <div id="lensbar" class="glass" hidden>
@@ -185,7 +185,7 @@
   <!-- what is trusted without review: the review's, the same on every board -->
   <div id="trust-list" class="glass side-pop" role="dialog" aria-label="Trusted without review" hidden></div>
 
-  <aside id="panel" class="glass"></aside>
+  <aside id="panel" class="glass" aria-label="The panel"></aside>
   <aside id="activity" class="glass" aria-label="Activity"></aside>
   <!-- what was said of declarations the graph no longer has, and the migrations: in Activity's place,
        opened from the build-status popover (web/src/lostfound.ts) -->

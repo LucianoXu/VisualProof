@@ -42,7 +42,7 @@ import type { ViewData } from "../../shared/views.ts";
 import { escapeHtml } from "./highlight.ts";
 import { LayoutQueue } from "./layoutqueue.ts";
 import type { LayoutWorker } from "./layoutqueue.ts";
-import { keepInView, latestOf, maxScroll, nearestTick, pastGraph, pastLayoutKey, renamedMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline } from "./past.ts";
+import { keepInView, latestOf, maxScroll, nearestTick, onNewBuild, pastGraph, pastLayoutKey, renamedMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline, unreadWords } from "./past.ts";
 import type { HistoryDiff, PastGraph, Ruler, Snapshot, SnapshotNodes, Timeline } from "./past.ts";
 import type { Board, PastSource } from "./views.ts";
 
@@ -79,6 +79,12 @@ export interface TimeMachineHooks {
   /** why this page keeps no build and saves no view (a read-only page, CollabSpec decision 11): the
    *  bar's actions are then not offered; null where they are */
   frozen?(): string | null;
+  /** whether the reader follows someone, whose build presence brings: a new build does not move them
+   *  on by itself (HistorySpec decision 18) */
+  following?(): boolean;
+  /** the latest build is another: `from` the one before, `to` the new one (its renames are the
+   *  selection's to follow, web/src/main.ts) */
+  newBuild?(from: number, to: number): void;
 }
 
 /** An answer that is not what was asked for (a server that cannot say it) is refused here, so that
@@ -284,14 +290,25 @@ export class TimeMachine {
 
   // ---------------------------------------------------------------- the snapshots
 
-  /** The snapshots, read once and again when the server says a build was read (`refresh`). */
+  /** The snapshots, read once and again when the server says a build was read (`refresh`). A reader
+   *  at the latest build goes on to a new one (onNewBuild): the board stays the board of now, which
+   *  the new graph replaces as it comes, and those following are told. */
   load(refresh = false): Promise<void> {
     if (!this.listed || refresh)
       this.listed = api.list().then(
         (r) => {
+          const before = this.latest;
           this.snaps = [...r.snapshots].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id - b.id));
           this.line = timeline(this.snaps);
           this.seek.order = this.line.ticks.map((t) => t.id);
+          const latest = this.latest;
+          if (before !== null && latest !== null && latest !== before) this.hooks.newBuild?.(before, latest);
+          if (!this.active) return;
+          const to = onNewBuild(this.seek.target, before, latest, { kept: this.hooks.board()?.rec.version, following: !!this.hooks.following?.() });
+          if (to === null) return;
+          this.seek.reset(to, true);
+          this.pinned = null;
+          this.hooks.changed();
         },
         () => {
           this.listed = null;
@@ -935,9 +952,19 @@ export class TimeMachine {
     );
   }
 
-  /** What changed from the build browsed to now, each count opening its list; the latest says so. */
+  /** What changed from the build browsed to now, each count opening its list; the latest says so.
+   *  Then, for a build that could not read some files (a failed one, what imports it), that it could
+   *  not: what they held is on none of its boards and counts as no change (HistorySpec decision 6).
+   *  Last, so that where the bar is short of room the counts keep theirs. */
   private summaryHtml(id: number | null): string {
     if (id === null) return "";
+    const u = unreadWords(this.snaps.find((x) => x.id === id)?.missing ?? []);
+    const unread = u ? `<span class="tm-unread" title="${escapeHtml(u.tip)}">${escapeHtml(u.label)}</span>` : "";
+    return this.changesHtml(id) + unread;
+  }
+
+  /** What changed from the build browsed to now (summaryHtml). */
+  private changesHtml(id: number): string {
     if (id === this.latest) return `<span class="muted">the graph on show</span>`;
     const known = this.settled.get(id);
     if (!known) {
@@ -975,7 +1002,7 @@ export class TimeMachine {
     });
     const total = d.counts[k];
     this.list.innerHTML =
-      `<div class="tm-list-h"><b>${total.toLocaleString()} ${LIST_WORDS[k][0]}</b> <span class="muted">${LIST_WORDS[k][1]}</span><button class="icon" data-tm-close title="Close">✕</button></div>` +
+      `<div class="tm-list-h"><b>${total.toLocaleString()} ${LIST_WORDS[k][0]}</b> <span class="muted">${LIST_WORDS[k][1]}</span><button class="icon" data-tm-close title="Close" aria-label="Close">✕</button></div>` +
       `<div class="tm-rows">${rows.join("")}</div>` +
       (total > rows.length ? `<div class="muted tm-more">and ${(total - rows.length).toLocaleString()} more</div>` : "");
     this.list.hidden = false;

@@ -47,6 +47,9 @@ export interface ReviewWorld {
   contextsOf?(module: string): ModuleContexts | null;
   /** the holder of a personal link in force who goes by `name` (CollabSpec decision 9) */
   invited?(name: string): { id: string; name: string } | undefined;
+  /** whether `name` is an agent's on this server now — a token in force, an agent on the page —
+   *  though it has written nothing yet (AgentSpec decision 2) */
+  agentNamed?(name: string): boolean;
 }
 
 /** An answer, as server/agent.ts shapes them: an HTTP status and a JSON body. */
@@ -229,7 +232,7 @@ export class ReviewApi {
       ...Object.values(d.targets).map((t) => ({ by: t.by, agent: !!t.agent, person: !!t.person })),
       ...Object.values(d.keys).flatMap((marks) => Object.values(marks).map((m) => ({ by: m.by, agent: !!m.agent, person: !!m.person }))),
     ];
-    if (writers.some((w) => w.agent && sameName(w.by, name))) return refuse(400, `${name} is an agent: nobody records an opinion for an agent.`, "Record it for a person, or as your own.");
+    if (this.world.agentNamed?.(name) || writers.some((w) => w.agent && sameName(w.by, name))) return refuse(400, `${name} is an agent: nobody records an opinion for an agent.`, "Record it for a person, or as your own.");
     if (held) return { for: held.name, forPerson: held.id };
     // a guest already in the logs, as they write their name: "bob" is Bob
     const guest = writers.find((w) => !w.agent && !w.person && sameName(w.by, name));

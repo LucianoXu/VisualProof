@@ -124,7 +124,10 @@ function fetchOffer() {
       const r = await fetch(`${URL_}/api/agent/mcp/tools`, { headers: auth(), signal: AbortSignal.timeout(15_000) });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body || !Array.isArray(body.tools)) {
-        offerError = `${URL_} answered ${r.status}: ${body?.error ?? "no tools"}${body?.hint ? ` — ${body.hint}` : ""}`;
+        // a server that lets in only those given its link answers a token it does not know as it
+        // answers anyone: 404, saying nothing more
+        const unknown = r.status === 404 && !body?.hint ? " — a server that lets in only those given its link answers so to a token it does not know: check that VISUALPROOF_TOKEN is the whole token from Share (vpa_…), and VISUALPROOF_URL the server it came with" : "";
+        offerError = `${URL_} answered ${r.status}: ${body?.error ?? "no tools"}${body?.hint ? ` — ${body.hint}` : ""}${unknown}`;
         return;
       }
       offer = body;
@@ -461,14 +464,15 @@ function received(line) {
 }
 
 /** The client went: what is under way ends, and VisualProof is told the agent left (offline at
- *  once), within a second and a half. */
+ *  once), within a second and a half — by this session, so that a session a newer one replaced
+ *  (its wait answered `replaced`) leaves the newer one listening. */
 let leaving = false;
 async function leave() {
   if (leaving) return;
   leaving = true;
   for (const ctl of running.values()) ctl.abort();
   if (URL_ && TOKEN && !stopped)
-    await fetch(`${URL_}/api/agent/view`, { method: "POST", headers: { ...auth(), "content-type": "application/json" }, body: '{"leave":true}', signal: AbortSignal.timeout(1500) }).catch(() => {});
+    await fetch(`${URL_}/api/agent/view`, { method: "POST", headers: { ...auth(), "content-type": "application/json", "x-visualproof-session": SESSION }, body: '{"leave":true}', signal: AbortSignal.timeout(1500) }).catch(() => {});
   process.exit(0);
 }
 

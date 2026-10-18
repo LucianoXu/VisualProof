@@ -61,6 +61,22 @@ test("each declaration takes its most urgent state: build, sorry, then what revi
   for (const st of ["stale", "queued", "blocked"] as const) assert.equal(STATUSES[statusCodes(d, g, new Map([file("P.A", st)]))[0]], "commented", st);
 });
 
+test("a non-standard axiom needs review whatever trusts it: never shown as trusted, a standard one always", () => {
+  const nodes: ViewNode[] = [
+    { name: "P.bad", kind: "axiom", module: "P.Ax", ax: 0, hash: "x1" },
+    { name: "Mathlib.ax", kind: "axiom", module: "Mathlib.Ax", ax: 0, ext: true },
+    { name: "propext", kind: "axiom", module: "Init.Core", ax: 0, ext: true },
+  ];
+  const g = new Graph({ nodes, projectCount: 1, axioms: ["propext"], axiomSets: [[0]], layouts: {}, edgeCount: 0 } as unknown as ViewMeta, new Int32Array(0));
+  const d = emptyReview();
+  // a vendored layer trusted by name, which holds an axiom; Mathlib by default
+  d.trusted.push("P");
+  const name = (codes: Uint8Array) => [...codes].map((c) => STATUSES[c]);
+  assert.deepEqual(name(statusCodes(d, g, new Map())), ["unreviewed", "unreviewed", "trusted"]);
+  // the legend counts them among what needs review
+  assert.equal(statusCounts(statusCodes(d, g, new Map()))[STATUSES.indexOf("trusted")], 1);
+});
+
 test("what the legend counts: every declaration once, in its state, of those it is asked about", () => {
   const g = world();
   const codes = statusCodes(emptyReview(), g, new Map());

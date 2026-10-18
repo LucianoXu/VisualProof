@@ -6,6 +6,7 @@
 // reader's own (web/src/store.ts), as the edges and the theme are.
 
 import { escapeHtml } from "./highlight.ts";
+import { keepFocus } from "./keepfocus.ts";
 import { KINDS } from "./canvas.ts";
 import { ST_APPROVED, ST_COMMENTED, ST_STALE, ST_TRUSTED, STATUS_HINT, STATUS_LABEL, STATUSES } from "./status.ts";
 import type { Scheme } from "./status.ts";
@@ -46,7 +47,13 @@ export class Legend {
     this.render();
   }
 
+  /** Drawn again, the focus kept on what had it (a scheme chosen from the keyboard), or, opened or
+   *  folded, on the scheme in use, or the chip again. */
   render(): void {
+    keepFocus(this.el, () => this.draw(), this.hooks.isOpen() ? "[data-scheme].on" : "[data-lg-open]");
+  }
+
+  private draw(): void {
     const scheme = this.hooks.scheme();
     const { status, kinds } = this.hooks.counts();
     const n = (x: number) => x.toLocaleString();
@@ -74,7 +81,7 @@ export class Legend {
     const rows =
       scheme === "status"
         ? STATUSES.map((st, k) => row(`<span class="dot ss s-${st}"></span>`, STATUS_LABEL[st], status[k], STATUS_HINT[st])).join("")
-        : [...KINDS, "external"].map((k, j) => row(`<span class="dot k-${k}"></span>`, k === "external" ? "outside the project" : k, kinds[j], k)).join("");
+        : [...KINDS, "external"].map((k, j) => row(`<span class="dot k-${k}"></span>`, k === "external" ? "outside the project" : k, kinds[j], k === "axiom" ? "axiom: its point ringed, by kind and by status" : k)).join("");
     // by status, the review's progress on this board: what is approved, commented and stale, of
     // what needs review
     const summary =
@@ -89,9 +96,11 @@ export class Legend {
       (["kind", "status"] as Scheme[])
         .map((s) => `<button data-scheme="${s}" class="${s === scheme ? "on" : ""}" aria-pressed="${s === scheme}" title="Colour the points by ${s} (c)">${NAME[s]}</button>`)
         .join("") +
-      `</nav><button class="lg-x" data-lg-close aria-expanded="true" title="Fold the legend">▾</button></div>` +
+      `</nav><button class="lg-x" data-lg-close aria-expanded="true" title="Fold the legend" aria-label="Fold the legend">▾</button></div>` +
       summary +
       `<div class="lg-rows">${rows}</div>` +
+      // by status, what says an axiom where its colour does not: its ring (by kind, its row's dot)
+      (scheme === "status" ? `<div class="lg-edge lg-ring" title="An axiom's point is ringed, by kind and by status"><span class="dot axiom"></span>ringed: an axiom</div>` : "") +
       `<div class="lg-edge" title="An edge runs from the declaration that uses to the one it uses">uses<span class="edge-key"></span>used</div>` +
       (this.hooks.keyEdges()
         ? `<div class="lg-edge lg-keys" title="Under Keys, what is lit is joined by the key graph: an edge from A to B says A rests on B through declarations that are not key">` +

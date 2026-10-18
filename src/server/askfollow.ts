@@ -17,7 +17,7 @@
 // (server/agentviews.ts, AgentEndpoint), as the notes' are (server/agentnotes.ts).
 
 import { randomBytes } from "node:crypto";
-import { sameName } from "../shared/collab.ts";
+import { nameKey, sameName } from "../shared/collab.ts";
 import type { Peer } from "../shared/collab.ts";
 import { ASK_GRACE_MS, ASK_MS, ASK_WORDS, askLine, cleanAnswer, foldAnswers } from "../shared/askfollow.ts";
 import type { AskAnswer, AskFollow, AskSent, AskState } from "../shared/askfollow.ts";
@@ -96,9 +96,6 @@ interface Request {
   waiters: Set<(r: AskReport) => void>;
 }
 
-/** The key a name counts under: whatever the case, however Unicode writes it (shared/collab.ts,
- *  sameName). */
-const nameKey = (s: string) => s.trim().normalize("NFKC").toLowerCase();
 
 export class Asks {
   private port: AskPort;

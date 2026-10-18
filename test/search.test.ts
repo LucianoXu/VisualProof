@@ -120,3 +120,19 @@ test("the list's rows: each place up to its share, then what is left to names, s
   assert.deepEqual(quota({ name: 1, statement: 520, doc: 0 }, 18, 6), { name: 1, statement: 17, doc: 0 });
   assert.deepEqual(quota({ name: 4, statement: 2, doc: 1 }, 18, 6), { name: 4, statement: 2, doc: 1 });
 });
+
+test("a name a declaration folds finds it, after the declarations found by their own names", () => {
+  const ns: Searchable[] = [
+    // a notation, and the name Lean generated for it: no dots, its module's path in it
+    { name: "termR", also: ["_aux_FltRegular_CaseI_Statement___macroRules_FltRegular_termR_1"] },
+    { name: "FltRegular.caseI" },
+    { name: "FltRegular.caseI_easier" },
+    { name: "QOR", also: ["QOR.Name"] },
+    { name: "N.renamed" },
+  ];
+  const nx = new SearchIndex(ns);
+  const found = (q: string) => search(nx, q).hits.name.map((h) => [ns[h.i].name, h.via ?? null]);
+  assert.deepEqual(found("caseI flt"), [["FltRegular.caseI", null], ["FltRegular.caseI_easier", null], ["termR", "_aux_FltRegular_CaseI_Statement___macroRules_FltRegular_termR_1"]]);
+  assert.deepEqual(found("name"), [["N.renamed", null], ["QOR", "QOR.Name"]]);
+  assert.deepEqual(found("termR"), [["termR", null]], "its own name first");
+});

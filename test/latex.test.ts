@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -17,7 +17,7 @@ import { DOC_VERSION } from "../src/shared/doc/model.ts";
 import type { CodeBlock, CodeToken, DeclEntry, DocModel, Item, Section } from "../src/shared/doc/model.ts";
 import { DEFAULT_SETTINGS } from "../src/shared/doc/settings.ts";
 import { anchor, escapeLatex, escapeName, escapeVerbatim, renderLatex } from "../src/shared/doc/latex.ts";
-import { crc32, Exporter, pagesOf, rerun, zip } from "../src/server/export.ts";
+import { crc32, Exporter, pagesOf, README, rerun, zip } from "../src/server/export.ts";
 
 const HOSTILE = ["\\input{/etc/passwd}", "\\write18{rm -rf /}", "\\catcode`\\@=11", "}{\\end{document}", "%", "#1", "$x$", "^^5c^^5cinput", "~", "a\u0000b\u0007c\u001bd", "\\csname foo\\endcsname"];
 
@@ -200,6 +200,10 @@ test("a whole document: semantic macros only, nothing a reader wrote acts as LaT
   const header = sty.slice(0, sty.indexOf("\\NeedsTeXFormat"));
   for (const m of new Set([...tex.matchAll(/\\(vp[A-Z][A-Za-z]*)/g)].map((x) => x[1]))) assert.ok(header.includes(`\\${m}`) || (header.includes(m) && /^vpTk/.test(m)), `${m} is in the interface`);
   for (const old of ["vpPart", "vpMembers", "vpIndexItem", "vpContentsPart"]) assert.ok(!sty.includes(old), `${old} is gone`);
+  // the sources' README names macros of the interface, none gone
+  const named = [...README.matchAll(/\\(?:begin\{)?(vp[A-Z][A-Za-z]*)/g)].map((x) => x[1]);
+  assert.ok(named.length >= 3, README);
+  for (const m of named) assert.ok(header.includes(m), `the README's ${m} is in the interface`);
 });
 
 test("the head card: the project, the build and its commit, the toolchain, the trusted boundary, what the view holds from outside; no time", () => {
@@ -218,6 +222,9 @@ test("the head card: the project, the build and its commit, the toolchain, the t
   const s = sample();
   const none = renderLatex({ ...s, head: { ...s.head, commit: null, outside: { count: 0, by: [] } } });
   assert.ok(!none.includes("\\vpCardRow{Commit}") && !none.includes("Also on this view"));
+  // counted in thousands, as the Export window counts them
+  const large = renderLatex({ ...s, head: { ...s.head, outside: { count: 2640, by: [{ name: "Mathlib", count: 2210 }, { name: "Init", count: 430 }] } } });
+  assert.match(large, /\{2,640 declarations from outside the project \(Mathlib 2,210, Init 430\), not printed\}/);
   // many libraries: the six largest named, the rest together
   const many = renderLatex({ ...s, head: { ...s.head, outside: { count: 8, by: "ABCDEFGH".split("").map((name) => ({ name, count: 1 })) } } });
   assert.match(many, /8 declarations from outside the project \(A 1, B 1, C 1, D 1, E 1, F 1, others 2\)/);
@@ -382,6 +389,30 @@ test("the first page: the head card, the contents in two columns, and the body f
   assert.match(p2.text, /not printed .*«added/);
 });
 
+test("a section's heading is kept with what follows it, its first subsection's heading too: never alone at the foot of a page", { skip: !haveXelatex ? "xelatex is not installed" : !havePdftotext && "pdftotext is not installed" }, async () => {
+  // sections that hold a subsection first, each after a declaration of another length, so that
+  // some of them come near the foot of a page
+  const s = sample();
+  const one = (s.items.find((x) => x.t === "section") as { section: Section }).section.items.find((x) => x.t === "decl") as { decl: DeclEntry };
+  const L = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const groups: Section[] = [...L].map((c, i) => {
+    const filler: DeclEntry = { ...one.decl, id: `F${c}.f`, name: `F${c}.f`, short: "f", doc: null, code: codeOf(Array.from({ length: 1 + ((i * 7) % 13) }, (_, k) => `def f${k} : Nat := ${k}`).join("\n")) };
+    const inner: Section = { id: `section:G${c}.I`, key: `G${c}.I`, title: `Inner${c}${c}`, level: 2, items: [{ t: "decl", decl: filler }] };
+    return { id: `section:G${c}`, key: `G${c}`, title: `Group${c}${c}`, level: 1, items: [{ t: "section", section: inner }] };
+  });
+  const doc: DocModel = { ...s, settings: { ...s.settings, contents: false }, items: groups.map((section): Item => ({ t: "section", section })) };
+  const ex = new Exporter(state);
+  const job = await ex.wait(ex.compile(renderLatex(doc)).id);
+  assert.equal(job?.state, "done", job?.error);
+  const pdf = ex.file(job!.id, "pdf")!.body;
+  const pageOf = new Map<string, number>();
+  for (let p = 1; p <= job!.pages!; p++) {
+    const text = spawnSync("pdftotext", ["-f", String(p), "-l", String(p), "-", "-"], { input: pdf, encoding: "utf8" }).stdout;
+    for (const m of text.matchAll(/(Group|Inner)([A-Z])\2/g)) if (!pageOf.has(m[0])) pageOf.set(m[0], p);
+  }
+  for (const c of L) assert.equal(pageOf.get(`Group${c}${c}`), pageOf.get(`Inner${c}${c}`), `Group${c}${c} and its first subsection on one page`);
+});
+
 test("the typeset document has every glyph: no character is missing from its fonts", { skip: haveXelatex ? false : "xelatex is not installed" }, async () => {
   // typeset by hand to read the log, which the exporter does not keep for a document that worked
   const dir = mkdtempSync(join(state, "glyphs-"));
@@ -397,6 +428,30 @@ test("the typeset document has every glyph: no character is missing from its fon
   const log = readFileSync(join(dir, "doc.log"), "utf8");
   assert.ok(!/Missing character/.test(log), log.split("\n").filter((l) => /Missing character/.test(l)).slice(0, 5).join("\n"));
   assert.ok(!/Overfull \\hbox \((\d{3,}|[5-9]\d)\./.test(log), "nothing sticks out of the page by more than 50pt");
+});
+
+test("a document that has left the cache (newer ones took its place) is typeset again when asked again, not answered with files that are gone", async () => {
+  // a XeLaTeX of its own that writes a page at once, so that the cache's turnover is quick to see
+  const dir = mkdtempSync(join(state, "turnover-"));
+  const fake = join(dir, "xelatex");
+  writeFileSync(fake, '#!/bin/sh\nprintf "%%PDF-1.4\\n" > doc.pdf\nprintf "Output written on doc.pdf (1 page, 9 bytes).\\n" > doc.log\n');
+  chmodSync(fake, 0o755);
+  const ex = new Exporter(dir, { xelatex: fake, maxCached: 1 });
+  const a = await ex.wait(ex.compile("A").id);
+  assert.equal(a?.state, "done", a?.error);
+  // the newer document's files push the older's out of the cache
+  utimesSync(join(dir, "export", "cache", a!.id), new Date(0), new Date(0));
+  const b = await ex.wait(ex.compile("B").id);
+  assert.equal(b?.state, "done", b?.error);
+  assert.ok(!existsSync(join(dir, "export", "cache", a!.id)), "the older document has left the cache");
+  assert.equal(ex.job(a!.id), null, "it is no longer known: its files are gone");
+  assert.equal(ex.file(a!.id, "pdf"), null);
+  // asked again, it is typeset again
+  const again = ex.compile("A");
+  assert.equal(again.id, a!.id);
+  assert.equal(again.state, "running");
+  assert.equal((await ex.wait(again.id))?.state, "done");
+  assert.ok(ex.file(a!.id, "pdf")?.body.toString().startsWith("%PDF"));
 });
 
 test("a document that fails, or takes too long, says why; its temporary directory goes all the same", { skip: haveXelatex ? false : "xelatex is not installed" }, async () => {

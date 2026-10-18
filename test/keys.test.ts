@@ -210,6 +210,11 @@ test("the page's review of a declaration: the key toggle, and no explanation to 
     assert.match(G, /data-rv-key aria-pressed="true"[^>]*>◆ Key for T/);
     for (const html of [G, T]) assert.doesNotMatch(html, /explanation|explain|data-ex-|Definition 2\.3/i);
     assert.equal("aboutHtml" in box, false, "nothing draws an explanation above the doc");
+    // the target's Key view, offered where the page makes views; a read-only reader's makes none
+    // (CollabSpec decision 11), and is not offered it
+    assert.match(T, /data-rv-keyview/);
+    const { keyView: _, ...reader } = hooks;
+    assert.doesNotMatch(new ReviewBox(g, { ...reader, review: () => ({ ...hooks.review(), readOnly: true }) }).html(root, true), /data-rv-keyview/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

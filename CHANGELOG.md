@@ -5,6 +5,14 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.4.4
+
+- Add a layout for upright monitors: the board above, and below it a work area with the panel and the windows stacked beside it. An upright tablet keeps the drawer and the sheet.
+- Draw every axiom with a ring, so that axioms are told apart without their colour.
+- Answer, on a server without an access key, only the names it is reached at (DNS rebinding). Such a server behind a proxy needs `--public-url` or the new `--allowed-host`, or it answers 403.
+- Follow a new build when at the latest one. Zoom in on a large selection no longer freezes the page.
+- Fix 84 bugs found by reviewing every part of the page and the server, among them fetching by URL past its limits, history logs cut by a crash, and live updates with a review over 4 MB.
+
 ## 0.4.3
 
 - Fix following: a reader who followed someone into the export document, or into the artwork mode, can leave it once following ends.

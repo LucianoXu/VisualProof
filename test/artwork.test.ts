@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ArtShape } from "../src/web/src/canvas.ts";
-import type { NotePicture } from "../src/web/src/artwork.ts";
+import type { CardFile, NotePicture } from "../src/web/src/artwork.ts";
 import type { NameRow } from "../src/web/src/artwork.ts";
 import { artName, artSvg, borderBand, borderInset, bundlePoints, cleanSettings, drawBackdrop, drawBorder, drawFoot, drawNotes, drawTitle, footMost, MAX_SIDE, NAME_ROWS, nameRows, oriented, presetOf, PRESETS, sourceLine, svgColour, SvgContext, titleOf, withChosen, wrapText } from "../src/web/src/artwork.ts";
 import { ART_NAMES_BYTES } from "../src/shared/collab.ts";
@@ -168,6 +168,34 @@ test("the notes as the board shows them: the leader to a declaration and its dia
   const dots = b.filter((x) => x.includes(`fill-opacity="1"`) || x.includes(`fill-opacity="0.5"`));
   assert.ok(dots.some((x) => x.includes(`fill-opacity="0.5"`)), "half way: half the dot");
   assert.ok(b.some((x) => /A2.81 2.81 0 1 1/.test(x)), "a dot alone: its radius a little past the mark's");
+});
+
+test("an open card's files are drawn as the card shows them: each box, its drawing where the page drew one, its words in their boxes; the card's text ends above them", () => {
+  const pen = new SvgContext(measure, FAMILY);
+  const base: NotePicture = { x: 30, y: 40, r: 12, t: 1, fill: "rgb(255, 255, 255)", ring: "rgb(80, 80, 255)", ringW: 1.5, dashed: false, glyph: "", glyphPx: 14, colour: "rgb(80, 80, 255)", dot: "rgb(80, 80, 255)", surface: "rgb(255, 255, 255)", decl: null, card: null, lead: null };
+  const pdf: CardFile = {
+    x: 62, y: 40, w: 240, h: 106, bg: "rgb(245, 245, 247)",
+    image: { x: 67, y: 45, w: 64, h: 90, src: "data:image/png;base64,AAAA" },
+    words: [
+      { x: 139, y: 45, w: 160, h: 31.2, text: "Review plan: FLT for regular primes", px: 12, weight: 600, line: 15.6, colour: "rgb(20, 20, 20)" },
+      { x: 139, y: 78, w: 160, h: 14, text: "PDF · 2 p.", px: 11, weight: 400, line: 14, colour: "rgb(120, 120, 120)" },
+    ],
+  };
+  const open: NotePicture = { ...base, card: { x: 50, y: 0, w: 260, h: 170, bg: "rgb(255, 250, 230)", edge: "rgba(0, 0, 0, 0.1)", accent: "rgb(80, 80, 255)", text: "Start here. What we review, what we trust, who reads what: the review plan, and a good deal more that runs on and on and on", by: "Alice", textColour: "rgb(20, 20, 20)", byColour: "rgb(120, 120, 120)", textBottom: 36, files: [pdf] } };
+  const images: unknown[] = [];
+  drawNotes(ctxOf(pen), [open], FAMILY, () => {}, (...a) => images.push(a));
+  assert.deepEqual(images, [["data:image/png;base64,AAAA", 67, 45, 64, 90]], "the drawing, where the card has it");
+  const texts = pen.body.filter((x) => x.startsWith("<text"));
+  const at = (t: string) => texts.find((x) => x.includes(`>${t}<`));
+  // the title in its box, bold, on as many lines as its box holds; the pages under it
+  assert.match(at("Review plan: FLT for") ?? "", /^<text x="139" y="[\d.]+" font-size="12" font-weight="600" fill="rgb\(20,20,20\)">/);
+  assert.ok(at("regular primes"), texts.join("\n"));
+  assert.match(at("PDF · 2 p.") ?? "", /x="139" y="8\d(\.\d+)?" font-size="11"/);
+  // the text stops at its element's foot: none of it over the file
+  const ys = texts.filter((x) => /font-size="12.5"/.test(x)).map((x) => Number(/ y="([\d.]+)"/.exec(x)![1]));
+  assert.ok(ys.length >= 1 && ys.every((y) => y <= 37), `${ys}`);
+  // the file's box under its words
+  assert.ok(pen.body.some((x) => x.includes(`fill="rgb(245,245,247)"`)), "its box");
 });
 
 test("a card's text is broken as the card breaks it: at its line breaks, between words, inside a word too long", () => {

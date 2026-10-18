@@ -11,7 +11,8 @@
 // scan, and a query that only adds to the last one looks through what the last one found.
 //
 // A unit is found by the names it folds too (ViewNode.also): `QOR.Name`, which Lean generated from
-// the command that writes `QOR`, finds `QOR`, as a name does, and the hit says which (`via`).
+// the command that writes `QOR`, finds `QOR`, as a name does, after the declarations found by their
+// own names, and the hit says which (`via`).
 //
 // The page's search box (web/src/search.ts) and the agent API (server/agent.ts) both search so.
 
@@ -127,7 +128,10 @@ export function search(ix: SearchIndex, query: string, within?: Int32Array): Fou
     if (tier === 0) {
       // as the search always ranked a name: the words in its last component, exactly, at its start,
       // inside it; then the project before the outside world; then the shorter name. A word found
-      // in a name it folds counts as found in that name.
+      // in a name it folds counts as found in that name, and ranks after every declaration found by
+      // its own name: a generated name (`_aux_FltRegular_CaseI_…_termR_1`) has no dots, so all of it
+      // reads as a last component, and would rank its notation before `FltRegular.caseI` for
+      // "caseI flt".
       let name = names[i];
       for (const w of order) {
         const a = folded(w);
@@ -140,7 +144,7 @@ export function search(ix: SearchIndex, query: string, within?: Int32Array): Fou
       const last = name.slice(name.lastIndexOf(".") + 1);
       let fit = 0;
       for (const w of order) fit = Math.max(fit, last === w ? 0 : last.startsWith(w) ? 1 : last.includes(w) ? 2 : 3);
-      score = fit * 1000 + (ext ? 500 : 0) + Math.min(400, name.length);
+      score = (via !== undefined ? 4000 : 0) + fit * 1000 + (ext ? 500 : 0) + Math.min(400, name.length);
     } else {
       // fewer words that needed this place first (the rest are in the name), then a word found
       // whole rather than inside another, then the shorter text

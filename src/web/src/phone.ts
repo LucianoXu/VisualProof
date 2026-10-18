@@ -14,19 +14,27 @@
 //
 // On a touch screen nothing on the board is moved by a finger (web/src/canvas.ts): it is read.
 //
-// A tall screen (PhoneSpec, "Tall screens"): wider than a phone and upright — a tablet held upright,
-// a narrow window, a monitor on its side. It is a larger screen's page, its parts placed for the
-// shape with the phone's own mechanisms: the side panel is the drawer from ☰, the panel the sheet
-// from the bottom (a drag on its handle sets its height there, besides the tap), and Activity, the
-// lost-and-found, Export's window and the floating windows take the sheet's place; the board's room
-// is above them (`tallInsets`).
+// A tall screen (PhoneSpec, "Tall screens"): wider than a phone and upright, under a finger — a
+// tablet held upright — or too narrow for a desktop's panels — a narrow window. It is a larger
+// screen's page, its parts placed for the shape with the phone's own mechanisms: the side panel is
+// the drawer from ☰, the panel the sheet from the bottom (a drag on its handle sets its height
+// there, besides the tap), and Activity, the lost-and-found, Export's window and the floating
+// windows take the sheet's place; the board's room is above them (`tallInsets`). A monitor on its
+// side, with a mouse, is not one: it has a desktop's page, the board above a work area
+// (web/src/monitor.ts).
+
+import type { PageEl } from "./surfaces.ts";
 
 export const PHONE = "(max-width: 640px)";
-/** a tall screen: wider than a phone, and at least 1.2 times as high as it is wide */
-export const TALL = "(min-width: 641px) and (max-aspect-ratio: 5/6)";
+/** a tall screen: wider than a phone, at least 1.2 times as high as it is wide, and under a finger
+ *  or narrower than a desktop's panels need (999 px) */
+export const TALL = "(min-width: 641px) and (max-aspect-ratio: 5/6) and (pointer: coarse), (min-width: 641px) and (max-width: 999px) and (max-aspect-ratio: 5/6)";
 /** the shapes whose panel is a sheet and whose side panel a drawer: a phone, a tall screen (the
- *  `max-width: 640px` and `max-aspect-ratio: 5/6` blocks of `web/style.css`) */
-export const SHEETED = "(max-width: 640px), (max-aspect-ratio: 5/6)";
+ *  blocks of these queries in `web/style.css`) */
+export const SHEETED = `${PHONE}, ${TALL}`;
+/** an upright monitor, with a mouse: at least 1000 px wide and 1.2 times as high (PhoneSpec decision
+ *  29; web/src/monitor.ts) */
+export const MONITOR = "(min-width: 1000px) and (max-aspect-ratio: 5/6) and (pointer: fine)";
 
 const matches = (q: string) => typeof matchMedia === "function" && matchMedia(q).matches;
 
@@ -38,16 +46,39 @@ export function isTall(): boolean {
   return matches(TALL);
 }
 
+/** An upright monitor's page: the board above a work area (web/src/monitor.ts). */
+export function isMonitor(): boolean {
+  return matches(MONITOR);
+}
+
 /** The panel is a sheet and the side panel a drawer: a phone, or a tall screen. */
 export function sheeted(): boolean {
   return matches(SHEETED);
 }
 
-/** The shape a screen of `w` × `h` px is: what TALL, PHONE and SHEETED decide, for a size (the
- *  queries' own arithmetic, tested without a browser). */
-export function shapeOf(w: number, h: number): "phone" | "tall" | "wide" {
+/** The shape a screen of `w` × `h` px is under a `pointer` (the primary one's, as `pointer:` asks):
+ *  what PHONE, TALL and MONITOR decide, for a size (the queries' own arithmetic, tested without a
+ *  browser). A screen with no pointer at all, upright and wide enough, has a larger screen's page. */
+export function shapeOf(w: number, h: number, pointer: "fine" | "coarse" | "none" = "fine"): "phone" | "tall" | "monitor" | "wide" {
   if (w <= 640) return "phone";
-  return w * 6 <= h * 5 ? "tall" : "wide";
+  if (w * 6 > h * 5) return "wide";
+  if (pointer === "coarse" || w <= 999) return "tall";
+  return pointer === "fine" ? "monitor" : "wide";
+}
+
+/** Whether a press at `t` in the drawer goes somewhere from it, which closes it (decisions 9 and 19):
+ *  a target's row, a cluster's name or the rest of its row, a name that goes to a declaration. An
+ *  arrow opening or folding a level, a section's heading, a row's own buttons (fold, trust) and ⚙
+ *  Board or Trusted, which take its place, leave it open. */
+export function goesFromDrawer(t: PageEl | null): boolean {
+  const up = (sel: string) => {
+    for (let e = t; e; e = e.parentElement) if (e.matches(sel)) return true;
+    return false;
+  };
+  if (up(".tw, [data-sec]")) return false;
+  // a target's row and a cluster's name are buttons that go somewhere
+  if (up(".tg-row, .o-label, [data-go], [data-open]")) return true;
+  return !up("button") && up(".o-row");
 }
 
 export interface PhoneHooks {
@@ -107,7 +138,8 @@ const DOCKED = "#windows > :is(.sw-win, .pw-win, #following.talking):not(.collap
 export function tallInsets(): { left: number; right: number; top: number; bottom: number } {
   const $ = (id: string) => document.getElementById(id);
   const bar = $("selbar")!;
-  const strip = [$("lensbar"), $("tm-kept")].find((e) => e && !e.hidden);
+  // the note of a kept view sits under the review strip where both show
+  const strip = [$("tm-kept"), $("lensbar")].find((e) => e && !e.hidden);
   const under = !bar.hidden ? bar.getBoundingClientRect().bottom : strip ? strip.getBoundingClientRect().bottom : $("viewbar")!.getBoundingClientRect().bottom;
   // the sheet or the dock: offsetHeight, not the bounding box, as either may still be sliding in
   let low = 0;
@@ -170,9 +202,7 @@ export class Phone {
     // of the tree and the drawer stays, as it does for what is pressed on a row's buttons
     document.getElementById("side")!.addEventListener("click", (e) => {
       if (!sheeted()) return;
-      const t = e.target as HTMLElement;
-      if (t.closest(".tw, button, [data-sec]")) return;
-      if (t.closest(".tg-row, .o-row, [data-go], [data-open]")) setTimeout(() => this.drawer(false), 120);
+      if (goesFromDrawer(e.target as HTMLElement)) setTimeout(() => this.drawer(false), 120);
     });
 
     // the sheets: the panel's on a phone; on a tall screen Activity and the lost-and-found too, which

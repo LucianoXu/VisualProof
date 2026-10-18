@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzipSync, gzip, gzipSync } from "node:zlib";
 import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
 import { makeArtwork, pngOf, projectView } from "./artcmd.ts";
@@ -24,12 +24,12 @@ import { Identities, layoutAuthor } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import type { GitSource } from "../shared/graph.ts";
 import { MAX_MEMORY_BYTES, readProjectView, Views } from "./views.ts";
-import { cleanView, defaultAgentName, validSession, withoutArtwork } from "../shared/collab.ts";
+import { cleanView, defaultAgentName, nameKey, validSession, withoutArtwork } from "../shared/collab.ts";
 import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
 import { packEdges } from "../shared/edgecodec.ts";
-import { Access, KEY_PATH, loadKey } from "./access.ts";
+import { Access, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
@@ -84,6 +84,9 @@ interface Options {
   /** the server's address as people reach it, for the prompt Share makes for an agent; null: the
    *  address the person's browser used */
   publicUrl: string | null;
+  /** --allowed-host: the names a server without an access key answers besides its addresses,
+   *  localhost and --public-url's (CollabSpec decision 12) */
+  allowedHosts: string[];
   /** the most the library's files may take, in bytes (AttachmentSpec, "Implementation notes") */
   libraryLimit: number;
   /** --public: whoever comes without the key or a link of their own is a read-only reader
@@ -109,7 +112,8 @@ function usage(code = 2): never {
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
-                                         [--public-url https://host] [--library-limit GB] [--updates auto|notify|off]
+                                         [--public-url https://host] [--allowed-host name]... [--library-limit GB]
+                                         [--updates auto|notify|off]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Name]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
@@ -192,6 +196,13 @@ function usage(code = 2): never {
   --public-url  the address people reach this server at, when it is not the one their browser
            sends (a proxy in front): the prompt Share makes for an agent tells it this address.
 
+  --allowed-host  without --access-key-file, a name this server is reached by; repeatable. A
+           server without a key answers only requests for an IP address, localhost (and the names
+           under it), --public-url's host and these: any other name is answered 403, so that a web
+           page that makes its own name resolve to this machine (DNS rebinding) cannot use it. Give
+           the names people reach it by: a proxy's in front of it, this machine's own. With a key,
+           the key keeps everyone else out, whatever the name.
+
   --updates  what the server does with VisualProof's own releases, asked of the npm registry
            (through npm) at start and once a day: auto (the default) — a patch of the version it
            runs (0.4.x) is downloaded into the cache and taken at a quiet moment, nobody on a page,
@@ -228,7 +239,7 @@ function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto" };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto" };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -248,8 +259,13 @@ function parseArgs(argv: string[]): Options {
     else if (a === "--png" && cmd === "artwork") o.png = true;
     else if (a === "--svg" && cmd === "artwork") o.svg = true;
     else if (a === "--screen" && cmd === "artwork") {
-      const m = /^(\d+)x(\d+)$/.exec(val());
-      if (!m || +m[1] < 640 || +m[2] < 480 || +m[1] > 10000 || +m[2] > 10000) usage();
+      const v = val();
+      const m = /^(\d+)x(\d+)$/.exec(v);
+      // said in a line, as --public-url is, rather than the whole usage
+      if (!m || +m[1] < 640 || +m[2] < 480 || +m[1] > 10000 || +m[2] > 10000) {
+        console.error(`visualproof artwork: --screen ${v}: give the screen's width and height in pixels, e.g. 1920x1200, from 640x480 to 10000x10000`);
+        process.exit(2);
+      }
       o.screen = { w: +m[1], h: +m[2] };
     }
     else if (a === "--public-url") {
@@ -259,6 +275,15 @@ function parseArgs(argv: string[]): Options {
         process.exit(2);
       }
       o.publicUrl = u.replace(/\/+$/, "");
+    }
+    else if (a === "--allowed-host" && cmd === "serve") {
+      const h = val();
+      // a name, as a Host header gives it without its port (CollabSpec decision 12)
+      if (!/^[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9_-]*[A-Za-z0-9])?)*\.?$/.test(h)) {
+        console.error(`visualproof: --allowed-host ${h}: give a name this server is reached by, without a scheme or a port, e.g. vp.example.org`);
+        process.exit(2);
+      }
+      o.allowedHosts.push(h);
     }
     else if (a === "--jobs") {
       const n = Number(val());
@@ -292,6 +317,9 @@ function parseArgs(argv: string[]): Options {
     console.error("visualproof: --public lets in read-only whoever has no key: it needs --access-key-file, and does not go with --identity-header");
     process.exit(2);
   }
+  // the names a server without a key answers: with one, the key keeps everyone else out whatever
+  // the name (CollabSpec decision 12)
+  if (o.allowedHosts.length && o.accessKeyFile) console.warn("visualproof: --allowed-host changes nothing with --access-key-file: the key lets in whoever has it, by any name");
   if (cmd === "purge-file" && !validSha(o.sha)) {
     console.error("visualproof purge-file: give the file's SHA-256, 64 hex digits, as the page's library shows it.");
     process.exit(2);
@@ -328,6 +356,13 @@ export class App {
   /** --public: whoever comes without the key or a link of their own reads only (CollabSpec
    *  decision 11) */
   publicRead: boolean;
+  /** without a key, the names this server answers besides its addresses and localhost
+   *  (server/access.ts, hostAllowed): --public-url's host and every --allowed-host; null: every
+   *  name, the key keeping everyone else out */
+  hostNames: string[] | null;
+  /** the names refused as Host, said once each in the server's console (a few: whoever asks
+   *  chooses them) */
+  private refusedHosts = new Set<string>();
   /** the read-only readers' requests, by the read-only link they came by, or "public" */
   private readOnlyOf = new WeakMap<IncomingMessage, string>();
   /** what read-only readers may cost the server: Lean's answers, their documents */
@@ -336,7 +371,7 @@ export class App {
    *  version alone is told (a test's server) */
   updates: Updates | null = null;
 
-  constructor(live: Live, hover: LeanHover, ids: Identities, agents: AgentApi, access: Access | null, exporter: Exporter | null = null, publicUrl: string | null = null, publicRead = false) {
+  constructor(live: Live, hover: LeanHover, ids: Identities, agents: AgentApi, access: Access | null, exporter: Exporter | null = null, publicUrl: string | null = null, publicRead = false, allowedHosts: string[] = []) {
     this.live = live;
     this.hover = hover;
     this.ids = ids;
@@ -350,6 +385,7 @@ export class App {
     agents.exporter = exporter;
     this.publicUrl = publicUrl;
     this.publicRead = publicRead && access !== null;
+    this.hostNames = access ? null : [...(publicUrl ? [urlHost(publicUrl)] : []), ...allowedHosts];
     this.bounds = new ReadOnlyBounds((id) => this.exporter?.job(id)?.state === "running");
   }
 
@@ -525,7 +561,7 @@ export class App {
     if (b.to !== undefined && b.to !== null && typeof b.to !== "string") return sendJson(res, { error: "to is a reader's id, as presence lists them; left out, everyone." }, 400);
     const person = this.ids.person(req);
     // one request every 30 s per person — their personal link, else their name — and per page
-    const key = person ? `p:${person.id}` : `n:${me.trim().normalize("NFKC").toLowerCase()}`;
+    const key = person ? `p:${person.id}` : `n:${nameKey(me)}`;
     const a = live.asks.ask({ name: me, verified: !!person, agent: false, from: page.id, stream: b.token as string, rate: [key, `s:${b.token as string}`] }, typeof b.to === "string" ? { page: b.to } : { everyone: true });
     if ("ok" in a) {
       const { report: _, ...sent } = a.ok;
@@ -650,10 +686,7 @@ export class App {
       res.writeHead(303, { location: "/", "set-cookie": this.live.invites.cookie(c.ok), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
-    if (c) {
-      const r = c.record;
-      return sendText(req, res, `This personal link was revoked by ${r.revokedBy} on ${r.revoked!.slice(0, 10)}. Ask whoever invited you for a new one.\n`, "text/plain; charset=utf-8", 410);
-    }
+    if (c) return sendText(req, res, revokedWords(c.record, "personal") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
 
@@ -667,10 +700,7 @@ export class App {
       res.writeHead(303, { location: "/", "set-cookie": this.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
-    if (c) {
-      const l = c.link;
-      return sendText(req, res, `This read-only link was revoked by ${l.revokedBy} on ${l.revoked!.slice(0, 10)}. Ask whoever gave it to you for a new one.\n`, "text/plain; charset=utf-8", 410);
-    }
+    if (c) return sendText(req, res, revokedWords(c.link, "read-only") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
 
@@ -700,6 +730,20 @@ export class App {
     // which carries the name it is written under
     if (done.name !== was) this.live.review.named(p.id, done.name);
     return sendJson(res, { ok: true, name: done.name, person: Invites.info(done) });
+  }
+
+  /** A request for a name this server without a key does not answer (CollabSpec decision 12): 403,
+   *  saying which option lets the name in; and, once per name, the server's console says it too,
+   *  for whoever runs it behind a proxy that forwards the name people reach it by. */
+  private refuseHost(req: IncomingMessage, res: ServerResponse): void {
+    const raw = req.headers.host ?? "";
+    const name = /^\[/.test(raw) ? raw : raw.replace(/:\d{1,5}$/, "");
+    const shown = /^[A-Za-z0-9._\-[\]:]{1,253}$/.test(name) ? name : null;
+    if (shown && this.refusedHosts.size < 20 && !this.refusedHosts.has(shown.toLowerCase())) {
+      this.refusedHosts.add(shown.toLowerCase());
+      console.error(`refused a request for ${shown}: without an access key this server answers only its addresses, localhost, --public-url's host and the --allowed-host names; --allowed-host ${shown} lets this one in`);
+    }
+    sendText(req, res, `This server answers only the names it is meant to be reached by${shown ? `, and ${shown} is not one of them` : ""}. Whoever runs it can let a name in with --allowed-host${shown ? ` ${shown}` : " <name>"}.\n`, "text/plain; charset=utf-8", 403);
   }
 
   /** The answer to a request that needs a name and has none: the page asks for one (`who`). Where
@@ -784,6 +828,11 @@ export class App {
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname;
     const live = this.live;
+    // without a key, only the names this server is reached at (CollabSpec decision 12, the owner's
+    // decision of 2026-10-18): a page whose own name was made to resolve to this machine (DNS
+    // rebinding) is refused whatever it asks — the page, its data, the event stream, the agents'
+    // API, the MCP server's file
+    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res);
     // every route; whatever one throws, handle() answers
     {
       // an agent's own token (server/tokens.ts) lets it into its API alone: the page and the page's
@@ -816,6 +865,17 @@ export class App {
         if (a === "out") {
           // nothing lets them in to write: their read-only link does, or --public, to read
           const reader = ro && "ok" in ro ? ro.ok.id : this.publicRead && !this.ids.header ? "public" : null;
+          // a page whose link was revoked, which nothing else lets in, is told so (CollabSpec
+          // decisions 9 and 11): its requests are answered 410 with who revoked it and when, and the
+          // page, reloaded, says it in words; the cookie is forgotten there, once it has been said
+          const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? revokedWords(link.record, "personal") : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
+          if (revoked) {
+            if (path === "/" || path === "/index.html") {
+              res.setHeader("set-cookie", cookies);
+              return sendText(req, res, revoked + "\n", "text/plain; charset=utf-8", 410);
+            }
+            return sendJson(res, { error: revoked, revoked: true }, 410);
+          }
           if (reader === null || this.ids.kind(req) === "agent") {
             if (cookies.length) res.setHeader("set-cookie", cookies);
             return sendJson(res, { error: "not found" }, 404);
@@ -917,12 +977,22 @@ export class App {
       }
       // the library of papers and images, and the links into them (AttachmentSpec.md,
       // server/libraryroute.ts)
-      if (path === "/api/library" || path.startsWith("/api/library/")) return libraryRoute({ ids: this.ids, level: this.agents.level, api: this.library() }, req, res, url);
+      if (path === "/api/library" || path.startsWith("/api/library/")) {
+        // a read-only reader (CollabSpec decision 11) is drawn what the notes show of a PDF, kept in
+        // the cache as it is drawn, and no other page or region of one: each would be drawn by
+        // Poppler and kept anew, whoever comes asking
+        if (reader !== undefined && (path === "/api/library/page" || path === "/api/library/clip")) {
+          const q = url.searchParams;
+          const region = path === "/api/library/clip" ? (q.get("region") ?? "").split(",").map(Number) : null;
+          if (!live.views.shows(q.get("sha") ?? "", Number(q.get("page")), region)) return sendJson(res, { error: "A read-only page is drawn what the notes show of the library: open the file itself.", readOnly: true }, 403);
+        }
+        return libraryRoute({ ids: this.ids, level: this.agents.level, api: this.library() }, req, res, url);
+      }
       // an agent may use the page's own endpoints too: the same rules hold there (AgentSpec)
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
       // logs that cannot be read
-      if (path === "/api/review" && req.method === "GET") return sendJson(res, live.review.whole());
+      if (path === "/api/review" && req.method === "GET") return sendJsonText(res, live.review.wholeText());
       if (path === "/api/review" && req.method === "POST") {
         // an opinion, a target, a trusted prefix or a key declaration is recorded under the
         // reader's name (CollabSpec decision 3), not one in the body; what it is about is
@@ -1103,6 +1173,11 @@ export class App {
   }
 }
 
+/** What a revoked link's holder is told, opening it or on a page it had opened. */
+function revokedWords(r: { revokedBy?: string | null; revoked?: string | null }, kind: "personal" | "read-only"): string {
+  return `This ${kind} link was revoked by ${r.revokedBy} on ${(r.revoked ?? "").slice(0, 10)}. Ask whoever ${kind === "personal" ? "invited you" : "gave it to you"} for a new one.`;
+}
+
 /** an artwork's font file (assets/webfonts/) */
 const FONT_PATH = /^\/fonts\/(source-sans-3|source-serif-4|jost)-[a-z-]+\.woff2$/;
 
@@ -1218,13 +1293,20 @@ function tooLarge(req: IncomingMessage, res: ServerResponse, body: object): void
 
 /** Send a JSON answer, once: a handler that answers after something else already did (a body too
  *  large, answered as it was read) is not heard. */
-function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Record<string, string> = {}): void {
+export function sendJson(res: ServerResponse, body: unknown, code = 200, headers: Record<string, string> = {}): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
-  const text = JSON.stringify(body);
-  // a small answer is not worth compressing; a status with its build log, a source file, are
+  sendJsonText(res, JSON.stringify(body), code, headers);
+}
+
+/** The same, of an answer written as JSON already (the whole review, server/review.ts). */
+function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Record<string, string> = {}): void {
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
+  // a small answer is not worth compressing; a status with its build log, a source file, are; a
+  // large one is compressed off the server's thread, which meanwhile answers others
   if (text.length > JSON_GZIP_FROM && acceptsGzip(res.req)) {
     res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", "content-encoding": "gzip", vary: "accept-encoding", ...headers });
-    return void res.end(gzipSync(text));
+    if (text.length < JSON_GZIP_AWAY_FROM) return void res.end(gzipSync(text));
+    return void gzip(text, (e, gz) => (e ? res.destroy(e) : res.end(gz)));
   }
   res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...headers });
   res.end(text);
@@ -1270,6 +1352,10 @@ export function reachedAt(req: IncomingMessage): string {
 
 /** characters from which a JSON answer is sent compressed */
 const JSON_GZIP_FROM = 2048;
+/** characters from which a JSON answer is compressed off the server's thread: a snapshot's whole
+ *  graph on NavierStokesAndEuler (GET /api/agent/history/graph, 105 MB of JSON) was 2 to 3 s of
+ *  compressing, every page and agent waiting meanwhile */
+export const JSON_GZIP_AWAY_FROM = 1 << 20;
 
 /** the graph's parts as sent, each tagged once (a graph's buffers live as long as it does) */
 const gzTags = new WeakMap<Buffer, string>();
@@ -1415,7 +1501,7 @@ async function main(): Promise<void> {
     live.readOnly.close();
   });
   const exporter = new Exporter(dirs.cache);
-  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, exporter, o.publicUrl, o.publicRead);
+  const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, exporter, o.publicUrl, o.publicRead, o.allowedHosts);
   const server = createServer((req, res) => app.handle(req, res));
   const version = packageVersion();
   // run by the supervisor, which starts it again in another version (UpdateSpec decision 5)
@@ -1493,7 +1579,7 @@ async function main(): Promise<void> {
     console.log(`  agents: ${o.agents} — their API is http://${o.host}:${o.port}/api/agent`);
     console.log(`  usage pass: ${o.graph ? "none for a saved graph" : o.jobs > 0 ? `${o.jobs} module(s) at a time` : "off (--jobs 0)"}`);
     console.log(
-      `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : "anyone who reaches the port"}`,
+      `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : `anyone who reaches the port, by its address, localhost${[...(o.publicUrl ? [urlHost(o.publicUrl)] : []), ...o.allowedHosts].map((n) => `, ${n}`).join("")} (other names are refused: --allowed-host)`}`,
     );
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
     recordVersion(live, version, supervised);
@@ -1590,10 +1676,10 @@ async function artwork(project: Project, o: Options, fail: (why: string) => neve
   // the site's layout memory read and never written, nor the views laid out written to the cache;
   // without a site, none read: the board as a new site lays it out
   const prep = await prepare(project, dirs, o.graph, log, { ...(ex ? { extraction: ex } : {}), readOnlySite: true, ...(site ? {} : { freshLayout: true }) });
-  const kept = site ? readProjectView(site, LAYOUT_VERSION) : { view: null };
+  const kept = site ? readProjectView(site, LAYOUT_VERSION) : { view: null, notes: 0 };
   if (kept.why) console.error(`visualproof artwork: the site's views cannot be read (${kept.why}): the Project view as a new site has it`);
   const review = site ? new ReviewStore(project.root, site).data : null;
-  const a = makeArtwork(prep, review, projectView(kept.view), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root });
+  const a = makeArtwork(prep, review, projectView(kept.view), { recipe, screen: o.screen, name: outBase ? basename(outBase) : null, root: project.root, projectNotes: kept.notes });
   if (!("svg" in a)) {
     for (const p of a.problems) console.error(`visualproof artwork: ${p}`);
     process.exit(1);

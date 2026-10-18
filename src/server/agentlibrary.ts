@@ -114,7 +114,7 @@ export function libraryEndpoints(world: World, refuse: (c: Caller, need: Need) =
     },
     {
       method: "POST", path: "/api/agent/library/url", needs: "advise",
-      about: `Add the file at an address to the library: the server fetches it once and keeps it (an arXiv abstract's address, arxiv.org/abs/…, gives its PDF). http and https only; never an address of a private or local network; at most ${MAX_FILE / (1024 * 1024)} MB; the type is read from the bytes: a PDF, PNG, JPEG, WebP or GIF, never SVG. The same bytes are stored once: a file already in the library is answered as it is (existed: true), restored where it was archived.`,
+      about: `Add the file at an address to the library: the server fetches it once and keeps it (an arXiv abstract's address, arxiv.org/abs/…, gives its PDF). http and https only; never an address of a private or local network; at most ${MAX_FILE / (1024 * 1024)} MB; the type is read from the bytes: a PDF, PNG, JPEG, WebP or GIF, never SVG. The same bytes are stored once: a file already in the library is answered as it is (existed: true), restored where it was archived (another's at level full only).`,
       params: { url: "the file's address" },
       returns: "{ok, file, existed}",
       run: write((l, a, who) => l.addUrl(body(a).url, who)),

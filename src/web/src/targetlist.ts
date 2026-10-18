@@ -9,6 +9,7 @@ import type { StatusCounts } from "../../shared/keys.ts";
 import type { Progress } from "../../shared/review.ts";
 import type { ViewSummary } from "../../shared/views.ts";
 import { escapeHtml } from "./highlight.ts";
+import { keepFocus } from "./keepfocus.ts";
 
 export interface TargetListHooks {
   /** every view on the server: those linked to a target are the targets' */
@@ -107,6 +108,7 @@ export class TargetList {
           `</div>`
         : `<div class="tg-none muted">${this.hooks.readOnly?.() ? "No targets yet." : "No targets yet: ☆ Mark as target in a theorem's panel."}</div>`;
     }
-    this.el.innerHTML = html;
+    // drawn again as the reader goes to a target: the focus stays on its row
+    keepFocus(this.el, () => (this.el.innerHTML = html));
   }
 }

@@ -260,7 +260,7 @@ test("agents ask at advise and full, one request every 30 s, and wait for the an
     assert.equal(told.agent, true);
     assert.equal(told.name, "Alice's AI advise");
     assert.ok(S.live.presence.list().some((p) => p.id === told.from && p.agent), "the banner's Follow follows the agent's entry");
-    assert.equal(personKey({ id: told.from, name: told.name, agent: told.agent }), "a:Alice's AI advise");
+    assert.equal(personKey({ id: told.from, name: told.name, agent: told.agent }), `a:${told.from}`, "an agent is its presence entry");
     assert.equal((await S.ask("POST", "/api/agent/ask-follow", {}, bearer(tokens.advise))).status, 429);
     // at full: one person by name, waiting for their answer
     const asked = S.ask("POST", "/api/agent/ask-follow", { who: "bob" }, bearer(tokens.full));
@@ -479,6 +479,78 @@ test("Follow starts following the asker as starting to follow does: their state 
       { id: "b1", name: "Bob", view: view("Bob.place"), idle: false },
     ] as Peer[]);
     assert.deepEqual(applied.at(-1), "Ada.next");
+  } finally {
+    dom.restore();
+  }
+});
+
+test("a read-only reader sends no heartbeat, and follows the others: a click on their initials", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const dom = fakePage();
+  const g = globalThis as unknown as { document: Record<string, unknown> };
+  g.document.addEventListener = () => {};
+  // the presence bar's clicks, as the page wires them
+  const clicks: ((e: unknown) => void)[] = [];
+  const peers = (g.document.querySelector as (s: string) => Record<string, unknown>)("#peers");
+  peers.addEventListener = (type: string, f: (e: unknown) => void) => type === "click" && clicks.push(f);
+  try {
+    const applied: (string | null)[] = [];
+    const beats: unknown[] = [];
+    const view = (sel: string): PresenceView => ({ ...VIEW, sel });
+    const data = { privateSession: null, name: null, identity: async () => ({ mode: "declared", name: null, readOnly: { by: "public" } }), presence: (...a: unknown[]) => beats.push(a) };
+    const people = new People(data as unknown as DataSource, { data: {}, save() {} } as unknown as Store, {
+      view: () => view("me"),
+      describe: () => "",
+      reveal: () => {},
+      stripDrawn: () => {},
+      follow: (v) => applied.push(v.sel),
+      changed: () => {},
+      renamed: () => {},
+      talkTo: () => {},
+      unfollowed: () => {},
+    });
+    await people.init();
+    people.start();
+    people.connected({ id: "me1", token: "secret", private: false } as unknown as StreamHello);
+    people.setPeers([{ id: "b1", name: "Bob", view: view("Bob.place"), idle: false }] as Peer[]);
+    const badge = { dataset: { person: "n:Bob" } };
+    for (const f of clicks) f({ target: { closest: () => badge }, shiftKey: false });
+    assert.deepEqual([people.followedKey, applied], ["n:Bob", ["Bob.place"]]);
+    t.mock.timers.tick(60_000);
+    assert.deepEqual(beats, [], "nobody is told of a read-only reader");
+  } finally {
+    dom.restore();
+  }
+});
+
+test("an agent with a token is one person by its token: another agent giving its name neither leads its followers nor takes its conversation", () => {
+  const dom = fakePage();
+  try {
+    const applied: (string | null)[] = [];
+    const talking: (string | null)[] = [];
+    const view = (sel: string): PresenceView => ({ ...VIEW, sel });
+    const people = new People({ privateSession: null, name: null } as unknown as DataSource, { data: {}, save() {} } as unknown as Store, {
+      view: () => view("me"),
+      describe: () => "",
+      reveal: () => {},
+      stripDrawn: () => {},
+      follow: (v) => applied.push(v.sel),
+      changed: () => {},
+      renamed: () => {},
+      talkTo: (a) => talking.push(a?.id ?? null),
+      unfollowed: () => {},
+    });
+    const talk = { state: "listening", since: "2026-10-18T00:00:00.000Z", doing: null, status: null, read: 0, lastSeen: null };
+    const token = { id: "tok1", name: "Alice's AI", view: view("Agent.place"), idle: false, agent: true, talk, by: "Alice" } as Peer;
+    people.setPeers([token]);
+    people.follow(personKey(token));
+    assert.deepEqual([applied, talking.at(-1)], [["Agent.place"], "tok1"]);
+    // an agent without a token gives the same name (anyone let in can send the headers): the server
+    // lists it apart (server/presence.ts), and so does the page
+    const other = { id: "hdr1", name: "Alice's AI", view: view("Elsewhere"), idle: false, agent: true } as Peer;
+    people.setPeers([other, token]);
+    assert.equal(people.people().length, 2);
+    assert.deepEqual([people.followedKey, applied, talking.at(-1)], ["a:tok1", ["Agent.place"], "tok1"], "still following the agent with the token, talking with it");
   } finally {
     dom.restore();
   }

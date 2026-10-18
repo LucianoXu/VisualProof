@@ -268,3 +268,14 @@ test("the agents' timeline lists files and links, who did what to which, and nam
     await S.close();
   }
 });
+
+test("Activity: a view renamed says its names; a name taken away says so, the view called by its scope again", () => {
+  const { act } = activity(emptyReview(), { scopeTitle: (s: string) => (s === "ns(N)" ? "ns N" : s) } as Partial<ActivityHooks>);
+  const at = new Date().toISOString();
+  const e = (id: number, name: string | null, was: string | null) => ({ id, at, kind: "view", by: "Alice", what: "renamed", view: "v1", name, was, scope: "ns(N)" });
+  act.load([e(1, "Ours", null), e(2, "Theirs", "Ours"), e(3, null, "Theirs")] as never);
+  const html = act.items().map((x) => x.html.replace(/<[^>]+>/g, ""));
+  assert.ok(html.some((h) => h.includes("Alice renamed a view to Ours")), html.join("\n"));
+  assert.ok(html.some((h) => h.includes("Alice renamed the view Ours to Theirs")));
+  assert.ok(html.some((h) => h.includes("Alice took the name Theirs off a view, called ns N again")));
+});

@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { GROUPS, TIPS, TOUR } from "../src/web/src/tips.ts";
-import { cueAt, cuesOf, FILM_KEYS, FilmWaiter, tourData } from "../src/web/src/tourfilm.ts";
+import { chapterAt, cueAt, cuesOf, FILM_KEYS, FilmWaiter, tourData } from "../src/web/src/tourfilm.ts";
 import type { FilmAnswer, WaitClock } from "../src/web/src/tourfilm.ts";
 import { RULES } from "../src/web/src/intip.ts";
 import { matches, plain, tipsFor } from "../src/web/src/tipcards.ts";
@@ -68,6 +68,29 @@ test("the film as the recording says it: every chapter, in order, within the fil
   for (const bad of [null, "x", { film: { duration: "1" } }, { chapters }]) assert.equal(tourData(bad, TOUR), null);
   // captions are optional
   assert.deepEqual(tourData({ film, chapters }, TOUR)!.captions, []);
+});
+
+test("the film sent to a chapter's start is in that chapter, the browser's time a hair short of it", () => {
+  // the recording's chapters start at frames (30 a second): 19.4666…; Chrome reads the time it was
+  // sent to back to the microsecond, 19.466666, short of the start
+  const chapters = [
+    { start: 0, end: 19.466666666666665 },
+    { start: 19.466666666666665, end: 31.833333333333332 },
+    { start: 31.833333333333332, end: 53.666666666666664 },
+  ];
+  const read = (t: number) => Math.floor(t * 1e6) / 1e6;
+  for (let k = 0; k < chapters.length; k++) assert.equal(chapterAt(chapters, read(chapters[k].start)), k, `chapter ${k + 1} from its start`);
+  // so → goes on from chapter to chapter while the film is paused, ← back one
+  let at = 0;
+  for (const want of [1, 2, 2]) {
+    at = chapterAt(chapters, read(chapters[Math.min(chapters.length - 1, at + 1)].start));
+    assert.equal(at, want);
+  }
+  assert.equal(chapterAt(chapters, read(chapters[at - 1].start)), 1);
+  // inside a chapter, its end, and past the film's end
+  assert.equal(chapterAt(chapters, 25), 1);
+  assert.equal(chapterAt(chapters, 31.5), 1);
+  assert.equal(chapterAt(chapters, 60), 2);
 });
 
 test("the film's keys are its own: declared, and kept from following there", () => {

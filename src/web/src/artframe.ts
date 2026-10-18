@@ -664,7 +664,7 @@ export class ArtFrame {
     const source = this.hooks.source();
     const section = (title: string, body: string) => `<section class="art-sec"><h3 class="art-sec-h">${title}</h3><div class="art-grid">${body}</div></section>`;
     this.panel.innerHTML =
-      `<div class="ex-head"><div class="modal-title">Artwork</div><button class="icon" data-art-done title="Done (Esc)">✕</button></div>` +
+      `<div class="ex-head"><div class="modal-title">Artwork</div><button class="icon" data-art-done title="Done (Esc)" aria-label="Done">✕</button></div>` +
       `<div class="modal-text">The board is the picture: pan, zoom, select and drag as ever. What the frame holds is saved; its title and its foot are set beside it.</div>` +
       `<div class="art-secs">` +
       section(
@@ -808,8 +808,14 @@ export class ArtFrame {
         }
         for (const sh of C.artShapes(rect)) pen.shape(sh);
         C.drawMarks(ctx);
-        // a note's glyph is SVG already
-        drawNotes(ctx, notes, ART_SANS, (n) => pen.raw(`<g transform="translate(${n.x - n.glyphPx / 2} ${n.y - n.glyphPx / 2}) scale(${n.glyphPx / 16})" color="${n.colour}">${n.glyph}</g>`));
+        // a note's glyph is SVG already; the drawing of a file its card carries, a picture held in it
+        drawNotes(
+          ctx,
+          notes,
+          ART_SANS,
+          (n) => pen.raw(`<g transform="translate(${n.x - n.glyphPx / 2} ${n.y - n.glyphPx / 2}) scale(${n.glyphPx / 16})" color="${n.colour}">${n.glyph}</g>`),
+          (src, x, y, w, h) => pen.raw(`<image href="${src}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" preserveAspectRatio="none"/>`),
+        );
         if (s.border) pen.raw(`</g>`);
         this.writeOver(ctx, s, rect);
       }, await faces());
@@ -819,16 +825,22 @@ export class ArtFrame {
     this.busy = true;
     this.renderPanel();
     try {
-      // the notes' glyphs as pictures, decoded before the bands are drawn
+      // the notes' glyphs as pictures, and the drawings of the files their cards carry, decoded
+      // before the bands are drawn
       const glyphs = new Map<string, HTMLImageElement>();
+      const decoded = async (src: string) => {
+        const img = new Image();
+        img.src = src;
+        await img.decode().catch(() => {});
+        return img;
+      };
       for (const n of notes) {
         const key = n.colour + n.glyph;
         if (glyphs.has(key)) continue;
-        const img = new Image();
-        img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(glyphSvg(n.glyph, n.colour, 64))}`;
-        await img.decode().catch(() => {});
-        glyphs.set(key, img);
+        glyphs.set(key, await decoded(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(glyphSvg(n.glyph, n.colour, 64))}`));
       }
+      const pictures = new Map<string, HTMLImageElement>();
+      for (const n of notes) for (const f of n.card?.files ?? []) if (f.image && !pictures.has(f.image.src)) pictures.set(f.image.src, await decoded(f.image.src));
       // the frame's pixels to the picture's
       const f = s.w / rect.w;
       // drawn a band of rows at a time, as large a band as the browser draws at once
@@ -854,10 +866,19 @@ export class ArtFrame {
           }
           C.paintArtBand(ctx!, rect, f, y, n, cam);
           ctx!.setTransform(f, 0, 0, f, -rect.x * f, -(rect.y * f + y));
-          drawNotes(ctx!, notes, ART_SANS, (n) => {
-            const img = glyphs.get(n.colour + n.glyph);
-            if (img?.complete && img.naturalWidth) ctx!.drawImage(img, n.x - n.glyphPx / 2, n.y - n.glyphPx / 2, n.glyphPx, n.glyphPx);
-          });
+          drawNotes(
+            ctx!,
+            notes,
+            ART_SANS,
+            (n) => {
+              const img = glyphs.get(n.colour + n.glyph);
+              if (img?.complete && img.naturalWidth) ctx!.drawImage(img, n.x - n.glyphPx / 2, n.y - n.glyphPx / 2, n.glyphPx, n.glyphPx);
+            },
+            (src, x, y, w, h) => {
+              const img = pictures.get(src);
+              if (img?.complete && img.naturalWidth) ctx!.drawImage(img, x, y, w, h);
+            },
+          );
           // outside the border, the ground alone (the owner's decision of 2026-10-15)
           if (s.border) {
             ctx!.save();

@@ -1383,7 +1383,9 @@ details.lf-archived > summary { cursor: pointer; }
 .p-also .avatar { width: 20px; height: 20px; font-size: 9px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .rv-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
-.rv-btn.primary:hover { color: white; filter: brightness(1.08); }
+.rv-btn.primary:hover:not(:disabled) { color: white; filter: brightness(1.08); }
+/* one that cannot be used looks it, as the others do (above): faded, never grey on its colour */
+.rv-btn.primary:disabled { color: white; opacity: 0.45; }
 .tk-ref:hover { text-decoration: underline; background: var(--code-bg); }
 .brand .logo { font-size: 17px; }
 .project { color: var(--text-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1512,7 +1514,8 @@ details.lf-archived > summary { cursor: pointer; }
 /* something said for a moment (a shift-click that changed nothing): read, then gone */
 /* something said for a moment is read above the floating windows too: it answers what was just done */
 .hint.say { color: var(--text); padding: 3px 10px; border-radius: 8px; background: var(--surface-solid); box-shadow: var(--shadow); z-index: 36; }
-.hint.say.below { top: 156px; }
+/* under the review strip and the note of a kept view (--strip-h: main.ts) */
+.hint.say.below { top: calc(118px + var(--strip-h, 38px)); }
 
 /* the selection (web/src/selbar.ts): under the modes, heading the panel's column */
 #selbar {
@@ -1776,7 +1779,9 @@ details.lf-archived > summary { cursor: pointer; }
 .o-row.on { background: color-mix(in srgb, var(--accent) 11%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .o-row.on .o-label { color: var(--accent); font-weight: 600; }
 .o-row .tw { width: 12px; color: var(--text-3); font-size: 10px; flex: none; text-align: center; }
-.o-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the arrow and the name are buttons (the keyboard's too), drawn as the row's text */
+.o-row button.tw, .o-row button.o-label { border: 0; background: none; padding: 0; height: 100%; }
+.o-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .o-count { color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 .o-row .fold { border: 0; background: transparent; color: var(--text-2); width: 20px; padding: 0; font-size: 10px; }
 .o-row .fold:hover { color: var(--accent); }
@@ -1942,6 +1947,14 @@ a.link:hover { text-decoration: underline; }
 .s-trusted { --s: var(--status-trusted); }
 .dot.ss, .card.ss .dot { background: var(--s); box-shadow: none; }
 .dot.ss.k-external, .card.ss.k-external .dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--s); }
+/* an axiom is a ring (CanvasSpec, "Colour schemes and the legend", the owner's decision of
+   2026-10-18; web/src/axiomring.ts): its dot ringed in its own colour a gap apart, as its point on
+   the canvas is, in either scheme — in the legend, the panel, a card, the search, the hover */
+.dot.k-axiom, .k-axiom .dot, .dot.axiom, .axiom .dot { outline: 1.5px solid var(--ring, var(--k-axiom)); outline-offset: 1.5px; }
+.dot.k-external.axiom, .k-external .dot.axiom, .k-external.axiom .dot { --ring: var(--k-external); }
+.dot.ss.axiom, .ss.axiom .dot, .ss.k-axiom .dot { --ring: var(--s); }
+/* the legend's line for it, by status: a ring round a dot of no state's colour */
+.lg-ring .dot { background: var(--text-2); --ring: var(--text-2); width: 8px; height: 8px; margin: 0 3px; }
 .cluster-card .dot { background: var(--grad); }
 
 /* the guide (CollabSpec, G1): the first-visit tour, and the sheet of keys */
@@ -2532,6 +2545,7 @@ body.tm #tabs, body.tm .views-wrap, body.tm .vb-gap, body.tm .light-l { display:
 #tmbar.busy .tm-mark.aim { fill: var(--surface-solid); stroke: var(--accent); stroke-width: 1.4; }
 .tm-wait:not(.tm-failed) { display: none; }
 #tmbar.busy .tm-wait { display: inline; }
+#tabs.busy .tab-wait { display: inline-flex; gap: 0; padding: 0 12px; color: var(--text-3); cursor: default; }
 .tm-wait.tm-failed { color: var(--tm-gone); font-style: normal; }
 .tm-spin { display: inline-block; width: 9px; height: 9px; margin-right: 4px; vertical-align: -1px; box-sizing: border-box; border: 1.5px solid color-mix(in srgb, var(--accent) 28%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: tm-spin 900ms linear infinite; }
 @keyframes tm-spin { to { transform: rotate(360deg); } }
@@ -2539,6 +2553,8 @@ body.tm #tabs, body.tm .views-wrap, body.tm .vb-gap, body.tm .light-l { display:
 .tm-when { flex: none; font-size: 12px; white-space: nowrap; color: var(--text); }
 .tm-when .mono { font: 11.5px var(--mono); color: var(--text-2); }
 .tm-latest { font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: var(--code-bg); color: var(--text-2); }
+/* a build that could not read some files (web/src/past.ts, unreadWords) */
+.tm-unread { flex: none; font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 159, 10, 0.13); color: var(--banner-warn); }
 .tm-wait { color: var(--text-3); font-style: italic; }
 .tm-sum { flex: 0 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; font-size: 12px; white-space: nowrap; }
 .tm-n {
@@ -2581,9 +2597,10 @@ button.tm-row:hover { background: var(--code-bg); }
 /* what was added since: a name, not a place on this build's board */
 span.tm-row { color: var(--text-2); cursor: default; }
 .tm-more { padding: 6px; font-size: 11.5px; }
-/* a view kept at a past build (HistorySpec decision 19): said where the review strip goes */
+/* a view kept at a past build (HistorySpec decision 19): said where the review strip goes, under it
+   where both show (a kept view focused on a target; --lens-h: main.ts) */
 #tm-kept {
-  position: fixed; top: 110px; left: calc((100vw + var(--inset-left, 0px) - var(--inset-right, 0px)) / 2); transform: translateX(-50%); z-index: 15;
+  position: fixed; top: calc(110px + var(--lens-h, 0px)); left: calc((100vw + var(--inset-left, 0px) - var(--inset-right, 0px)) / 2); transform: translateX(-50%); z-index: 15;
   display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 12px; border-radius: 12px; font-size: 12.5px;
   max-width: calc(100vw - var(--inset-left, 0px) - var(--inset-right, 0px) - 16px); white-space: nowrap;
 }
@@ -2679,6 +2696,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #foot { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   /* under the view bar, the review strip, then the selection bar (--strip-h: main.ts) */
   #lensbar, #tm-kept { top: 100px; left: 8px; right: 8px; transform: none; max-width: none; }
+  #tm-kept { top: calc(100px + var(--lens-h, 0px)); }
   #selbar { top: calc(100px + var(--strip-h, 0px)); left: 8px; right: 8px; width: auto; }
   /* the panel: a sheet from the bottom, its height the reader's to drag */
   #panel {
@@ -2733,7 +2751,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
 
    What the two shapes whose panel is a sheet share (web/src/phone.ts, SHEETED): the side panel is a
    drawer from ☰, at the left of the view bar, and ⚙ Board and Trusted take its place. */
-@media (max-width: 640px), (max-aspect-ratio: 5/6) {
+@media (max-width: 640px), (min-width: 641px) and (max-aspect-ratio: 5/6) and (pointer: coarse), (min-width: 641px) and (max-width: 999px) and (max-aspect-ratio: 5/6) {
   .side-btn { display: inline-flex; flex: none; width: 36px; justify-content: center; padding: 0; }
   /* the side panel: a drawer from the left, over a shade */
   body.side-open #side { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 86vw); border-radius: 0 16px 16px 0; z-index: 47; padding-top: env(safe-area-inset-top); background: var(--surface-solid); }
@@ -2753,13 +2771,14 @@ span.tm-row { color: var(--text-2); cursor: default; }
 
 /* ---------------------------------------------------------------- a tall screen (PhoneSpec, "Tall screens")
 
-   Wider than a phone and upright: a tablet held upright, a narrow window, a monitor on its side. A
-   larger screen's page, placed for the shape: the side panel is the drawer (above), the panel a sheet
+   Wider than a phone and upright, under a finger or narrower than 1000 px: a tablet held upright, a
+   narrow window (an upright monitor with a mouse is not one: below). A larger screen's page, placed
+   for the shape: the side panel is the drawer (above), the panel a sheet
    from the bottom across the screen, and what takes the panel's place on a larger screen —
    Activity, the lost-and-found, Export's window — takes the sheet's; the floating windows dock there
    too. The review strip, then the selection bar, go across under the view bar; the legend and the
    zoom's box keep to the board's room, above the sheet (--room-bottom: web/src/phone.ts). */
-@media (min-width: 641px) and (max-aspect-ratio: 5/6) {
+@media (min-width: 641px) and (max-aspect-ratio: 5/6) and (pointer: coarse), (min-width: 641px) and (max-width: 999px) and (max-aspect-ratio: 5/6) {
   /* the tallest the sheet and the dock go: under the view bar, the review strip and the selection
      bar (--strip-h, --selbar-h: main.ts) */
   body { --sheet-most: calc(100dvh - 120px - var(--strip-h, 0px) - var(--selbar-h, 0px)); }
@@ -2813,6 +2832,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   /* under the view bar, across the screen: the review strip, then the selection bar (--strip-h:
      main.ts) */
   #lensbar, #tm-kept { top: 108px; left: 12px; right: 12px; transform: none; max-width: none; }
+  #tm-kept { top: calc(108px + var(--lens-h, 0px)); }
   #selbar { top: calc(108px + var(--strip-h, 0px)); left: 12px; right: 12px; width: auto; }
   /* the legend and the zoom's box at the foot of the board's room, above the sheet or the dock */
   #foot { left: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
@@ -2827,10 +2847,59 @@ span.tm-row { color: var(--text-2); cursor: default; }
 }
 /* a tall screen narrower than the bar's words: Share, the library and Export by their icons; the
    focus gives way to the Time Machine, as on a phone */
-@media (min-width: 641px) and (max-width: 1000px) and (max-aspect-ratio: 5/6) {
+@media (min-width: 641px) and (max-width: 999px) and (max-aspect-ratio: 5/6) {
   body.tm .focus-wrap { display: none; }
 }
 @media (min-width: 641px) and (max-width: 900px) and (max-aspect-ratio: 5/6) {
   #share-btn > span, #library-btn > span, #export-btn > span { display: none; }
   #bar { gap: 10px; }
 }
+
+/* ---------------------------------------------------------------- an upright monitor (PhoneSpec decisions 29–35)
+
+   At least 1000 px wide, upright, with a mouse (web/src/monitor.ts): a desktop's page, the board above
+   and a work area across the bottom. The side panel stands at the board's left; in the work area the
+   panel (or what takes its place) is a pane at the left and the windows one column at its right,
+   stacked from the top, each where monitor.ts puts it (--dock-x, --dock-y, --dock-w, --dock-h). The
+   work area's height, the panel's width and what the board has above them are the page's variables
+   (--mon-low, --mon-pane-w, --mon-room-bottom); the splitters (.mon-split) change them. */
+@media (min-width: 1000px) and (max-aspect-ratio: 5/6) and (pointer: fine) {
+  #side { top: 108px; bottom: var(--mon-room-bottom, 12px); width: 300px; transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
+  /* the work area: a surface under the board while something is in it */
+  body::before {
+    content: ""; display: var(--mon-area, none); position: fixed; left: 12px; right: 12px; bottom: 12px; height: var(--mon-low); z-index: 5;
+    pointer-events: none; border-radius: 18px; background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: inset 0 0 0 1px var(--line);
+  }
+  /* the panel, or Activity or the lost-and-found in its place: the pane at the work area's left, its
+     whole width where no window is open */
+  #panel, #activity, #lostfound {
+    top: auto; bottom: 12px; left: 12px; right: auto; width: var(--mon-pane-w); height: var(--mon-low);
+    transform: translateY(calc(100% + 60px));
+  }
+  #panel.open, #activity.open, #lostfound.open { transform: none; }
+  /* the windows: in the column, placed there and not dragged; a collapsed one its pill */
+  #windows > .mon-docked {
+    position: fixed !important; left: var(--dock-x) !important; top: var(--dock-y) !important; right: auto !important; bottom: auto !important;
+    width: var(--dock-w) !important; height: var(--dock-h) !important; min-width: 0 !important; min-height: 0 !important;
+    max-width: none !important; max-height: none !important; transform: none;
+  }
+  #windows > .mon-docked.collapsed { width: auto !important; height: auto !important; max-width: 280px !important; }
+  #windows .fl-rz { display: none !important; }
+  #windows .sw-head, #windows .pw-head, #windows > #following.talking > .fl-strip { cursor: default; }
+  /* the review strip at the board's top left, beside the selection bar under the modes */
+  #lensbar, #tm-kept { left: calc(var(--inset-left, 0px) + 12px); transform: none; max-width: calc(100vw - var(--inset-left, 0px) - 448px); }
+  /* the legend and the zoom's box at the foot of the board's room */
+  #foot { left: 320px; bottom: var(--mon-room-bottom, 12px); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
+  #zoom { right: 12px; bottom: var(--mon-room-bottom, 12px); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
+  #welcome, #whatsnew, #following:not(.talking) { bottom: calc(var(--mon-room-bottom, 12px) + 40px); }
+  /* the splitters: the work area's top, between the panel and the column, between two windows */
+  .mon-split { position: fixed; z-index: 36; touch-action: none; }
+  .mon-split-y { cursor: ns-resize; }
+  .mon-split-x { cursor: ew-resize; }
+  .mon-split::after { content: ""; position: absolute; border-radius: 3px; background: var(--text-3); opacity: 0.45; transition: opacity 0.15s, background 0.15s; }
+  .mon-split-y::after { left: calc(50% - 22px); width: 44px; top: 2px; height: 4px; }
+  .mon-split-x::after { top: calc(50% - 22px); height: 44px; left: 2px; width: 4px; }
+  .mon-split:hover::after, .mon-split.on::after { opacity: 1; background: var(--accent); }
+}
+.mon-split { display: none; }
+@media (min-width: 1000px) and (max-aspect-ratio: 5/6) and (pointer: fine) { .mon-split:not([hidden]) { display: block; } }

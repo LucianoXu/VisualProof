@@ -7,6 +7,7 @@ import type { Graph } from "../../shared/viewgraph.ts";
 import { lowerKeepingOffsets, marked, narrows, PLACES, search, SearchIndex, snippet } from "../../shared/search.ts";
 import type { Found, Hit, Piece, Where } from "../../shared/search.ts";
 import { composing } from "./ime.ts";
+import { kindDot } from "./axiomring.ts";
 
 export function piecesHtml(pieces: readonly Piece[]): string {
   return pieces.map((p) => (p.mark ? `<mark>${escapeHtml(p.text)}</mark>` : escapeHtml(p.text))).join("");
@@ -175,7 +176,7 @@ export class SearchBox {
       const dot = name.lastIndexOf(".");
       let html =
         `<div class="hit${k === this.cursor ? " on" : ""}" data-i="${h.i}"><div class="h-line">` +
-        `<span class="dot k-${g.isExt(h.i) ? "external" : v.kind}"></span>` +
+        `<span class="dot ${kindDot(v.kind, g.isExt(h.i))}"></span>` +
         `<span class="h-name">${piecesHtml(marked(name, lower, f.words, dot + 1))}</span>` +
         `<span class="h-ns">${piecesHtml(marked(name, lower, f.words, 0, Math.max(0, dot)))}</span></div>`;
       if (h.via !== undefined) {

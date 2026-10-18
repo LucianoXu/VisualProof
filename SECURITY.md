@@ -31,13 +31,23 @@ into the latest release only.
   (`/k/<key>`) or a personal link made in Share (`/i/vpp_…`, revoked on its own), and answers
   everything else 404; or put an authenticating proxy in front. Agents send the key, or a token
   made in Share (`vpa_…`), which reaches the agents' API alone and lasts a few days.
+- **Web pages on this machine.** Without `--access-key-file`, whoever reaches the port is in, and a
+  web page a browser here opens could reach it too, by DNS rebinding: its own name made to resolve
+  to this machine, its scripts would then read and write the server as their own site. So a server
+  without a key answers a request only for an IP address (IPv6 in brackets), `localhost` and the
+  names under it, `--public-url`'s host and the names given with `--allowed-host`, at any port; any
+  other name, and a request without one, is answered 403, whatever it asks. A page reaches an
+  address only as that address, and browsers resolve `localhost` themselves, so neither can be a
+  name the page chose. With a key, the key keeps out whoever was not given it, by any name.
 - **Read-only readers.** Anyone let in can make a read-only link in Share (`/r/vpr_…`): it lets
   whoever holds it read what a guest reads — the graph, the sources, the review, the history, the
   library's files — and nothing else. The server refuses every other request from them (403)
   whatever the page sends, never lets them reach the agents' API, and bounds what they cost:
   Lean's answers at 60 a minute per address and 300 in all (429 beyond), kept per build; one
   printed document typeset at a time for all of them; 400 event streams of their own; git, for the
-  project's commit, run at most once every 3 seconds whoever asks. A link lasts
+  project's commit, run at most once every 3 seconds whoever asks; of the library's PDFs, only the
+  pages and clips the notes show are drawn for them (the cache keeps each), the files themselves
+  served as they are. A link lasts
   until revoked, which ends its pages at once. With `--public` the address alone makes a read-only
   reader of whoever comes without the key or a link: it puts the whole project, its review and its
   library online, so give it only to a project meant to be public.

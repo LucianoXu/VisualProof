@@ -63,6 +63,10 @@ test("at level advise an agent adds files and links, and changes its own; what o
     assert.equal(made.json!.link.by, "Claude");
     // its own, edited; a person's, not
     assert.equal((await S.ask("POST", "/api/agent/link/edit", { id: made.json!.link.id, region: [0.1, 0.05, 0.5, 0.1] }, agent())).status, 200);
+    // a region narrower than the four decimals it is kept to is none, and says so
+    const thin = await S.ask("POST", "/api/agent/link/edit", { id: made.json!.link.id, region: [0.10001, 0.05, 0.10004, 0.1] }, agent());
+    assert.equal(thin.status, 400);
+    assert.match(thin.json!.error, /0\.0001 apart/);
     const person = await S.ask("POST", "/api/library/link", { subject: "ns(N)", file: sha, page: 1 }, { "x-visualproof-name": "Alice" });
     const id = person.json!.link.id;
     assert.equal((await S.ask("POST", "/api/agent/link/edit", { id, label: "mine now" }, agent())).status, 403);
@@ -74,6 +78,12 @@ test("at level advise an agent adds files and links, and changes its own; what o
     const tsha = ((await theirs.json()) as { file: { sha: string } }).file.sha;
     assert.equal((await S.ask("POST", "/api/agent/library/archive", { sha: tsha }, agent())).status, 403);
     assert.equal((await S.ask("POST", "/api/agent/library/archive", { sha }, agent())).status, 200);
+    // nor restored by adding its bytes again, once a person archived it; its own, it restores so
+    assert.equal((await S.ask("POST", "/api/library/archive", { sha: tsha }, { "x-visualproof-name": "Alice" })).status, 200);
+    const again = await agentUpload(S.base, tinyPdf([["Another."]]), "Claude", "name=b.pdf");
+    assert.equal(again.status, 403, JSON.stringify(again.json));
+    assert.match(again.json.error, /archived by Alice/);
+    assert.equal((await S.ask("GET", "/api/agent/library", undefined, agent())).json!.archived.length, 2, "both still archived");
     // links listed by subject and by file
     const bySubject = await S.ask("GET", `/api/agent/links?subject=${encodeURIComponent("decl(N.a)")}`, undefined, agent());
     assert.deepEqual(bySubject.json!.links.map((l: { label: string }) => l.label), ["Theorem 3, p. 2"]);
