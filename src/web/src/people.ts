@@ -118,10 +118,13 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 
 /** Who a page or an agent is among the people: one person per name — an agent and a person of the
  *  same name are two, and so are a guest and someone invited by a personal link — and a page without
- *  a name on its own. What following follows, and a request to follow asks to follow
- *  (web/src/askfollow.ts). */
+ *  a name on its own. An agent is its presence entry, which the server keeps one per token, or one
+ *  per name for an agent without a token (server/presence.ts): an agent that gives the name of one
+ *  with a token is another, so that nobody can speak for an agent with a token by giving its name
+ *  (AgentSpec, "Presence") — lead the people following it, or take its conversation's place. What
+ *  following follows, and a request to follow asks to follow (web/src/askfollow.ts). */
 export function personKey(p: { id: string; name: string | null; agent?: boolean; verified?: boolean }): string {
-  return p.agent ? `a:${p.name}` : p.name ? `${p.verified ? "v" : "n"}:${p.name}` : `s:${p.id}`;
+  return p.agent ? `a:${p.id}` : p.name ? `${p.verified ? "v" : "n"}:${p.name}` : `s:${p.id}`;
 }
 
 /** The entry of a person who is an agent with a token of its own (it can be talked to unless it is
