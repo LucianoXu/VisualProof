@@ -131,6 +131,8 @@ export class PaperWin {
   private spot: { page?: number; region: Region } | null = null;
   /** what the reader picked in the paper: a place to link to */
   private picked: LinkPlace | null = null;
+  /** the place the window was opened at, gone to again once a missing file's bytes come */
+  private at: LinkPlace | null = null;
   private turn = 0;
   /** the box tool: armed by ▭ for the next drag alone (web/src/paperwords.ts) */
   private tool = new BoxTool((armed) => this.drawTool(armed));
@@ -238,6 +240,7 @@ export class PaperWin {
     const place = opts.place ?? (l ? { page: l.page, region: l.region, quote: l.quote } : null);
     this.lit = l?.id ?? null;
     this.spot = opts.spot ?? null;
+    this.at = place;
     this.why = opts.why ?? (l ? { link: l } : {});
     const was = this.open;
     this.open = true;
@@ -333,6 +336,9 @@ export class PaperWin {
     this.view = null;
     await this.load(f);
     this.drawMarks();
+    // where it was opened: the link's place, which the window could not go to without the file
+    const v = this.view as PdfView | ImageView | null;
+    if (this.at) v?.show(this.at);
   }
 
   /** Close the window. */
