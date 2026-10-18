@@ -56,10 +56,22 @@ export interface Pairs {
   w: Int32Array;
 }
 
-/** Edges between units, counted. `keep` filters nodes (hidden externals, say). */
+/** Edges between units, counted. `keep` filters nodes (hidden externals, say). The pairs come in
+ *  the order each is first met (by the node that uses, then its edges), counted in a hash table of
+ *  typed arrays: a Map keyed by a · 2^22 + b, numbers past the small integers, took a second and a
+ *  half a zoom step on NavierStokesAndEuler's 5 million edges, and the overview's edges lagged that
+ *  long behind a zoom (CanvasSpec, "Edges"). */
 export function aggregate(g: EdgeGraph, unit: Int32Array, sites: number, keep: (i: number) => boolean): Pairs {
-  const counts = new Map<number, number>();
-  const W = 1 << 22;
+  let size = 1024;
+  let slot = new Int32Array(size).fill(-1);
+  let A = new Int32Array(256), B = new Int32Array(256), w = new Int32Array(256);
+  let n = 0;
+  // the pair's slot: its two ids mixed, every bit of them reaching the low ones the slot is read from
+  const at = (a: number, b: number) => {
+    let h = Math.imul(a, 0x9e3779b1) ^ Math.imul(b, 0x85ebca77);
+    h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
+    return (h ^ (h >>> 15)) & (size - 1);
+  };
   for (let u = 0; u < g.n; u++) {
     if (!keep(u)) continue;
     const a = unit[u];
@@ -69,21 +81,42 @@ export function aggregate(g: EdgeGraph, unit: Int32Array, sites: number, keep: (
       if (!keep(v)) continue;
       const b = unit[v];
       if (a === b) continue;
-      const key = a * W + b;
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      let h = at(a, b);
+      for (;;) {
+        const k = slot[h];
+        if (k < 0) break;
+        if (A[k] === a && B[k] === b) break;
+        h = (h + 1) & (size - 1);
+      }
+      if (slot[h] >= 0) {
+        w[slot[h]]++;
+        continue;
+      }
+      if (n === A.length) {
+        const grow = (x: Int32Array) => {
+          const y = new Int32Array(2 * x.length);
+          y.set(x);
+          return y;
+        };
+        [A, B, w] = [grow(A), grow(B), grow(w)];
+      }
+      A[n] = a;
+      B[n] = b;
+      w[n] = 1;
+      slot[h] = n++;
+      // at most half full: grown, and every pair put again
+      if (2 * n > size) {
+        size *= 2;
+        slot = new Int32Array(size).fill(-1);
+        for (let k = 0; k < n; k++) {
+          let j = at(A[k], B[k]);
+          while (slot[j] >= 0) j = (j + 1) & (size - 1);
+          slot[j] = k;
+        }
+      }
     }
   }
-  const n = counts.size;
-  const out: Pairs = { n, a: new Int32Array(n), b: new Int32Array(n), w: new Int32Array(n) };
-  let k = 0;
-  for (const [key, w] of counts) {
-    const a = Math.floor(key / W);
-    out.a[k] = a;
-    out.b[k] = key - a * W;
-    out.w[k] = w;
-    k++;
-  }
-  return out;
+  return { n, a: A.slice(0, n), b: B.slice(0, n), w: w.slice(0, n) };
 }
 
 /** Indices of the `cap` highest scores among `idx` (all of them if there are fewer), in no

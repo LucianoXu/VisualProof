@@ -9,6 +9,7 @@ import type { ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../src/shared/graph.ts";
 import { computeLayout } from "../src/shared/layout.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
+import { aggregate } from "../src/web/src/bundles.ts";
 import { EdgeQueue, IN_FLIGHT } from "../src/web/src/edgequeue.ts";
 import type { Ask, EdgeWorker } from "../src/web/src/edgequeue.ts";
 import { EdgeWorkerCore } from "../src/web/src/edgeworker.ts";
@@ -80,6 +81,40 @@ function drawnOf(sets: { looks: PointLooks; w: number; scale?: number }[]): Draw
   );
   return out;
 }
+
+test("aggregate counts the edges between units, each pair in the order it is first met, as a Map keyed by the pair counts them", () => {
+  // a graph of 3,000 nodes and 40,000 edges, of mixed sites, units of one to five nodes: thousands of
+  // pairs, so that the table grows many times
+  let seed = 7;
+  const rand = (n: number) => ((seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) % n);
+  const n = 3000;
+  const per = Array.from({ length: n }, () => rand(27));
+  const outStart = new Int32Array(n + 1);
+  for (let u = 0; u < n; u++) outStart[u + 1] = outStart[u] + per[u];
+  const m = outStart[n];
+  const outDst = Int32Array.from({ length: m }, () => rand(n));
+  const outSite = Uint8Array.from({ length: m }, () => 1 << rand(3));
+  const g = { n, outStart, outDst, outSite };
+  const unit = Int32Array.from({ length: n }, (_, i) => (i % 7 === 0 ? 100000 + i : Math.floor(i / (1 + (i % 5)))));
+  for (const [sites, keep] of [[SITE_STMT | SITE_BODY, () => true], [SITE_STMT, (i: number) => i % 11 !== 3]] as [number, (i: number) => boolean][]) {
+    const counts = new Map<string, number>();
+    for (let u = 0; u < n; u++) {
+      if (!keep(u)) continue;
+      for (let e = outStart[u]; e < outStart[u + 1]; e++) {
+        const v = outDst[e];
+        if (!(outSite[e] & sites) || !keep(v) || unit[u] === unit[v]) continue;
+        const key = `${unit[u]}:${unit[v]}`;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+    }
+    const P = aggregate(g, unit, sites, keep);
+    assert.ok(P.n > 2000);
+    assert.deepEqual(
+      Array.from({ length: P.n }, (_, k) => `${P.a[k]}:${P.b[k]}=${P.w[k]}`),
+      [...counts].map(([key, w]) => `${key}=${w}`),
+    );
+  }
+});
 
 test("the page's blend of two points is exactly the blend it drew before, edge for edge and in order", () => {
   const { g, S } = world();
