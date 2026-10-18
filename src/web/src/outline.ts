@@ -26,6 +26,22 @@ export interface OutlineHooks {
 /** An eye struck through, as the side panel's buttons draw their marks. */
 export const HIDE_MARK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11"/></svg>`;
 
+/** Which rows to write again, the outline holding `before` and going to hold `after` (each a row's
+ *  HTML), `held` the rows it holds now: the indices of the rows that changed, or null to write them
+ *  all — other rows, or more than a quarter of them changed. Every selection renders the outline
+ *  again, and on a project of tens of thousands of declarations it holds over a thousand rows: written
+ *  whole, the page was a quarter of a second laying them out at each click. */
+export function rowsToWrite(before: readonly string[], after: readonly string[], held: number): number[] | null {
+  if (before.length !== after.length || held !== after.length) return null;
+  const changed: number[] = [];
+  for (let i = 0; i < after.length; i++) {
+    if (after[i] === before[i]) continue;
+    changed.push(i);
+    if (changed.length > after.length / 4) return null;
+  }
+  return changed;
+}
+
 export class Outline {
   private el: HTMLElement;
   private layout!: Layout;
@@ -33,6 +49,8 @@ export class Outline {
   private top: number[] = [];
   private open = new Set<number>();
   private hooks: OutlineHooks;
+  /** the rows written, as their HTML (rowsToWrite) */
+  private written: string[] = [];
 
   constructor(el: HTMLElement, hooks: OutlineHooks) {
     this.el = el;
@@ -98,6 +116,16 @@ export class Outline {
       if (has && this.open.has(c)) for (const k of this.kids[c]) walk(k, depth + 1);
     };
     for (const c of this.top) walk(c, 0);
-    this.el.innerHTML = rows.join("");
+    const changed = rowsToWrite(this.written, rows, this.el.children.length);
+    this.written = rows;
+    if (!changed) {
+      this.el.innerHTML = rows.join("");
+      return;
+    }
+    for (const i of changed) {
+      const t = document.createElement("template");
+      t.innerHTML = rows[i];
+      this.el.children[i].replaceWith(t.content);
+    }
   }
 }
