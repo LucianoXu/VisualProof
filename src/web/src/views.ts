@@ -20,12 +20,19 @@
 // web/src/timemachine.ts (`past`), off the page's thread, from the view's memory or the latest
 // build's layout, so that what both builds hold stays in place.
 //
+// A board of the latest build is laid out off the page's thread too (`layOut`, the owner's decision
+// of 2026-10-18): Zoom in on what a large theorem uses held the page still for seconds
+// (NavierStokesAndEuler, 17,286 declarations). The same layout as here (shared/board.ts,
+// boardLayout), by the worker the Time Machine lays out with (web/src/layoutworker.ts); the board on
+// show stays meanwhile. Laid out here only where the page has no worker: a snapshot's page, the
+// tests.
+//
 // A board that shows a view at another build than its own — the Time Machine browsing it, or its
 // build when that could not be read — is a preview (`preview`): the view's scope and arrangement on
 // that build's graph. Nothing is arranged on it and no memory is handed over from it, since the
 // view's own board is another.
 
-import { boardLayout, boardSet, layoutKey, pastSetKey, recalled, wholeLayout } from "../../shared/board.ts";
+import { boardLayout, boardSet, edgesOf, layoutKey, pastSetKey, recalled, wholeLayout } from "../../shared/board.ts";
 import type { BoardMemory, BoardSet } from "../../shared/board.ts";
 import type { ClusterMode, Layout, ViewMeta } from "../../shared/graph.ts";
 import type { PresenceView } from "../../shared/collab.ts";
@@ -41,6 +48,7 @@ import type { Change, TitleContext, ViewData, ViewOp, ViewSummary } from "../../
 import type { ViewAnswer, ViewsApi } from "./data.ts";
 import { reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
+import type { LayoutAsk } from "./layoutworker.ts";
 
 /** Where a board of a past graph comes from (web/src/timemachine.ts): the graph, and the layout of a
  *  board of it that no memory recalls, made from `mem` (the view's memory, of whatever build) or,
@@ -98,6 +106,22 @@ export interface ViewsHooks {
   /** whether a board of view `rec` of `past` (null: the latest build's graph) shows the view at
    *  another build than its own */
   preview?(rec: ViewData, past: PastGraph | null): boolean;
+  /** lay out a board of view `id` of the latest build off the page's thread (web/src/layoutworker.ts's
+   *  layOut, which is boardLayout's); `ask` gathers what the layout reads when it starts. Rejects with
+   *  web/src/layoutqueue.ts's Skipped where the board is no longer wanted. Without it, laid out here. */
+  layOut?(id: string, ask: () => Omit<LayoutAsk, "id">): Promise<Layout>;
+}
+
+/** What laying out board graph `g` reads, as boardLayout reads it: its declarations' names and
+ *  places, its edges, the levels hidden and the memory it keeps in place. */
+export function layoutAsk(g: Graph, mode: ClusterMode, hidden: readonly string[], mem: BoardMemory | null): Omit<LayoutAsk, "id"> {
+  return {
+    mode,
+    nodes: g.nodes.map((v) => ({ name: v.name, module: v.module, ...(v.ext ? { ext: true as const } : {}) })),
+    edges: edgesOf(g),
+    hidden: [...hidden],
+    mem: mem?.mem ?? null,
+  };
 }
 
 /** A board laid out on its own, from a memory kept for everyone: every board but a whole one of the
@@ -370,13 +394,20 @@ export class Views {
   }
 
   /** A board's layout for layout key `key` from memory `mem`: recalled or regrouped from it where it
-   *  can be (shared/board.ts), else laid out keeping in place what it holds — here, or for a board of
-   *  a past graph off the page's thread by web/src/timemachine.ts. `next` is the memory to hand
-   *  over, null where `mem` fits already. */
+   *  can be (shared/board.ts), else laid out keeping in place what it holds — off the page's thread,
+   *  by the views' `layOut` (here without one) or for a board of a past graph by
+   *  web/src/timemachine.ts. `next` is the memory to hand over, null where `mem` fits already. */
   private async layOutFrom(b: Board, mode: ClusterMode, key: string, mem: BoardMemory | null, hidden: string[]): Promise<{ layout: Layout; next: BoardMemory | null }> {
     const quick = recalled(b.graph, mode, key, mem, hidden);
     if (quick) return quick;
-    if (!b.past) return boardLayout(b.graph, mode, b.bs.key, mem, hidden);
+    if (!b.past && !this.hooks.layOut) return boardLayout(b.graph, mode, b.bs.key, mem, hidden);
+    if (!b.past) {
+      // what boardLayout does past `recalled`, in the worker: the memory it makes is for `key`, as
+      // boardLayout's is (layoutKey of the set and the levels hidden)
+      const g = b.graph;
+      const layout = await this.hooks.layOut!(b.id, () => layoutAsk(g, mode, hidden, mem));
+      return { layout, next: { set: key, mem: memoryOf(layout, g.nodes) } };
+    }
     const layout = await b.past.layout(b, mode, mem);
     return { layout, next: { set: key, mem: memoryOf(layout, b.graph.nodes) } };
   }
@@ -384,7 +415,8 @@ export class Views {
   /** The board's layout by `mode` were it to hide the levels `hidden`, as it will be laid out once
    *  they are (what moving its pins into their new parents needs, shared/board.ts reframePins): from
    *  what this page holds, at once, nothing handed over. A board laid out on its own is regrouped
-   *  from its layout as it is, which hiding or showing a level never moves. */
+   *  from its layout as it is, which hiding or showing a level never moves. On the page's thread, as
+   *  it answers at once; it lays out (boardLayout) only a board that holds no layout yet. */
   layoutWith(b: Board, mode: ClusterMode, hidden: string[]): Layout {
     if (!ownLayout(b)) return wholeLayout(this.hooks.meta().layouts[mode], b.graph.nodes, mode, hidden);
     const L = b.layouts[mode];

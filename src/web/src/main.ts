@@ -127,6 +127,8 @@ import { readVisitors, shareVisitors, stillVisiting, visit, visitorEdges } from 
 import type { Visitor } from "./visitors.ts";
 import type { Place } from "./viewnav.ts";
 import { Views } from "./views.ts";
+import { LayoutQueue } from "./layoutqueue.ts";
+import type { LayoutWorker } from "./layoutqueue.ts";
 import type { Board } from "./views.ts";
 import { buildWhen, TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
@@ -291,7 +293,45 @@ async function boot(): Promise<void> {
 
   // whether a layout's memory can be handed over now (web/src/views.ts): known once the people are
   let handsOver = (): boolean => false;
+  // the boards of the latest build the page lays out — a view of a part of the project: Zoom in, a
+  // target's, one nobody keeps — off the page's thread, as the Time Machine's past boards are
+  // (web/src/layoutqueue.ts, web/src/layoutworker.ts; the owner's decision of 2026-10-18): one at a
+  // time, the board a step goes to before the board on show; one that neither is any more is dropped,
+  // or stopped when another waits. A snapshot's page opens from disk, where no worker is served: it
+  // lays them out itself (web/src/views.ts).
+  const boardTags: string[] = [];
+  const boardTag = (id: string) => {
+    const k = boardTags.indexOf(id);
+    return k >= 0 ? k : boardTags.push(id) - 1;
+  };
+  const boardQueue = new LayoutQueue(
+    (tag) => (boardTags[tag] === nav.aimed ? 2 : boardTags[tag] === nav.board?.id ? 1 : 0),
+    () => (typeof Worker === "undefined" ? null : (new Worker("/layout.js", { type: "module" }) as unknown as LayoutWorker)),
+  );
+  /** the layouts running or waiting, by the view each is of: while the step on its way waits for
+   *  one, the tabs' busy mark, as the Time Machine's bar has its own */
+  const awaited = new Map<Promise<Layout>, string>();
+  const syncBusy = () => tabs.busy(nav.aimed !== null && [...awaited.values()].includes(nav.aimed));
+  const layOutBoard = (id: string, ask: Parameters<LayoutQueue["lay"]>[1]): Promise<Layout> => {
+    const p = boardQueue.lay(boardTag(id), ask);
+    awaited.set(p, id);
+    syncBusy();
+    const done = () => {
+      awaited.delete(p);
+      syncBusy();
+    };
+    p.then(done, done);
+    return p;
+  };
+  /** The reader stays on the board on show: a step still waiting for another board's layout is given
+   *  up (web/src/viewnav.ts), and the tabs' busy mark goes with it. */
+  const stay = () => {
+    nav.stay();
+    boardQueue.prune();
+    syncBusy();
+  };
   const views = new Views(data.views, {
+    ...(data.snapshot ? {} : { layOut: layOutBoard }),
     graph: () => present,
     handsOver: () => handsOver(),
     meta: () => meta,
@@ -317,6 +357,7 @@ async function boot(): Promise<void> {
     here: () => here(),
     // the address is written by the step that showed the view (one entry), or replaced after
     changed: () => {
+      syncBusy();
       renderTabs();
       people.report();
     },
@@ -1920,7 +1961,8 @@ async function boot(): Promise<void> {
 
   /** Open a view (a tab, a row of the menu, an event of the timeline): one step in the history. */
   const openView = async (id: string) => {
-    if (id === nav.board.id || noSwitch()) return;
+    if (id === nav.board.id) return stay();
+    if (noSwitch()) return;
     if (await nav.select(id)) commit();
   };
   /** A target, from the targets list: its view, on the target, or, with none (`id` null), a view
@@ -2889,6 +2931,8 @@ async function boot(): Promise<void> {
       else if (tm.snapshot !== tmAt) await tm.show(tmAt);
     };
     if (id === nav.board.id || (!id && st.scope === nav.query() && (st.version ?? null) === nav.queryVersion())) {
+      // a view still being laid out for a step before is not gone to after all
+      stay();
       place(to, false);
       return atBuild();
     }
