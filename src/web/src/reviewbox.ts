@@ -37,7 +37,7 @@ import type { LineDiff } from "./linediff.ts";
 import { renderComment } from "./markdown.ts";
 import { membersOf } from "./trust.ts";
 import { invitedNames, VERIFIED } from "./verified.ts";
-import { MAX_NAME } from "../../shared/collab.ts";
+import { MAX_NAME, sameName } from "../../shared/collab.ts";
 
 /** "3 h ago", for an opinion. */
 export function ago(iso: string): string {
@@ -152,10 +152,13 @@ export class ReviewBox {
     this.hooks = hooks;
   }
 
-  /** Whom an opinion given now is for: another person's name, or null for the reader's own. */
+  /** Whom an opinion given now is for: another person's name, or null for the reader's own — their
+   *  own name in any case is theirs, as the server takes it (server/reviewapi.ts, `voice`), so that no
+   *  box says "Recording for" an opinion recorded as the reader's own. */
   private forName(): string | null {
     const f = this.speakingFor?.trim() || null;
-    return f && f !== this.hooks.review().reviewer?.trim() ? f : null;
+    const me = this.hooks.review().reviewer?.trim();
+    return f && !(me && sameName(f, me)) ? f : null;
   }
 
   /** The drafts not empty, kept across a reload into a new version (web/src/reload.ts). */
@@ -208,7 +211,7 @@ export class ReviewBox {
     const names = new Set(invitedNames());
     for (const ops of Object.values(d.opinions)) for (const o of ops) if (!o.agent) names.add(o.by);
     for (const t of Object.values(d.targets)) if (!t.agent) names.add(t.by);
-    if (me) names.delete(me);
+    if (me) for (const n of names) if (sameName(n, me)) names.delete(n);
     let list = document.getElementById("rv-people");
     if (!list) {
       list = document.createElement("datalist");
