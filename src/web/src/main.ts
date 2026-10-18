@@ -2630,6 +2630,7 @@ async function boot(): Promise<void> {
     canvas.setLayout(L, b.rec.pins[m], b.rec.folds[m], m);
     canvas.setFrozen(frozen());
     linear.refresh();
+    exportModal.boardChanged();
     // a note being written stays while its board is drawn again (the review changed what it
     // holds); another board closes it
     if (b.id !== stickiesOn) stickies.reset();

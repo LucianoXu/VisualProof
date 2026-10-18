@@ -97,6 +97,9 @@ function common(s: Partial<DocSettings> | undefined): Common {
   return out;
 }
 
+/** Whether two views on show make the same document: the same view, at the same build. */
+const sameDoc = (a: ExportView | null, b: ExportView | null): boolean => !!a && !!b && a.id === b.id && a.version === b.version && a.when === b.when;
+
 /** `n` things, with the plural where it is more than one. */
 const count = (n: number, one: string, many = `${one}s`) => `<b>${n.toLocaleString()}</b> ${n === 1 ? one : many}`;
 
@@ -157,14 +160,40 @@ export class ExportModal {
     this.render();
     this.hooks.shown?.(true);
     this.el.querySelector<HTMLElement>(".ex-box")?.focus();
+    this.askHead();
+  }
+
+  /** The board on show changed (another view, another build, the view rescoped): the window, open,
+   *  tells of the view on show now, whose outline the linear form draws beside it (ExportSpec
+   *  decisions 5 and 18), and exports that one. A document made of another view, or of another
+   *  build, is put away with its job. */
+  boardChanged(): void {
+    if (this.el.hidden) return;
+    const v = this.hooks.view();
+    if (JSON.stringify(v) === JSON.stringify(this.view)) return;
+    const other = !sameDoc(v, this.view);
+    this.view = v;
+    if (other) {
+      // the job followed, if any, is another document's
+      this.turn++;
+      this.stopTimer();
+      this.job = null;
+      this.head = "";
+      this.askHead();
+    }
+    this.render();
+  }
+
+  /** Ask for the title and the author line of the view on show. */
+  private askHead(): void {
     const v = this.view;
-    if (v)
-      void this.hooks.head(v.id, v.version).then((h) => {
-        // the window still shows that view
-        if (this.view !== v || this.el.hidden) return;
-        this.head = h;
-        this.render();
-      });
+    if (!v) return;
+    void this.hooks.head(v.id, v.version).then((h) => {
+      // the window still shows that view's document
+      if (!sameDoc(this.view, v) || this.el.hidden) return;
+      this.head = h;
+      this.render();
+    });
   }
 
   close(): void {

@@ -365,3 +365,50 @@ test("the Export window of a past board says its build, and offers Generate", as
   assert.ok(!/past build, which is not exported/.test(html));
   assert.deepEqual(asked, [["v-past", 1]], "the head is asked at the build on show");
 });
+
+test("the Export window follows the board on show: another view, or the view at another build, is the one it tells of and exports; a document made of the one before is put away", async () => {
+  const el = box();
+  const plan = (count: number) => ({ count, sectionCount: 1, outside: { count: 0, by: [] } });
+  let view: ExportView = { id: "va", title: "A", heading: "A", fixed: false, plan: plan(3) };
+  const asked: unknown[] = [];
+  const started: unknown[] = [];
+  const modal = new ExportModal(box(), el, {
+    view: () => view,
+    saved: () => undefined,
+    save: () => {},
+    head: async (v, version) => (asked.push([v, version]), { title: `Title of ${v}`, author: "" }),
+    start: async (body) => (started.push(body), { id: "j1", state: "done", pages: 2, ms: 900 }),
+    poll: async () => "not here",
+  });
+  const tick = () => new Promise((ok) => setTimeout(ok, 0));
+  modal.open();
+  await tick();
+  (modal as unknown as { generate(): Promise<void> }).generate();
+  await tick();
+  assert.match(el.innerHTML, /Download PDF/);
+  // the same view, more on its board: told, the document made kept
+  view = { ...view, plan: plan(4) };
+  modal.boardChanged();
+  assert.match(el.innerHTML, /<b>4<\/b> declarations/);
+  assert.match(el.innerHTML, /Download PDF/);
+  // another view: its title asked for, the document of the one before gone, Generate exports it
+  view = { id: "vb", title: "B", heading: "B", fixed: false, plan: plan(2) };
+  modal.boardChanged();
+  assert.match(el.innerHTML, /Export the view <b[^>]*>“B”<\/b>/);
+  assert.ok(!/Download PDF/.test(el.innerHTML), "A's document is put away");
+  await tick();
+  assert.match(el.innerHTML, /Title of vb/);
+  (modal as unknown as { generate(): Promise<void> }).generate();
+  await tick();
+  assert.equal((started.at(-1) as { view: string }).view, "vb");
+  // the Time Machine's preview of it at another build is another document
+  view = { ...view, version: 1, when: "Oct 9 22:27" };
+  modal.boardChanged();
+  assert.ok(!/Download PDF/.test(el.innerHTML));
+  assert.deepEqual(asked, [["va", undefined], ["vb", undefined], ["vb", 1]]);
+  // closed, it follows nothing
+  modal.close();
+  view = { id: "vc", title: "C", heading: "C", fixed: false, plan: plan(1) };
+  modal.boardChanged();
+  assert.equal(asked.length, 3);
+});
