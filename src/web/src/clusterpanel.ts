@@ -8,6 +8,7 @@
 import type { FileStatus } from "../../shared/build.ts";
 import type { ClusterMode, Layout } from "../../shared/graph.ts";
 import { markOf, prefixLabel, progressOf } from "../../shared/review.ts";
+import { nonStandardAxiom } from "../../shared/reviewqueue.ts";
 import type { ReviewData } from "../../shared/review.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
@@ -145,7 +146,7 @@ export class ClusterPanel {
 
     // how far the review of its declarations has come, as a target's is told
     const d = this.hooks.reviewData();
-    const p = progressOf(d, members.map((j) => ({ name: G.nodes[j].name, module: G.nodes[j].module, ext: G.isExt(j), hash: G.nodes[j].hash })));
+    const p = progressOf(d, members.map((j) => ({ name: G.nodes[j].name, module: G.nodes[j].module, ext: G.isExt(j), hash: G.nodes[j].hash, axiom: nonStandardAxiom(G, j) })));
     const free = members.length - p.total;
     const open = p.total - p.approved - p.commented - p.stale;
     const pct = (x: number) => (p.total ? ((100 * x) / p.total).toFixed(1) : "0");
@@ -210,7 +211,7 @@ export class ClusterPanel {
           js
             .map((j) => {
               const v = G.nodes[j];
-              return `<button class="row rv-${markOf(d, v.name, v.module, G.isExt(j), v.hash)}" data-go="${toFull(j)}" title="Go to ${esc(v.name)}">${esc(G.short(j))}</button>`;
+              return `<button class="row rv-${markOf(d, v.name, v.module, G.isExt(j), v.hash, nonStandardAxiom(G, j))}" data-go="${toFull(j)}" title="Go to ${esc(v.name)}">${esc(G.short(j))}</button>`;
             })
             .join("") +
           `</div>`

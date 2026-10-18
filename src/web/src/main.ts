@@ -74,7 +74,7 @@ import { LostAndFound } from "./lostfound.ts";
 import { popHtml, stamp } from "./buildpop.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
-import { FocusMenu, readerFocus } from "./focus.ts";
+import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
 import { Guide, restsOnCounts } from "./guide.ts";
 import type { RestsOn } from "./guide.ts";
 import { reducedMotion } from "./tipcards.ts";
@@ -554,6 +554,7 @@ async function boot(): Promise<void> {
     inReview: (r, i) => flow.inReview(r, i),
     isKey: (r, i) => flow.isKey(r, i),
     keyProgress: (i) => flow.keyProgress(i),
+    canOpenViews: () => !reader,
     keyView: (i) => {
       // a view made from the board on show: at its build, leaving the Time Machine for it; focused
       // on the target it is made from (ViewSpec decision 28)
@@ -2728,8 +2729,10 @@ async function boot(): Promise<void> {
     const linked = views.linkedTo(name);
     // a target's view opens with the target selected alone under the tool the reader has (the
     // owner's decision of 2026-10-12: the tool is never changed for them), and the target the
-    // reader's focus there, whatever the view's own focus is (ViewSpec decisions 15 and 29)
-    if (linked !== undefined && targetStep(linked, nav.board.id) === null) {
+    // reader's focus there, whatever the view's own focus is (ViewSpec decisions 15 and 29); a
+    // read-only reader, who opens no view (CollabSpec decision 11), goes to a target with none on
+    // the board on show
+    if ((linked !== undefined && targetStep(linked, nav.board.id) === null) || (linked === undefined && reader)) {
       mine = name;
       go(i);
       writeAddress(false);
@@ -4123,12 +4126,14 @@ async function boot(): Promise<void> {
       sources.toggle(selected());
       if (together && !sources.following) papers.win.close();
     } else if (e.key === "Escape") {
-      // what passes first: a question about trust, a popover, the views menu, a list of the Time
-      // Machine; then the source window that follows the selection, the timeline, the Time
-      // Machine, and the selection. A pinned window closes by Esc with the focus in it, or by its ✕.
+      // what passes first: a question about trust, a popover, the views menu or the focus's, a list
+      // of the Time Machine; then the source window that follows the selection, the timeline, the
+      // Time Machine, and the selection. A pinned window closes by Esc with the focus in it, or by
+      // its ✕.
       if (trust.open) trust.close();
       else if (buildPop.open) buildPop.toggle(false);
       else if (tabs.open) tabs.toggle(false);
+      else if (focusMenu.open) focusMenu.toggle(false);
       else if (boardPop.open || trustPop.open || eyesPop.open) for (const p of [boardPop, trustPop, eyesPop]) p.toggle(false);
       else if (tm.listShown) tm.closeListNow();
       else if (sources.following) sources.close(sources.following);
@@ -4201,7 +4206,9 @@ async function boot(): Promise<void> {
   window.addEventListener("resize", syncInsets);
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
-  const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null } : null;
+  // the reader's own focus there, which the address does not carry, as they left it (ViewSpec
+  // decision 28)
+  const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null, ...keptFocus(S.seen[first]) } : null;
   if (!(await nav.select(first, firstPlace))) {
     await nav.show(PROJECT, firstPlace);
     if (linked?.view && linked.view === first && !views.summary(first)) notOpened = VIEW_GONE;

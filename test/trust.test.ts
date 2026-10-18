@@ -9,7 +9,7 @@ import { emptyReview, OUTSIDE, progressOf } from "../src/shared/review.ts";
 import type { ReviewData } from "../src/shared/review.ts";
 import { reviewCount } from "../src/shared/reviewqueue.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
-import { clusterPrefix, effectOf, tcbMembers } from "../src/web/src/trust.ts";
+import { clusterPrefix, effectOf, tcbMembers, undoNote } from "../src/web/src/trust.ts";
 
 /** A target T whose statement uses Q.gate (declared under Lib) and V.perm (a vendored file), whose
  *  proof uses Q.lemma; Mathlib's E and the outside library O.f are used by Q.gate. */
@@ -57,4 +57,16 @@ test("what trusting a prefix changes: the declarations it covers, and each targe
   assert.deepEqual(effectOf(g, d, "P.Lib", true, [{ name: "P.T", count: (dd: ReviewData) => reviewCount(g, dd, 3) }]).targets, [{ name: "P.T", before: 1, after: 0 }]);
   // taking Mathlib off counts its declarations again
   assert.deepEqual(effectOf(g, d, "Mathlib", false, targets), { own: 0, outside: 1, targets: [{ name: "P.T", before: 4, after: 5 }] });
+});
+
+test("the question about trust says where it is undone: a default or the outside world under Trusted, any other prefix from its row", () => {
+  assert.equal(undoNote("Q", true, false), "Undo it from Trusted in the side panel.");
+  // a default taken off stays listed under Trusted (ReviewSpec decision 3), and the outside world has
+  // its button there
+  assert.equal(undoNote("Mathlib", false, true), "It stays listed under Trusted, to be trusted again.");
+  assert.equal(undoNote(OUTSIDE, false, true), "It can be trusted again from Trusted in the side panel.");
+  // any other leaves the list: its row's shield trusts it again, an outside module's where the tree
+  // is by file
+  assert.equal(undoNote("Q", false, false), "It leaves the Trusted list: the shield on its row in the side panel trusts it again.");
+  assert.equal(undoNote("Mathlib.Data", false, true), "It leaves the Trusted list: the shield on its row in the side panel, clustered by file, trusts it again.");
 });

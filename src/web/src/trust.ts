@@ -68,6 +68,19 @@ export function effectOf(g: Graph, d: ReviewData, prefix: string, on: boolean, t
   return { own, outside, targets: counts };
 }
 
+/** Where trusting `prefix` (`on`), or no longer trusting it, is undone, as the question says it:
+ *  Trusted lists every trusted prefix, and of those taken off only the defaults (ReviewSpec decision
+ *  3) and the outside world, which has its own button there; any other leaves the list, and is
+ *  trusted again from the shield on its row — a module outside the project only where the cluster
+ *  tree is by file (`clusterPrefix`). `outside`: the prefix covers only declarations outside the
+ *  project. */
+export function undoNote(prefix: string, on: boolean, outside: boolean): string {
+  if (on) return "Undo it from Trusted in the side panel.";
+  if (DEFAULT_TRUSTED.includes(prefix)) return "It stays listed under Trusted, to be trusted again.";
+  if (prefix === OUTSIDE) return "It can be trusted again from Trusted in the side panel.";
+  return `It leaves the Trusted list: the shield on its row in the side panel${outside ? ", clustered by file," : ""} trusts it again.`;
+}
+
 export const SHIELD = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 3 3.6v3.9c0 3.1 2.1 5.5 5 6.7 2.9-1.2 5-3.6 5-6.7V3.6z"/></svg>`;
 
 export interface TrustHooks {
@@ -235,7 +248,7 @@ export class Trust {
     this.pop.innerHTML =
       `<div class="tp-title">${on ? "Trust" : "Stop trusting"} ${code}?</div>` +
       `<div class="tp-text">${text}</div>${deflt}${effect}` +
-      `<div class="tp-note muted">For everyone on this server, recorded under your name in the review; Activity says who did it. ${on ? "Undo it from Trusted in the side panel." : "It stays listed under Trusted, to be trusted again."}</div>` +
+      `<div class="tp-note muted">For everyone on this server, recorded under your name in the review; Activity says who did it. ${undoNote(prefix, on, !e.own && e.outside > 0)}</div>` +
       `<div class="rv-err" hidden></div>` +
       `<div class="modal-actions"><button class="rv-btn" data-tp-cancel>Cancel</button>` +
       `<button class="rv-btn primary" data-tp-ok>${on ? "Trust" : "Stop trusting"}</button></div>`;

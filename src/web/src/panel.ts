@@ -9,7 +9,7 @@ import { ALL_SITES, shortName } from "../../shared/viewgraph.ts";
 import type { FileStatus } from "../../shared/build.ts";
 import { escapeHtml, highlightLean, renderDoc } from "./highlight.ts";
 import { markOf } from "../../shared/review.ts";
-import { needsReview, trustSplit } from "../../shared/reviewqueue.ts";
+import { needsReview, nonStandardAxiom, trustSplit } from "../../shared/reviewqueue.ts";
 import type { ReviewData } from "../../shared/review.ts";
 import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
@@ -226,7 +226,7 @@ export class Panel {
         return (
           `<div class="grp"><div class="grp-h"><span class="dot k-${k}"></span>${k} <span class="muted">${xs.length}</span></div>` +
           xs
-            .map((j) => `<button class="row rv-${markOf(d, g.nodes[j].name, g.nodes[j].module, g.isExt(j), g.nodes[j].hash)}" data-go="${j}" title="Go to ${escapeHtml(g.nodes[j].name)}">${escapeHtml(g.nodes[j].name)}</button>`)
+            .map((j) => `<button class="row rv-${markOf(d, g.nodes[j].name, g.nodes[j].module, g.isExt(j), g.nodes[j].hash, nonStandardAxiom(g, j))}" data-go="${j}" title="Go to ${escapeHtml(g.nodes[j].name)}">${escapeHtml(g.nodes[j].name)}</button>`)
             .join("") +
           `</div>`
         );
@@ -260,6 +260,20 @@ export class Panel {
     const nonStd = axioms.filter((a) => !["propext", "Classical.choice", "Quot.sound"].includes(a));
     const why = this.hooks.why(i);
     const then = this.hooks.then?.(i) ?? null;
+
+    // Its TCB: what is counted; for a target, its review list, which shows wherever the target is
+    // selected (ViewSpec decision 28), also where its TCB counts nothing: what its proofs rest on may
+    // still need review (a sorry)
+    const tcbPart =
+      inTcb.counted || queue !== null
+        ? part(
+            PANEL_SECTIONS.tcb,
+            "Its TCB",
+            `${inTcb.counted}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`,
+            () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList || `<div class="muted">Nothing in its TCB is to be read: all of it is trusted.</div>`}</div>`,
+            { id: "checks", title: "What a TCB is: the film's chapter on the ways to check" },
+          )
+        : "";
 
     this.el.innerHTML = `
       ${banner(this.hooks.fileOf(i))}
@@ -298,7 +312,7 @@ export class Panel {
         () => `<div class="axioms">${axioms.length ? axioms.map((a) => `<span class="chip ${nonStd.includes(a) ? "bad" : ""}">${escapeHtml(a)}</span>`).join("") : `<span class="muted">none</span>`}</div>`,
       )}
       ${notationHtml(g, i)}
-      ${inTcb.counted ? part(PANEL_SECTIONS.tcb, "Its TCB", `${inTcb.counted}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`, { id: "checks", title: "What a TCB is: the film's chapter on the ways to check" }) : ""}
+      ${tcbPart}
     `;
     this.el.classList.add("open");
     if (!same) this.el.scrollTop = 0;

@@ -161,3 +161,40 @@ test("the tour's TCB step where the bar counts otherwise: nothing to read, the t
   assert.equal(say({ self: "trusted", assumed: 3 }), "Its TCB lights nothing to read, and 4 trusted, it among them, as Mathlib is, and assumed.");
   assert.equal(say({ self: "trusted", read: 1, assumed: 3 }), "Its TCB lights 1 declaration to read, and 4 trusted, it among them, as Mathlib is, and assumed. To trust it, read that one.");
 });
+
+test("a target whose TCB counts nothing still lists its review: what its proofs rest on needs review too", () => {
+  // N.u's statement uses Mathlib.X alone, trusted; its proof rests on Mathlib.bad, an axiom that is not
+  // standard: its TCB counts nothing, its review holds it and the axiom (ReviewSpec decision 3)
+  const { g, d, at } = world();
+  const u = g.nodes.length;
+  const meta = { ...g.meta, nodes: [...g.nodes, { name: "N.u", kind: "theorem", module: "N", ax: 0, hash: "h-N.u" }] } as unknown as ViewMeta;
+  const edges: number[] = [];
+  for (let i = 0; i < g.n; i++) for (let e = g.outStart[i]; e < g.outStart[i + 1]; e++) edges.push(i, g.outDst[e], g.outSite[e]);
+  edges.push(u, at("Mathlib.X"), SITE_STMT, u, at("Mathlib.bad"), SITE_PROOF);
+  const g2 = new Graph({ ...meta, edgeCount: edges.length / 3 } as ViewMeta, new Int32Array(edges));
+  const show = (order: "review" | "kind", target: boolean) => {
+    const el = { innerHTML: "", scrollTop: 0, classList: { add: () => {}, remove: () => {}, contains: () => false }, addEventListener: () => {}, querySelector: () => null };
+    const box = { html: () => "", reveal: () => {} } as unknown as ReviewBox;
+    const hooks = new Proxy({ reviewData: () => d, queue: () => (target ? `<div class="q-list">axiom Mathlib.bad · used in N.u</div>` : null), listOrder: () => order, shut: () => false, editorLink: () => null, alsoHere: () => "", why: () => "", isPinned: () => false, fileOf: () => undefined } as Partial<PanelHooks>, {
+      get: (o, k) => (k in o ? o[k as keyof PanelHooks] : () => undefined),
+    }) as PanelHooks;
+    const doc = globalThis as unknown as { document?: unknown };
+    const was = doc.document;
+    doc.document = { activeElement: null };
+    try {
+      new Panel(el as unknown as HTMLElement, g2, box, hooks).show(u);
+    } finally {
+      doc.document = was;
+    }
+    return el.innerHTML;
+  };
+  assert.deepEqual(trustSplit(g2, d, g2.reach([u], SITE_STMT | SITE_BODY, "out"), u), { counted: 0, trusted: 1 });
+  // not a target: nothing to list
+  assert.doesNotMatch(show("review", false), /Its TCB/);
+  // a target: its review list, in review order, the axiom first
+  const html = show("review", true);
+  assert.match(html, /Its TCB.*0 · in review order/s);
+  assert.match(html, /axiom Mathlib\.bad · used in N\.u/);
+  // by kind: its TCB, which holds nothing to read, says so
+  assert.match(show("kind", true).replace(/<[^>]*>/g, " "), /Nothing in its TCB is to be read: all of it is trusted\./);
+});

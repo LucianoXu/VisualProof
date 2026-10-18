@@ -7,8 +7,9 @@
 // (AgentSpec decision 2).
 
 import type { FileStatus } from "../../shared/build.ts";
-import { statusOf, trusted } from "../../shared/review.ts";
+import { statusOf } from "../../shared/review.ts";
 import type { ReviewData } from "../../shared/review.ts";
+import { needsReview } from "../../shared/reviewqueue.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 
 /** The two ways of colouring the canvas's points: by kind, or by where each declaration stands. */
@@ -60,7 +61,8 @@ export function statusState(d: ReviewData, g: Graph, i: number, file: FileStatus
   if (s === "commented") return ST_COMMENTED;
   if (s === "stale") return ST_STALE;
   if (s === "approved") return ST_APPROVED;
-  return trusted(d, v.name, v.module, g.isExt(i)) ? ST_TRUSTED : ST_UNREVIEWED;
+  // a non-standard axiom needs review whatever trusts it (ReviewSpec decision 3)
+  return needsReview(g, d, i) ? ST_UNREVIEWED : ST_TRUSTED;
 }
 
 /** Every declaration of `g`'s state, as codes (indices into STATUSES). `files` holds the build

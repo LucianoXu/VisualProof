@@ -14,6 +14,11 @@ import type { AppendResult } from "../src/server/review.ts";
 import { current, emptyReview, applyEvent, findOpinion, logFileName, readEvent, statusOf } from "../src/shared/review.ts";
 import { lostEntries } from "../src/shared/lostfound.ts";
 import type { ReviewEvent } from "../src/shared/review.ts";
+import type { ViewMeta } from "../src/shared/graph.ts";
+import type { ReviewRequest } from "../src/shared/review.ts";
+import { Graph } from "../src/shared/viewgraph.ts";
+import { ReviewBox } from "../src/web/src/reviewbox.ts";
+import type { ReviewHooks } from "../src/web/src/reviewbox.ts";
 import { site } from "./site.ts";
 
 const alice = { name: "Alice", agent: false };
@@ -125,5 +130,41 @@ test("the server finds whom an opinion is for: one's own name is one's own, an i
     assert.equal(S.live.review.data.opinions["N.a"].at(-1)!.recordedBy, undefined);
   } finally {
     await S.close();
+  }
+});
+
+test("the page records for someone else only where the server would: one's own name in another case is one's own, said nowhere as another's", async () => {
+  const meta = { nodes: [{ name: "N.a", kind: "def", module: "N", ax: 0, hash: "h" }], projectCount: 1, axioms: [], axiomSets: [[]], layouts: {}, edgeCount: 0 } as unknown as ViewMeta;
+  const g = new Graph(meta, new Int32Array(0));
+  const sent: ReviewRequest[] = [];
+  const hooks = {
+    review: () => ({ data: emptyReview(), error: null, blocked: null, readOnly: false, reviewer: "Olivia" }),
+    ensureReviewer: async () => "Olivia",
+    submit: async (op: ReviewRequest) => (sent.push(op), null),
+    editedNow: () => false,
+    edited: async () => false,
+    reviewRoot: () => null,
+  } as unknown as ReviewHooks;
+  const box = new ReviewBox(g, hooks);
+  const root = { querySelector: () => null } as unknown as HTMLElement;
+  const speak = (name: string) => box.input({ value: name, matches: (q: string) => q === "[data-rv-for]" } as unknown as HTMLElement, 0);
+  const settle = () => new Promise((ok) => setImmediate(ok));
+  const said = () => {
+    const html = box.html(0, false);
+    return { recordingFor: /data-rv-for-on( hidden)?>/.exec(html)![1] === undefined, button: /data-rv="approve"[^>]*>Approve<span data-rv-for-who>([^<]*)</.exec(html)![1] };
+  };
+  // another person: said on the box and the buttons, and sent as theirs
+  speak("Bob");
+  assert.deepEqual(said(), { recordingFor: true, button: " for Bob" });
+  box.give("approve", 0, root);
+  await settle();
+  assert.equal((sent.at(-1) as { for?: string }).for, "Bob");
+  // one's own name, in another case: one's own, as the server records it
+  for (const own of ["olivia", " OLIVIA "]) {
+    speak(own);
+    assert.deepEqual(said(), { recordingFor: false, button: "" }, own);
+    box.give("approve", 0, root);
+    await settle();
+    assert.ok(!("for" in sent.at(-1)!), own);
   }
 });

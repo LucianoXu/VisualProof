@@ -37,7 +37,7 @@ import type { LineDiff } from "./linediff.ts";
 import { renderComment } from "./markdown.ts";
 import { membersOf } from "./trust.ts";
 import { invitedNames, VERIFIED } from "./verified.ts";
-import { MAX_NAME } from "../../shared/collab.ts";
+import { MAX_NAME, sameName } from "../../shared/collab.ts";
 
 /** "3 h ago", for an opinion. */
 export function ago(iso: string): string {
@@ -94,6 +94,9 @@ export interface ReviewHooks {
   keyProgress(i: number): StatusCounts;
   /** open a view of a target's key declarations alone, `key(T)` */
   keyView(i: number): void;
+  /** whether this reader may open a view at all: a read-only reader opens none (CollabSpec decision
+   *  11), and is offered no Key view; true where absent */
+  canOpenViews?(): boolean;
   /** go to declaration `i`: where a quoted opinion on it is shown */
   go(i: number): void;
   /** open the source of declaration `name` at lines `from`–`to` of its file, which read as
@@ -152,10 +155,13 @@ export class ReviewBox {
     this.hooks = hooks;
   }
 
-  /** Whom an opinion given now is for: another person's name, or null for the reader's own. */
+  /** Whom an opinion given now is for: another person's name, or null for the reader's own — their
+   *  own name in any case is theirs, as the server takes it (server/reviewapi.ts, `voice`), so that no
+   *  box says "Recording for" an opinion recorded as the reader's own. */
   private forName(): string | null {
     const f = this.speakingFor?.trim() || null;
-    return f && f !== this.hooks.review().reviewer?.trim() ? f : null;
+    const me = this.hooks.review().reviewer?.trim();
+    return f && !(me && sameName(f, me)) ? f : null;
   }
 
   /** The drafts not empty, kept across a reload into a new version (web/src/reload.ts). */
@@ -208,7 +214,7 @@ export class ReviewBox {
     const names = new Set(invitedNames());
     for (const ops of Object.values(d.opinions)) for (const o of ops) if (!o.agent) names.add(o.by);
     for (const t of Object.values(d.targets)) if (!t.agent) names.add(t.by);
-    if (me) names.delete(me);
+    if (me) for (const n of names) if (sameName(n, me)) names.delete(n);
     let list = document.getElementById("rv-people");
     if (!list) {
       list = document.createElement("datalist");
@@ -699,7 +705,13 @@ export class ReviewBox {
         this.viewHtml(i, R.readOnly || !!R.blocked) +
         `</div>`;
     }
-    const targetBtn = R.readOnly || R.blocked ? (target ? `<div class="rv-tag">★ Target</div>` : "") : `<button class="rv-btn rv-tgt${target ? " on" : ""}" data-rv-target>${target ? "★ Target" : "☆ Mark as target"}</button>`;
+    // a target is a declaration of the project (server/reviewapi.ts): one outside it is offered none
+    const targetBtn =
+      R.readOnly || R.blocked || (ext && !target)
+        ? target
+          ? `<div class="rv-tag">★ Target</div>`
+          : ""
+        : `<button class="rv-btn rv-tgt${target ? " on" : ""}" data-rv-target>${target ? "★ Target" : "☆ Mark as target"}</button>`;
     return `${head}<div class="rv">${ops}${history}${advised}${controls}${keyBtn}${targetBtn}${tgt}</div>`;
   }
 
@@ -713,7 +725,7 @@ export class ReviewBox {
     const esc = escapeHtml;
     const name = this.g.nodes[i].name;
     const tv = this.hooks.targetView?.(i) ?? null;
-    const key = `<button class="rv-btn" data-rv-keyview title="A view of its key declarations alone, focused on it: key(${esc(name)})">Key view</button>`;
+    const key = this.hooks.canOpenViews?.() === false ? "" : `<button class="rv-btn" data-rv-keyview title="A view of its key declarations alone, focused on it: key(${esc(name)})">Key view</button>`;
     const linkBtn = (title: string) =>
       tv?.why
         ? `<button class="rv-btn" disabled title="${esc(tv.why)}">Link to this view</button>`
