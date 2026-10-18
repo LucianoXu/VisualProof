@@ -702,7 +702,13 @@ export class ReviewBox {
         this.viewHtml(i, R.readOnly || !!R.blocked) +
         `</div>`;
     }
-    const targetBtn = R.readOnly || R.blocked ? (target ? `<div class="rv-tag">★ Target</div>` : "") : `<button class="rv-btn rv-tgt${target ? " on" : ""}" data-rv-target>${target ? "★ Target" : "☆ Mark as target"}</button>`;
+    // a target is a declaration of the project (server/reviewapi.ts): one outside it is offered none
+    const targetBtn =
+      R.readOnly || R.blocked || (ext && !target)
+        ? target
+          ? `<div class="rv-tag">★ Target</div>`
+          : ""
+        : `<button class="rv-btn rv-tgt${target ? " on" : ""}" data-rv-target>${target ? "★ Target" : "☆ Mark as target"}</button>`;
     return `${head}<div class="rv">${ops}${history}${advised}${controls}${keyBtn}${targetBtn}${tgt}</div>`;
   }
 

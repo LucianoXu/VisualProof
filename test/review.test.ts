@@ -6,6 +6,10 @@ import { test } from "node:test";
 import { adviceOf, byName, covers, current, DEFAULT_TRUSTED, emptyReview, invalid, judgedOn, markOf, MAX_TEXT, OUTSIDE, prefixLabel, progressOf, readEvent, record, reviewFromJson, statusOf, trusted, trustedBy, validPrefix, VERDICT_ORDER } from "../src/shared/review.ts";
 import type { ReviewOp } from "../src/shared/review.ts";
 import { tcbDiff } from "../src/shared/timeline.ts";
+import type { ViewMeta } from "../src/shared/graph.ts";
+import { Graph } from "../src/shared/viewgraph.ts";
+import { ReviewBox } from "../src/web/src/reviewbox.ts";
+import type { ReviewHooks } from "../src/web/src/reviewbox.ts";
 
 const at = (k: number) => `2026-10-06T12:00:0${k}Z`;
 
@@ -352,4 +356,29 @@ test("what an opinion judges: the context the declaration is written in, a blank
   // nothing in force: the text alone
   assert.equal(withContext("", "def x := 1"), "def x := 1");
   assert.equal(judgedText(["def x := 1"], false, "x", [1, 0, 1, 10])?.text, "def x := 1");
+});
+
+test("a declaration of the project can be marked as target from its panel; one outside it is offered none, a target always its mark", () => {
+  const nodes = [
+    { name: "P.t", kind: "theorem", module: "P", ax: 0, hash: "h" },
+    { name: "Nat.Prime", kind: "def", module: "Mathlib.Data.Nat.Prime", ax: 0, ext: true },
+  ];
+  const g = new Graph({ nodes, projectCount: 1, axioms: [], axiomSets: [[]], layouts: {}, edgeCount: 0 } as unknown as ViewMeta, new Int32Array(0));
+  const d = emptyReview();
+  const box = (readOnly: boolean) =>
+    new ReviewBox(g, {
+      review: () => ({ data: d, error: null, blocked: null, readOnly, reviewer: "Alice" }),
+      editedNow: () => false,
+      reviewRoot: () => null,
+      progress: () => ({ total: 1, approved: 0, commented: 0, stale: 0 }),
+      keyProgress: () => ({ total: 1, approved: 0, commented: 0, stale: 0, unreviewed: 1 }),
+      queue: () => ({ order: [0], axioms: [] }),
+    } as unknown as ReviewHooks);
+  assert.match(box(false).html(0, true), /data-rv-target>☆ Mark as target</);
+  // the server refuses a target outside the project (server/reviewapi.ts): no button to be refused
+  assert.doesNotMatch(box(false).html(1, true), /data-rv-target|Target/);
+  // a target, wherever it is: its mark, and the way to take it off
+  record(d, { op: "target", name: "Nat.Prime", by: "Alice", on: true }, "tc", at(1));
+  assert.match(box(false).html(1, true), /data-rv-target>★ Target</);
+  assert.match(box(true).html(1, true), /<div class="rv-tag">★ Target<\/div>/);
 });
