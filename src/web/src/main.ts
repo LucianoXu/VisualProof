@@ -41,7 +41,7 @@ import { itemOp } from "../../shared/items.ts";
 import type { ItemOp } from "../../shared/items.ts";
 import { derivesOn, existsIn } from "../../shared/noteplace.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
+import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, PROJECT_SCOPE, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
@@ -159,6 +159,8 @@ const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything
 /** What a tap selects with each tool, in a few words: under the tool's name in a phone's ⋯, where
  *  nothing is said while a pointer rests on a button (web/src/phone.ts). */
 const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap", apps: "everything that uses it" };
+/** What a link to a view the server no longer has opens instead, and why (ViewSpec decision 6). */
+const VIEW_GONE = "This link's view is gone: it was deleted, or nobody kept it and everyone closed it. Here is the Project.";
 
 interface GraphInfo {
   version: number;
@@ -748,6 +750,7 @@ async function boot(): Promise<void> {
   // the selection, under the mode buttons (web/src/selbar.ts)
   const selBar = new SelectionBar($("#selbar"), {
     canOpenViews: () => !reader,
+    names: () => views.titles().names ?? undefined,
     show: (k) => {
       const to = shownOf(picks[k]);
       if (!to) return;
@@ -889,9 +892,13 @@ async function boot(): Promise<void> {
   const filmLink = tipsIn(location.hash);
   let filmPart = "";
   let first = linked ? linked.view ?? PROJECT : S.active ?? PROJECT;
+  /** why the view the address names could not be opened: said once the page is there, which shows
+   *  the Project instead */
+  let notOpened: string | null = null;
   if (linked?.scope) {
     const v = await views.open(linked.scope, { version: linked.version ?? null });
     if (typeof v !== "string") first = v.id;
+    else notOpened = `This link's view could not be opened: ${v}`;
   }
 
   const notes = new Notes($("#notes"));
@@ -1195,7 +1202,7 @@ async function boot(): Promise<void> {
   // clustering, depth, Re-layout) and what is trusted (Trusted, with how many prefixes).
   const boardPop = new Popover($("#board-btn"), $("#board-pop"), {
     place: () => besideSide($("#board-btn"), $("#board-pop")),
-    changed: (open) => open && boardPanel.render(),
+    changed: (open) => (open ? boardPanel.render() : boardPanel.reset()),
   });
   const trustPop = new Popover($("#trusted-btn"), $("#trust-list"), {
     place: () => besideSide($("#trusted-btn"), $("#trust-list")),
@@ -2320,7 +2327,8 @@ async function boot(): Promise<void> {
   const clickOn = (p: Pick, shift: boolean): boolean => {
     const r = click(picks, shown, p, shift, setOn);
     if (r.covered) {
-      say(`${pickWords(p)} is inside ${pickWords(r.covered)}, which is selected: nothing changed.`);
+      const names = views.titles().names ?? undefined;
+      say(`${pickWords(p, names)} is inside ${pickWords(r.covered, names)}, which is selected: nothing changed.`);
       return false;
     }
     const before = picks.length;
@@ -2635,7 +2643,7 @@ async function boot(): Promise<void> {
     if (b.id !== stickiesOn) stickies.reset();
     stickiesOn = b.id;
     stickies.render();
-    outline.setLayout(L);
+    outline.setLayout(L, `${b.id}\u0000${m}`);
     canvas.setBuild(b.past ? null : build?.files ?? null);
     // the whole project's layout holds the outside world; a scope without it hides it
     canvas.setShowExternals(b.bs.whole ? b.bs.outside : true);
@@ -2677,11 +2685,12 @@ async function boot(): Promise<void> {
 
   /** Zoom in: a view of what is lit, in a tab of its own, with the same selection; at the board's
    *  build (from the Time Machine too, which is left for it), focused as this view is (ViewSpec
-   *  decision 28). */
+   *  decision 28), and, where it is new, clustered as this board is, as a cluster's Zoom in is (one
+   *  found open keeps its own). */
   const zoomIn = async () => {
     const q = zoomOf(selectionQuery(picks));
     if (!q) return;
-    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(picks), shown, cam: null });
+    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(picks), shown, cam: null }, cm());
     if (typeof r === "string") say(r);
     else if (r) {
       canvas.fit(false);
@@ -2847,8 +2856,12 @@ async function boot(): Promise<void> {
     if (tm.active) await tm.close();
     if (id && (await nav.select(id, to))) return atBuild();
     // a view nobody keeps opens again at the build it showed
-    if (st.scope && (await nav.open(st.scope, to, { version: st.version ?? null })) === true) return atBuild();
+    const opened = st.scope ? await nav.open(st.scope, to, { version: st.version ?? null }) : false;
+    if (opened === true) return atBuild();
+    // gone, or never there (an address typed or kept): the Project, and why
     await nav.select(PROJECT, to);
+    if (typeof opened === "string") say(`This link's view could not be opened: ${opened}`);
+    else if (id && id !== PROJECT && !views.summary(id)) say(VIEW_GONE);
   };
   window.addEventListener("popstate", (e) => {
     const st = decodeState(location.hash);
@@ -2867,6 +2880,9 @@ async function boot(): Promise<void> {
         writeAddress(false);
       })
       .then(() => {
+        // the address names what is shown (CanvasSpec, "Navigation"), also where it named a view
+        // that is gone or what no state reads as
+        writeAddress(false);
         renderNav();
         people.report();
       });
@@ -3201,8 +3217,9 @@ async function boot(): Promise<void> {
     b.addEventListener("click", () => void sync.setClustering(b.dataset.cluster as ClusterMode));
   }
   /** The outside world on this board or not: a condition of its scope, everyone's (a target's
-   *  view's too: ViewSpec decision 28). */
+   *  view's too: ViewSpec decision 28); the Project always holds it (decision 5). */
   const toggleOutside = () => {
+    if (fixedScope(nav.board.rec)) return say(PROJECT_SCOPE);
     void sync.setScope(setOutside(nav.board.rec.scope, withoutOutside(nav.board.rec.scope))).then((why) => why && say(why));
   };
   // the depth of the whole board, one level at a time; the level shown is read from the folds, so
@@ -4185,8 +4202,12 @@ async function boot(): Promise<void> {
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
   const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null } : null;
-  if (!(await nav.select(first, firstPlace))) await nav.show(PROJECT, firstPlace);
+  if (!(await nav.select(first, firstPlace))) {
+    await nav.show(PROJECT, firstPlace);
+    if (linked?.view && linked.view === first && !views.summary(first)) notOpened = VIEW_GONE;
+  }
   listen();
+  if (notOpened) say(notOpened);
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
   if (snap) await openSnapshot(snap);

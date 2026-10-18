@@ -32,6 +32,9 @@ export class Outline {
   private kids: number[][] = [];
   private top: number[] = [];
   private open = new Set<number>();
+  /** the rows open, by cluster key, on each board and clustering shown (`setLayout`'s `board`) */
+  private openOn = new Map<string, Set<string>>();
+  private board: string | null = null;
   private hooks: OutlineHooks;
 
   constructor(el: HTMLElement, hooks: OutlineHooks) {
@@ -56,9 +59,14 @@ export class Outline {
     });
   }
 
-  setLayout(layout: Layout): void {
-    // rows open before stay open, by key: a new graph renumbers clusters
-    const wasOpen = this.layout ? new Set([...this.open].map((c) => this.layout.clusters[c]?.key)) : null;
+  /** The tree of `layout`, the board `board` (its view and clustering) laid out. The rows the reader
+   *  opened on a board stay open there, by key (a new graph renumbers clusters), and come back with
+   *  it when another board was shown meanwhile; a board shown for the first time opens its largest
+   *  part. */
+  setLayout(layout: Layout, board: string): void {
+    if (this.layout && this.board !== null) this.openOn.set(this.board, new Set([...this.open].map((c) => this.layout.clusters[c]?.key)));
+    const wasOpen = this.openOn.get(board) ?? null;
+    this.board = board;
     this.layout = layout;
     this.kids = layout.clusters.map(() => []);
     this.top = [];

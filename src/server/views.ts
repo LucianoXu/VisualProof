@@ -120,7 +120,10 @@ export function readView(raw: unknown): ViewData | string {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "it is not a view's record";
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== "string" || !r.id) return "it has no id";
-  const bad = invalidQuery(r.scope);
+  // the Project holds everything (ViewSpec decision 5): a scope an earlier version let it take (the
+  // outside world toggled, a condition added) is read as `all`
+  const project = r.id === PROJECT;
+  const bad = project ? null : invalidQuery(r.scope);
   if (bad) return `its scope cannot be read: ${bad}`;
   const clustering = r.clustering ?? "namespace";
   if (!CLUSTER_MODES.includes(clustering as ClusterMode)) return "its clustering is neither namespace nor module";
@@ -134,11 +137,11 @@ export function readView(raw: unknown): ViewData | string {
   // a note that cannot be read is left out; the others are the view's
   const notes = cleanNotes(r.notes);
   // the notes of the project added to it and taken out of it; the Project keeps none, holding all
-  const items = r.id === PROJECT ? {} : cleanItems(r.items);
+  const items = project ? {} : cleanItems(r.items);
   return {
     id: r.id,
     name: (r.name as string | null | undefined) ?? null,
-    scope: cleanQuery(r.scope)!,
+    scope: project ? { op: "all" } : cleanQuery(r.scope)!,
     clustering: clustering as ClusterMode,
     pins: pins as Record<ClusterMode, Pins>,
     folds: folds as Record<ClusterMode, string[]>,

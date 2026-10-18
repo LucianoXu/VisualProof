@@ -491,7 +491,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   source (its window opened or closed), `Esc` close what is open, then clear the selection, `f`
   fit, `+` / `−` zoom (also the buttons at the bottom right), `[` / `]` fold or open one level
   (also the Depth buttons), `e` the outside world on this board
-  (for everyone on it), `g` edges, `l` the lock, `c` colours by kind or status, `b` build status,
+  (for everyone on it; the Project always holds it), `g` edges, `l` the lock, `c` colours by kind or status, `b` build status,
   `p` a frame meter, `a` / `m` approve, comment (see Review), `k` mark as key for the focus, `t` the Time Machine (`←` / `→` a build before or after,
   `Home` / `End` the first or the last), `Shift F10` (or the ContextMenu key) the menu on the
   selection, `?` the help menu.
@@ -597,7 +597,8 @@ lock, edges, the linear form, theme), the top holds your tabs and your mode.
   of X*, *what X uses*, *what uses X*, *key declarations of T* (`key(T)`), a namespace or a folder, with conditions (*except what is
   trusted*, *without the outside world*, *only not yet reviewed*, *only what an agent comments on*,
   …). `+` adds one, `×` takes one off, a click on the first chip writes the scope as a query
-  (`tcb(A.t) except trusted except external`). A change is everyone's on that board.
+  (`tcb(A.t) except trusted except external`). A change is everyone's on that board. The Project's
+  scope stays *everything*: Duplicate it for a board that holds less.
 - **Hidden levels** (ViewSpec decision 24): a cluster's row in the side panel (the struck-through
   eye under the pointer) or its panel has **Hide this level**: its sub-clusters and declarations
   move up into its parent, for everyone on the board, and nothing on the board moves; the top level

@@ -13,6 +13,7 @@ import { emptyReview } from "../src/shared/review.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
 import { click, clusterPick, clusterSet, declPick, edgeMode, pickWords, readSelection, remove, retool, selectionQuery, selectionText, shownOf } from "../src/web/src/selection.ts";
 import type { Pick } from "../src/web/src/selection.ts";
+import { titleNames } from "../src/shared/titles.ts";
 import { decodeState, encodeState } from "../src/web/src/state.ts";
 import type { ViewState } from "../src/web/src/state.ts";
 
@@ -106,7 +107,14 @@ test("picks: their queries, their words, and read back from the selection's text
     "decl(N.x) or tcb(N.t) or (ns(N) except external) or uses(file(M.A)) or usedBy(ns(Nat) and external except decl(Nat)) or tcb((external))",
   );
   assert.deepEqual(readSelection(text), picks, "every pick reads back as the click it was");
-  assert.deepEqual(picks.map(pickWords), ["N.x", "TCB of N.t", "ns N", "what file M.A uses", "what uses ns Nat (outside)", "TCB of the outside world"]);
+  assert.deepEqual(picks.map((p) => pickWords(p)), ["N.x", "TCB of N.t", "ns N", "what file M.A uses", "what uses ns Nat (outside)", "TCB of the outside world"]);
+  // with the graph's names, as a view's title says them (ViewSpec decision 25): the parents that
+  // tell a name apart from the project's others of its kind, no more
+  const told = titleNames(() => ["Dim8.Main", "Dim24.Main", "Dim24.Aux.lemma"], () => ["Dim8", "Dim24", "Dim24.Aux", "Q.Aux"], () => ["Dim24.Aux", "Q.Aux"]);
+  assert.deepEqual(
+    [declPick("deps", "Dim24.Main"), declPick("plain", "Dim24.Aux.lemma"), clusterPick("plain", cl("Dim24.Aux"), "namespace"), clusterPick("tcb", cl("Q.Aux"), "module"), clusterPick("plain", cl("⟨external⟩.Nat"), "namespace")].map((p) => pickWords(p, told)),
+    ["what Dim24.Main uses", "lemma", "ns Dim24.Aux", "TCB of file Q.Aux", "ns Nat (outside)"],
+  );
   // the selection holds the union of its picks
   assert.deepEqual(lit(selectionQuery(picks.slice(0, 2))), ["N.t", "N.d", "N.e", "N.x", "Ext.E"]);
   assert.equal(selectionQuery([]), null);
