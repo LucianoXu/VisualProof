@@ -77,6 +77,18 @@ export function cueAt(captions: readonly Cue[], t: number): Cue | null {
   return found && t < found.end ? found : null;
 }
 
+/** How near a chapter's end the film may be and be in the next: a browser keeps the time to a
+ *  microsecond or coarser (Chrome reads 19.4666666 back as 19.466666), so that the film sent to a
+ *  chapter's start can be read as a hair before it — still in the chapter before, whose card and last
+ *  caption would come back, and → would never pass it while the film is paused. */
+export const AT_EPS = 0.01;
+
+/** The chapter the film is in at `t`: the last whose start it has reached, within `AT_EPS`. */
+export function chapterAt(chapters: readonly { start: number; end: number }[], t: number): number {
+  const k = chapters.findIndex((c) => t + AT_EPS < c.end);
+  return k < 0 ? chapters.length - 1 : k;
+}
+
 /** A chapter's captions: those that begin in it. */
 export function cuesOf(captions: readonly Cue[], ch: { start: number; end: number }): Cue[] {
   return captions.filter((c) => c.start >= ch.start - 0.01 && c.start < ch.end);
@@ -485,11 +497,12 @@ export class TourFilm {
   private follow(): void {
     const v = this.video;
     if (!v || !this.data) return;
-    const t = v.currentTime;
+    // the time read as the browser keeps it, a hair before where it was sent: the chapter and the
+    // caption of where it is
+    const t = v.currentTime + AT_EPS;
     const cs = this.data.chapters;
     if (this.film === "ok") {
-      let k = cs.findIndex((c) => t < c.end);
-      if (k < 0) k = cs.length - 1;
+      const k = chapterAt(cs, v.currentTime);
       if (k !== this.at) this.open(k);
     }
     this.root.querySelectorAll<HTMLElement>(".film-fill").forEach((f, j) => {
