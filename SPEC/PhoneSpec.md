@@ -1,10 +1,11 @@
 # VisualProof Phone Spec
 
 The page on a phone, beyond SPEC.md ("Deployment": "The website also supports small touch devices. On
-small screens it can have a UI focused on reading and reviewing."), and on a tall screen: a tablet
-held upright, a narrow window, a monitor on its side (decisions 16–28, the owner's of 2026-10-17).
-How the board itself looks and behaves: CanvasSpec.md. A tablet held sideways is a larger screen's
-page; what a finger changes there is decisions 3–5's.
+small screens it can have a UI focused on reading and reviewing."), on a tall screen — a tablet
+held upright, a narrow window (decisions 16–28, the owner's of 2026-10-17) — and on a monitor turned
+on its side (decisions 29–35, the owner's choice of 2026-10-18). How the board itself looks and
+behaves: CanvasSpec.md. A tablet held sideways is a larger screen's page; what a finger changes
+there is decisions 3–5's.
 
 ## Decisions
 
@@ -77,13 +78,15 @@ page; what a finger changes there is decisions 3–5's.
 
 ### Tall screens (the owner's decision of 2026-10-17)
 
-16. **A tall screen is wider than a phone and at least 1.2 times as high as it is wide** (`TALL` in
-    `web/src/phone.ts`, `(min-width: 641px) and (max-aspect-ratio: 5/6)`; the block of that query
-    in `web/style.css`): an iPad held upright (768 × 1024 to 1024 × 1366), a narrow window, a
-    monitor turned on its side (1080 × 1920). The shape alone decides, not the pointer: a mouse on a
-    monitor on its side and a finger on a tablet get the same page, and what a finger changes is
-    decisions 3–5's, on any touch screen. A screen nearer to square is a larger screen's page: the
-    side panel and the panel leave its board room enough beside them.
+16. **A tall screen is wider than a phone, at least 1.2 times as high as it is wide, and under a
+    finger or narrower than 1000 px** (the owner's choice of 2026-10-18; `TALL` in
+    `web/src/phone.ts`, `(min-width: 641px) and (max-aspect-ratio: 5/6) and (pointer: coarse),
+    (min-width: 641px) and (max-width: 999px) and (max-aspect-ratio: 5/6)`; the block of that query
+    in `web/style.css`): an iPad held upright (768 × 1024 to 1024 × 1366), a narrow window. The
+    primary pointer tells it from an upright monitor (decision 29): a finger gets this page whatever
+    the width, a mouse below 1000 px; what a finger changes is decisions 3–5's, on any touch screen.
+    A screen nearer to square is a larger screen's page: the side panel and the panel leave its
+    board room enough beside them.
 17. **The page follows the screen as it turns** or as the window is resized across a line (as
     decision 2's): at once, nothing reloaded and nothing chosen lost — the selection, what the panel
     shows, the windows, the camera — the board framed again in its new room. The drawer closes where
@@ -127,6 +130,42 @@ page; what a finger changes there is decisions 3–5's.
     board's room above the sheet, under the selection bar.
 28. **The Time Machine** is a larger screen's (HistorySpec), its bar in the view bar (decision 24).
 
+### Upright monitors (the owner's choice of 2026-10-18)
+
+29. **An upright monitor is at least 1000 px wide and 1.2 times as high as it is wide, under a
+    mouse** (`MONITOR` in `web/src/phone.ts`, `(min-width: 1000px) and (max-aspect-ratio: 5/6) and
+    (pointer: fine)`; the block of that query in `web/style.css`): a monitor turned on its side,
+    1080 × 1920 to 2160 × 3840, used with a mouse, with room. It is not a phone's page: no drawer
+    and no sheet (decisions 9, 10). Upright with no pointer at all, a screen has a larger screen's
+    page.
+30. **It is a larger screen's page, its height used**: the bar, the view bar with the modes and the
+    selection bar under them, every popover, hover card, menu and key; Tips, Export's window (the
+    outline drawn on the board), the linear form, the Time Machine and the tour as on a larger
+    screen, the tour's spotlight framing the board's room. The review strip stands at the board's
+    top left; the legend and the zoom's box at the foot of the board's room.
+31. **The page follows the screen as it turns** or as the window is resized across a line (as
+    decision 17's): at once, nothing reloaded and nothing chosen lost. Off a monitor the windows go
+    back to their own places; on one they go into the column (decision 34). The sizes the reader
+    set (decision 35) are kept in this browser.
+32. **The board is above, the side panel at its left**, from the view bar down to the work area;
+    ⚙ Board and Trusted open beside it, as on a larger screen.
+33. **A work area runs across the bottom while something is in it**: half the screen's height to
+    start; nothing in it, the board has the whole height. The panel is a pane at its left, 30 % of
+    the screen's width (380 to 640 px) beside the windows, the work area's whole width alone;
+    Activity and the lost-and-found take the panel's place.
+34. **The windows are one column at the panel's right, stacked from the top**: the source windows,
+    then the reference window, then the conversation with an agent. One alone takes the column's
+    height; several share it, the reference the largest share (3 to the source's and the
+    conversation's 2 each), as a page of a PDF is read best tall. With no declaration selected the
+    column takes the work area's width. A collapsed window is its pill at the column's foot, or at
+    the screen's when nothing else is open.
+35. **Splitters set the parts' sizes, as a mouse does**: one above the work area (the board keeping
+    420 px, the work area a quarter of the screen at least), one between the panel and the column
+    (the panel 320 px at least, the column 360), one between each two windows of the column (140 px
+    each at least). A double-click gives what a splitter sets its own size again; this browser
+    keeps what the reader set. The column places the windows: no drag moves one and no edge resizes
+    one.
+
 ## Open
 
 - **Arranging from the menu.** A finger held on the board still offers what arranges it: Fold, Hide
@@ -138,6 +177,8 @@ page; what a finger changes there is decisions 3–5's.
   (The tour has a phone's own since 0.4: GuideSpec decision 4.)
 - **A tall screen's panel in two columns**: on a sheet 900 px wide or more, the declaration's head,
   statement and review at the left, its counts, axioms and TCB at the right.
+- **Export's window on an upright monitor**: in the work area, as a pane, rather than over the board
+  at its top right.
 - **A narrow window held sideways** (641–900 px wide, less than 1.2 times as high): the side panel
   is hidden there with no drawer to open it, and the panel covers the board. The drawer and the
   sheet would serve it as they serve a tall screen.
