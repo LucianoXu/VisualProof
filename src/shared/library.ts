@@ -644,20 +644,26 @@ export function quoteAt(text: string, start: number, end: number, context = QUOT
   return { text: q, ...(before ? { before } : {}), ...(after ? { after } : {}) };
 }
 
+/** Typography read as typed: curly quotes as straight ones, dashes and the minus sign as a hyphen —
+ *  each one character for one, so that offsets into the text stay where they were. A quote typed
+ *  by hand or by an agent ("Kummer's lemma.") is found in a page typeset with ’ and –. */
+export const plainPunctuation = (s: string): string => s.replace(/[\u2018\u2019\u201a\u201b\u2032]/g, "'").replace(/[\u201c\u201d\u201e\u201f\u2033]/g, '"').replace(/[\u2010-\u2015\u2212]/g, "-");
+
 /** Where a quote is in a page's text: the offsets of the best match into `text` — the one whose
  *  surroundings agree most with what was kept around it — or null when it is not there. Spaces are
- *  read loosely, and so is case where no exact match is. */
+ *  read loosely; so is case where no exact match is, and then typographic quotes and dashes. */
 export function findQuote(text: string, q: Quote): { start: number; end: number } | null {
   const page = squeeze(text);
   const want = squeeze(q.text).s;
   if (!want) return null;
-  const tries = [page.s, page.s.toLowerCase()];
-  for (const [k, hay] of tries.entries()) {
-    const needle = k ? want.toLowerCase() : want;
+  const tries = [(s: string) => s, (s: string) => s.toLowerCase(), (s: string) => plainPunctuation(s.toLowerCase())];
+  for (const read of tries) {
+    const hay = read(page.s);
+    const needle = read(want);
     let best: { at: number; score: number } | null = null;
     for (let at = hay.indexOf(needle); at >= 0; at = hay.indexOf(needle, at + 1)) {
-      const before = q.before ? squeeze(q.before).s : "";
-      const after = q.after ? squeeze(q.after).s : "";
+      const before = q.before ? read(squeeze(q.before).s) : "";
+      const after = q.after ? read(squeeze(q.after).s) : "";
       const score = common(hay.slice(Math.max(0, at - before.length - 1), at).trimEnd(), before, true) + common(hay.slice(at + needle.length).trimStart(), after, false);
       if (!best || score > best.score) best = { at, score };
     }

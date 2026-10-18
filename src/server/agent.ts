@@ -169,6 +169,9 @@ export interface World {
   /** the holder of a personal link in force who goes by `name` (an opinion recorded for them,
    *  ReviewSpec decision 8) */
   invited?(name: string): { id: string; name: string } | undefined;
+  /** whether `name` is an agent's now, a token in force or an agent on the page: nobody's opinion is
+   *  recorded for it (ReviewSpec decision 8) */
+  agentNamed?(name: string): boolean;
   timeline: { events: StoredEvent[]; add(e: NewEvent): StoredEvent };
   /** the Project view's pins (ViewSpec decision 5): what `place`, `pins` and `undo` are about */
   places: { data: PlacesData; apply(ops: PlaceOp[], who?: { by: string | null; agent?: boolean }): boolean; authorOf(mode: ClusterMode, kind: "node" | "cluster", key: string): PinAuthor | null };
@@ -924,7 +927,7 @@ export class AgentApi {
     const job = ex?.job(id) ?? null;
     if (!ex || !job) return fail(404, "There is no such document: it was never asked for, or has left the cache.", "POST /api/agent/export starts one; the same request again finds it while it is kept.");
     if (job.state === "running") return fail(409, "That document is still being typeset.", `Ask again in a few seconds, or wait for GET /api/agent/export/job?id=${job.id} to say done.`, { job }, { "retry-after": "2" });
-    if (job.state === "failed") return fail(409, `That document could not be typeset: ${job.error ?? "XeLaTeX failed"}.`, "Its job has the end of XeLaTeX's log (GET /api/agent/export/job).", { job });
+    if (job.state === "failed") return fail(409, `That document could not be typeset: ${(job.error ?? "XeLaTeX failed").replace(/\.$/, "")}.`, "Its job has the end of XeLaTeX's log (GET /api/agent/export/job).", { job });
     const f = ex.file(id, w);
     if (!f) return fail(404, "That document has left the cache.", "Ask for it again: POST /api/agent/export.");
     return { status: 200, body: null, file: f };
@@ -2385,9 +2388,10 @@ export class AgentApi {
     const me = whoOf(a.caller);
     const b = body(a);
     if (b.leave === true) {
+      // an agent with a token that leaves is offline until it listens or asks again — unless its
+      // MCP server says it is a session that a newer one replaced, which goes on
+      if (a.caller.token && this.world.talk && !this.world.talk.left(a.caller.token.id, a.session ?? null)) return ok({ ok: true, left: false, note: "Another session of your token listens now: it stays." });
       this.world.presence.drop(agentKey(me));
-      // an agent with a token that leaves is offline until it listens or asks again
-      if (a.caller.token) this.world.talk?.left(a.caller.token.id);
       return ok({ ok: true, left: true });
     }
     const p = this.goingTo(a, b);

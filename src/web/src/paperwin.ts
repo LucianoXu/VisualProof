@@ -79,6 +79,9 @@ export interface PaperHooks {
   placed(): void;
   /** why no note can be written here (a preview of a view, a snapshot), or null */
   cannotNote(): string | null;
+  /** why no file can be opened here (a snapshot of the page carries the library's records, not its
+   *  files), or null */
+  noFiles?(): string | null;
   /** Clip to a note: a note of the project carrying the clip, with that text; whether it was made */
   clip(c: NoteCarry, text: string): Promise<boolean>;
   /** a file or a clip attached to note `note` (its menu's Attach…); whether it was */
@@ -131,6 +134,8 @@ export class PaperWin {
   private spot: { page?: number; region: Region } | null = null;
   /** what the reader picked in the paper: a place to link to */
   private picked: LinkPlace | null = null;
+  /** the place the window was opened at, gone to again once a missing file's bytes come */
+  private at: LinkPlace | null = null;
   private turn = 0;
   /** the box tool: armed by ▭ for the next drag alone (web/src/paperwords.ts) */
   private tool = new BoxTool((armed) => this.drawTool(armed));
@@ -238,6 +243,7 @@ export class PaperWin {
     const place = opts.place ?? (l ? { page: l.page, region: l.region, quote: l.quote } : null);
     this.lit = l?.id ?? null;
     this.spot = opts.spot ?? null;
+    this.at = place;
     this.why = opts.why ?? (l ? { link: l } : {});
     const was = this.open;
     this.open = true;
@@ -264,6 +270,15 @@ export class PaperWin {
     this.page = 1;
     this.pages = f.pages ?? 0;
     this.unpick();
+    // a search was of the file shown before: its count goes, and Enter searches this one afresh
+    // rather than stepping through matches it no longer has
+    delete this.findEl.querySelector("input")!.dataset.done;
+    this.findEl.querySelector<HTMLElement>(".pw-found")!.textContent = "";
+    const none = this.hooks.noFiles?.();
+    if (none) {
+      this.host.innerHTML = `<div class="pw-missing"><p><b>${escapeHtml(f.title)}</b></p><p>${escapeHtml(none)}</p></div>`;
+      return;
+    }
     this.host.innerHTML = `<div class="pw-wait">Opening ${escapeHtml(f.title)}…</div>`;
     const url = `/api/library/file?sha=${f.sha}`;
     // a file whose record came through the logs from another server: this one may lack its bytes
@@ -309,7 +324,7 @@ export class PaperWin {
     this.host.innerHTML =
       `<div class="pw-missing"><p><b>This server does not have the file of ${escapeHtml(f.title)}.</b> Its record and its links came with the review; its bytes are kept by the server that added it.</p>` +
       `<p>Add it here: only a file of exactly that content is taken (SHA-256 <code>${f.sha.slice(0, 16)}…</code>, ${sizeWords(f.size)}).</p>` +
-      `<label class="rv-btn primary pw-add"><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif" data-pw-fill hidden>Choose the file…</label><span class="pw-fill-why"></span></div>`;
+      `<label class="rv-btn primary pw-add" tabindex="0" role="button"><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif" data-pw-fill hidden>Choose the file…</label><span class="pw-fill-why"></span></div>`;
     this.host.querySelector<HTMLInputElement>("[data-pw-fill]")!.addEventListener("change", (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) void this.fill(f, file);
@@ -329,6 +344,9 @@ export class PaperWin {
     this.view = null;
     await this.load(f);
     this.drawMarks();
+    // where it was opened: the link's place, which the window could not go to without the file
+    const v = this.view as PdfView | ImageView | null;
+    if (this.at) v?.show(this.at);
   }
 
   /** Close the window. */
@@ -490,6 +508,8 @@ export class PaperWin {
       // a clip makes a note, which a past board takes though it takes no link (ViewSpec decision 26)
       const clipNo = clip ? (f.archived ? "This file is archived: restore it from the Library to clip it." : this.hooks.cannotNote()) : null;
       const clipping = !!clip && !clipNo && !this.linking;
+      // why no clip is not said again where it is why no link (a read-only page refuses both alike)
+      const said = "refused" in offer && offer.refused === clipNo;
       const field =
         "subject" in offer || clipping
           ? `<input class="pw-label" value="${e(label)}" maxlength="200" aria-label="The label" title="The link's label, as the panel lists it, or the note's text: e.g. Theorem 3, p. 12">`
@@ -506,7 +526,7 @@ export class PaperWin {
               : `<span class="pw-pick-no">Select a declaration or a cluster on the board to link it here.</span>`;
       const clipBtn = clipping
         ? `<button class="rv-btn${"subject" in offer ? "" : " primary"}" data-pw-clip title="A note of the project carrying this region of page ${clip!.page}, in the cluster of what is selected on the board (else on the ring), its text the label">Clip to a note</button>`
-        : clip && clipNo && !this.linking && !("subject" in offer)
+        : clip && clipNo && !this.linking && !("subject" in offer) && !said
           ? `<span class="pw-pick-no">${e(clipNo)}</span>`
           : "";
       this.pickEl.innerHTML = field + link + clipBtn;
@@ -654,9 +674,15 @@ export class PaperWin {
   private async find(q: string): Promise<void> {
     const out = this.findEl.querySelector<HTMLElement>(".pw-found")!;
     if (!(this.view instanceof PdfView)) return;
-    out.textContent = "Finding…";
+    // the server finds two characters or more (GET /api/library/search): one is not "Not found"
+    const short = q.replace(/\s+/g, " ").trim().length < 2;
+    out.textContent = short ? "" : "Finding…";
     const r = await this.view.search(q);
     this.more = !!r?.more;
+    if (short) {
+      out.textContent = q.trim() ? "Two letters at least" : "";
+      return;
+    }
     out.textContent = !r ? "Its text cannot be read" : r.n ? `1 / ${r.n}${r.more ? "+" : ""}` : "Not found";
   }
 

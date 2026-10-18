@@ -21,6 +21,8 @@
 // lost-and-found, Export's window and the floating windows take the sheet's place; the board's room
 // is above them (`tallInsets`).
 
+import type { PageEl } from "./surfaces.ts";
+
 export const PHONE = "(max-width: 640px)";
 /** a tall screen: wider than a phone, and at least 1.2 times as high as it is wide */
 export const TALL = "(min-width: 641px) and (max-aspect-ratio: 5/6)";
@@ -53,6 +55,21 @@ export function sheeted(): boolean {
 export function shapeOf(w: number, h: number): "phone" | "tall" | "wide" {
   if (w <= 640) return "phone";
   return w * 6 <= h * 5 ? "tall" : "wide";
+}
+
+/** Whether a press at `t` in the drawer goes somewhere from it, which closes it (decisions 9 and 19):
+ *  a target's row, a cluster's name or the rest of its row, a name that goes to a declaration. An
+ *  arrow opening or folding a level, a section's heading, a row's own buttons (fold, trust) and ⚙
+ *  Board or Trusted, which take its place, leave it open. */
+export function goesFromDrawer(t: PageEl | null): boolean {
+  const up = (sel: string) => {
+    for (let e = t; e; e = e.parentElement) if (e.matches(sel)) return true;
+    return false;
+  };
+  if (up(".tw, [data-sec]")) return false;
+  // a target's row and a cluster's name are buttons that go somewhere
+  if (up(".tg-row, .o-label, [data-go], [data-open]")) return true;
+  return !up("button") && up(".o-row");
 }
 
 export interface PhoneHooks {
@@ -112,7 +129,8 @@ const DOCKED = "#windows > :is(.sw-win, .pw-win, #following.talking):not(.collap
 export function tallInsets(): { left: number; right: number; top: number; bottom: number } {
   const $ = (id: string) => document.getElementById(id);
   const bar = $("selbar")!;
-  const strip = [$("lensbar"), $("tm-kept")].find((e) => e && !e.hidden);
+  // the note of a kept view sits under the review strip where both show
+  const strip = [$("tm-kept"), $("lensbar")].find((e) => e && !e.hidden);
   const under = !bar.hidden ? bar.getBoundingClientRect().bottom : strip ? strip.getBoundingClientRect().bottom : $("viewbar")!.getBoundingClientRect().bottom;
   // the sheet or the dock: offsetHeight, not the bounding box, as either may still be sliding in
   let low = 0;
@@ -175,9 +193,7 @@ export class Phone {
     // of the tree and the drawer stays, as it does for what is pressed on a row's buttons
     document.getElementById("side")!.addEventListener("click", (e) => {
       if (!sheeted()) return;
-      const t = e.target as HTMLElement;
-      if (t.closest(".tw, button, [data-sec]")) return;
-      if (t.closest(".tg-row, .o-row, [data-go], [data-open]")) setTimeout(() => this.drawer(false), 120);
+      if (goesFromDrawer(e.target as HTMLElement)) setTimeout(() => this.drawer(false), 120);
     });
 
     // the sheets: the panel's on a phone; on a tall screen Activity and the lost-and-found too, which

@@ -28,23 +28,30 @@ export function defaultAgentName(by: string): string {
   return `${cutShort(by.trim(), MAX_NAME - "'s AI".length)}'s AI`;
 }
 
-/** An agent's name told apart from the names `taken` (the tokens in force), whatever the case: the
+/** An agent's name told apart from the names `taken` (the tokens in force), as sameName tells them: the
  *  name itself, else numbered — "Alice's AI 2", "Alice's AI 3" — within the characters a name may
  *  have, the name cut short to make room for the number. */
 export function uniqueName(name: string, taken: Iterable<string>): string {
-  const seen = new Set([...taken].map((t) => t.toLowerCase()));
+  const seen = new Set([...taken].map(nameKey));
   for (let n = 1; ; n++) {
     const s = n === 1 ? name : `${cutShort(name, MAX_NAME - ` ${n}`.length)} ${n}`;
-    if (!seen.has(s.toLowerCase())) return s;
+    if (!seen.has(nameKey(s))) return s;
   }
 }
 
-/** Whether two names are the same name to a reader: whatever the case, and however Unicode writes
- *  the same letters. A guest cannot take a name someone invited by a personal link holds in this
- *  sense (CollabSpec decision 9), so that "alice" does not pass for "Alice". */
+/** A name as a reader tells it from others: whatever the case, however Unicode writes the same
+ *  letters, and without the characters nobody sees (zero-width spaces and joiners, soft hyphens,
+ *  direction marks: Unicode's default-ignorable code points), which would make one name look like
+ *  another. */
+export function nameKey(s: string): string {
+  return s.normalize("NFKC").replace(/\p{Default_Ignorable_Code_Point}/gu, "").trim().toLowerCase();
+}
+
+/** Whether two names are the same name to a reader (nameKey). A guest cannot take a name someone
+ *  invited by a personal link holds in this sense (CollabSpec decision 9), so that neither "alice"
+ *  nor "Alice" with a zero-width space passes for "Alice". */
 export function sameName(a: string, b: string): boolean {
-  const key = (s: string) => s.trim().normalize("NFKC").toLowerCase();
-  return key(a) === key(b);
+  return nameKey(a) === nameKey(b);
 }
 
 /** Someone invited by a personal link (CollabSpec decision 9, server/invites.ts), as Share lists

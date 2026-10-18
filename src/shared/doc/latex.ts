@@ -403,10 +403,12 @@ function contents(doc: DocModel, n: Map<string, string>): string {
  *  project (Mathlib 203, Init 97)`, the six largest libraries named. */
 function outsideLine(o: DocModel["head"]["outside"]): string {
   const n = int(o.count);
-  const named = o.by.slice(0, 6).map((b) => `${escapeLatex(b.name)} ${int(b.count)}`);
+  // in thousands as the Export window counts them ("2,640"), the same in every locale
+  const k = (x: number) => x.toLocaleString("en");
+  const named = o.by.slice(0, 6).map((b) => `${escapeLatex(b.name)} ${k(int(b.count))}`);
   const rest = o.by.slice(6).reduce((a, b) => a + int(b.count), 0);
-  if (rest) named.push(`others ${rest}`);
-  return `${n} declaration${n === 1 ? "" : "s"} from outside the project${named.length ? ` (${named.join(", ")})` : ""}, not printed`;
+  if (rest) named.push(`others ${k(rest)}`);
+  return `${k(n)} declaration${n === 1 ? "" : "s"} from outside the project${named.length ? ` (${named.join(", ")})` : ""}, not printed`;
 }
 
 /** `n` declarations, in words. */

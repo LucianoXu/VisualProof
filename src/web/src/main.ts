@@ -41,7 +41,7 @@ import { itemOp } from "../../shared/items.ts";
 import type { ItemOp } from "../../shared/items.ts";
 import { derivesOn, existsIn } from "../../shared/noteplace.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
+import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, PROJECT_SCOPE, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
@@ -74,10 +74,11 @@ import { LostAndFound } from "./lostfound.ts";
 import { popHtml, stamp } from "./buildpop.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
-import { FocusMenu, readerFocus } from "./focus.ts";
+import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
 import { Guide, restsOnCounts } from "./guide.ts";
 import type { RestsOn } from "./guide.ts";
 import { reducedMotion } from "./tipcards.ts";
+import { keepFocus } from "./keepfocus.ts";
 import { Legend } from "./legend.ts";
 import { applyTheme, themeChoices } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
@@ -86,7 +87,7 @@ import { ReviewFlow } from "./reviewqueue.ts";
 import { SearchBox } from "./search.ts";
 import { SelectionBar } from "./selbar.ts";
 import type { LitCount } from "./selbar.ts";
-import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
+import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, followRenames, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Shown, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -160,6 +161,8 @@ const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything
 /** What a tap selects with each tool, in a few words: under the tool's name in a phone's ⋯, where
  *  nothing is said while a pointer rests on a button (web/src/phone.ts). */
 const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap", apps: "everything that uses it" };
+/** What a link to a view the server no longer has opens instead, and why (ViewSpec decision 6). */
+const VIEW_GONE = "This link's view is gone: it was deleted, or nobody kept it and everyone closed it. Here is the Project.";
 
 interface GraphInfo {
   version: number;
@@ -553,14 +556,19 @@ async function boot(): Promise<void> {
     inReview: (r, i) => flow.inReview(r, i),
     isKey: (r, i) => flow.isKey(r, i),
     keyProgress: (i) => flow.keyProgress(i),
-    keyView: (i) => {
-      // a view made from the board on show: at its build, leaving the Time Machine for it; focused
-      // on the target it is made from (ViewSpec decision 28)
-      void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
-        if (ok === true) commit();
-        else if (typeof ok === "string") say(ok);
-      });
-    },
+    // a view made from the board on show: at its build, leaving the Time Machine for it; focused on
+    // the target it is made from (ViewSpec decision 28). A read-only reader makes no views, and is
+    // not offered one (CollabSpec decision 11)
+    ...(reader
+      ? {}
+      : {
+          keyView: (i: number) => {
+            void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
+              if (ok === true) commit();
+              else if (typeof ok === "string") say(ok);
+            });
+          },
+        }),
     go: (i) => go(i),
     openSource: (name, from, to, quoted, root) => openSourceAt(name, from, to, quoted, root),
   });
@@ -650,6 +658,7 @@ async function boot(): Promise<void> {
     relayoutSource: () => sources.following?.relayout(),
     repaint: () => showSelected(),
     readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : reader ? READ_ONLY : null),
+    noFiles: () => (data.snapshot ? "A snapshot of the page carries the library's records and links, not its files: open it on the server." : null),
     // what notes carry (AttachmentSpec decision 12): a clip made into a note, a file attached to one
     cannotNote: () => noteRefused(),
     clip: (c, text) => clipToNote(c, text),
@@ -749,6 +758,7 @@ async function boot(): Promise<void> {
   // the selection, under the mode buttons (web/src/selbar.ts)
   const selBar = new SelectionBar($("#selbar"), {
     canOpenViews: () => !reader,
+    names: () => views.titles().names ?? undefined,
     show: (k) => {
       const to = shownOf(picks[k]);
       if (!to) return;
@@ -890,9 +900,13 @@ async function boot(): Promise<void> {
   const filmLink = tipsIn(location.hash);
   let filmPart = "";
   let first = linked ? linked.view ?? PROJECT : S.active ?? PROJECT;
+  /** why the view the address names could not be opened: said once the page is there, which shows
+   *  the Project instead */
+  let notOpened: string | null = null;
   if (linked?.scope) {
     const v = await views.open(linked.scope, { version: linked.version ?? null });
     if (typeof v !== "string") first = v.id;
+    else notOpened = `This link's view could not be opened: ${v}`;
   }
 
   const notes = new Notes($("#notes"));
@@ -1020,6 +1034,7 @@ async function boot(): Promise<void> {
     unfold: (c) => canvas.toggleFold(c),
     // the library is the server's now, whatever build the board shows
     file: (sha) => fileOf(review.data, sha),
+    noFiles: () => !!data.snapshot,
     openCarry: (_id, c) => papers.openCarry(c),
   });
   canvas.onFrame = () => stickies.frame();
@@ -1196,7 +1211,7 @@ async function boot(): Promise<void> {
   // clustering, depth, Re-layout) and what is trusted (Trusted, with how many prefixes).
   const boardPop = new Popover($("#board-btn"), $("#board-pop"), {
     place: () => besideSide($("#board-btn"), $("#board-pop")),
-    changed: (open) => open && boardPanel.render(),
+    changed: (open) => (open ? boardPanel.render() : boardPanel.reset()),
   });
   const trustPop = new Popover($("#trusted-btn"), $("#trust-list"), {
     place: () => besideSide($("#trusted-btn"), $("#trust-list")),
@@ -1323,12 +1338,18 @@ async function boot(): Promise<void> {
     // the panel, or the timeline's drawer in its place; the selection bar heads that column, which
     // it moves down by its height
     const open = $("#panel").classList.contains("open") || $("#activity").classList.contains("open") || $("#lostfound").classList.contains("open");
-    // the review strip, or the note of a view kept at a past build, in the same place
-    const strip = !$("#lensbar").hidden || !$("#tm-kept").hidden;
+    // the review strip, and under it the note of a view kept at a past build: a kept view focused
+    // on a target has both (HistorySpec decision 19)
+    const height = (id: string) => ($(id).hidden ? 0 : $(id).offsetHeight + 6);
+    const lens = height("#lensbar"), kept = height("#tm-kept");
+    const strip = lens + kept > 0;
+    // the note's height too, where it is the second
+    const second = lens && kept;
     const bar = $("#selbar");
     document.body.style.setProperty("--selbar-h", bar.hidden ? "0px" : `${bar.offsetHeight + 8}px`);
-    // on a phone the selection bar goes under the strip
-    document.body.style.setProperty("--strip-h", strip ? `${$(!$("#lensbar").hidden ? "#lensbar" : "#tm-kept").offsetHeight + 6}px` : "0px");
+    document.body.style.setProperty("--lens-h", `${lens}px`);
+    // on a phone the selection bar goes under them both
+    document.body.style.setProperty("--strip-h", `${lens + kept}px`);
     // a phone (web/src/phone.ts): the side panel is a drawer, the panel a sheet from the bottom,
     // the selection bar across the top, the legend and the zoom's box at the bottom
     const sheet = $("#panel").classList.contains("open") ? $("#panel").offsetHeight : 0;
@@ -1336,7 +1357,7 @@ async function boot(): Promise<void> {
       ? {
           left: 0,
           right: 0,
-          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 : 12) : bar.getBoundingClientRect().bottom + 12,
+          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 + second : 12) : bar.getBoundingClientRect().bottom + 12,
           bottom: sheet ? sheet + 8 : 56,
         }
       : isTall()
@@ -1346,7 +1367,7 @@ async function boot(): Promise<void> {
           left: side.width ? side.right + 8 : 0,
           // offsetWidth, not the bounding box: the panel may still be sliding in
           right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,
-          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 : 28),
+          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 + second : 28),
           bottom: 48,
         };
     // the zoom buttons keep to the canvas's bottom right, the review strip to its middle; where the
@@ -1997,8 +2018,6 @@ async function boot(): Promise<void> {
     artwork: () => art.open(),
     artworkOnly: () => !!data.snapshot,
   });
-  // a snapshot of the page makes pictures of its board, not documents (ExportSpec decision 19)
-  if (data.snapshot) $("#export-btn").title = "Artwork: the board as a picture, PNG or SVG (a snapshot's documents are the server's)";
   // a snapshot of the page carries the links, not the library's files (they are the server's)
   if (data.snapshot) $("#library-btn").hidden = true;
 
@@ -2135,7 +2154,22 @@ async function boot(): Promise<void> {
   /** The review changed, once per change whoever made it (this reader, someone else, the logs on disk):
    *  everything that shows it follows. A board whose scope reads the review (trusted, statuses,
    *  advice) may hold another set now: the board on show is drawn again at once. */
+  /** What the reader selected follows a rename of it (web/src/selection.ts, followRenames): a build
+   *  that renamed it, or a move that says so, which may come before or after the new graph. True
+   *  where it did; the board is drawn again by the caller. */
+  const followSelection = (): boolean => {
+    const r = followRenames(picks, shown, review.data.renamed, (name) => present.byName.has(name));
+    if (r.picks === picks && r.shown === shown) return false;
+    ({ picks, shown } = r);
+    return true;
+  };
+  /** Where a selection that followed a rename is told: the address, and those following. */
+  const selectionFollowed = () => {
+    writeAddress(false);
+    people.report();
+  };
   const reviewChanged = () => {
+    const followed = followSelection();
     targetTcbs.clear();
     views.reviewChanged();
     if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => boardPanel.render());
@@ -2145,7 +2179,7 @@ async function boot(): Promise<void> {
     // what is lit reads the review when a pick does (key declarations, trust, statuses), and the
     // key graph's edges under Keys always: lit again; else what shows the review is drawn again
     const q = selectionQuery(picks);
-    if (S.mode === "keys" || (q && readsReview(q))) apply();
+    if (followed || S.mode === "keys" || (q && readsReview(q))) apply();
     else {
       outline.render();
       // a visitor's colour by status, and its diamond, are the review's too
@@ -2160,6 +2194,7 @@ async function boot(): Promise<void> {
     papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
     stickies.render();
+    if (followed) selectionFollowed();
   };
   /** The whole review (on connecting, or where events came in between): taken unless this page
    *  holds that revision already. */
@@ -2298,15 +2333,16 @@ async function boot(): Promise<void> {
     b.addEventListener("blur", () => modeTip(null));
   }
 
-  /** Something said for a moment where the hint is (below the review strip, where it shows): the
-   *  hint shows nothing otherwise. */
+  /** Something said for a moment where the hint is (below the review strip and the note of a kept
+   *  view, where they show): the hint shows nothing otherwise. */
   const say = (text: string) => {
     const hint = $("#hint");
     if (saying) clearTimeout(saying);
+    // shown before it is written: a live region in the page when its words change is read out
+    hint.hidden = false;
     hint.textContent = text;
     hint.classList.add("say");
-    hint.classList.toggle("below", !$("#lensbar").hidden);
-    hint.hidden = false;
+    hint.classList.toggle("below", !$("#lensbar").hidden || !$("#tm-kept").hidden);
     saying = setTimeout(() => {
       saying = null;
       hint.hidden = true;
@@ -2323,7 +2359,8 @@ async function boot(): Promise<void> {
   const clickOn = (p: Pick, shift: boolean): boolean => {
     const r = click(picks, shown, p, shift, setOn);
     if (r.covered) {
-      say(`${pickWords(p)} is inside ${pickWords(r.covered)}, which is selected: nothing changed.`);
+      const names = views.titles().names ?? undefined;
+      say(`${pickWords(p, names)} is inside ${pickWords(r.covered, names)}, which is selected: nothing changed.`);
       return false;
     }
     const before = picks.length;
@@ -2551,7 +2588,12 @@ async function boot(): Promise<void> {
    *  the build on show), the note of a view kept at a build. */
   const syncPast = () => {
     document.body.classList.toggle("past", pastShown());
-    $("#export-btn").title = pastShown() ? "Export: this view at the build on show, as a document typeset with LaTeX" : "Export: this view as a document, typeset with LaTeX";
+    // a snapshot of the page makes pictures of its board, not documents (ExportSpec decision 19)
+    $("#export-btn").title = data.snapshot
+      ? "Artwork: the board as a picture, PNG or SVG (a snapshot's documents are the server's)"
+      : pastShown()
+        ? "Export: this view at the build on show, as a document typeset with LaTeX; or the board as a picture (Artwork)"
+        : "Export: this view as a document, typeset with LaTeX; or the board as a picture (Artwork)";
     tm.renderKept();
     syncInsets();
   };
@@ -2633,12 +2675,13 @@ async function boot(): Promise<void> {
     canvas.setLayout(L, b.rec.pins[m], b.rec.folds[m], m);
     canvas.setFrozen(frozen());
     linear.refresh();
+    exportModal.boardChanged();
     // a note being written stays while its board is drawn again (the review changed what it
     // holds); another board closes it
     if (b.id !== stickiesOn) stickies.reset();
     stickiesOn = b.id;
     stickies.render();
-    outline.setLayout(L);
+    outline.setLayout(L, `${b.id}\u0000${m}`);
     canvas.setBuild(b.past ? null : build?.files ?? null);
     // the whole project's layout holds the outside world; a scope without it hides it
     canvas.setShowExternals(b.bs.whole ? b.bs.outside : true);
@@ -2680,11 +2723,12 @@ async function boot(): Promise<void> {
 
   /** Zoom in: a view of what is lit, in a tab of its own, with the same selection; at the board's
    *  build (from the Time Machine too, which is left for it), focused as this view is (ViewSpec
-   *  decision 28). */
+   *  decision 28), and, where it is new, clustered as this board is, as a cluster's Zoom in is (one
+   *  found open keeps its own). */
   const zoomIn = async () => {
     const q = zoomOf(selectionQuery(picks));
     if (!q) return;
-    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(picks), shown, cam: null });
+    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(picks), shown, cam: null }, cm());
     if (typeof r === "string") say(r);
     else if (r) {
       canvas.fit(false);
@@ -2722,8 +2766,10 @@ async function boot(): Promise<void> {
     const linked = views.linkedTo(name);
     // a target's view opens with the target selected alone under the tool the reader has (the
     // owner's decision of 2026-10-12: the tool is never changed for them), and the target the
-    // reader's focus there, whatever the view's own focus is (ViewSpec decisions 15 and 29)
-    if (linked !== undefined && targetStep(linked, nav.board.id) === null) {
+    // reader's focus there, whatever the view's own focus is (ViewSpec decisions 15 and 29); a
+    // read-only reader, who opens no view (CollabSpec decision 11), goes to a target with none on
+    // the board on show
+    if ((linked !== undefined && targetStep(linked, nav.board.id) === null) || (linked === undefined && reader)) {
       mine = name;
       go(i);
       writeAddress(false);
@@ -2850,8 +2896,12 @@ async function boot(): Promise<void> {
     if (tm.active) await tm.close();
     if (id && (await nav.select(id, to))) return atBuild();
     // a view nobody keeps opens again at the build it showed
-    if (st.scope && (await nav.open(st.scope, to, { version: st.version ?? null })) === true) return atBuild();
+    const opened = st.scope ? await nav.open(st.scope, to, { version: st.version ?? null }) : false;
+    if (opened === true) return atBuild();
+    // gone, or never there (an address typed or kept): the Project, and why
     await nav.select(PROJECT, to);
+    if (typeof opened === "string") say(`This link's view could not be opened: ${opened}`);
+    else if (id && id !== PROJECT && !views.summary(id)) say(VIEW_GONE);
   };
   window.addEventListener("popstate", (e) => {
     const st = decodeState(location.hash);
@@ -2870,6 +2920,9 @@ async function boot(): Promise<void> {
         writeAddress(false);
       })
       .then(() => {
+        // the address names what is shown (CanvasSpec, "Navigation"), also where it named a view
+        // that is gone or what no state reads as
+        writeAddress(false);
         renderNav();
         people.report();
       });
@@ -2903,10 +2956,13 @@ async function boot(): Promise<void> {
     views.graphChanged();
     tm.presentChanged();
     targetTcbs.clear();
+    // a declaration selected that this build renamed: the selection is on its name now
+    const followed = followSelection();
     // the board on show again, of the new graph (showBoard takes it as `g`)
     await nav.redraw();
     trust.render();
     activity.changed();
+    if (followed) selectionFollowed();
   };
 
   // ---------------------------------------------------------------- build status
@@ -2971,7 +3027,7 @@ async function boot(): Promise<void> {
   };
   const renderPop = () => {
     if (buildsStale) readBuilds();
-    pop.innerHTML = popHtml({
+    const html = popHtml({
       graph: graphInfo,
       extractError,
       files: build?.files ?? null,
@@ -2979,6 +3035,8 @@ async function boot(): Promise<void> {
       builds: data.lost ? builds : null,
       lost: lostDrawer.counts,
     });
+    // drawn again as the build goes on: the keyboard keeps its place in it
+    keepFocus(pop, () => (pop.innerHTML = html));
   };
 
   /** Show a file: its cluster where the board clusters by file, else its first declaration. The
@@ -3141,8 +3199,13 @@ async function boot(): Promise<void> {
       offline = true;
       renderBuild();
       // refused rather than lost (a server with as many pages open as it serves): the browser does
-      // not try again by itself, so the page does, a while later
-      if (es.readyState === EventSource.CLOSED) setTimeout(listen, 10_000);
+      // not try again by itself, so the page does, a while later — unless the link this page came by
+      // was revoked (CollabSpec decisions 9 and 11), which the server says (410): the page is
+      // reloaded, and says by whom
+      if (es.readyState === EventSource.CLOSED)
+        void fetch("/api/identity")
+          .then((r) => (r.status === 410 ? location.reload() : setTimeout(listen, 10_000)))
+          .catch(() => setTimeout(listen, 10_000));
     };
     es.addEventListener("build", (e) => {
       build = JSON.parse((e as MessageEvent).data);
@@ -3204,8 +3267,9 @@ async function boot(): Promise<void> {
     b.addEventListener("click", () => void sync.setClustering(b.dataset.cluster as ClusterMode));
   }
   /** The outside world on this board or not: a condition of its scope, everyone's (a target's
-   *  view's too: ViewSpec decision 28). */
+   *  view's too: ViewSpec decision 28); the Project always holds it (decision 5). */
   const toggleOutside = () => {
+    if (fixedScope(nav.board.rec)) return say(PROJECT_SCOPE);
     void sync.setScope(setOutside(nav.board.rec.scope, withoutOutside(nav.board.rec.scope))).then((why) => why && say(why));
   };
   // the depth of the whole board, one level at a time; the level shown is read from the folds, so
@@ -3862,17 +3926,20 @@ async function boot(): Promise<void> {
     const board = nav.board.id;
     const spots = stickies.placesFor(canvas.toWorld(at.x, at.y), files.length);
     if (!spots) return say("This board is not drawn yet.");
+    const refusals: string[] = [];
     const made = await notesOfFiles(files, spots, {
       upload: (f) => uploadFile(f, papers.headers()),
       take: (c) => takeChange(c),
       write: (note) => projectOps([{ op: "pnote", note }], true),
       still: () => nav.board.id === board,
       say: (text) => say(text),
+      refused: (why) => void refusals.push(why),
       by: people.name,
       lost: () => people.lost(),
     });
     if (made.length === 1) editWhenShown(made[0], false);
-    else if (made.length) say(`${made.length} notes made, each carrying its file: double-click one to add words.`);
+    // what was refused is said with the notes made, which would otherwise say over it
+    else if (made.length) say(`${made.length} notes made, each carrying its file: double-click one to add words.${refusals.map((r) => ` ${r}`).join("")}`);
   };
 
   /** Whether an event is on the canvas: the board itself, a card on it, or a note — not a panel, a
@@ -4041,6 +4108,23 @@ async function boot(): Promise<void> {
   const input = $<HTMLInputElement>("#search");
   const searchBox = new SearchBox(input, $("#results"), g, { go: (i) => go(i) });
 
+  // a file chosen by a button that is a label holding a hidden file field (the library's Upload, a
+  // missing file's Add it…): Enter or Space on it opens the chooser, as a click does — the control's
+  // own press, not a key of the page's
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      const t = e.target as HTMLElement | null;
+      const press = e.key === "Enter" || e.key === " ";
+      const field = press && t?.matches?.("label[role=button]") ? t.querySelector<HTMLInputElement>("input[type=file]") : null;
+      if (!field) return;
+      e.preventDefault();
+      e.stopPropagation();
+      field.click();
+    },
+    true,
+  );
+
   // ---------------------------------------------------------------- keyboard
 
   window.addEventListener("keydown", (e) => {
@@ -4078,6 +4162,10 @@ async function boot(): Promise<void> {
     const route = routeKey(e.key, win !== null, !!(e.target as Element | null)?.closest?.("button, a[href], summary, select"));
     // Space on a window's button or link presses it
     if (route === "press") return;
+    // and on any button reached from the keyboard, as everywhere (surfaces.ts: Enter or Space on a
+    // control presses it); on one the pointer pressed last, where the focus stays, Space is the page's
+    // key for the source
+    if (e.key === " " && (e.target as Element | null)?.matches?.(":focus-visible") && (e.target as Element).closest("button, summary")) return;
     if (win && route === "close") {
       e.preventDefault();
       sources.close(win);
@@ -4109,12 +4197,14 @@ async function boot(): Promise<void> {
       sources.toggle(selected());
       if (together && !sources.following) papers.win.close();
     } else if (e.key === "Escape") {
-      // what passes first: a question about trust, a popover, the views menu, a list of the Time
-      // Machine; then the source window that follows the selection, the timeline, the Time
-      // Machine, and the selection. A pinned window closes by Esc with the focus in it, or by its ✕.
+      // what passes first: a question about trust, a popover, the views menu or the focus's, a list
+      // of the Time Machine; then the source window that follows the selection, the timeline, the
+      // Time Machine, and the selection. A pinned window closes by Esc with the focus in it, or by
+      // its ✕.
       if (trust.open) trust.close();
       else if (buildPop.open) buildPop.toggle(false);
       else if (tabs.open) tabs.toggle(false);
+      else if (focusMenu.open) focusMenu.toggle(false);
       else if (boardPop.open || trustPop.open || eyesPop.open) for (const p of [boardPop, trustPop, eyesPop]) p.toggle(false);
       else if (tm.listShown) tm.closeListNow();
       else if (sources.following) sources.close(sources.following);
@@ -4187,9 +4277,15 @@ async function boot(): Promise<void> {
   window.addEventListener("resize", syncInsets);
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
-  const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null } : null;
-  if (!(await nav.select(first, firstPlace))) await nav.show(PROJECT, firstPlace);
+  // the reader's own focus there, which the address does not carry, as they left it (ViewSpec
+  // decision 28)
+  const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null, ...keptFocus(S.seen[first]) } : null;
+  if (!(await nav.select(first, firstPlace))) {
+    await nav.show(PROJECT, firstPlace);
+    if (linked?.view && linked.view === first && !views.summary(first)) notOpened = VIEW_GONE;
+  }
   listen();
+  if (notOpened) say(notOpened);
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
   if (snap) await openSnapshot(snap);
@@ -4223,18 +4319,23 @@ async function boot(): Promise<void> {
     sources.release();
   }
   $("#loader").classList.add("gone");
+  // faded out, it leaves the page: a screen reader would read "Reading the project…" at its end
+  setTimeout(() => ($("#loader").hidden = true), 450);
   // the guide (GuideSpec): the tour on a first visit, the ? sheet at any time, its tips; tips in place
   /** The tour's and Show me's own moves (GuideSpec decisions 3 and 7): a theorem selected, a tool
    *  chosen, as a click and a mode's button would, but without a step in the history each, and
    *  without anything a tip in place counts as the reader's doing. */
   const tourSelect = (i: number) => {
-    if (selected() === i) return reveal(i);
-    if (toView(i) < 0) visitOn(i, selected());
-    const p = pickDecl(g.nodes[i].name);
-    picks = [p];
-    shown = shownOf(p);
-    apply();
+    if (selected() !== i) {
+      if (toView(i) < 0) visitOn(i, selected());
+      const p = pickDecl(g.nodes[i].name);
+      picks = [p];
+      shown = shownOf(p);
+      apply();
+    }
     reveal(i);
+    // with reduced motion nothing in the tour glides (GuideSpec decision 4): the camera is there at once
+    if (reducedMotion()) canvas.arrive();
   };
   const tourTool = (m: Tool) => {
     if (m === S.mode) return;

@@ -29,7 +29,7 @@ Under `/api/agent/`. MCP: `library` (`list`, `file`, `save`, `text`, `search`, `
 | `GET library/file?sha=` | a file's record and every link into it |
 | `GET library/bytes?sha=` | the file (MCP `save` writes it to a path you give) |
 | `GET library/text?sha=&page=` | a PDF page: `text`, `words` (`[text, left, top, right, bottom]`), `lines` (each line's start among the words), `pages`, `size` in points |
-| `GET library/search?sha=&q=&limit=` | every match of `q` in the PDF (case and line breaks loosely): `page`, `boxes` of its words, `text`, `before`, `after` |
+| `GET library/search?sha=&q=&limit=` | every match of `q` in the PDF (case, line breaks, curly quotes and dashes loosely): `page`, `boxes` of its words, `text`, `before`, `after` |
 | `GET library/page?sha=&page=&width=` | the page as a PNG, 400, 800, 1200 (default), 1600 or 2000 px wide (MCP `page`: as an image) |
 | `GET library/clip?sha=&page=&region=&width=` | a region as a PNG, `region=left,top,right,bottom` |
 | `GET links?subject=&file=` | a subject's or a file's links, in the order made; all without either |

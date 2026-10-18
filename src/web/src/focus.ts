@@ -11,6 +11,7 @@
 // draws the header's button and its menu.
 
 import { escapeHtml } from "./highlight.ts";
+import { firstControl } from "./popover.ts";
 
 /** The focus the review is on for a reader: the view's own (`view`) where they chose nothing
  *  (`mine` undefined), none where they chose none, else the target they chose — while it is still a
@@ -20,6 +21,15 @@ export function readerFocus(mine: string | null | undefined, view: string | null
   if (mine === undefined) return view;
   if (mine === null) return null;
   return isTarget(mine) && (mine === view || may.includes(mine)) ? mine : view;
+}
+
+/** The reader's own focus on a view, as their place there remembers it (web/src/store.ts, Seen),
+ *  for a page opened at an address naming that view: the address carries none, and the reader's
+ *  choice is remembered per view as the camera is (ViewSpec decision 28), across a reload as across
+ *  a tab switched to. Nothing where they chose nothing: the view's own. */
+export function keptFocus(seen: { focus?: unknown } | undefined): { focus?: string | null } {
+  const f = seen?.focus;
+  return f === null || typeof f === "string" ? { focus: f } : {};
 }
 
 /** What the menu offers: the targets linked to the view first, in the order they were linked (the
@@ -58,7 +68,11 @@ export class FocusMenu {
     this.btn = btn;
     this.menu = menu;
     this.hooks = hooks;
-    btn.addEventListener("click", () => this.toggle());
+    btn.addEventListener("click", (e) => {
+      this.toggle();
+      // opened from the keyboard: its first item takes the focus, as a menu's does
+      if (this.open && e.detail === 0) firstControl(this.menu)?.focus();
+    });
     menu.addEventListener("click", (e) => void this.clicked(e));
     menu.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {

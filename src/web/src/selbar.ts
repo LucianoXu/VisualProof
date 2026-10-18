@@ -7,6 +7,7 @@
 // panel, in the panel's column, which moves down to make room for it (style.css, --selbar-h).
 
 import { printQuery } from "../../shared/query.ts";
+import type { TitleNames } from "../../shared/titles.ts";
 import { escapeHtml } from "./highlight.ts";
 import { pickWords } from "./selection.ts";
 import type { Pick } from "./selection.ts";
@@ -23,6 +24,8 @@ export interface SelectionBarHooks {
   clear(): void;
   /** mark the declarations selected key for the target on show */
   markKeys(): void;
+  /** how the graph on show tells its names apart (shared/titles.ts), as a view's title says them */
+  names?(): TitleNames | undefined;
 }
 
 /** How many declarations are lit on the board: those not trusted, and the trusted apart
@@ -79,7 +82,7 @@ export class SelectionBar {
     const why = lit.counted + lit.trusted ? "This board holds just what is lit already" : "Nothing selected is on this board";
     const chips = picks
       .map((p, k) => {
-        const words = pickWords(p);
+        const words = pickWords(p, this.hooks.names?.());
         // a part written by hand has nothing to go to: it is lit, and can be taken out
         return (
           `<span class="sb-chip t-${p.tool}${k === panel ? " on" : ""}" title="${esc(printQuery(p.q))}">` +

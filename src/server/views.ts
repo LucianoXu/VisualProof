@@ -120,7 +120,10 @@ export function readView(raw: unknown): ViewData | string {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "it is not a view's record";
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== "string" || !r.id) return "it has no id";
-  const bad = invalidQuery(r.scope);
+  // the Project holds everything (ViewSpec decision 5): a scope an earlier version let it take (the
+  // outside world toggled, a condition added) is read as `all`
+  const project = r.id === PROJECT;
+  const bad = project ? null : invalidQuery(r.scope);
   if (bad) return `its scope cannot be read: ${bad}`;
   const clustering = r.clustering ?? "namespace";
   if (!CLUSTER_MODES.includes(clustering as ClusterMode)) return "its clustering is neither namespace nor module";
@@ -134,11 +137,11 @@ export function readView(raw: unknown): ViewData | string {
   // a note that cannot be read is left out; the others are the view's
   const notes = cleanNotes(r.notes);
   // the notes of the project added to it and taken out of it; the Project keeps none, holding all
-  const items = r.id === PROJECT ? {} : cleanItems(r.items);
+  const items = project ? {} : cleanItems(r.items);
   return {
     id: r.id,
     name: (r.name as string | null | undefined) ?? null,
-    scope: cleanQuery(r.scope)!,
+    scope: project ? { op: "all" } : cleanQuery(r.scope)!,
     clustering: clustering as ClusterMode,
     pins: pins as Record<ClusterMode, Pins>,
     folds: folds as Record<ClusterMode, string[]>,
@@ -220,20 +223,22 @@ function cleanMemory(x: unknown): BoardMemory | null {
  *  nothing written (the artwork command, ExportSpec decision 21; the Views class sets aside a file
  *  it cannot read): null where the site keeps none, or `why` where its views cannot be read. Pins
  *  dropped under another way of laying out mean nothing in this one, as Views reads them. */
-export function readProjectView(siteDir: string, layoutVersion: number): { view: ViewData | null; why?: string } {
+export function readProjectView(siteDir: string, layoutVersion: number): { view: ViewData | null; notes: number; why?: string } {
   const file = join(siteDir, "views.json");
-  if (!existsSync(file)) return { view: null };
+  if (!existsSync(file)) return { view: null, notes: 0 };
   try {
     const raw = JSON.parse(readFileSync(file, "utf8")) as Stored;
+    // the project's notes, every one of which the Project's board shows (AttachmentSpec decision 17)
+    const notes = cleanProjectNotes(raw.notes).length;
     for (const r of Array.isArray(raw.views) ? raw.views : []) {
       const v = readView(r);
       if (typeof v === "string" || v.id !== PROJECT) continue;
       if (raw.layoutVersion !== layoutVersion) v.pins = emptyLayouts();
-      return { view: v };
+      return { view: v, notes };
     }
-    return { view: null };
+    return { view: null, notes };
   } catch (e) {
-    return { view: null, why: e instanceof Error ? e.message : String(e) };
+    return { view: null, notes: 0, why: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -290,6 +295,17 @@ export class Views {
   /** Whether any note, the project's or a view's, carries file `sha`. */
   private carried(sha: string): boolean {
     const has = (n: { carries?: NoteCarry[] }) => !!n.carries?.some((c) => c.file === sha);
+    return this.book.notes.some(has) || this.book.list().some((v) => (v.notes ?? []).some(has));
+  }
+
+  /** Whether a note, the project's or a view's, shows page `page` of PDF `sha` — a clip of
+   *  `region` of it (rounded as the library rounds a region), or, with none, the page a whole PDF
+   *  carried shows (its own, else the first): what a read-only page draws of the library
+   *  (CollabSpec decision 11). */
+  shows(sha: string, page: number, region: readonly number[] | null): boolean {
+    const same = (c: NoteCarry) =>
+      c.file === sha && (region ? !!c.region && (c.page ?? 1) === page && c.region.every((x, k) => Math.round(x * 1e4) === Math.round(region[k] * 1e4)) : !c.region && (c.page ?? 1) === page);
+    const has = (n: { carries?: NoteCarry[] }) => !!n.carries?.some(same);
     return this.book.notes.some(has) || this.book.list().some((v) => (v.notes ?? []).some(has));
   }
 

@@ -4,6 +4,7 @@
 
 import type { Layout } from "../../shared/graph.ts";
 import { escapeHtml } from "./highlight.ts";
+import { keepFocus } from "./keepfocus.ts";
 
 export interface OutlineHooks {
   /** a click on a row: its cluster clicked with the tool (shift held or not) */
@@ -26,13 +27,34 @@ export interface OutlineHooks {
 /** An eye struck through, as the side panel's buttons draw their marks. */
 export const HIDE_MARK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11"/></svg>`;
 
+/** Which rows to write again, the outline holding `before` and going to hold `after` (each a row's
+ *  HTML), `held` the rows it holds now: the indices of the rows that changed, or null to write them
+ *  all — other rows, or more than a quarter of them changed. Every selection renders the outline
+ *  again, and on a project of tens of thousands of declarations it holds over a thousand rows: written
+ *  whole, the page was a quarter of a second laying them out at each click. */
+export function rowsToWrite(before: readonly string[], after: readonly string[], held: number): number[] | null {
+  if (before.length !== after.length || held !== after.length) return null;
+  const changed: number[] = [];
+  for (let i = 0; i < after.length; i++) {
+    if (after[i] === before[i]) continue;
+    changed.push(i);
+    if (changed.length > after.length / 4) return null;
+  }
+  return changed;
+}
+
 export class Outline {
   private el: HTMLElement;
   private layout!: Layout;
   private kids: number[][] = [];
   private top: number[] = [];
   private open = new Set<number>();
+  /** the rows open, by cluster key, on each board and clustering shown (`setLayout`'s `board`) */
+  private openOn = new Map<string, Set<string>>();
+  private board: string | null = null;
   private hooks: OutlineHooks;
+  /** the rows written, as their HTML (rowsToWrite) */
+  private written: string[] = [];
 
   constructor(el: HTMLElement, hooks: OutlineHooks) {
     this.el = el;
@@ -56,9 +78,14 @@ export class Outline {
     });
   }
 
-  setLayout(layout: Layout): void {
-    // rows open before stay open, by key: a new graph renumbers clusters
-    const wasOpen = this.layout ? new Set([...this.open].map((c) => this.layout.clusters[c]?.key)) : null;
+  /** The tree of `layout`, the board `board` (its view and clustering) laid out. The rows the reader
+   *  opened on a board stay open there, by key (a new graph renumbers clusters), and come back with
+   *  it when another board was shown meanwhile; a board shown for the first time opens its largest
+   *  part. */
+  setLayout(layout: Layout, board: string): void {
+    if (this.layout && this.board !== null) this.openOn.set(this.board, new Set([...this.open].map((c) => this.layout.clusters[c]?.key)));
+    const wasOpen = this.openOn.get(board) ?? null;
+    this.board = board;
     this.layout = layout;
     this.kids = layout.clusters.map(() => []);
     this.top = [];
@@ -86,18 +113,36 @@ export class Outline {
       const inactive = this.hooks.isCollapsed(c);
       rows.push(
         `<div class="o-row${inactive ? " folded" : ""}${this.hooks.picked(c) ? " on" : ""}" data-c="${c}" style="padding-left:${8 + depth * 12}px" title="${escapeHtml(cl.key)}">` +
-          `<span class="tw">${has ? (this.open.has(c) ? "▾" : "▸") : ""}</span>` +
-          `<span class="o-label">${escapeHtml(cl.label)}</span>` +
+          // the arrow opens or folds a level of the list, the name selects: each a button, for the
+          // keyboard as for the pointer
+          (has
+            ? `<button class="tw" type="button" aria-expanded="${this.open.has(c)}" aria-label="What ${escapeHtml(cl.label)} holds">${this.open.has(c) ? "▾" : "▸"}</button>`
+            : `<span class="tw"></span>`) +
+          `<button class="o-label" type="button">${escapeHtml(cl.label)}</button>` +
           (this.hooks.stateOf(c) ? `<span class="o-st ${this.hooks.stateOf(c)}"></span>` : "") +
           `<span class="o-count">${cl.count}</span>` +
           this.hooks.trustCell(c) +
           `<button class="o-hide" data-hide title="Hide this level, for everyone on this board: what it holds moves up into its parent (⚙ Board shows it again)" aria-label="Hide this level">${HIDE_MARK}</button>` +
-          `<button class="fold" title="${folded ? "Unfold" : "Fold"} on the canvas">${folded ? "○" : "●"}</button>` +
+          `<button class="fold" title="${folded ? "Unfold" : "Fold"} on the canvas" aria-label="${folded ? "Unfold" : "Fold"} ${escapeHtml(cl.label)} on the canvas">${folded ? "○" : "●"}</button>` +
           `</div>`,
       );
       if (has && this.open.has(c)) for (const k of this.kids[c]) walk(k, depth + 1);
     };
     for (const c of this.top) walk(c, 0);
-    this.el.innerHTML = rows.join("");
+    // drawn again as the reader goes (a level opened, a cluster selected): only the rows that changed,
+    // and the focus stays on its row
+    keepFocus(this.el, () => {
+      const changed = rowsToWrite(this.written, rows, this.el.children.length);
+      this.written = rows;
+      if (!changed) {
+        this.el.innerHTML = rows.join("");
+        return;
+      }
+      for (const i of changed) {
+        const t = document.createElement("template");
+        t.innerHTML = rows[i];
+        this.el.children[i].replaceWith(t.content);
+      }
+    });
   }
 }

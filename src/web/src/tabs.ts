@@ -11,6 +11,8 @@
 import { PROJECT } from "../../shared/views.ts";
 import type { ViewSummary } from "../../shared/views.ts";
 import { escapeHtml } from "./highlight.ts";
+import { firstControl } from "./popover.ts";
+import { focusBack } from "./keepfocus.ts";
 import type { Tab } from "./store.ts";
 
 export interface TabsHooks {
@@ -102,7 +104,11 @@ export class Tabs {
       const tab = (e.target as HTMLElement).closest<HTMLElement>("[data-tab]");
       if (tab && e.button === 1 && tab.dataset.tab !== PROJECT) this.hooks.close(tab.dataset.tab!);
     });
-    btn.addEventListener("click", () => this.toggle());
+    btn.addEventListener("click", (e) => {
+      this.toggle();
+      // opened from the keyboard: its first item takes the focus, as a menu's does
+      if (this.open && e.detail === 0) firstControl(this.menu)?.focus();
+    });
     menu.addEventListener("click", (e) => void this.clicked(e));
     menu.addEventListener("submit", (e) => {
       e.preventDefault();
@@ -162,6 +168,8 @@ export class Tabs {
   }
 
   toggle(open = this.menu.hidden): void {
+    // closed with the focus in it (Esc): back to Views
+    if (!open) focusBack(this.menu, this.btn);
     this.menu.hidden = !open;
     this.btn.classList.toggle("on", open);
     this.asking = null;

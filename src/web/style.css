@@ -1383,7 +1383,9 @@ details.lf-archived > summary { cursor: pointer; }
 .p-also .avatar { width: 20px; height: 20px; font-size: 9px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .rv-btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
-.rv-btn.primary:hover { color: white; filter: brightness(1.08); }
+.rv-btn.primary:hover:not(:disabled) { color: white; filter: brightness(1.08); }
+/* one that cannot be used looks it, as the others do (above): faded, never grey on its colour */
+.rv-btn.primary:disabled { color: white; opacity: 0.45; }
 .tk-ref:hover { text-decoration: underline; background: var(--code-bg); }
 .brand .logo { font-size: 17px; }
 .project { color: var(--text-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1512,7 +1514,8 @@ details.lf-archived > summary { cursor: pointer; }
 /* something said for a moment (a shift-click that changed nothing): read, then gone */
 /* something said for a moment is read above the floating windows too: it answers what was just done */
 .hint.say { color: var(--text); padding: 3px 10px; border-radius: 8px; background: var(--surface-solid); box-shadow: var(--shadow); z-index: 36; }
-.hint.say.below { top: 156px; }
+/* under the review strip and the note of a kept view (--strip-h: main.ts) */
+.hint.say.below { top: calc(118px + var(--strip-h, 38px)); }
 
 /* the selection (web/src/selbar.ts): under the modes, heading the panel's column */
 #selbar {
@@ -1776,7 +1779,9 @@ details.lf-archived > summary { cursor: pointer; }
 .o-row.on { background: color-mix(in srgb, var(--accent) 11%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .o-row.on .o-label { color: var(--accent); font-weight: 600; }
 .o-row .tw { width: 12px; color: var(--text-3); font-size: 10px; flex: none; text-align: center; }
-.o-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the arrow and the name are buttons (the keyboard's too), drawn as the row's text */
+.o-row button.tw, .o-row button.o-label { border: 0; background: none; padding: 0; height: 100%; }
+.o-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .o-count { color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; }
 .o-row .fold { border: 0; background: transparent; color: var(--text-2); width: 20px; padding: 0; font-size: 10px; }
 .o-row .fold:hover { color: var(--accent); }
@@ -2539,6 +2544,8 @@ body.tm #tabs, body.tm .views-wrap, body.tm .vb-gap, body.tm .light-l { display:
 .tm-when { flex: none; font-size: 12px; white-space: nowrap; color: var(--text); }
 .tm-when .mono { font: 11.5px var(--mono); color: var(--text-2); }
 .tm-latest { font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: var(--code-bg); color: var(--text-2); }
+/* a build that could not read some files (web/src/past.ts, unreadWords) */
+.tm-unread { flex: none; font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: rgba(255, 159, 10, 0.13); color: var(--banner-warn); }
 .tm-wait { color: var(--text-3); font-style: italic; }
 .tm-sum { flex: 0 1 auto; display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; font-size: 12px; white-space: nowrap; }
 .tm-n {
@@ -2581,9 +2588,10 @@ button.tm-row:hover { background: var(--code-bg); }
 /* what was added since: a name, not a place on this build's board */
 span.tm-row { color: var(--text-2); cursor: default; }
 .tm-more { padding: 6px; font-size: 11.5px; }
-/* a view kept at a past build (HistorySpec decision 19): said where the review strip goes */
+/* a view kept at a past build (HistorySpec decision 19): said where the review strip goes, under it
+   where both show (a kept view focused on a target; --lens-h: main.ts) */
 #tm-kept {
-  position: fixed; top: 110px; left: calc((100vw + var(--inset-left, 0px) - var(--inset-right, 0px)) / 2); transform: translateX(-50%); z-index: 15;
+  position: fixed; top: calc(110px + var(--lens-h, 0px)); left: calc((100vw + var(--inset-left, 0px) - var(--inset-right, 0px)) / 2); transform: translateX(-50%); z-index: 15;
   display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 12px; border-radius: 12px; font-size: 12.5px;
   max-width: calc(100vw - var(--inset-left, 0px) - var(--inset-right, 0px) - 16px); white-space: nowrap;
 }
@@ -2679,6 +2687,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #foot { left: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); }
   /* under the view bar, the review strip, then the selection bar (--strip-h: main.ts) */
   #lensbar, #tm-kept { top: 100px; left: 8px; right: 8px; transform: none; max-width: none; }
+  #tm-kept { top: calc(100px + var(--lens-h, 0px)); }
   #selbar { top: calc(100px + var(--strip-h, 0px)); left: 8px; right: 8px; width: auto; }
   /* the panel: a sheet from the bottom, its height the reader's to drag */
   #panel {
@@ -2817,6 +2826,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
     /* under the view bar, across the screen: the review strip, then the selection bar (--strip-h:
        main.ts) */
     #lensbar, #tm-kept { top: 108px; left: 12px; right: 12px; transform: none; max-width: none; }
+    #tm-kept { top: calc(108px + var(--lens-h, 0px)); }
     #selbar { top: calc(108px + var(--strip-h, 0px)); left: 12px; right: 12px; width: auto; }
     /* the legend and the zoom's box at the foot of the board's room, above the sheet or the dock */
     #foot { left: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }

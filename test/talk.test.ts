@@ -717,6 +717,20 @@ test("the MCP server without its environment says so, and keeps to the protocol"
   }
 });
 
+test("the MCP server with a token the server does not know says what to check", async () => {
+  const S = await site({ key: "k".repeat(40) });
+  const M = mcp({ VISUALPROOF_URL: S.base, VISUALPROOF_TOKEN: `vpa_0123456789_${"A".repeat(43)}` });
+  try {
+    await M.start();
+    const why = await M.ask("tools/call", { name: "connection", arguments: {} });
+    assert.equal(why.result.isError, true);
+    assert.match(why.result.content[0].text, /answered 404: not found — .*VISUALPROOF_TOKEN is the whole token from Share/);
+  } finally {
+    M.stop();
+    await S.close();
+  }
+});
+
 test("an agent's text is rendered from escaped text: a little Markdown, declarations as links, never HTML of its own", () => {
   const names = new Map([["N.a", "N.a"], ["a", "N.a"], ["N.b", "N.b"]]);
   const resolve = (n: string) => names.get(n) ?? null;
@@ -863,6 +877,32 @@ test("offline by the rule, or another session of the MCP server, or the server r
     // what was written before the server started stays read: never handed over as new
     const R = restarted(new Date(Date.now() - 60_000).toISOString());
     assert.equal(R.talk(tok).read, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a session a newer one replaced leaves nothing as its client goes: the newer one listens on; its own leave, or one that says no session, is offline at once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-talk-"));
+  try {
+    const tok = "dddddddddd";
+    const T = new Talk(dir, { slackMs: 100, graceMs: 20, tickMs: 20 });
+    // session A waits; session B, of the same token, waits: A's wait is replaced
+    const a = T.wait(tok, 10_000, { session: "aaaaaaaa-1" });
+    const b = T.wait(tok, 10_000, { session: "bbbbbbbb-2" });
+    assert.ok("replaced" in (await a));
+    // A's client goes, and its MCP server says it leaves: B goes on listening, its wait open
+    assert.equal(T.left(tok, "aaaaaaaa-1"), false);
+    assert.equal(T.state(tok), "listening");
+    T.post(tok, { from: "Alice", kind: "person", text: "still there?" });
+    const heard = await b;
+    assert.ok("messages" in heard && heard.messages.map((m) => m.text).includes("still there?"), "the message reached B");
+    // B's own leave: offline at once; and a leave that names no session (an MCP server from before)
+    assert.equal(T.left(tok, "bbbbbbbb-2"), true);
+    assert.equal(T.state(tok), "offline");
+    T.seen(tok, null);
+    assert.equal(T.left(tok), true);
+    assert.equal(T.state(tok), "offline");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

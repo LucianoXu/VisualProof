@@ -579,6 +579,9 @@ test("the outline the linear form draws is the document's: the same sections, nu
   const a1 = secs[0].items.find((x) => x.t === "decl" && x.name === "A.a1") as OutlineDecl;
   assert.deepEqual(a1.notes, [{ t: "note", id: "onA1", kind: "project", words: "Why a1 is defined so." }]);
   assert.equal(firstWords("\n\n  `x` and *y*  \nz"), "x and y");
+  // a name keeps its underscores, in a code span or not; emphasis by underscores is still taken out
+  assert.equal(firstWords("What `flt_regular` says, and eq_pow: _first_ **then** a * b"), "What flt_regular says, and eq_pow: first then a * b");
+  assert.equal(firstWords("```lean\ntheorem t : True := trivial\n```"), "theorem t : True := trivial");
   assert.equal(firstWords("a".repeat(80)).length, 60);
 });
 

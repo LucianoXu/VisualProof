@@ -18,7 +18,7 @@ import type { ReviewData } from "../src/shared/review.ts";
 import type { NewEvent, StoredEvent } from "../src/shared/timeline.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
 import type { Mode } from "../src/shared/viewgraph.ts";
-import { applyViewOps, diffFolds, invalidViewOps, PROJECT, ViewBook, viewTitle } from "../src/shared/views.ts";
+import { applyViewOps, diffFolds, invalidViewOps, PROJECT, PROJECT_SCOPE, ViewBook, viewTitle } from "../src/shared/views.ts";
 import type { ViewData } from "../src/shared/views.ts";
 import { emptyLayouts } from "../src/shared/places.ts";
 import type { Ask } from "../src/server/agent.ts";
@@ -648,6 +648,31 @@ test("a target's view's scope is editable as any view's (ViewSpec decision 28): 
   const other = book.open(parseQuery("ns(M)"), "Alice").view;
   assert.deepEqual(book.setScope(other.id, parseQuery("ns(M) except external"), null, false), [{ id: other.id, what: "scope", by: null }]);
   assert.equal(book.get(other.id)!.kept, false);
+});
+
+test("the Project is never rescoped (ViewSpec decision 5): not by a chip, `e`, an agent; a site where it was is read back as all", () => {
+  const book = new ViewBook();
+  assert.equal(book.setScope(PROJECT, parseQuery("all except external"), "Alice"), PROJECT_SCOPE);
+  assert.equal(book.setScope(PROJECT, parseQuery("all and kind(theorem)"), "Claude"), PROJECT_SCOPE);
+  assert.equal(book.setScope(PROJECT, parseQuery("all"), "Alice"), null, "its own scope is no change");
+  assert.equal(printQuery(book.project().scope), "all");
+  const dir = mkdtempSync(join(tmpdir(), "vp-views-"));
+  try {
+    const S = server(dir);
+    const r = S.ask("POST", "/api/views/scope", { id: PROJECT, scope: "all except external" });
+    assert.equal(r.status, 400);
+    assert.equal((r.body as { error: string }).error, PROJECT_SCOPE);
+    assert.deepEqual(S.events, [], "nothing on the timeline");
+    // an earlier version let it be rescoped: read back as all, its arrangement kept
+    const project = { id: PROJECT, name: null, scope: parseQuery("all except external"), clustering: "namespace", pins: emptyLayouts(), folds: { namespace: ["N"], module: [] }, by: null, at: new Date(0).toISOString(), kept: true };
+    writeFileSync(join(dir, "views.json"), JSON.stringify({ layoutVersion: LAYOUT_VERSION, views: [project] }));
+    const S2 = server(dir);
+    assert.equal(printQuery(S2.views.book.project().scope), "all");
+    assert.deepEqual(S2.views.book.project().folds.namespace, ["N"]);
+    assert.deepEqual(S2.views.unreadable, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("a view opened at a past build by an agent keeps both: the build it shows, and who made it", () => {

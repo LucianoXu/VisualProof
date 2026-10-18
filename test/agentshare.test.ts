@@ -373,6 +373,9 @@ test("an agent's name: the maker's AI by default, numbered when taken, within 60
   assert.ok(validName(long) && long.endsWith("…'s AI"), long);
   assert.equal(uniqueName("Alice's AI", ["Bob's AI"]), "Alice's AI");
   assert.equal(uniqueName("Alice's AI", ["alice's ai", "Alice's AI 2"]), "Alice's AI 3");
+  // a name that looks the same is the same: another Unicode form, characters nobody sees
+  assert.equal(uniqueName("Alice's AI", ["Ａｌｉｃｅ's AI"]), "Alice's AI 2");
+  assert.equal(uniqueName("Alice's AI\u200b", ["Alice's AI"]), "Alice's AI\u200b 2");
   // the twelfth agent of a name as long as a name may be
   const taken: string[] = [];
   for (let k = 0; k < 12; k++) taken.push(uniqueName("x".repeat(60), taken));

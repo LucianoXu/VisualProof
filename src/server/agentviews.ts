@@ -291,7 +291,7 @@ export function viewEndpoints(world: World, refuseFull: (c: Caller) => Answer | 
     const q = readQuery(b.scope);
     if (typeof q === "string") return fail(400, q, "Send the scope as its text or its JSON form.");
     const c = V.book.setScope(v.id, q, a.caller.name);
-    if (typeof c === "string") return fail(400, c, "");
+    if (typeof c === "string") return fail(400, c, fixedScope(v) ? "POST views/duplicate {id: \"project\"} makes a copy of it to rescope." : "");
     if (c) V.changed(c, true);
     there(whoOf(a.caller), v);
     const G = graphOf(world);

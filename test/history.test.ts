@@ -3,7 +3,7 @@
 // extractions a cache held before, imported as the first snapshots; what changed between two.
 
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -79,6 +79,11 @@ test("a snapshot per build, each module kept by its content: one that did not ch
     assert.equal((p.nodes[1] as { kernel?: string }).kernel, "k-A.f-sf");
     assert.deepEqual(p.axiomSets[p.nodes[3].ax], [0]);
     assert.equal(p.edges.length, 12);
+    // the server stopped while writing a line of the index: the next build's line is kept all the
+    // same, on a line of its own
+    appendFileSync(join(dir, "history", "index.jsonl"), '{"id":3,"at":"2026');
+    again.record(graph({ renameF: "A.g" }), opts(T0 + 120_000, "f5"));
+    assert.deepEqual(new History(dir).list().map((s) => [s.id, s.fingerprint]), [[1, "f1"], [2, "f3"], [3, "f5"]]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

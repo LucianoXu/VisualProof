@@ -23,6 +23,7 @@ import type { DocPlan } from "../../shared/doc/sections.ts";
 import { DEFAULT_SETTINGS } from "../../shared/doc/settings.ts";
 import type { DocSettings } from "../../shared/doc/settings.ts";
 import { escapeHtml } from "./highlight.ts";
+import { focusBack, keepFocus, trapTab } from "./keepfocus.ts";
 
 /** The view on show, as the window tells of it: its id, its title (and what the page says of it under
  *  the pointer: its scope in full), its document's title, whether its name is fixed (the Project's),
@@ -97,6 +98,13 @@ function common(s: Partial<DocSettings> | undefined): Common {
   return out;
 }
 
+/** Whether two views on show make the same document: the same view, at the same build. */
+const sameDoc = (a: ExportView | null, b: ExportView | null): boolean => !!a && !!b && a.id === b.id && a.version === b.version && a.when === b.when;
+
+/** A message as a sentence: its full stop, where it has none of its own (XeLaTeX's errors and the
+ *  server's answers end with theirs). */
+const sentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
+
 /** `n` things, with the plural where it is more than one. */
 const count = (n: number, one: string, many = `${one}s`) => `<b>${n.toLocaleString()}</b> ${n === 1 ? one : many}`;
 
@@ -136,10 +144,11 @@ export class ExportModal {
       if (t.closest("[data-ex-go]")) return void this.generate();
     });
     el.addEventListener("change", (e) => this.changed(e.target as HTMLInputElement));
-    // the page's keys stand aside while the window is open; Esc closes it
+    // the page's keys stand aside while the window is open; Esc closes it; Tab stays in it
     el.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Escape") this.close();
+      else trapTab(this.el.querySelector<HTMLElement>(".ex-box") ?? this.el, e);
     });
   }
 
@@ -150,6 +159,9 @@ export class ExportModal {
   open(): void {
     this.settings = common(this.hooks.saved()?.settings);
     this.view = this.hooks.view();
+    // a job followed before the window last closed is not this opening's: its answer, coming late,
+    // is not shown here (it may be another view's)
+    this.turn++;
     this.job = null;
     this.head = "";
     this.el.hidden = false;
@@ -157,18 +169,46 @@ export class ExportModal {
     this.render();
     this.hooks.shown?.(true);
     this.el.querySelector<HTMLElement>(".ex-box")?.focus();
+    this.askHead();
+  }
+
+  /** The board on show changed (another view, another build, the view rescoped): the window, open,
+   *  tells of the view on show now, whose outline the linear form draws beside it (ExportSpec
+   *  decisions 5 and 18), and exports that one. A document made of another view, or of another
+   *  build, is put away with its job. */
+  boardChanged(): void {
+    if (this.el.hidden) return;
+    const v = this.hooks.view();
+    if (JSON.stringify(v) === JSON.stringify(this.view)) return;
+    const other = !sameDoc(v, this.view);
+    this.view = v;
+    if (other) {
+      // the job followed, if any, is another document's
+      this.turn++;
+      this.stopTimer();
+      this.job = null;
+      this.head = "";
+      this.askHead();
+    }
+    this.render();
+  }
+
+  /** Ask for the title and the author line of the view on show. */
+  private askHead(): void {
     const v = this.view;
-    if (v)
-      void this.hooks.head(v.id, v.version).then((h) => {
-        // the window still shows that view
-        if (this.view !== v || this.el.hidden) return;
-        this.head = h;
-        this.render();
-      });
+    if (!v) return;
+    void this.hooks.head(v.id, v.version).then((h) => {
+      // the window still shows that view's document
+      if (!sameDoc(this.view, v) || this.el.hidden) return;
+      this.head = h;
+      this.render();
+    });
   }
 
   close(): void {
     if (this.el.hidden) return;
+    // closed from the keyboard (Esc, its buttons): the focus back on Export, not at the page's start
+    focusBack(this.el, this.btn, true);
     this.el.hidden = true;
     this.btn.classList.remove("on");
     this.stopTimer();
@@ -236,7 +276,7 @@ export class ExportModal {
       : job.state === "running"
         ? `<div class="ex-prog"><div class="ex-bar"><i></i></div><span>Typesetting with XeLaTeX… <span class="ex-secs">${this.elapsed()}</span></span></div>`
         : job.state === "failed"
-          ? `<div class="banner bad">Typesetting failed: ${esc(job.error ?? "XeLaTeX stopped")}.</div>` + (job.log ? `<details class="ex-log"><summary>XeLaTeX's log</summary><pre>${esc(job.log)}</pre></details>` : "")
+          ? `<div class="banner bad">Typesetting failed: ${esc(sentence(job.error ?? "XeLaTeX stopped"))}</div>` + (job.log ? `<details class="ex-log"><summary>XeLaTeX's log</summary><pre>${esc(job.log)}</pre></details>` : "")
           : `<div class="ex-done"><div><b>${job.pages ?? "?"} page${job.pages === 1 ? "" : "s"}</b>, typeset in ${((job.ms ?? 0) / 1000).toFixed(1)} s.</div>` +
             `<div class="ex-dl"><a class="rv-btn primary" href="/api/export/file?id=${job.id}&what=pdf" download>Download PDF</a>` +
             `<a class="rv-btn" href="/api/export/file?id=${job.id}&what=zip" download title="The .tex, the style file visualproof.sty and the fonts: typeset it yourself, or make the style your own">LaTeX sources (.zip)</a>` +
@@ -244,9 +284,9 @@ export class ExportModal {
             // how the document was made, which it does not say itself: folded, for the curious
             (job.notes?.length ? `<details class="ex-log ex-notes"><summary>Notes (${job.notes.length})</summary><ul>${job.notes.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : "") +
             `</div>`;
-    this.el.innerHTML =
-      `<div class="modal-box glass ex-box" role="dialog" aria-label="Export a document" tabindex="-1">` +
-      `<div class="ex-head"><div class="modal-title">Export a document</div><button class="icon" data-ex-close title="Close (Esc)">✕</button></div>` +
+    const html =
+      `<div class="modal-box glass ex-box" role="dialog" aria-modal="true" aria-label="Export a document" tabindex="-1">` +
+      `<div class="ex-head"><div class="modal-title">Export a document</div><button class="icon" data-ex-close title="Close (Esc)" aria-label="Close">✕</button></div>` +
       // the document, or the board as a picture (ExportSpec decision 19), which the page frames
       (this.hooks.artwork ? `<div class="sh-tabs ex-tabs" role="tablist"><button role="tab" aria-selected="true">Document</button><button role="tab" aria-selected="false" data-ex-art title="The board as a picture, PNG or SVG, at the size you choose: frame it, then save it">Artwork</button></div>` : "") +
       `<div class="ex-sec">${this.summary()}</div>` +
@@ -264,6 +304,8 @@ export class ExportModal {
       `<div class="modal-actions"><button class="rv-btn" data-ex-close>Close</button>` +
       `<button class="rv-btn primary" data-ex-go${refused || busy ? " disabled" : ""}>${busy ? "Generating…" : job?.state === "done" ? "Generate again" : "Generate"}</button></div>` +
       `</div>`;
+    // drawn again as the job goes on, or the view's title comes: the focus stays where it was in it
+    keepFocus(this.el, () => (this.el.innerHTML = html));
     const again = this.el.querySelector<HTMLElement>(".ex-box");
     if (again) again.scrollTop = scroll;
   }

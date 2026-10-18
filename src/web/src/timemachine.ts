@@ -42,7 +42,7 @@ import type { ViewData } from "../../shared/views.ts";
 import { escapeHtml } from "./highlight.ts";
 import { LayoutQueue } from "./layoutqueue.ts";
 import type { LayoutWorker } from "./layoutqueue.ts";
-import { keepInView, latestOf, maxScroll, nearestTick, pastGraph, pastLayoutKey, renamedMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline } from "./past.ts";
+import { keepInView, latestOf, maxScroll, nearestTick, pastGraph, pastLayoutKey, renamedMemory, reviewThen, ruler, RULER, Seek, step, tickX, timeline, unreadWords } from "./past.ts";
 import type { HistoryDiff, PastGraph, Ruler, Snapshot, SnapshotNodes, Timeline } from "./past.ts";
 import type { Board, PastSource } from "./views.ts";
 
@@ -935,9 +935,19 @@ export class TimeMachine {
     );
   }
 
-  /** What changed from the build browsed to now, each count opening its list; the latest says so. */
+  /** What changed from the build browsed to now, each count opening its list; the latest says so.
+   *  Then, for a build that could not read some files (a failed one, what imports it), that it could
+   *  not: what they held is on none of its boards and counts as no change (HistorySpec decision 6).
+   *  Last, so that where the bar is short of room the counts keep theirs. */
   private summaryHtml(id: number | null): string {
     if (id === null) return "";
+    const u = unreadWords(this.snaps.find((x) => x.id === id)?.missing ?? []);
+    const unread = u ? `<span class="tm-unread" title="${escapeHtml(u.tip)}">${escapeHtml(u.label)}</span>` : "";
+    return this.changesHtml(id) + unread;
+  }
+
+  /** What changed from the build browsed to now (summaryHtml). */
+  private changesHtml(id: number): string {
     if (id === this.latest) return `<span class="muted">the graph on show</span>`;
     const known = this.settled.get(id);
     if (!known) {
@@ -975,7 +985,7 @@ export class TimeMachine {
     });
     const total = d.counts[k];
     this.list.innerHTML =
-      `<div class="tm-list-h"><b>${total.toLocaleString()} ${LIST_WORDS[k][0]}</b> <span class="muted">${LIST_WORDS[k][1]}</span><button class="icon" data-tm-close title="Close">✕</button></div>` +
+      `<div class="tm-list-h"><b>${total.toLocaleString()} ${LIST_WORDS[k][0]}</b> <span class="muted">${LIST_WORDS[k][1]}</span><button class="icon" data-tm-close title="Close" aria-label="Close">✕</button></div>` +
       `<div class="tm-rows">${rows.join("")}</div>` +
       (total > rows.length ? `<div class="muted tm-more">and ${(total - rows.length).toLocaleString()} more</div>` : "");
     this.list.hidden = false;

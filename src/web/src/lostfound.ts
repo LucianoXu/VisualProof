@@ -321,7 +321,7 @@ export class LostAndFound {
     if (!this.open) return;
     const d = this.data;
     let html =
-      `<div class="act-head"><div class="act-title">Lost-and-found</div><button class="icon" data-lf-close title="Close">✕</button></div>` +
+      `<div class="act-head"><div class="act-title">Lost-and-found</div><button class="icon" data-lf-close title="Close" aria-label="Close">✕</button></div>` +
       `<div class="lf-intro muted">What was said and marked of declarations the graph no longer has, and what moved to a new name. Nothing here is deleted: attach it to a declaration, or archive it, which only hides it.</div>`;
     if (!this.api) html += `<div class="muted act-empty">A snapshot keeps no history.</div>`;
     else if (!d) html += `<div class="muted act-empty">Reading…</div>`;

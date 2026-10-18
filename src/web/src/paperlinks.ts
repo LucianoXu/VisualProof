@@ -95,6 +95,8 @@ export interface PapersHooks {
   readOnly(): string | null;
   /** why no note can be written here (a preview of a view), or null */
   cannotNote(): string | null;
+  /** why no file can be opened here (a snapshot of the page), or null */
+  noFiles?(): string | null;
   /** a note of the project made carrying a clip, with that text (Clip to a note); whether it was */
   clip(c: NoteCarry, text: string): Promise<boolean>;
   /** a file or a clip attached to a note (its menu's Attach…); whether it was */
@@ -139,6 +141,7 @@ export class Papers {
       docked: (vp) => (this.docked() ? this.rects(vp)?.paper ?? null : null),
       placed: () => this.paperPlaced(),
       cannotNote: () => hooks.readOnly() ?? hooks.cannotNote(),
+      noFiles: () => hooks.noFiles?.() ?? null,
       clip: (c, text) => hooks.clip(c, text),
       attach: (note, c) => hooks.attach(note, c),
     });
@@ -554,7 +557,9 @@ export class Papers {
   private async relabel(id: string, label: string): Promise<void> {
     this.editing = null;
     if (label.trim()) await this.write("/api/library/link/edit", { id, label: label.trim() });
-    else this.hooks.repaint();
+    // the panel drawn again whatever the answer: a label saved as it was, or refused, changes
+    // nothing in the review, which is what draws it again otherwise, and Save left the form open
+    this.hooks.repaint();
   }
 
   private async remove(id: string): Promise<void> {

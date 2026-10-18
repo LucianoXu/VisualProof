@@ -18,6 +18,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SnapGraph, SnapNode } from "./history.ts";
+import { endsLine } from "./lostfound.ts";
 import { refIdentity, versionOf } from "./versions.ts";
 import type { Identity } from "./versions.ts";
 import type { ViewOp } from "../shared/views.ts";
@@ -231,8 +232,7 @@ export class Renames {
   /** The pairs found at a graph read of snapshot `snap`'s build. */
   record(snap: number, pairs: Pairing[]): void {
     if (!pairs.length) return;
-    mkdirSync(join(this.pairFile, ".."), { recursive: true });
-    appendFileSync(this.pairFile, JSON.stringify({ snap, at: new Date().toISOString(), pairs }) + "\n");
+    append(this.pairFile, { snap, at: new Date().toISOString(), pairs });
     this.add(snap, pairs);
   }
 
@@ -243,8 +243,7 @@ export class Renames {
   /** A migration made: kept, under the next id. */
   migrated(m: Omit<Migration, "id">): Migration {
     const full = { id: `m${this.migrations.length + 1}`, ...m } as Migration;
-    mkdirSync(join(this.migFile, ".."), { recursive: true });
-    appendFileSync(this.migFile, JSON.stringify(full) + "\n");
+    append(this.migFile, full);
     this.migrations.push(full);
     this.byId.set(full.id, full);
     return full;
@@ -256,7 +255,7 @@ export class Renames {
     if (!m) return;
     const at = new Date().toISOString();
     const who = { by, ...(agent ? { agent: true as const } : {}), ...(person ? { person } : {}) };
-    appendFileSync(this.migFile, JSON.stringify({ undo: id, ...who, at }) + "\n");
+    append(this.migFile, { undo: id, ...who, at });
     m.undone = { ...who, at };
   }
 
@@ -276,6 +275,13 @@ export class Renames {
     }
     return out;
   }
+}
+
+/** A line appended to one of the files: after a line cut short (the server stopped while writing),
+ *  on a line of its own, so that the line cut short alone is lost, never the one written after it. */
+function append(file: string, o: object): void {
+  mkdirSync(join(file, ".."), { recursive: true });
+  appendFileSync(file, (endsLine(file) ? "" : "\n") + JSON.stringify(o) + "\n");
 }
 
 function lines(file: string): unknown[] {

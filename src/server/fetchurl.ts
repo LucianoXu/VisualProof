@@ -14,7 +14,7 @@ import type { IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { networkInterfaces } from "node:os";
-import { MAX_FILE } from "../shared/library.ts";
+import { MAX_FILE, sizeWords } from "../shared/library.ts";
 
 export interface FetchOptions {
   maxBytes?: number;
@@ -85,14 +85,18 @@ function blockedV4(b: number[]): boolean {
     (a === 172 && c >= 16 && c <= 31) || // private
     (a === 192 && c === 168) || // private
     (a === 192 && c === 0 && b[2] === 0) || // IETF protocol assignments
+    (a === 192 && c === 0 && b[2] === 2) || // documentation (TEST-NET-1)
+    (a === 192 && c === 88 && b[2] === 99) || // 6to4 relays, deprecated
     (a === 198 && (c === 18 || c === 19)) || // benchmarking
+    (a === 198 && c === 51 && b[2] === 100) || // documentation (TEST-NET-2)
+    (a === 203 && c === 0 && b[2] === 113) || // documentation (TEST-NET-3)
     a >= 224 // multicast, reserved, broadcast
   );
 }
 
 /** Whether the server refuses to fetch from an address: loopback, private, link-local, unique-local,
- *  multicast, reserved or unspecified, an IPv4 one written as IPv6 (mapped, NAT64) included. Anything
- *  that is not an address at all is refused too. */
+ *  multicast, reserved, documentation or unspecified, an IPv4 one written as IPv6 (mapped, NAT64,
+ *  6to4) included. Anything that is not an address at all is refused too. */
 export function blockedAddress(address: string): boolean {
   const kind = isIP(address.replace(/%.*$/, ""));
   if (kind === 4) return blockedV4(address.split(".").map(Number));
@@ -105,6 +109,7 @@ export function blockedAddress(address: string): boolean {
   if (p.slice(0, 5).every((x) => x === 0) && p[5] === 0xffff) return blockedV4(v4(p[6], p[7])); // IPv4-mapped
   if (p.slice(0, 6).every((x) => x === 0)) return true; // IPv4-compatible, deprecated
   if (p[0] === 0x64 && p[1] === 0xff9b && p.slice(2, 6).every((x) => x === 0)) return blockedV4(v4(p[6], p[7])); // NAT64
+  if (p[0] === 0x2002) return blockedV4(v4(p[1], p[2])); // 6to4: the IPv4 address it carries
   if ((p[0] & 0xfe00) === 0xfc00) return true; // unique local
   if ((p[0] & 0xffc0) === 0xfe80) return true; // link-local
   if ((p[0] & 0xffc0) === 0xfec0) return true; // site-local, deprecated
@@ -217,7 +222,7 @@ async function guardedFetch(raw: string, kind: keyof typeof KINDS, o: { maxBytes
     }
     if (!addresses.length) return { ok: false, status: 400, error: `${host} cannot be found.` };
     const refused = addresses.find((a) => !allowed(a.address));
-    if (refused) return { ok: false, status: 403, error: `${host} is ${refused.address}, an address of a private or local network or of this server: the server does not fetch from there.` };
+    if (refused) return { ok: false, status: 403, error: `${host === refused.address ? host : `${host} is ${refused.address}, which`} is an address of a private or local network or of this server: the server does not fetch from there.` };
     const left = deadline - Date.now();
     if (left <= 0) return { ok: false, status: 504, error: "The address took too long to answer." };
     const pinned = addresses[0];
@@ -228,8 +233,10 @@ async function guardedFetch(raw: string, kind: keyof typeof KINDS, o: { maxBytes
       return { ok: false, status: 502, error: `The address could not be fetched: ${e instanceof Error ? e.message : String(e)}.` };
     }
     const status = res.statusCode ?? 0;
+    // what is not the file is never read: a redirect's or an error's body, drained, could run on
+    // past the bytes and the time a fetch may take, the fetch answered long since
+    if (status !== 200) res.destroy();
     if ([301, 302, 303, 307, 308].includes(status)) {
-      res.resume();
       const to = res.headers.location;
       if (!to) return { ok: false, status: 502, error: `The address answered ${status} without saying where to.` };
       if (hops >= o.maxRedirects) return { ok: false, status: 502, error: `The address redirected more than ${o.maxRedirects} times.` };
@@ -240,26 +247,27 @@ async function guardedFetch(raw: string, kind: keyof typeof KINDS, o: { maxBytes
       }
       continue;
     }
-    if (status !== 200) {
-      res.resume();
-      return { ok: false, status: 502, error: `The address answered ${status}, not the ${noun}.` };
-    }
+    if (status !== 200) return { ok: false, status: 502, error: `The address answered ${status}, not the ${noun}.` };
     const length = Number(res.headers["content-length"] ?? NaN);
     if (Number.isFinite(length) && length > o.maxBytes) {
       res.destroy();
-      return { ok: false, status: 413, error: `The ${noun} is ${Math.round(length / 1e6)} MB: ${most} is at most ${Math.round(o.maxBytes / 1e6)} MB.` };
+      return { ok: false, status: 413, error: `The ${noun} is ${sizeWords(length)}: ${most} is at most ${sizeWords(o.maxBytes)}.` };
     }
     const body = await readCapped(res, o.maxBytes, deadline);
-    if (typeof body === "string") return { ok: false, status: body === "large" ? 413 : 504, error: body === "large" ? `The ${noun} is larger than ${Math.round(o.maxBytes / 1e6)} MB, the most ${most} may be.` : `The address took too long to send the ${noun}.` };
+    if (typeof body === "string") return { ok: false, status: body === "large" ? 413 : 504, error: body === "large" ? `The ${noun} is larger than ${sizeWords(o.maxBytes)}, the most ${most} may be.` : `The address took too long to send the ${noun}.` };
     const disposition = res.headers["content-disposition"];
     return { ok: true, bytes: body, url, disposition };
   }
 }
 
-/** A request to `url`, connected to the address checked for it and to no other; its answer's head. */
+/** A request to `url`, connected to the address checked for it and to no other; its answer's head,
+ *  within `ms` in all. */
 function connect(url: URL, at: { address: string; family: number }, ms: number, accept: string): Promise<IncomingMessage> {
   return new Promise((ok, no) => {
     const make = url.protocol === "https:" ? httpsRequest : httpRequest;
+    // the socket's `timeout` is idleness alone: a head sent a byte at a time is never idle, and
+    // would hold the fetch past its time for as long as its sender likes
+    const late = setTimeout(() => req.destroy(new Error("no answer in time")), ms);
     const req = make(
       url,
       {
@@ -273,10 +281,16 @@ function connect(url: URL, at: { address: string; family: number }, ms: number, 
         }) as never,
         timeout: ms,
       },
-      ok,
+      (res) => {
+        clearTimeout(late);
+        ok(res);
+      },
     );
     req.on("timeout", () => req.destroy(new Error("no answer in time")));
-    req.on("error", no);
+    req.on("error", (e) => {
+      clearTimeout(late);
+      no(e);
+    });
     req.end();
   });
 }

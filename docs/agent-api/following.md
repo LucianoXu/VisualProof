@@ -53,7 +53,7 @@ What you look at; fields left out keep their value. MCP: `view` (action `move`, 
 | `source` | `true`: the source window open on `sel` |
 | `paper` | the reference window, for followers: `{"link": "<id>"}` (its file at its place, lit) or `{"file": "<sha256>", "page": 3}`; `null` closes ([library](library.md)) |
 | `focus` | your own focus on the view: a target's full name; `null`/`"none"`: none; `false`/`"view"`: the view's own. Followers take it. Each view starts you on its own |
-| `leave` | `true`: done. Without a token you leave the list until your next request; with one you stay listed while it is in force, view cleared, offline until you wait or request again. Answer `{ok, left: true}` |
+| `leave` | `true`: done. Without a token you leave the list until your next request; with one you stay listed while it is in force, view cleared, offline until you wait or request again. Answer `{ok, left: true}`; `left: false` where your `X-VisualProof-Session` is not the one that waited last (a newer session listens: it stays) |
 
 A click on your initials follows you: the page goes to your view (in a new tab) and tracks your
 selection, what you light up and the source window. The answer says what they see:

@@ -35,6 +35,8 @@ function setup(
   const outDst = Int32Array.from(sorted.map(([, t]) => t));
   const outSite = Uint8Array.from(sorted.map((e) => e[2] ?? SITE_STMT));
   const byName = new Map(names.map((n, i) => [n, i]));
+  // one graph, as the board's is until it changes
+  const graph = { byName, outStart, outDst, outSite };
   const calls: unknown[] = [];
   const canvas = {
     layout: { clusters: [{ key: "A" }, { key: "A.B" }] },
@@ -70,7 +72,7 @@ function setup(
   return import("../src/web/src/linear.ts").then(({ LinearForm }) => {
     const f = new LinearForm(el as never, canvas as never, {
       outline: async () => (asked++, structuredClone(outline)),
-      graph: () => ({ byName, outStart, outDst, outSite }) as never,
+      graph: () => graph as never,
       noteSpot: (id: string) => opts.noteAt?.(id) ?? [5, 5],
       lit: opts.lit ?? (() => false),
       // as the board lights an edge: between two lit, of the sites `opts.sites` (all by default)
@@ -312,6 +314,44 @@ test("a row taken up follows the pointer, off the line too; its siblings make ro
   assert.equal(off("A.a2").dx, 40, "from where it was let go");
 });
 
+test("the form comes in its 480 ms however few frames the screen draws meanwhile", async () => {
+  const { f } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  assert.equal(f.t, 0);
+  // two frames, 300 ms apart: most of the way, then there
+  f.draw(f.last + 300);
+  assert.ok(f.t > 0.6 && f.t < 1, `${f.t}`);
+  f.draw(f.last + 300);
+  assert.equal(f.t, 1, "come: the pointer is heard");
+  // a frame stamped before the ease began moves nothing back
+  f.hide("reader");
+  f.draw(f.last - 5);
+  assert.equal(f.t, 1);
+});
+
+test("a row taken up takes what goes with it along: a section its rows, a declaration its notes", async () => {
+  const { f } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  f.t = 1;
+  const row = (name: string) => f.rows.find((r: { name: string }) => r.name === name);
+  const off = (name: string) => f.off.get(`${row(name).kind}:${name}`);
+  const sy = (y: number) => 24 + (y - f.cam.y);
+  // B (with b1) up above a1: b1 comes with it, as far
+  const b = row("A.B"), a1 = row("A.a1");
+  f.lift(b, 300, sy(b.cy));
+  f.follow(320, sy(a1.y0) - 2);
+  assert.equal(f.drag.at, 0);
+  assert.deepEqual([off("A.B.b1").dy, off("A.B.b1").dx], [off("A.B").dy, off("A.B").dx], "b1 with B");
+  assert.ok(off("A.B").dy < 0);
+  f.cancel();
+  // a1 (with its note on1) down below a2: on1 comes with it; the others make room for both
+  f.lift(a1, 300, sy(a1.cy));
+  const a2 = row("A.a2");
+  f.follow(300, sy(a2.y1) + 30);
+  assert.equal(off("on1").dy, off("A.a1").dy, "its note with it");
+  assert.equal(off("n").ty, -(row("on1").y1 - a1.y0), "the rows passed make room for a1 and its note");
+});
+
 test("let go among declarations alone, each row between where it was and where it went takes the place the one at its index had: the order exactly so, no row on another, the rest unmoved, in one change", async () => {
   const { outline, names } = many(5);
   const { f, calls } = await setup(outline, null, { names });
@@ -412,6 +452,31 @@ test("an arc is lit as the board lights its edge: between two lit declarations, 
   };
   assert.deepEqual(pairs(), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit"]);
   assert.deepEqual(pairs([top, 1]), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1 lit key"]);
+});
+
+test("the arcs are worked out once, not at every frame: again when the rows, the key links or what the board lights change", async () => {
+  const { outline, names } = many(3);
+  const top = names.length - 1;
+  const lit = (i: number) => i === top || i === 0;
+  const { f } = await setup(outline, null, { names, edges: [[top, 0, SITE_STMT], [0, 1, SITE_BODY]], lit });
+  await f.show("reader");
+  const first = f.arcPairs();
+  assert.equal(f.arcPairs(), first, "the same, frame after frame");
+  // another selection: the board's lit set is set anew (canvas.setActivation), and so its mode
+  f.canvas.active = new Uint8Array(names.length);
+  const relit = f.arcPairs();
+  assert.notEqual(relit, first);
+  assert.equal(f.arcPairs(), relit);
+  f.canvas.mode = "deps";
+  assert.notEqual(f.arcPairs(), relit);
+  const keyed = f.arcPairs();
+  f.hooks.keyLinks = () => [top, 1];
+  assert.notEqual(f.arcPairs(), keyed);
+  assert.ok(f.arcPairs().some((p: { key?: true }) => p.key));
+  // the outline read again: other rows
+  const before = f.arcPairs();
+  f.setOutline(structuredClone(outline));
+  assert.notEqual(f.arcPairs(), before);
 });
 
 test("shown as a followed reader's, the form is the follower's own once following ends: ⋯ and the key put it away, and so may the follower's own Export window closing; the window's own form goes with it alone", async () => {

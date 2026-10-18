@@ -19,8 +19,10 @@
 // list and the thing the panel tells of; web/src/selbar.ts shows the list.
 
 import type { Cluster, ClusterMode, Layout } from "../../shared/graph.ts";
+import { renameInQuery } from "../../shared/moves.ts";
 import { describe, keysQuery, parseQuery, printQuery, readKeys } from "../../shared/query.ts";
 import type { Query } from "../../shared/query.ts";
+import type { TitleNames } from "../../shared/titles.ts";
 import type { Mode } from "../../shared/viewgraph.ts";
 
 /** A tool: how a click selects (the mode buttons, keys 1–3): a closure of the graph, or the Keys step
@@ -149,16 +151,22 @@ function short(name: string): string {
   return /^\d+$/.test(tail) || tail.length <= 2 ? parts.slice(-2).join(".") : tail;
 }
 
-/** A pick in a few words, as its chip says it: "Minimal", "TCB of not_fermat_42", "ns Fermat42". */
-export function pickWords(p: Pick): string {
+/** A pick in a few words, as its chip says it: "Minimal", "TCB of not_fermat_42", "ns Fermat42".
+ *  With `names` (shared/titles.ts, the graph on show's), a name is said as a view's title says it:
+ *  with the parents that tell it apart from the project's others of its kind ("what
+ *  Dim24.MainTheorem uses" beside Dim8's; ViewSpec decision 25). */
+export function pickWords(p: Pick, names?: TitleNames): string {
   const r = p.root;
   let what: string;
   if (!r) return describe(p.q);
-  if ("decl" in r) what = short(r.decl);
+  if ("decl" in r) what = names?.decl(r.decl) ?? short(r.decl);
   else if (r.cluster === EXT) what = "the outside world";
   else {
     const ext = r.cluster.startsWith(EXT + ".");
-    what = `${r.by === "module" ? "file" : "ns"} ${short(ext ? r.cluster.slice(EXT.length + 1) : r.cluster)}${ext ? " (outside)" : ""}`;
+    const by = r.by === "module" ? "file" : "ns";
+    // the outside world's namespaces and folders are not the project's: said by their last part
+    const told = ext || !names ? short(ext ? r.cluster.slice(EXT.length + 1) : r.cluster) : names[by](r.cluster);
+    what = `${by} ${told}${ext ? " (outside)" : ""}`;
   }
   if (p.tool === "keys") return `keys ${what} rests on`;
   return p.tool === "tcb" ? `TCB of ${what}` : p.tool === "deps" ? `what ${what} uses` : p.tool === "refs" ? `what ${what} uses directly` : p.tool === "apps" ? `what uses ${what}` : what;
@@ -237,6 +245,38 @@ export function retool(picks: Pick[], shown: Shown | null, tool: Tool, keys: (r:
   const last = picks.find((p) => sameShown(shownOf(p), shown)) ?? picks[picks.length - 1];
   const next = withTool(last, tool, keys);
   return next ? { picks: [next], shown: shownOf(next) } : { picks, shown };
+}
+
+/** The selection once a build renamed what it is on (HistorySpec decision 10; the manual's "Live": a
+ *  new graph keeps the selection): a declaration picked, or told of in the panel, that the graph no
+ *  longer has, and that the renames in force lead on to one it has, is that one. `renamed` maps each
+ *  name to the one before it (ReviewData.renamed, shared/moves.ts); `has` says what the graph has.
+ *  The same array and object where nothing it names was renamed. */
+export function followRenames(picks: Pick[], shown: Shown | null, renamed: Readonly<Record<string, string>> | undefined, has: (name: string) => boolean): { picks: Pick[]; shown: Shown | null } {
+  if (!renamed) return { picks, shown };
+  const ahead = new Map<string, string>();
+  for (const [to, from] of Object.entries(renamed)) ahead.set(from, to);
+  /** its name now, where it is gone and a rename leads on to one the graph has; else null */
+  const now = (name: string): string | null => {
+    if (has(name)) return null;
+    let n = name;
+    // a chain is as long as the renames of one declaration; a loop (a log edited by hand) is cut short
+    for (let k = 0; k < 1000 && ahead.has(n); k++) {
+      n = ahead.get(n)!;
+      if (has(n)) return n;
+    }
+    return null;
+  };
+  let changed = false;
+  const next = picks.map((p) => {
+    const from = p.root && "decl" in p.root ? p.root.decl : null;
+    const to = from === null ? null : now(from);
+    if (to === null) return p;
+    changed = true;
+    return { ...p, root: { decl: to }, q: renameInQuery(p.q, from!, to) };
+  });
+  const to = shown && "decl" in shown ? now(shown.decl) : null;
+  return { picks: changed ? next : picks, shown: to === null ? shown : { decl: to } };
 }
 
 /** The edges a selection draws (canvas.ts, MODE_SITES): a TCB's statement and body edges when every

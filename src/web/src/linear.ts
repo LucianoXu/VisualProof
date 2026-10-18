@@ -180,6 +180,8 @@ export class LinearForm {
   private byY: Row[] = [];
   /** each declaration a folded section holds: the section's row, which stands for it */
   private under = new Map<number, Row>();
+  /** the arcs last worked out (arcPairs), and what from */
+  private arcsOf: { from: unknown[]; pairs: { a: Row; b: Row; lit: boolean; key?: true }[] } | null = null;
   /** the sections the reader folded (true) or opened (false), by key; the others as FOLD_MORE says */
   private folds = new Map<string, boolean>();
   private height = 0;
@@ -485,7 +487,11 @@ export class LinearForm {
 
   private draw(now: number): void {
     this.frame = 0;
-    const dt = Math.min(now - this.last, 50);
+    // the rows' slides and the scroll step 50 ms a frame at most, never jumping; the form's coming
+    // and going by the time gone, so that it takes its 480 ms however slowly the screen draws (the
+    // pointer is not heard until it has come)
+    const elapsed = Math.max(0, now - this.last);
+    const dt = Math.min(elapsed, 50);
     this.last = now;
     // rows making room, or settling, ease to where they go
     if (this.off.size) {
@@ -517,7 +523,7 @@ export class LinearForm {
       }
     }
     if (this.t !== this.target) {
-      const step = dt / EASE_MS;
+      const step = elapsed / EASE_MS;
       this.t = this.target > this.t ? Math.min(this.target, this.t + step) : Math.max(this.target, this.t - step);
       this.request();
     }
@@ -529,6 +535,7 @@ export class LinearForm {
     }
     if (this.t === 0 && this.target === 0) {
       this.el.hidden = true;
+      this.arcsOf = null;
       return;
     }
     this.paint();
@@ -734,9 +741,14 @@ export class LinearForm {
    *  one that uses to the one it uses, a folded section's members' ending at its row; each lit as
    *  the board lights it (canvas.edgeLit: between two lit declarations, of the sites the mode
    *  follows), so that the line and the board say the same. Under the Keys step, the board's key
-   *  graph instead lights its own links, dashed (`key`). */
+   *  graph instead lights its own links, dashed (`key`). Worked out again only when the graph, the
+   *  rows, the key links or what the board lights (its lit set and mode, which edgeLit answers from
+   *  and canvas.setActivation sets anew) changed, not at every frame: on NavierStokesAndEuler's
+   *  Project view, 61,000 rows and 5 million edges, that was 130 ms a frame. */
   private arcPairs(): { a: Row; b: Row; lit: boolean; key?: true }[] {
     const g = this.hooks.graph();
+    const from = [g, this.rows, this.under, this.hooks.keyLinks(), this.canvas.active, this.canvas.mode];
+    if (this.arcsOf && from.every((x, i) => x === this.arcsOf!.from[i])) return this.arcsOf.pairs;
     const rowOf = new Map<number, Row>();
     for (const r of this.rows) if (r.kind === "decl" && r.k >= 0) rowOf.set(r.k, r);
     for (const [i, r] of this.under) rowOf.set(i, r);
@@ -766,6 +778,7 @@ export class LinearForm {
         out.push({ a: ra, b: rb, lit: true, key: true });
       }
     }
+    this.arcsOf = { from, pairs: out };
     return out;
   }
 
@@ -1028,8 +1041,9 @@ export class LinearForm {
   /** Take a row up, where it was pressed: it, and what goes with it, follow the pointer. */
   private lift(row: Row, px: number, py: number): void {
     const sibs = this.siblings(row);
-    // an attached note taken up leaves its declaration's block
-    const blocks = sibs.map((r) => (r === row ? [row] : this.blockOf(r).filter((x) => x !== row)));
+    // it takes what goes with it (a section's rows, a declaration's notes); an attached note taken
+    // up leaves its declaration's block
+    const blocks = sibs.map((r) => (r === row ? this.blockOf(row) : this.blockOf(r).filter((x) => x !== row)));
     const from = sibs.indexOf(row);
     const block = blocks[from] ?? [row];
     const h = Math.max(...block.map((r) => r.y1)) - row.y0;

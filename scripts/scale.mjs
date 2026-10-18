@@ -13,11 +13,11 @@
 //     --out <dir>         where the sites, caches, logs and results.json go (default: a new
 //                         temporary folder)
 //
-// Per project: the time to the graph and to the end of the usage pass, the most memory the server
-// and its children (the usage pass's workers, Lean's language server) held at once (shared pages
-// counted once, on Linux), Lean's first
-// answer, a restart from the caches; then, warm: the target's TCB, keys and why, its review set
-// (and its document), a snapshot's graph, and a Lean worker's memory once its module is open.
+// Per project: the time to the graph, to the end of the usage pass and to its graph served, the most
+// memory the server and its children (the usage pass's workers, Lean's language server) held at once
+// (shared pages counted once, on Linux), Lean's first answer, a restart from the caches; then, warm:
+// the target's TCB, keys and why, its review set (and its document), a snapshot's graph, and a Lean
+// worker's memory once its module is open.
 import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -141,9 +141,14 @@ async function serve(project, dir, phase, probe) {
     }
     if (r.graphS === null && st.state === "ready" && st.graph) r.graphS = (Date.now() - t0) / 1000;
     if (r.graphS !== null && ["done", "off", "cancelled"].includes(st.usage?.state)) {
-      r.usageS = (Date.now() - t0) / 1000;
-      r.usage = { modules: st.usage.total, cached: st.usage.cached, failed: st.usage.failed?.length ?? 0, passS: st.usage.ms === null ? null : st.usage.ms / 1000 };
-      break;
+      r.usageS ??= (Date.now() - t0) / 1000;
+      r.usage ??= { modules: st.usage.total, cached: st.usage.cached, failed: st.usage.failed?.length ?? 0, passS: st.usage.ms === null ? null : st.usage.ms / 1000 };
+      // and the pass's graph laid out and served, its layout kept by the site: stopped before, the
+      // warm run laid the graph out again (a minute on NavierStokesAndEuler), as no restart does
+      if (st.usage.state !== "done" || st.graph?.usage?.state !== "pending") {
+        r.servedS = (Date.now() - t0) / 1000;
+        break;
+      }
     }
   }
   if (r.graphS !== null) {

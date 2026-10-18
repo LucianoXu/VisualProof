@@ -6,6 +6,7 @@
 
 import type { Graph } from "../viewgraph.ts";
 import type { BoardSpots, OrderedSection, Placed } from "./order.ts";
+import { inlines } from "./markdown.ts";
 import { orderDoc } from "./order.ts";
 import type { DocPlan } from "./sections.ts";
 
@@ -48,10 +49,12 @@ export interface Outline {
   fresh?: true;
 }
 
-/** A note's first words: its first line, Markdown marks taken out, at most 60 characters. */
+/** A note's first words: its first line of text (a code fence's mark is none), its Markdown marks
+ *  taken out as its card reads them — code spans' backquotes, emphasis and strong — so that a
+ *  name's underscores stay (`flt_regular`); at most 60 characters. */
 export function firstWords(text: string): string {
-  const line = text.split("\n").find((l) => l.trim()) ?? "";
-  const plain = line.replace(/[*_`#>]+/g, "").replace(/\s+/g, " ").trim();
+  const line = text.split("\n").find((l) => l.trim() && !/^\s*(?:```+|~~~+)/.test(l)) ?? "";
+  const plain = inlines(line).map((x) => x.s).join("").replace(/\s+/g, " ").trim();
   return plain.length > 60 ? `${plain.slice(0, 59).trimEnd()}…` : plain;
 }
 
