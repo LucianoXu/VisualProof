@@ -312,6 +312,21 @@ test("a row taken up follows the pointer, off the line too; its siblings make ro
   assert.equal(off("A.a2").dx, 40, "from where it was let go");
 });
 
+test("the form comes in its 480 ms however few frames the screen draws meanwhile", async () => {
+  const { f } = await setup(OUTLINE, null, BOARD);
+  await f.show("reader");
+  assert.equal(f.t, 0);
+  // two frames, 300 ms apart: most of the way, then there
+  f.draw(f.last + 300);
+  assert.ok(f.t > 0.6 && f.t < 1, `${f.t}`);
+  f.draw(f.last + 300);
+  assert.equal(f.t, 1, "come: the pointer is heard");
+  // a frame stamped before the ease began moves nothing back
+  f.hide("reader");
+  f.draw(f.last - 5);
+  assert.equal(f.t, 1);
+});
+
 test("a row taken up takes what goes with it along: a section its rows, a declaration its notes", async () => {
   const { f } = await setup(OUTLINE, null, BOARD);
   await f.show("reader");
