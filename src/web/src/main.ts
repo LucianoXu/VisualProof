@@ -3859,17 +3859,20 @@ async function boot(): Promise<void> {
     const board = nav.board.id;
     const spots = stickies.placesFor(canvas.toWorld(at.x, at.y), files.length);
     if (!spots) return say("This board is not drawn yet.");
+    const refusals: string[] = [];
     const made = await notesOfFiles(files, spots, {
       upload: (f) => uploadFile(f, papers.headers()),
       take: (c) => takeChange(c),
       write: (note) => projectOps([{ op: "pnote", note }], true),
       still: () => nav.board.id === board,
       say: (text) => say(text),
+      refused: (why) => void refusals.push(why),
       by: people.name,
       lost: () => people.lost(),
     });
     if (made.length === 1) editWhenShown(made[0], false);
-    else if (made.length) say(`${made.length} notes made, each carrying its file: double-click one to add words.`);
+    // what was refused is said with the notes made, which would otherwise say over it
+    else if (made.length) say(`${made.length} notes made, each carrying its file: double-click one to add words.${refusals.map((r) => ` ${r}`).join("")}`);
   };
 
   /** Whether an event is on the canvas: the board itself, a card on it, or a note — not a panel, a
