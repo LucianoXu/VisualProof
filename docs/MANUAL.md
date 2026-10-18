@@ -166,6 +166,11 @@ The README says how to install the `visualproof` command. A checkout also runs a
   touched 11 of them: 8 s; one of Sphere-Packing-Lean that changed a module 80 others import: those 81 in
   24 s, the merged graph served 51 s after the build), and a restart without a build serves the
   merged graph at once (under a second).
+  On Mathlib a worker can hold several GB (the showcase's pass at 6 jobs peaked at 39 GB resident,
+  15 GB of it the `.olean` files mapped once): `serve` and `doctor` say where the default `--jobs`
+  may take more than the machine has available, and which `--jobs` fits. While less than a twentieth
+  of the memory (2 GB at least) is available, the pass starts no worker until another ends, and says
+  so in its log.
   Progress is in `GET /api/status` (`usage`) and the log; a module that cannot be elaborated is
   reported there and keeps the text-based context and no notation edges.
 - `--graph <saved.json>` serves a saved extraction instead of reading the build.

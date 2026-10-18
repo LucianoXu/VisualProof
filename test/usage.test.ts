@@ -22,7 +22,7 @@ import { buildView, notationStatements } from "../src/server/view.ts";
 import type { Extraction } from "../src/server/extract.ts";
 import { openProject } from "../src/server/project.ts";
 import type { Project } from "../src/server/project.ts";
-import { UsagePass, mergeSpans, mergeUsage } from "../src/server/usage.ts";
+import { jobsAdvice, memoryFloor, roomForWorker, UsagePass, mergeSpans, mergeUsage, WORKER_PEAK } from "../src/server/usage.ts";
 import { copyFixture } from "./fixturecopy.ts";
 import { buildDoc, printedDecls } from "../src/shared/doc/build.ts";
 import type { DocSource } from "../src/shared/doc/build.ts";
@@ -422,6 +422,19 @@ test("a module the pass cannot elaborate is reported; the others are merged", op
   assert.notEqual(m.fingerprint, merged.fingerprint, "what failed is part of what the graph is");
 });
 
+test("memory short: the pass starts no worker while another runs, and says so; it goes on, one at a time", opts, async () => {
+  const said: string[] = [];
+  const pass = new UsagePass(project, testDirs(join(dir, "state", "short")), 2, (l) => said.push(l));
+  // no memory at all: a worker may start only where none runs
+  pass.available = () => 0;
+  const plan = pass.plan(base.graph);
+  assert.equal(plan.todo.length, 2, "both modules, the cache empty");
+  const results = await pass.run(plan);
+  assert.ok(results && results.has("Fixture.Basic") && results.has("Fixture.Notation"));
+  assert.deepEqual(pass.status.failed, []);
+  assert.equal(said.filter((l) => /fewer workers at a time/.test(l)).length, 1, "said once");
+});
+
 test("the cache: an unchanged module is reused, a rebuilt one elaborated again", opts, async () => {
   const again = await passOver(base);
   assert.equal(again.plan.todo.length, 0);
@@ -441,6 +454,19 @@ test("the cache: an unchanged module is reused, a rebuilt one elaborated again",
   writeFileSync(f, readFileSync(f, "utf8") + "\n-- edited\n");
   const later = new UsagePass(project, testDirs(join(dir, "state", "other")), 2, quiet).plan(ex.graph);
   assert.deepEqual(later.skipped.map((s) => s.module), ["Fixture.Notation"]);
+});
+
+test("a worker may start while the machine has memory for it; what jobs on Mathlib may hold, and how many fit", () => {
+  const GB = 2 ** 30;
+  assert.equal(memoryFloor(16 * GB), 2 * GB, "2 GB at least");
+  assert.equal(memoryFloor(128 * GB), 6.4 * GB, "a twentieth of a large machine");
+  assert.equal(roomForWorker(0, 0, 2 * GB), true, "the first always");
+  assert.equal(roomForWorker(3, 3 * GB, 2 * GB), true);
+  assert.equal(roomForWorker(3, GB, 2 * GB), false);
+  assert.equal(jobsAdvice(8, false, GB), null, "off Mathlib, nothing to say");
+  assert.equal(jobsAdvice(8, true, 64 * GB), null);
+  assert.deepEqual(jobsAdvice(8, true, 20 * GB), { need: 8 * WORKER_PEAK, fits: 3 });
+  assert.equal(jobsAdvice(1, true, GB), null, "one job is the least");
 });
 
 test("the grammar site travels to pages packed; a page from before takes it for a proof", () => {

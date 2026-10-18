@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { freemem, tmpdir } from "node:os";
 import { gunzip, gunzipSync, gzip, gzipSync } from "node:zlib";
 import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
@@ -37,7 +37,7 @@ import { AgentTokens, bearerOf, DEFAULT_DAYS, invalidAgentName, looksLikeToken, 
 import type { TokenRecord } from "./tokens.ts";
 import { agentPrompt } from "./prompt.ts";
 import { MAX_PERSON } from "./talk.ts";
-import { DEFAULT_JOBS, UsagePass, mergeUsage, saveMerged } from "./usage.ts";
+import { DEFAULT_JOBS, inGB, jobsAdvice, memoryFloor, onMathlib, UsagePass, mergeUsage, saveMerged, WORKER_PEAK } from "./usage.ts";
 import { extract } from "./extract.ts";
 import type { AgentLevel, Answer } from "./agent.ts";
 import { Exporter } from "./export.ts";
@@ -176,8 +176,10 @@ function usage(code = 2): never {
   --jobs  how many modules the usage pass elaborates at once (default ${DEFAULT_JOBS}; 0: no pass). The
            pass finds which notation each declaration is written in and the exact context it is
            written in (TCBSpec.md, decisions 2 and 4); its findings follow the extractor's graph
-           as its next version. Each worker takes about 400 MB of its own and the import of a
-           module is bound by memory bandwidth: past about a quarter of the cores it gains little.
+           as its next version. Each worker takes about 400 MB of its own, several GB on a large
+           project on Mathlib (serve and doctor say which --jobs the memory fits); with memory
+           short, fewer run at a time. The import of a module is bound by memory bandwidth: past
+           about a quarter of the cores it gains little.
 
   --access-key-file  let in only those given the link http://<host>:<port>/k/<key>, the key being
            what the file holds (one is made there, readable by its owner alone, if there is none).
@@ -1622,6 +1624,13 @@ async function main(): Promise<void> {
     console.log(`  editor: ${o.editor ?? "no link unless a reader sets one"}`);
     console.log(`  agents: ${o.agents} — their API is http://${o.host}:${o.port}/api/agent`);
     console.log(`  usage pass: ${o.graph ? "none for a saved graph" : o.jobs > 0 ? `${o.jobs} module(s) at a time` : "off (--jobs 0)"}`);
+    // what the pass's workers may hold on a project on Mathlib, against what the machine has
+    const memory = o.graph || o.jobs <= 0 ? null : jobsAdvice(o.jobs, onMathlib(project.root));
+    if (memory)
+      console.log(
+        `  memory: ${inGB(freemem())} available; on Mathlib the pass's workers may hold up to ${inGB(WORKER_PEAK)} each, ${inGB(memory.need)} at ${o.jobs}: ` +
+          `--jobs ${memory.fits} if memory runs short (it starts fewer while less than ${inGB(memoryFloor())} is available)`,
+      );
     console.log(
       `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : `anyone who reaches the port, by its address, localhost${[...(o.publicUrl ? [urlHost(o.publicUrl)] : []), ...o.allowedHosts].map((n) => `, ${n}`).join("")} (other names are refused: --allowed-host)`}`,
     );

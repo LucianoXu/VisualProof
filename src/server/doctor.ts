@@ -6,7 +6,7 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
 import { filmPin } from "./film.ts";
-import { tmpdir } from "node:os";
+import { freemem, tmpdir, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { cacheHome, projectDirs, siteHolder } from "./dirs.ts";
 import { cmp, packageVersion, parseVersion, satisfies } from "./version.ts";
@@ -14,6 +14,7 @@ import { choose, FROM_PACKAGE, installCommand, newerThan, newest, notesOf, npmCo
 
 export { packageVersion, satisfies };
 import { ProjectError, openProject, targetsInWords } from "./project.ts";
+import { DEFAULT_JOBS, inGB, jobsAdvice, memoryFloor, onMathlib, WORKER_PEAK } from "./usage.ts";
 
 /** ok; fail: VisualProof cannot run until it is fixed; warn: it runs, without something; info: optional */
 export type Level = "ok" | "fail" | "warn" | "info";
@@ -105,6 +106,8 @@ export interface DoctorOptions {
   fromPackage?: boolean;
   /** the updates' mode, as VISUALPROOF_UPDATES says it (off: the registry is not asked) */
   updates?: string;
+  /** the machine's memory, available and in all, in bytes (a test's own) */
+  memory?: { available: number; total: number };
 }
 
 /** What the registry says of the releases beyond this one, in a line (UpdateSpec decisions 1–4, 7):
@@ -251,7 +254,7 @@ export function doctor(o: DoctorOptions): Report {
   }
   const from = o.roots.length ? "--root" : existsSync(join(root, "lakefile.toml")) ? "lakefile.toml" : "lakefile.lean";
   const missing = roots.filter((r) => !existsSync(join(libDir, ...r.split(".")) + ".olean"));
-  const mathlib = ["lakefile.toml", "lakefile.lean", "lake-manifest.json"].some((f) => existsSync(join(root, f)) && /mathlib/i.test(readFileSync(join(root, f), "utf8")));
+  const mathlib = onMathlib(root);
   checks.push(
     missing.length === 0
       ? { level: "ok", what: `built: ${targetsInWords(project)} (from ${from})` }
@@ -260,6 +263,19 @@ export function doctor(o: DoctorOptions): Report {
           what: `not built: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ` and ${missing.length - 5} more` : ""} (${relative(root, join(libDir, ...missing[0].split("."))) + ".olean"} is missing; from ${from})`,
           fix: `in ${root}: ${mathlib ? "lake exe cache get && " : ""}lake build${o.roots.length === 0 && from === "lakefile.lean" ? ", or name the modules to read with --root" : ""}`,
         },
+  );
+  // what the usage pass's workers may hold, at the default --jobs, against the memory available
+  const mem = o.memory ?? { available: freemem(), total: totalmem() };
+  const advice = jobsAdvice(DEFAULT_JOBS, mathlib, mem.available);
+  const had = `memory: ${inGB(mem.available)} available of ${inGB(mem.total)}`;
+  checks.push(
+    advice
+      ? {
+          level: "warn",
+          what: `${had}: on Mathlib the usage pass's workers may hold up to ${inGB(WORKER_PEAK)} each, ${inGB(advice.need)} at ${DEFAULT_JOBS} at a time (the default --jobs); it starts fewer while less than ${inGB(memoryFloor(mem.total))} is available`,
+          fix: `serve with --jobs ${advice.fits}`,
+        }
+      : { level: "ok", what: `${had}${mathlib ? `: enough for the usage pass at ${DEFAULT_JOBS} at a time` : ""}` },
   );
   const dirs = projectDirs(root, o.site, o.cache);
   for (const [what, dir] of [["site", dirs.site], ["cache", dirs.cache]] as const) {
