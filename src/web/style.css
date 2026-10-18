@@ -2734,21 +2734,24 @@ span.tm-row { color: var(--text-2); cursor: default; }
    What the two shapes whose panel is a sheet share (web/src/phone.ts, SHEETED): the side panel is a
    drawer from ☰, at the left of the view bar, and ⚙ Board and Trusted take its place. */
 @media (max-width: 640px), (max-aspect-ratio: 5/6) {
-  .side-btn { display: inline-flex; flex: none; width: 36px; justify-content: center; padding: 0; }
-  /* the side panel: a drawer from the left, over a shade */
-  body.side-open #side { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 86vw); border-radius: 0 16px 16px 0; z-index: 47; padding-top: env(safe-area-inset-top); background: var(--surface-solid); }
-  body.side-open::after { content: ""; position: fixed; inset: 0; z-index: 46; background: rgba(0, 0, 0, 0.3); }
-  /* ⚙ Board and Trusted: in the drawer's place, over it, with a way back */
-  body.side-open .side-pop {
-    left: 0 !important; top: 0 !important; bottom: 0 !important; right: auto !important; width: min(320px, 86vw) !important;
-    height: auto !important; max-height: none !important; border-radius: 0 16px 16px 0; z-index: 48;
-    background: var(--surface-solid); padding-top: calc(8px + env(safe-area-inset-top));
+  /* an upright monitor's prototype on show (web/src/monitor.ts): this page gives way to it */
+  :root:not([data-monitor]) {
+    .side-btn { display: inline-flex; flex: none; width: 36px; justify-content: center; padding: 0; }
+    /* the side panel: a drawer from the left, over a shade */
+    body.side-open #side { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(320px, 86vw); border-radius: 0 16px 16px 0; z-index: 47; padding-top: env(safe-area-inset-top); background: var(--surface-solid); }
+    body.side-open::after { content: ""; position: fixed; inset: 0; z-index: 46; background: rgba(0, 0, 0, 0.3); }
+    /* ⚙ Board and Trusted: in the drawer's place, over it, with a way back */
+    body.side-open .side-pop {
+      left: 0 !important; top: 0 !important; bottom: 0 !important; right: auto !important; width: min(320px, 86vw) !important;
+      height: auto !important; max-height: none !important; border-radius: 0 16px 16px 0; z-index: 48;
+      background: var(--surface-solid); padding-top: calc(8px + env(safe-area-inset-top));
+    }
+    body.side-open .side-back {
+      display: flex; align-items: center; gap: 4px; min-height: 40px; margin: 0 0 6px -6px; padding: 0 6px; border: 0;
+      background: none; color: var(--accent); font: 600 15px var(--font);
+    }
+    .side-back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   }
-  body.side-open .side-back {
-    display: flex; align-items: center; gap: 4px; min-height: 40px; margin: 0 0 6px -6px; padding: 0 6px; border: 0;
-    background: none; color: var(--accent); font: 600 15px var(--font);
-  }
-  .side-back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 }
 
 /* ---------------------------------------------------------------- a tall screen (PhoneSpec, "Tall screens")
@@ -2760,77 +2763,173 @@ span.tm-row { color: var(--text-2); cursor: default; }
    too. The review strip, then the selection bar, go across under the view bar; the legend and the
    zoom's box keep to the board's room, above the sheet (--room-bottom: web/src/phone.ts). */
 @media (min-width: 641px) and (max-aspect-ratio: 5/6) {
-  /* the tallest the sheet and the dock go: under the view bar, the review strip and the selection
-     bar (--strip-h, --selbar-h: main.ts) */
-  body { --sheet-most: calc(100dvh - 120px - var(--strip-h, 0px) - var(--selbar-h, 0px)); }
-  #side { display: none; }
-  body.side-open #side, body.side-open .side-pop { width: min(360px, 60vw) !important; }
-  /* the sheet: the panel, or Activity or the lost-and-found in its place, at the height the reader
-     gives it (a drag on its handle, or a tap: half the screen or the tallest, under the view bar) */
-  #panel, #activity, #lostfound {
-    top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; height: var(--sheet-h, 50dvh); max-height: var(--sheet-most);
-    padding-top: 30px; overflow-x: hidden; overscroll-behavior: contain;
-    transform: translateY(calc(100% + 60px)); transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1), height 0.2s;
+  :root:not([data-monitor]) {
+    /* the tallest the sheet and the dock go: under the view bar, the review strip and the selection
+       bar (--strip-h, --selbar-h: main.ts) */
+    body { --sheet-most: calc(100dvh - 120px - var(--strip-h, 0px) - var(--selbar-h, 0px)); }
+    #side { display: none; }
+    body.side-open #side, body.side-open .side-pop { width: min(360px, 60vw) !important; }
+    /* the sheet: the panel, or Activity or the lost-and-found in its place, at the height the reader
+       gives it (a drag on its handle, or a tap: half the screen or the tallest, under the view bar) */
+    #panel, #activity, #lostfound {
+      top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; height: var(--sheet-h, 50dvh); max-height: var(--sheet-most);
+      padding-top: 30px; overflow-x: hidden; overscroll-behavior: contain;
+      transform: translateY(calc(100% + 60px)); transition: transform 0.32s cubic-bezier(0.2, 0.9, 0.25, 1), height 0.2s;
+    }
+    #activity, #lostfound { z-index: 7; }
+    #panel.open, #activity.open, #lostfound.open { transform: none; }
+    #panel.sizing, #activity.sizing, #lostfound.sizing { transition: none; user-select: none; -webkit-user-select: none; }
+    #panel::before, #activity::before, #lostfound::before {
+      content: ""; position: sticky; top: -22px; z-index: 3; display: block; width: 44px; height: 5px; margin: -22px auto 17px;
+      border-radius: 3px; background: var(--text-3); opacity: 0.6; cursor: ns-resize; touch-action: none;
+    }
+    /* the floating windows: docked in the sheet's place, over it, side by side where there is room
+       and one over the other where there is not; a collapsed one its pill, at the dock's foot. The
+       dock places them: no edge resizes them, no drag moves them (web/src/floatwin.ts) */
+    #windows {
+      top: auto; left: 12px; right: 12px; bottom: 12px; height: var(--sheet-h, 50dvh); max-height: var(--sheet-most);
+      display: flex; flex-direction: column; justify-content: flex-end; gap: 8px;
+    }
+    /* its handle, over the windows while one is open there, sets the dock's height as the sheet's does
+       (the same height: web/src/phone.ts) */
+    #windows:has(> :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])) { padding-top: 14px; }
+    #windows:has(> :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden]))::before {
+      content: ""; position: absolute; top: 0; left: 50%; width: 120px; height: 14px; transform: translateX(-50%);
+      pointer-events: auto; cursor: ns-resize; touch-action: none;
+      background: linear-gradient(var(--text-3), var(--text-3)) center 4px / 44px 5px no-repeat; opacity: 0.6; border-radius: 3px;
+    }
+    /* the declaration's source first, then the reference beside it, then a conversation */
+    #windows > .sw-win { order: 1; }
+    #windows > .pw-win { order: 2; }
+    #windows > #following { order: 3; }
+    #windows > .sw-win, #windows > .pw-win, #windows > #following.talking {
+      position: relative !important; inset: auto !important; transform: none;
+      width: auto !important; height: auto !important; min-width: 0 !important; min-height: 0 !important; max-width: none !important; max-height: none !important;
+      flex: 1 1 0; z-index: auto !important;
+    }
+    #windows > .collapsed { flex: none; align-self: flex-start; max-width: min(360px, 100%) !important; }
+    #windows .fl-rz { display: none !important; }
+    @media (min-width: 960px) { #windows { flex-direction: row; align-items: stretch; } #windows > .collapsed { align-self: flex-end; } }
+    #windows .sw-head, #windows .pw-head, #windows > #following.talking > .fl-strip { cursor: default; }
+    /* Export's window: in the sheet's place too, the outline it arranges above it */
+    #export-modal { top: auto; left: 12px; right: 12px; bottom: 12px; }
+    #export-modal .ex-box { width: auto; max-height: var(--sheet-h, 50dvh); }
+    /* under the view bar, across the screen: the review strip, then the selection bar (--strip-h:
+       main.ts) */
+    #lensbar, #tm-kept { top: 108px; left: 12px; right: 12px; transform: none; max-width: none; }
+    #selbar { top: calc(108px + var(--strip-h, 0px)); left: 12px; right: 12px; width: auto; }
+    /* the legend and the zoom's box at the foot of the board's room, above the sheet or the dock */
+    #foot { left: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
+    #zoom { right: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
+    #following:not(.talking), #whatsnew { bottom: calc(var(--room-bottom, 12px) + 40px); }
+    #welcome { left: 12px; bottom: calc(var(--room-bottom, 12px) + 40px); }
+    /* the bar's popovers: at its right, under it, never past the screen's edge */
+    .share-wrap, .library-wrap { position: static; }
+    #share-pop, #library-pop { top: calc(100% + 6px); right: 0; }
+    /* the help: as wide as the screen allows, the film over its chapters */
+    .help-box, .help-box:has([data-help-pane="tips"]:not([hidden])) { width: calc(100vw - 32px); max-height: calc(100dvh - 32px); }
   }
-  #activity, #lostfound { z-index: 7; }
-  #panel.open, #activity.open, #lostfound.open { transform: none; }
-  #panel.sizing, #activity.sizing, #lostfound.sizing { transition: none; user-select: none; -webkit-user-select: none; }
-  #panel::before, #activity::before, #lostfound::before {
-    content: ""; position: sticky; top: -22px; z-index: 3; display: block; width: 44px; height: 5px; margin: -22px auto 17px;
-    border-radius: 3px; background: var(--text-3); opacity: 0.6; cursor: ns-resize; touch-action: none;
-  }
-  /* the floating windows: docked in the sheet's place, over it, side by side where there is room
-     and one over the other where there is not; a collapsed one its pill, at the dock's foot. The
-     dock places them: no edge resizes them, no drag moves them (web/src/floatwin.ts) */
-  #windows {
-    top: auto; left: 12px; right: 12px; bottom: 12px; height: var(--sheet-h, 50dvh); max-height: var(--sheet-most);
-    display: flex; flex-direction: column; justify-content: flex-end; gap: 8px;
-  }
-  /* its handle, over the windows while one is open there, sets the dock's height as the sheet's does
-     (the same height: web/src/phone.ts) */
-  #windows:has(> :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])) { padding-top: 14px; }
-  #windows:has(> :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden]))::before {
-    content: ""; position: absolute; top: 0; left: 50%; width: 120px; height: 14px; transform: translateX(-50%);
-    pointer-events: auto; cursor: ns-resize; touch-action: none;
-    background: linear-gradient(var(--text-3), var(--text-3)) center 4px / 44px 5px no-repeat; opacity: 0.6; border-radius: 3px;
-  }
-  /* the declaration's source first, then the reference beside it, then a conversation */
-  #windows > .sw-win { order: 1; }
-  #windows > .pw-win { order: 2; }
-  #windows > #following { order: 3; }
-  #windows > .sw-win, #windows > .pw-win, #windows > #following.talking {
-    position: relative !important; inset: auto !important; transform: none;
-    width: auto !important; height: auto !important; min-width: 0 !important; min-height: 0 !important; max-width: none !important; max-height: none !important;
-    flex: 1 1 0; z-index: auto !important;
-  }
-  #windows > .collapsed { flex: none; align-self: flex-start; max-width: min(360px, 100%) !important; }
-  #windows .fl-rz { display: none !important; }
-  @media (min-width: 960px) { #windows { flex-direction: row; align-items: stretch; } #windows > .collapsed { align-self: flex-end; } }
-  #windows .sw-head, #windows .pw-head, #windows > #following.talking > .fl-strip { cursor: default; }
-  /* Export's window: in the sheet's place too, the outline it arranges above it */
-  #export-modal { top: auto; left: 12px; right: 12px; bottom: 12px; }
-  #export-modal .ex-box { width: auto; max-height: var(--sheet-h, 50dvh); }
-  /* under the view bar, across the screen: the review strip, then the selection bar (--strip-h:
-     main.ts) */
-  #lensbar, #tm-kept { top: 108px; left: 12px; right: 12px; transform: none; max-width: none; }
-  #selbar { top: calc(108px + var(--strip-h, 0px)); left: 12px; right: 12px; width: auto; }
-  /* the legend and the zoom's box at the foot of the board's room, above the sheet or the dock */
-  #foot { left: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
-  #zoom { right: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
-  #following:not(.talking), #whatsnew { bottom: calc(var(--room-bottom, 12px) + 40px); }
-  #welcome { left: 12px; bottom: calc(var(--room-bottom, 12px) + 40px); }
-  /* the bar's popovers: at its right, under it, never past the screen's edge */
-  .share-wrap, .library-wrap { position: static; }
-  #share-pop, #library-pop { top: calc(100% + 6px); right: 0; }
-  /* the help: as wide as the screen allows, the film over its chapters */
-  .help-box, .help-box:has([data-help-pane="tips"]:not([hidden])) { width: calc(100vw - 32px); max-height: calc(100dvh - 32px); }
 }
 /* a tall screen narrower than the bar's words: Share, the library and Export by their icons; the
    focus gives way to the Time Machine, as on a phone */
 @media (min-width: 641px) and (max-width: 1000px) and (max-aspect-ratio: 5/6) {
-  body.tm .focus-wrap { display: none; }
+  :root:not([data-monitor]) {
+    body.tm .focus-wrap { display: none; }
+  }
 }
 @media (min-width: 641px) and (max-width: 900px) and (max-aspect-ratio: 5/6) {
-  #share-btn > span, #library-btn > span, #export-btn > span { display: none; }
-  #bar { gap: 10px; }
+  :root:not([data-monitor]) {
+    #share-btn > span, #library-btn > span, #export-btn > span { display: none; }
+    #bar { gap: 10px; }
+  }
 }
+
+/* ---------------------------------------------------------------- an upright monitor: prototypes
+
+   The owner's question of 2026-10-18 (web/src/monitor.ts): three layouts for a monitor turned on its
+   side, used with a mouse, each on the root's data-monitor while it is on show; 0.4.3's tall page
+   otherwise. Every desktop affordance stays. The parts are placed by --mon-low (the lower part's
+   height), --mon-side-w, --mon-panel-w and --mon-room-bottom (the foot of the board's room), which
+   the splitters (.mon-split) change. */
+@media (min-width: 1000px) and (max-aspect-ratio: 5/6) and (pointer: fine) {
+  /* all three: the selection bar under the modes, as on a desktop; the review strip at the board's
+     top left beside it; the legend and the zoom's box at the foot of the board's room */
+  :root[data-monitor] {
+    #lensbar, #tm-kept { left: calc(var(--inset-left, 0px) + 12px); transform: none; max-width: calc(100vw - var(--inset-left, 0px) - 448px); }
+    #zoom { right: 12px; bottom: var(--mon-room-bottom, 12px); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
+    #foot { bottom: var(--mon-room-bottom, 12px); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
+    #welcome, #whatsnew, #following:not(.talking) { bottom: calc(var(--mon-room-bottom, 12px) + 40px); }
+    .mon-split { position: fixed; z-index: 8; touch-action: none; }
+    .mon-split-y { cursor: ns-resize; }
+    .mon-split-x { cursor: ew-resize; }
+    .mon-split::after { content: ""; position: absolute; border-radius: 3px; background: var(--text-3); opacity: 0.45; transition: opacity 0.15s, background 0.15s; }
+    .mon-split-y::after { left: calc(50% - 22px); width: 44px; top: 2px; height: 4px; }
+    .mon-split-x::after { top: calc(50% - 22px); height: 44px; left: 2px; width: 4px; }
+    .mon-split:hover::after, .mon-split.on::after { opacity: 1; background: var(--accent); }
+  }
+  /* b and c: the lower part a work surface under the board, the board's own width */
+  :root[data-monitor="b"] body::before, :root[data-monitor="c"] body::before {
+    content: ""; position: fixed; left: 12px; right: 12px; bottom: 12px; height: var(--mon-low); z-index: 5; pointer-events: none;
+    border-radius: 18px; background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: inset 0 0 0 1px var(--line);
+  }
+
+  /* a: the desktop reflowed — the side panel down the left, the whole height; the panel a pane under
+     the board across the rest of the width, from the bottom; the windows float, opening in the
+     pane's place (web/src/monitor.ts, windowRegion) */
+  :root[data-monitor="a"] {
+    #side { top: 108px; bottom: 12px; width: var(--mon-side-w); }
+    #panel, #activity, #lostfound {
+      top: auto; left: calc(20px + var(--mon-side-w)); right: 12px; bottom: 12px; width: auto; height: var(--mon-low);
+      transform: translateY(calc(100% + 60px));
+    }
+    #panel.open, #activity.open, #lostfound.open { transform: none; }
+    #foot { left: calc(20px + var(--mon-side-w)); }
+  }
+
+  /* b: the board above, a work area below — the side panel at the board's left; across the bottom
+     the panel (or what takes its place) and each open window side by side as panes, splitters
+     between them; the windows do not float */
+  :root[data-monitor="b"] {
+    #side { top: 108px; bottom: calc(var(--mon-low) + 20px); width: var(--mon-side-w); }
+    #panel, #activity, #lostfound {
+      top: auto; bottom: 12px; left: 12px; width: var(--mon-panel-w); height: var(--mon-low);
+      transform: translateY(calc(100% + 60px));
+    }
+    #panel.open, #activity.open, #lostfound.open { transform: none; }
+    #foot { left: calc(20px + var(--mon-side-w)); }
+    #windows {
+      top: auto; bottom: 12px; right: 12px; left: 12px; height: var(--mon-low);
+      display: flex; flex-direction: row; align-items: stretch; gap: 8px;
+    }
+    body:has(:is(#panel, #activity, #lostfound).open) #windows { left: calc(20px + var(--mon-panel-w)); }
+    /* alone in the work area, the panel takes its width; each window opened takes its share */
+    body:not(:has(#windows > :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden]))) :is(#panel, #activity, #lostfound) { width: auto; right: 12px; }
+    #windows > :is(.sw-win, .pw-win, #following.talking) {
+      position: relative !important; inset: auto !important; transform: none;
+      width: auto !important; height: auto !important; min-width: 0 !important; min-height: 0 !important; max-width: none !important; max-height: none !important;
+      flex: 1 1 0; z-index: auto !important;
+    }
+    #windows > .collapsed { flex: none; align-self: flex-end; max-width: 280px !important; }
+    #windows .fl-rz { display: none !important; }
+    #windows .sw-head, #windows .pw-head, #windows > #following.talking > .fl-strip { cursor: default; }
+    #windows > .sw-win { order: 1; }
+    #windows > .pw-win { order: 2; }
+    #windows > #following { order: 3; }
+  }
+
+  /* c: the board above, the desktop below — the side panel at the left and the panel at the right
+     under the board, as on a desktop, the windows floating, opening between them */
+  :root[data-monitor="c"] {
+    #side { top: auto; bottom: 12px; left: 12px; width: var(--mon-side-w); height: var(--mon-low); }
+    #panel, #activity, #lostfound { top: auto; bottom: 12px; right: 12px; width: var(--mon-panel-w); height: var(--mon-low); }
+    #foot { left: 12px; }
+  }
+}
+/* the switch between the prototypes, while they are being chosen */
+#monitor-switch {
+  position: fixed; left: 50%; bottom: 4px; transform: translateX(-50%); z-index: 50; display: flex; align-items: center; gap: 2px;
+  padding: 3px; border-radius: 999px; font-size: 12px; box-shadow: var(--shadow);
+}
+#monitor-switch .mon-l { padding: 0 8px 0 10px; color: var(--text-2); }
+#monitor-switch button { border: 0; background: none; padding: 3px 11px; border-radius: 999px; font: 600 12px var(--font); color: var(--text-2); cursor: pointer; }
+#monitor-switch button.on { background: var(--accent); color: white; }

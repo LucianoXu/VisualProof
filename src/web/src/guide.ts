@@ -14,6 +14,7 @@ import { dragKeyName, MAC } from "./drag.ts";
 import { escapeHtml } from "./highlight.ts";
 import type { Store } from "./store.ts";
 import { isPhone, isTall, sheeted } from "./phone.ts";
+import { monitorRoom } from "./monitor.ts";
 import { typing } from "./typing.ts";
 import type { Tool } from "./selection.ts";
 import { TIPS, TOUR } from "./tips.ts";
@@ -248,6 +249,9 @@ function around(...sels: string[]): DOMRect | null {
  *  phone or a tall screen, whose side panel is a drawer, above the panel's sheet and under the
  *  selection bar across the screen (PhoneSpec decisions 11 and 22). */
 function board(): DOMRect {
+  // an upright monitor's prototype (web/src/monitor.ts) knows its own
+  const room = monitorRoom();
+  if (room) return room;
   const side = $("#side")?.getBoundingClientRect();
   const panel = $("#panel.open")?.getBoundingClientRect();
   const sheet = sheeted();

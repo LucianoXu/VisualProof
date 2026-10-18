@@ -109,6 +109,7 @@ import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
 import { isPhone, isTall, Phone, tallInsets } from "./phone.ts";
+import { MonitorLayout, monitorInsets } from "./monitor.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import { sourceLine, titleOf, untilStill } from "./artwork.ts";
@@ -1315,6 +1316,8 @@ async function boot(): Promise<void> {
     resized: () => syncInsets(),
     modeHint: (m) => TAP_HINT[m as Tool] ?? "",
   });
+  // an upright monitor's prototype layouts, while one is being chosen (web/src/monitor.ts)
+  new MonitorLayout({ resized: () => syncInsets() });
   const syncInsets = () => {
     const side = $("#side").getBoundingClientRect();
     // the panel, or the timeline's drawer in its place; the selection bar heads that column, which
@@ -1339,7 +1342,7 @@ async function boot(): Promise<void> {
       : isTall()
         ? // a tall screen (PhoneSpec, "Tall screens"): the whole width, above the sheet and the dock
           tallInsets()
-        : {
+        : monitorInsets() ?? {
           left: side.width ? side.right + 8 : 0,
           // offsetWidth, not the bounding box: the panel may still be sliding in
           right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,

@@ -27,20 +27,25 @@ export const TALL = "(min-width: 641px) and (max-aspect-ratio: 5/6)";
 /** the shapes whose panel is a sheet and whose side panel a drawer: a phone, a tall screen (the
  *  `max-width: 640px` and `max-aspect-ratio: 5/6` blocks of `web/style.css`) */
 export const SHEETED = "(max-width: 640px), (max-aspect-ratio: 5/6)";
+/** an upright monitor with a mouse: the screens the prototypes of web/src/monitor.ts are for (the
+ *  owner's question of 2026-10-18), where one is chosen; 0.4.3's tall page otherwise */
+export const MONITOR = "(min-width: 1000px) and (max-aspect-ratio: 5/6) and (pointer: fine)";
 
 const matches = (q: string) => typeof matchMedia === "function" && matchMedia(q).matches;
+/** a monitor's prototype is on show (web/src/monitor.ts): the tall page gives way to it */
+const prototyped = () => typeof document === "object" && document.documentElement.hasAttribute("data-monitor");
 
 export function isPhone(): boolean {
   return matches(PHONE);
 }
 
 export function isTall(): boolean {
-  return matches(TALL);
+  return matches(TALL) && !prototyped();
 }
 
 /** The panel is a sheet and the side panel a drawer: a phone, or a tall screen. */
 export function sheeted(): boolean {
-  return matches(SHEETED);
+  return matches(SHEETED) && !prototyped();
 }
 
 /** The shape a screen of `w` × `h` px is: what TALL, PHONE and SHEETED decide, for a size (the

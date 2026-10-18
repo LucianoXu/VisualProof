@@ -16,6 +16,15 @@
 // tested without a browser (test/floatwin.test.ts).
 
 import { sheeted } from "./phone.ts";
+import { windowRegion, windowsDocked } from "./monitor.ts";
+
+/** `r` moved and shrunk into `region`, where there is one (web/src/monitor.ts: where a window the
+ *  reader has not moved opens on an upright monitor). */
+export function intoRegion(r: Rect, region: Rect | null): Rect {
+  if (!region) return r;
+  const w = Math.min(r.w, region.w), h = Math.min(r.h, region.h);
+  return { x: fit(r.x, region.x, region.x + region.w - w), y: fit(r.y, region.y, region.y + region.h - h), w, h };
+}
 
 export interface Rect {
   x: number;
@@ -52,6 +61,13 @@ export const CASCADE = 28;
 
 /** `v` within [lo, hi], `hi` winning where the range is empty (a viewport smaller than the least) */
 const fit = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+
+/** A fitted window's bounds within `region`, where there is one. */
+function capped(b: { max: Size; min: Size }, region: Rect | null): { max: Size; min: Size } {
+  if (!region) return b;
+  const max = { w: Math.min(b.max.w, region.w), h: Math.min(b.max.h, region.h) };
+  return { max, min: { w: Math.min(b.min.w, max.w), h: Math.min(b.min.h, max.h) } };
+}
 
 /** The largest a window may be: the viewport less its margins. */
 export function maxSize(vp: Size): Size {
@@ -359,10 +375,10 @@ export class FloatWindow {
       this.fitting = true;
       // collapsed, the pill stays at the corner of the window as it was
       if (this.collapsed) return this.place();
-      const { max, min } = this.o.fit.bounds(vp);
+      const { max, min } = capped(this.o.fit.bounds(vp), windowRegion(vp));
       Object.assign(this.el.style, { width: "max-content", height: "", minWidth: px(min.w), minHeight: px(min.h), maxWidth: px(max.w), maxHeight: px(max.h) });
       return this.refit();
-    } else this.rect = this.o.start ? this.o.start(vp) : clampRect({ x: EDGE, y: EDGE, w: this.o.min.w, h: this.o.min.h }, vp, this.o.min);
+    } else this.rect = intoRegion(this.o.start ? this.o.start(vp) : clampRect({ x: EDGE, y: EDGE, w: this.o.min.w, h: this.o.min.h }, vp, this.o.min), windowRegion(vp));
     this.place();
   }
 
@@ -370,7 +386,7 @@ export class FloatWindow {
   private refit(): void {
     const size = { w: this.el.offsetWidth, h: this.el.offsetHeight };
     if (!size.w || !size.h || !this.o.fit) return;
-    this.rect = this.o.fit.at(size, viewport());
+    this.rect = intoRegion(this.o.fit.at(size, viewport()), windowRegion(viewport()));
     this.place();
   }
 
@@ -451,7 +467,7 @@ export class FloatWindow {
   private press(e: PointerEvent): void {
     if (!this.o.live() || this.collapsed || this.dragging || !e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
     // docked on a phone or a tall screen (style.css; PhoneSpec decisions 12 and 21): placed there, not by hand
-    if (sheeted()) return;
+    if (sheeted() || windowsDocked()) return;
     const t = e.target as Element;
     const edge = t.closest<HTMLElement>("[data-rz]");
     const bar = t.closest<HTMLElement>(this.o.handle);
