@@ -22,6 +22,15 @@ export function readerFocus(mine: string | null | undefined, view: string | null
   return isTarget(mine) && (mine === view || may.includes(mine)) ? mine : view;
 }
 
+/** The reader's own focus on a view, as their place there remembers it (web/src/store.ts, Seen),
+ *  for a page opened at an address naming that view: the address carries none, and the reader's
+ *  choice is remembered per view as the camera is (ViewSpec decision 28), across a reload as across
+ *  a tab switched to. Nothing where they chose nothing: the view's own. */
+export function keptFocus(seen: { focus?: unknown } | undefined): { focus?: string | null } {
+  const f = seen?.focus;
+  return f === null || typeof f === "string" ? { focus: f } : {};
+}
+
 /** What the menu offers: the targets linked to the view first, in the order they were linked (the
  *  owner's decision of 2026-10-11), then the view's own focus where it is none of them, then the
  *  other targets the board holds, and none. */

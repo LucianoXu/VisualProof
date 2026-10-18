@@ -15,7 +15,7 @@ import { cleanView } from "../src/shared/collab.ts";
 import { LAYOUT_VERSION } from "../src/shared/graph.ts";
 import { parseQuery, printQuery } from "../src/shared/query.ts";
 import { focusFrom, summary, ViewBook, viewFocus } from "../src/shared/views.ts";
-import { focusChoices, readerFocus } from "../src/web/src/focus.ts";
+import { focusChoices, keptFocus, readerFocus } from "../src/web/src/focus.ts";
 import { site } from "./site.ts";
 import type { Json } from "./site.ts";
 
@@ -67,6 +67,19 @@ test("the reader's focus is their own: the view's where they chose nothing, a ta
   assert.deepEqual(focusChoices("A.t", ["B.v"], ["A.u"]), ["B.v", "A.t", "A.u", null]);
   // and a reader may choose a target linked to the view that the board does not hold
   assert.equal(readerFocus("B.v", "A.t", isTarget, ["B.v", ...held]), "B.v");
+});
+
+test("a page opened at an address takes the reader's own focus there as their place remembers it: the address carries none", () => {
+  // chosen: a target, or none
+  assert.deepEqual(keptFocus({ focus: "A.u" }), { focus: "A.u" });
+  assert.deepEqual(keptFocus({ focus: null }), { focus: null });
+  // nothing chosen, nothing remembered, or something no page wrote: the view's own
+  assert.deepEqual(keptFocus({}), {});
+  assert.deepEqual(keptFocus(undefined), {});
+  assert.deepEqual(keptFocus({ focus: ["A.t"] }), {});
+  // the place it makes, read as the page reads it (main.ts, place): what the reader chose wins
+  const mine = keptFocus({ focus: null }).focus;
+  assert.equal(readerFocus(mine, "A.t", isTarget, ["A.t"]), null);
 });
 
 test("a view's focus is kept with it: a Key view's is its target, a copy takes it, setting it keeps a view nobody kept", () => {

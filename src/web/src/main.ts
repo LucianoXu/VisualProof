@@ -74,7 +74,7 @@ import { LostAndFound } from "./lostfound.ts";
 import { popHtml, stamp } from "./buildpop.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
-import { FocusMenu, readerFocus } from "./focus.ts";
+import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
 import { Guide, restsOnCounts } from "./guide.ts";
 import type { RestsOn } from "./guide.ts";
 import { reducedMotion } from "./tipcards.ts";
@@ -4184,7 +4184,9 @@ async function boot(): Promise<void> {
   window.addEventListener("resize", syncInsets);
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
-  const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null } : null;
+  // the reader's own focus there, which the address does not carry, as they left it (ViewSpec
+  // decision 28)
+  const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null, ...keptFocus(S.seen[first]) } : null;
   if (!(await nav.select(first, firstPlace))) await nav.show(PROJECT, firstPlace);
   listen();
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
