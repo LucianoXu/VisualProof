@@ -484,6 +484,45 @@ test("Follow starts following the asker as starting to follow does: their state 
   }
 });
 
+test("a read-only reader sends no heartbeat, and follows the others: a click on their initials", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const dom = fakePage();
+  const g = globalThis as unknown as { document: Record<string, unknown> };
+  g.document.addEventListener = () => {};
+  // the presence bar's clicks, as the page wires them
+  const clicks: ((e: unknown) => void)[] = [];
+  const peers = (g.document.querySelector as (s: string) => Record<string, unknown>)("#peers");
+  peers.addEventListener = (type: string, f: (e: unknown) => void) => type === "click" && clicks.push(f);
+  try {
+    const applied: (string | null)[] = [];
+    const beats: unknown[] = [];
+    const view = (sel: string): PresenceView => ({ ...VIEW, sel });
+    const data = { privateSession: null, name: null, identity: async () => ({ mode: "declared", name: null, readOnly: { by: "public" } }), presence: (...a: unknown[]) => beats.push(a) };
+    const people = new People(data as unknown as DataSource, { data: {}, save() {} } as unknown as Store, {
+      view: () => view("me"),
+      describe: () => "",
+      reveal: () => {},
+      stripDrawn: () => {},
+      follow: (v) => applied.push(v.sel),
+      changed: () => {},
+      renamed: () => {},
+      talkTo: () => {},
+      unfollowed: () => {},
+    });
+    await people.init();
+    people.start();
+    people.connected({ id: "me1", token: "secret", private: false } as unknown as StreamHello);
+    people.setPeers([{ id: "b1", name: "Bob", view: view("Bob.place"), idle: false }] as Peer[]);
+    const badge = { dataset: { person: "n:Bob" } };
+    for (const f of clicks) f({ target: { closest: () => badge }, shiftKey: false });
+    assert.deepEqual([people.followedKey, applied], ["n:Bob", ["Bob.place"]]);
+    t.mock.timers.tick(60_000);
+    assert.deepEqual(beats, [], "nobody is told of a read-only reader");
+  } finally {
+    dom.restore();
+  }
+});
+
 test("an agent with a token is one person by its token: another agent giving its name neither leads its followers nor takes its conversation", () => {
   const dom = fakePage();
   try {

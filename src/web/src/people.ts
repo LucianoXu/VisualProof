@@ -375,9 +375,11 @@ export class People {
 
   // ---------------------------------------------------------------- who else is here
 
-  /** Start telling the others where this page is. */
+  /** Start telling the others where this page is, and following them. A snapshot has nobody; a
+   *  read-only reader tells nothing (no heartbeat: beat) but may follow the others (CollabSpec
+   *  decision 11). */
   start(): void {
-    if (this.mode === "none") return;
+    if (this.mode === "none" && !this.readOnly) return;
     const input = () => {
       const was = this.idle;
       this.lastInput = Date.now();
