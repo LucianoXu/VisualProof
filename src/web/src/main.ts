@@ -4042,6 +4042,23 @@ async function boot(): Promise<void> {
   const input = $<HTMLInputElement>("#search");
   const searchBox = new SearchBox(input, $("#results"), g, { go: (i) => go(i) });
 
+  // a file chosen by a button that is a label holding a hidden file field (the library's Upload, a
+  // missing file's Add it…): Enter or Space on it opens the chooser, as a click does — the control's
+  // own press, not a key of the page's
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      const t = e.target as HTMLElement | null;
+      const press = e.key === "Enter" || e.key === " ";
+      const field = press && t?.matches?.("label[role=button]") ? t.querySelector<HTMLInputElement>("input[type=file]") : null;
+      if (!field) return;
+      e.preventDefault();
+      e.stopPropagation();
+      field.click();
+    },
+    true,
+  );
+
   // ---------------------------------------------------------------- keyboard
 
   window.addEventListener("keydown", (e) => {

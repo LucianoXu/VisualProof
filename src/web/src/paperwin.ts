@@ -309,7 +309,7 @@ export class PaperWin {
     this.host.innerHTML =
       `<div class="pw-missing"><p><b>This server does not have the file of ${escapeHtml(f.title)}.</b> Its record and its links came with the review; its bytes are kept by the server that added it.</p>` +
       `<p>Add it here: only a file of exactly that content is taken (SHA-256 <code>${f.sha.slice(0, 16)}…</code>, ${sizeWords(f.size)}).</p>` +
-      `<label class="rv-btn primary pw-add"><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif" data-pw-fill hidden>Choose the file…</label><span class="pw-fill-why"></span></div>`;
+      `<label class="rv-btn primary pw-add" tabindex="0" role="button"><input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif" data-pw-fill hidden>Choose the file…</label><span class="pw-fill-why"></span></div>`;
     this.host.querySelector<HTMLInputElement>("[data-pw-fill]")!.addEventListener("change", (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (file) void this.fill(f, file);
