@@ -159,6 +159,8 @@ const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything
 /** What a tap selects with each tool, in a few words: under the tool's name in a phone's ⋯, where
  *  nothing is said while a pointer rests on a button (web/src/phone.ts). */
 const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap", apps: "everything that uses it" };
+/** What a link to a view the server no longer has opens instead, and why (ViewSpec decision 6). */
+const VIEW_GONE = "This link's view is gone: it was deleted, or nobody kept it and everyone closed it. Here is the Project.";
 
 interface GraphInfo {
   version: number;
@@ -889,9 +891,13 @@ async function boot(): Promise<void> {
   const filmLink = tipsIn(location.hash);
   let filmPart = "";
   let first = linked ? linked.view ?? PROJECT : S.active ?? PROJECT;
+  /** why the view the address names could not be opened: said once the page is there, which shows
+   *  the Project instead */
+  let notOpened: string | null = null;
   if (linked?.scope) {
     const v = await views.open(linked.scope, { version: linked.version ?? null });
     if (typeof v !== "string") first = v.id;
+    else notOpened = `This link's view could not be opened: ${v}`;
   }
 
   const notes = new Notes($("#notes"));
@@ -2847,8 +2853,12 @@ async function boot(): Promise<void> {
     if (tm.active) await tm.close();
     if (id && (await nav.select(id, to))) return atBuild();
     // a view nobody keeps opens again at the build it showed
-    if (st.scope && (await nav.open(st.scope, to, { version: st.version ?? null })) === true) return atBuild();
+    const opened = st.scope ? await nav.open(st.scope, to, { version: st.version ?? null }) : false;
+    if (opened === true) return atBuild();
+    // gone, or never there (an address typed or kept): the Project, and why
     await nav.select(PROJECT, to);
+    if (typeof opened === "string") say(`This link's view could not be opened: ${opened}`);
+    else if (id && id !== PROJECT && !views.summary(id)) say(VIEW_GONE);
   };
   window.addEventListener("popstate", (e) => {
     const st = decodeState(location.hash);
@@ -2867,6 +2877,9 @@ async function boot(): Promise<void> {
         writeAddress(false);
       })
       .then(() => {
+        // the address names what is shown (CanvasSpec, "Navigation"), also where it named a view
+        // that is gone or what no state reads as
+        writeAddress(false);
         renderNav();
         people.report();
       });
@@ -4186,8 +4199,12 @@ async function boot(): Promise<void> {
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
   const firstPlace: Place | null = linked ? { mode: linked.mode, picks: linked.picks, shown: linked.shown, cam: null } : null;
-  if (!(await nav.select(first, firstPlace))) await nav.show(PROJECT, firstPlace);
+  if (!(await nav.select(first, firstPlace))) {
+    await nav.show(PROJECT, firstPlace);
+    if (linked?.view && linked.view === first && !views.summary(first)) notOpened = VIEW_GONE;
+  }
   listen();
+  if (notOpened) say(notOpened);
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
   if (snap) await openSnapshot(snap);
