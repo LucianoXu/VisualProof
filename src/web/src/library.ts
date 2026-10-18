@@ -83,6 +83,44 @@ export function libraryHead(c: Choosing | null): string {
   );
 }
 
+/** The host of the address a file came from; the address itself where it is none (a log written
+ *  by hand), rather than a list that cannot be drawn. */
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+};
+
+/** A file's row in the library: its title (a field while it is renamed), its record in a line, and
+ *  what can be done with it — opened (or chosen, choosing a file for something), renamed, archived or
+ *  restored, its bytes added where this server lacks them; nothing that would be refused where the
+ *  page changes nothing (`readOnly`: a read-only reader, a snapshot of the page). */
+export function libraryRow(f: FileRecord & { have: boolean; links: number }, archived: boolean, s: { renaming: string | null; choosing: Choosing | null; readOnly: boolean }): string {
+  const e = escapeHtml;
+  const from = f.url ? `<a href="${e(f.url)}" target="_blank" rel="noopener noreferrer" title="${e(f.url)}">${e(hostOf(f.url))}</a>` : f.name ? `uploaded as ${e(f.name)}` : "uploaded";
+  const meta = [f.type === "pdf" ? `PDF${f.pages ? ` · ${f.pages} p.` : ""}` : f.type.toUpperCase(), sizeWords(f.size), `${f.agent ? "🤖 " : ""}${e(f.by)}, ${libraryDate(f.at)}`, from, f.links ? `${f.links} link${f.links === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+  const title =
+    s.renaming === f.sha
+      ? `<form data-lb-rename="${f.sha}" class="lb-rename"><input value="${e(f.title)}" maxlength="300" aria-label="Title"><button class="rv-btn primary">Save</button></form>`
+      : `<button class="lb-title" data-lb-open="${f.sha}" title="${!s.choosing ? "Open it in the reference window" : "link" in s.choosing ? "Link to a place in it" : f.type === "pdf" ? "Attach it to the note, whole or a clip of it" : "Attach it to the note"}">${f.type === "pdf" ? "📄" : "🖼"} ${e(f.title)}</button>`;
+  // where nothing can be changed (a read-only reader, a snapshot of the page) nothing is offered
+  // that would be refused: the list says why, once, under its head
+  const no = s.readOnly;
+  const acts = no
+    ? ""
+    : archived
+      ? `<button class="link" data-lb-restore="${f.sha}">Restore</button>`
+      : s.choosing
+        ? ""
+        : `<button class="link" data-lb-rename-start="${f.sha}">Rename</button><button class="link" data-lb-archive="${f.sha}" title="Archive: it leaves the library, its links say so; restored from Archived">Archive</button>`;
+  const missing = f.have
+    ? ""
+    : `<div class="lb-missing">This server does not have this file.${no ? "" : ` <label class="link">Add it…<input type="file" data-lb-upload="${f.sha}" hidden></label> <span class="muted">(only a file of exactly this content)</span>`}</div>`;
+  return `<div class="lb-row${archived ? " archived" : ""}">${title}<div class="lb-meta">${meta}</div>${missing}<div class="lb-acts">${acts}</div></div>`;
+}
+
 export class Library {
   private btn: HTMLElement;
   private pop: HTMLElement;
@@ -264,23 +302,8 @@ export class Library {
     }
   }
 
-  private row(f: FileRecord & { have: boolean; links: number }, archived: boolean): string {
-    const e = escapeHtml;
-    const from = f.url ? `<a href="${e(f.url)}" target="_blank" rel="noopener noreferrer" title="${e(f.url)}">${e(new URL(f.url).hostname)}</a>` : f.name ? `uploaded as ${e(f.name)}` : "uploaded";
-    const meta = [f.type === "pdf" ? `PDF${f.pages ? ` · ${f.pages} p.` : ""}` : f.type.toUpperCase(), sizeWords(f.size), `${f.agent ? "🤖 " : ""}${e(f.by)}, ${libraryDate(f.at)}`, from, f.links ? `${f.links} link${f.links === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
-    const title =
-      this.renaming === f.sha
-        ? `<form data-lb-rename="${f.sha}" class="lb-rename"><input value="${e(f.title)}" maxlength="300" aria-label="Title"><button class="rv-btn primary">Save</button></form>`
-        : `<button class="lb-title" data-lb-open="${f.sha}" title="${!this.choosing ? "Open it in the reference window" : "link" in this.choosing ? "Link to a place in it" : f.type === "pdf" ? "Attach it to the note, whole or a clip of it" : "Attach it to the note"}">${f.type === "pdf" ? "📄" : "🖼"} ${e(f.title)}</button>`;
-    const acts = archived
-      ? `<button class="link" data-lb-restore="${f.sha}">Restore</button>`
-      : this.choosing
-        ? ""
-        : `<button class="link" data-lb-rename-start="${f.sha}">Rename</button><button class="link" data-lb-archive="${f.sha}" title="Archive: it leaves the library, its links say so; restored from Archived">Archive</button>`;
-    const missing = f.have
-      ? ""
-      : `<div class="lb-missing">This server does not have this file. <label class="link">Add it…<input type="file" data-lb-upload="${f.sha}" hidden></label> <span class="muted">(only a file of exactly this content)</span></div>`;
-    return `<div class="lb-row${archived ? " archived" : ""}">${title}<div class="lb-meta">${meta}</div>${missing}<div class="lb-acts">${acts}</div></div>`;
+  private row(f: Listed["files"][number], archived: boolean): string {
+    return libraryRow(f, archived, { renaming: this.renaming, choosing: this.choosing, readOnly: !!this.hooks.cannot() });
   }
 
   private render(): void {

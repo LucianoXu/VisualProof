@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { defaultLabel, lineRects, quoteInRegion, quoteRects } from "../src/shared/library.ts";
 import type { Region, Word } from "../src/shared/library.ts";
-import { libraryDate, libraryHead } from "../src/web/src/library.ts";
+import { libraryDate, libraryHead, libraryRow } from "../src/web/src/library.ts";
 import { tinyPdf } from "./pdf.ts";
 import { site } from "./site.ts";
 
@@ -114,6 +114,23 @@ test("the library writes a file's date in English, whatever the browser's langua
   assert.equal(libraryDate("not a date"), "");
   // the library's rows use it
   assert.match(readFileSync(new URL("../src/web/src/library.ts", import.meta.url), "utf8"), /\$\{libraryDate\(f\.at\)\}/);
+});
+
+test("a read-only page's library offers nothing it would refuse: no Rename, Archive, Restore or Add it", () => {
+  const f = { sha: "a".repeat(64), title: "A Paper", type: "pdf" as const, size: 1000, pages: 2, by: "Alice", at: "2026-10-11T07:37:51.896Z", have: true, links: 0 };
+  const open = { renaming: null, choosing: null, readOnly: false };
+  const shut = { ...open, readOnly: true };
+  assert.match(libraryRow(f, false, open), /data-lb-rename-start=.*data-lb-archive=/);
+  assert.match(libraryRow(f, true, open), /data-lb-restore=/);
+  assert.match(libraryRow({ ...f, have: false }, false, open), /data-lb-upload=/);
+  for (const row of [libraryRow(f, false, shut), libraryRow(f, true, shut), libraryRow({ ...f, have: false }, false, shut)]) {
+    assert.doesNotMatch(row, /data-lb-(rename-start|archive|restore|upload)=/);
+    // it still opens, to be read
+    assert.match(row, /data-lb-open=/);
+  }
+  assert.match(libraryRow({ ...f, have: false }, false, shut), /This server does not have this file\.<\/div>/);
+  // an address a log holds that is none is said as it is, the list drawn all the same
+  assert.match(libraryRow({ ...f, url: "not an address" }, false, open), />not an address<\/a>/);
 });
 
 test("a glyph a PDF's font maps to no character is no text: left out of the server's words, and out of a box's quote where words read before still carry it", async () => {
