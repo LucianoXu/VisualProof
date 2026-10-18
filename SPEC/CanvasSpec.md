@@ -361,7 +361,7 @@ Implementation notes:
   | commented | cobalt blue, calm, darker than building |
   | stale | orange |
   | approved | bluish green |
-  | not yet reviewed | light grey, a plain dot |
+  | not yet reviewed | mid grey, a plain dot |
   | trusted | a very light green |
 
   `--status-*` (web/style.css), both themes; on the dark canvas failed's grey is lighter, trusted's

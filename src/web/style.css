@@ -72,8 +72,11 @@
 
   /* the Status scheme (decided 2026-10-08, CanvasSpec "Colour schemes"): one colour per point, the
      most urgent state winning; Okabe and Ito's palette, which colour-blind readers tell apart, the
-     quiet states set apart by lightness and hue (not yet reviewed a light grey, trusted a pale
-     green, failed a dark grey; 2026-10-09). Commented is a calm
+     quiet states set apart by lightness and hue (not yet reviewed a mid grey, trusted a pale green,
+     failed a dark grey; 2026-10-09). Not yet reviewed was a light grey (#c7c7cc), too close to the
+     clusters' discs and lines to read as a point (the owner's report of 2026-10-18): a mid grey now,
+     L* 67, far from failed's L* 33 and from the clusters' lines, and a little warm — a neutral grey
+     that dark is, to a deuteranope, sorry's reddish purple (ΔE2000 3.9; 10.5 warm). Commented is a calm
      cobalt blue (2026-10-09), darker than building's sky blue and bluer than sorry's purple, so
      that it stays apart from both, and from failed's grey, for every kind of colour blindness */
   --status-failed: #4d4d52;
@@ -82,7 +85,7 @@
   --status-commented: #2a62c0;
   --status-stale: #e69f00;
   --status-approved: #009e73;
-  --status-unreviewed: #c7c7cc;
+  --status-unreviewed: #a6a29c;
   --status-trusted: #b3e2c2;
 
   --st-failed: #ff3b30;

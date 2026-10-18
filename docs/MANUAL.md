@@ -490,7 +490,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   going back, or to another tab, gives the new view up.
 - **Colours**: by kind, or by **status** — one colour per declaration for where it stands, the
   most urgent winning: being compiled, build failed, contains `sorry`, commented, stale, approved,
-  not yet reviewed (hollow), trusted (CanvasSpec, "Colour schemes"). A view where the review has a
+  not yet reviewed, trusted (CanvasSpec, "Colour schemes"). A view where the review has a
   focus opens in Status, every other view in Kind; switching (`c`, or the legend) is the reader's own, kept per kind of view (and
   seen by whoever follows you). In
   Status each cluster's outline shows its review's progress, an arc for what is approved and one
@@ -769,7 +769,7 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   found by name, under a warning, and opinions wait until the file is compiled again: the graph,
   and an opinion's hash, are about the compiled version.
 - On the canvas, the Status colours say what reviewers said about the present version (bluish
-  green approved, a calm cobalt blue commented, orange stale, hollow grey nobody yet, very light green
+  green approved, a calm cobalt blue commented, orange stale, mid grey nobody yet, very light green
   trusted without review); the rows of a TCB list carry a dot of the same meaning. A target carries
   a gold star. While you type in a field, the shortcut keys are just text.
 - **Renames** ([HistorySpec.md](../SPEC/HistorySpec.md)): at each build the declarations that vanished are
