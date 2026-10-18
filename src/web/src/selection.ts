@@ -21,6 +21,7 @@
 import type { Cluster, ClusterMode, Layout } from "../../shared/graph.ts";
 import { describe, keysQuery, parseQuery, printQuery, readKeys } from "../../shared/query.ts";
 import type { Query } from "../../shared/query.ts";
+import type { TitleNames } from "../../shared/titles.ts";
 import type { Mode } from "../../shared/viewgraph.ts";
 
 /** A tool: how a click selects (the mode buttons, keys 1–3): a closure of the graph, or the Keys step
@@ -149,16 +150,22 @@ function short(name: string): string {
   return /^\d+$/.test(tail) || tail.length <= 2 ? parts.slice(-2).join(".") : tail;
 }
 
-/** A pick in a few words, as its chip says it: "Minimal", "TCB of not_fermat_42", "ns Fermat42". */
-export function pickWords(p: Pick): string {
+/** A pick in a few words, as its chip says it: "Minimal", "TCB of not_fermat_42", "ns Fermat42".
+ *  With `names` (shared/titles.ts, the graph on show's), a name is said as a view's title says it:
+ *  with the parents that tell it apart from the project's others of its kind ("what
+ *  Dim24.MainTheorem uses" beside Dim8's; ViewSpec decision 25). */
+export function pickWords(p: Pick, names?: TitleNames): string {
   const r = p.root;
   let what: string;
   if (!r) return describe(p.q);
-  if ("decl" in r) what = short(r.decl);
+  if ("decl" in r) what = names?.decl(r.decl) ?? short(r.decl);
   else if (r.cluster === EXT) what = "the outside world";
   else {
     const ext = r.cluster.startsWith(EXT + ".");
-    what = `${r.by === "module" ? "file" : "ns"} ${short(ext ? r.cluster.slice(EXT.length + 1) : r.cluster)}${ext ? " (outside)" : ""}`;
+    const by = r.by === "module" ? "file" : "ns";
+    // the outside world's namespaces and folders are not the project's: said by their last part
+    const told = ext || !names ? short(ext ? r.cluster.slice(EXT.length + 1) : r.cluster) : names[by](r.cluster);
+    what = `${by} ${told}${ext ? " (outside)" : ""}`;
   }
   if (p.tool === "keys") return `keys ${what} rests on`;
   return p.tool === "tcb" ? `TCB of ${what}` : p.tool === "deps" ? `what ${what} uses` : p.tool === "refs" ? `what ${what} uses directly` : p.tool === "apps" ? `what uses ${what}` : what;

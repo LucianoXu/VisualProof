@@ -113,7 +113,7 @@ test("Keys picks: X and the key declarations in its TCB — the focus's target's
   assert.deepEqual(names(clusterPick("keys", cl("N"), "namespace", "N.T").q), ["M.B", "M.C", "N.A", "N.P", "N.T", "N.U", "N.X"]);
   assert.deepEqual(names(clusterPick("keys", cl("M"), "module", "N.T").q), ["M.B", "M.C", "M.D", "M.E"], "a cluster with no target in it");
   // in words, on a chip and as a view's title
-  assert.deepEqual([x, xT, t, N].map(pickWords), ["keys N.X rests on", "keys N.X rests on", "keys N.T rests on", "keys ns N rests on"]);
+  assert.deepEqual([x, xT, t, N].map((p) => pickWords(p)), ["keys N.X rests on", "keys N.X rests on", "keys N.T rests on", "keys ns N rests on"]);
   assert.equal(describe(x.q), "key declarations N.X rests on");
   assert.equal(describe(xT.q), "key declarations of N.T that N.X rests on");
   assert.equal(describe(t.q), "key declarations N.T rests on");

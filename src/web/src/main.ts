@@ -750,6 +750,7 @@ async function boot(): Promise<void> {
   // the selection, under the mode buttons (web/src/selbar.ts)
   const selBar = new SelectionBar($("#selbar"), {
     canOpenViews: () => !reader,
+    names: () => views.titles().names ?? undefined,
     show: (k) => {
       const to = shownOf(picks[k]);
       if (!to) return;
@@ -2326,7 +2327,8 @@ async function boot(): Promise<void> {
   const clickOn = (p: Pick, shift: boolean): boolean => {
     const r = click(picks, shown, p, shift, setOn);
     if (r.covered) {
-      say(`${pickWords(p)} is inside ${pickWords(r.covered)}, which is selected: nothing changed.`);
+      const names = views.titles().names ?? undefined;
+      say(`${pickWords(p, names)} is inside ${pickWords(r.covered, names)}, which is selected: nothing changed.`);
       return false;
     }
     const before = picks.length;
