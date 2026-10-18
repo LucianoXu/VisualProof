@@ -15,7 +15,7 @@ import { tracked } from "./children.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { wordsText } from "../shared/library.ts";
+import { plainPunctuation, wordsText } from "../shared/library.ts";
 import type { Region, Word } from "../shared/library.ts";
 
 /** A page's size in points, as it is shown: turned where the page is rotated. */
@@ -156,15 +156,16 @@ export interface Match {
   after: string;
 }
 
-/** Find `q` in every page's text: case and runs of white space read loosely; at most `most`
- *  matches, in page order. */
+/** Find `q` in every page's text: case, runs of white space and typographic quotes and dashes read
+ *  loosely; at most `most` matches, in page order. */
 export function searchWords(pages: PageWords[], q: string, most = 100): { matches: Match[]; more: boolean } {
-  const want = q.replace(/\s+/g, " ").trim().toLowerCase();
+  // typed as a keyboard types it: ' finds ’, - finds – (shared/library.ts, plainPunctuation)
+  const want = plainPunctuation(q.replace(/\s+/g, " ").trim().toLowerCase());
   const matches: Match[] = [];
   if (!want) return { matches, more: false };
   for (const p of pages) {
     const { text, starts } = pageText(p);
-    const flat = text.replace(/\n/g, " ").toLowerCase();
+    const flat = plainPunctuation(text.replace(/\n/g, " ").toLowerCase());
     for (let at = flat.indexOf(want); at >= 0; at = flat.indexOf(want, at + 1)) {
       if (matches.length >= most) return { matches, more: true };
       const end = at + want.length;

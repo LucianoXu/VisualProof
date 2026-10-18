@@ -381,6 +381,13 @@ test("a quote keeps a little of the text around it, and is found again by it whe
   // line breaks and case read loosely
   assert.ok(findQuote("let a be\nan ADVERSARY.", { text: "Let A be an adversary." }));
   assert.equal(findQuote(page, { text: "absent words" }), null);
+  // typography read as typed, as a quote written by hand or by an agent is: ’ as ', – and − as -
+  const typeset = "Let p be regular. Kummer’s lemma. If u ≡ n (mod p) then u = v^p – a unit “in” K − 0.";
+  const k = typeset.indexOf("Kummer’s");
+  assert.deepEqual(findQuote(typeset, { text: "Kummer's lemma." }), { start: k, end: k + "Kummer’s lemma.".length });
+  assert.ok(findQuote(typeset, { text: 'v^p - a unit "in" K - 0.' }));
+  // where the text has the very characters, they are found first, as before
+  assert.deepEqual(findQuote("It's a test: it’s the one.", { text: "it’s" }), { start: 13, end: 17 });
   assert.equal(defaultLabel({ page: 4, quote: { text: "Let A be an adversary that makes many queries" } }, "pdf"), "p. 4 “Let A be an adversary that…”");
   assert.equal(defaultLabel({ region: [0, 0, 1, 1] }, "png"), "A region of the image");
 });
