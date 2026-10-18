@@ -2719,8 +2719,10 @@ async function boot(): Promise<void> {
     const linked = views.linkedTo(name);
     // a target's view opens with the target selected alone under the tool the reader has (the
     // owner's decision of 2026-10-12: the tool is never changed for them), and the target the
-    // reader's focus there, whatever the view's own focus is (ViewSpec decisions 15 and 29)
-    if (linked !== undefined && targetStep(linked, nav.board.id) === null) {
+    // reader's focus there, whatever the view's own focus is (ViewSpec decisions 15 and 29); a
+    // read-only reader, who opens no view (CollabSpec decision 11), goes to a target with none on
+    // the board on show
+    if ((linked !== undefined && targetStep(linked, nav.board.id) === null) || (linked === undefined && reader)) {
       mine = name;
       go(i);
       writeAddress(false);
