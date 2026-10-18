@@ -175,7 +175,9 @@ The README says how to install the `visualproof` command. A checkout also runs a
   `https://github.com/ORG/REPO/blob/main/{rel}#L{line}`. A reader can set their own in the `?`
   sheet (kept in that browser, per project). Snapshots carry none.
 - `--identity-header <header>`: behind a proxy that signs people in (Tailscale, oauth2-proxy,
-  Cloudflare Access), names come from that header instead of the page (see Together). Only when the proxy is the only way in: the header is believed as it comes.
+  Cloudflare Access), names come from that header instead of the page (see Together): UTF-8, or
+  MIME encoded-words (`=?utf-8?q?…?=`, as Tailscale writes a name beyond ASCII). Only when the proxy
+  is the only way in: the header is believed as it comes.
 - `--host 0.0.0.0` serves beyond this machine (the default is `127.0.0.1`); `--access-key-file
   <file>` then lets in only those given the link `http://<host>:<port>/k/<key>` (the key is what the
   file holds; one is made there if there is none). The link leaves a cookie in the browser and goes

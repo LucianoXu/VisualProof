@@ -81,7 +81,8 @@ export class Identities {
     const raw = req.headers[this.header ?? NAME_HEADER];
     let s = (Array.isArray(raw) ? raw[0] : raw)?.trim();
     if (!s) return null;
-    if (!this.header) {
+    if (this.header) s = headerText(s);
+    else {
       try {
         s = decodeURIComponent(s);
       } catch {
@@ -108,6 +109,26 @@ export class Identities {
     const s = (Array.isArray(raw) ? raw[0] : raw)?.trim();
     if (s === undefined) return null;
     return validSession(s) ? s : "";
+  }
+}
+
+/** A proxy's header as the text it carries. Node reads a header's bytes one character each
+ *  (Latin-1), so a name a proxy writes in UTF-8 — José, 许英特 — is read again as UTF-8 where its
+ *  bytes are UTF-8 (a Latin-1 "José" is not, and stays); and a value that is MIME encoded-words
+ *  (RFC 2047, `=?utf-8?q?Jos=C3=A9?=`), as Tailscale writes a name beyond ASCII, is decoded. */
+export function headerText(s: string): string {
+  let bytes: Buffer | null = null;
+  if (/^(?:=\?utf-8\?[bq]\?[^?\s]*\?=\s*)+$/i.test(s)) {
+    // the words one after the other, the spaces between them nothing (RFC 2047, section 6.2)
+    const word = ([, enc, text]: RegExpMatchArray) =>
+      enc.toLowerCase() === "b" ? Buffer.from(text, "base64") : Buffer.from(text.replace(/_/g, " ").replace(/=([0-9a-f]{2})/gi, (_, h: string) => String.fromCharCode(parseInt(h, 16))), "latin1");
+    bytes = Buffer.concat([...s.matchAll(/=\?utf-8\?([bq])\?([^?\s]*)\?=/gi)].map(word));
+  } else if (/[\u0080-\u00ff]/.test(s) && !/[^\u0000-\u00ff]/.test(s)) bytes = Buffer.from(s, "latin1");
+  if (!bytes) return s;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return s;
   }
 }
 
