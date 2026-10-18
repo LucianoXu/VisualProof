@@ -241,14 +241,23 @@ export class Library {
   }
 
   private async upload(files: File[], expect: string | null): Promise<void> {
+    // what was refused, said once all are done: each file's request clears the word before it, and
+    // a file refused before one taken was said for no time at all
+    const refused: string[] = [];
     for (const file of files) {
       if (file.size > MAX_FILE) {
         this.error = `${file.name} is ${sizeWords(file.size)}: a file of the library is at most ${sizeWords(MAX_FILE)}.`;
+        refused.push(this.error);
         this.render();
         continue;
       }
       const b = await this.post(`/api/library/upload?name=${encodeURIComponent(file.name)}${expect ? `&sha=${expect}` : ""}`, { body: file, headers: { "content-type": "application/octet-stream" } }, `Adding ${file.name}…`);
       if (b?.file) this.added(b.file, !!b.existed, !!b.restored);
+      else if (this.error) refused.push(files.length > 1 ? `${file.name}: ${this.error}` : this.error);
+    }
+    if (refused.length && this.open) {
+      this.error = refused.join(" ");
+      this.render();
     }
   }
 
