@@ -59,6 +59,9 @@ build, not gone). `bytes`: `new` written to keep it, `all` its files. `renames`:
 build before, per confidence. `sources`: texts kept (`kept` of `of` modules with a file; `places` of
 them matched by recorded places, not Lake hash; gzipped `bytes` first kept for it and of all it
 lists); absent until backfilled at server start.
+`following`, where the server follows a branch it builds (`serve <git URL>`): `{branch, source,
+github, every, asked, building: {commit, step, tail}, next, last: {commit, ok, ms, exit?, error?,
+retry?, tail}, built}` — `next` the only commit built after the build going on.
 
 ## `GET /api/agent/history/graph?id=&part=`
 

@@ -36,6 +36,8 @@ npm install --global visualproof
 cd my-lean-project && lake build
 visualproof serve .
 ```
+Or serve a branch to a team: `visualproof serve https://github.com/<owner>/<repo>` builds each new
+commit itself ([Following a branch](docs/MANUAL.md#following-a-branch)).
 
 It needs Node, elan and Poppler ([Requirements](#requirements)). On the first visit the page offers
 a short tour of your own project; `?` holds the tips — a film of a review on Sphere-Packing-Lean in
@@ -91,7 +93,8 @@ project's edge.
 - Optionally XeLaTeX, for the printed document.
 
 The project must have been built with `lake build`: VisualProof only reads what the build left,
-and never builds it.
+and never builds it. A branch of a git repository it follows (`serve <git URL>`) it builds itself,
+in a clone of its own, and needs git.
 
 ## Where it keeps things
 

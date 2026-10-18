@@ -9,7 +9,8 @@ runs the server. The package holds compiled JavaScript: Node does not run TypeSc
 - Node 22.18 or later in 22, or 24.2 or later (the versions that run TypeScript as it is and
   have `import.meta.main`);
 - elan, which installs each project's Lean toolchain. The project must have been built with
-  `lake build`: VisualProof never builds it;
+  `lake build`: VisualProof never builds it — but a branch it follows (`serve <git URL>`,
+  SPEC/DeploySpec.md), which it builds itself, in its own clone, and which needs git;
 - Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), which reads the library's PDFs;
 - optionally XeLaTeX, which typesets the exported document.
 

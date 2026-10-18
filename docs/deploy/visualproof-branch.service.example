@@ -1,0 +1,51 @@
+# An example systemd unit for a VisualProof server that follows a branch of a git repository and
+# builds each new commit itself (docs/MANUAL.md, "Following a branch"; SPEC/DeploySpec.md).
+#
+# Whoever can push to that branch runs code on this machine as the server's user (SECURITY.md): run
+# it as a user of its own that holds nothing else, give that user a deploy key that only reads the
+# repository, and protect the branch on the forge. Set it up once, as root:
+#   useradd --system --create-home --home-dir /var/lib/visualproof-<name> --shell /usr/sbin/nologin visualproof-<name>
+#   sudo -u visualproof-<name> -H sh -c 'curl https://elan.lean-lang.org/elan-init.sh -sSf | sh -s -- -y --default-toolchain none'
+#   sudo -u visualproof-<name> -H ssh-keygen -t ed25519 -N "" -f ~visualproof-<name>/.ssh/id_ed25519
+#     (add the .pub as a read-only deploy key of the repository; for a public repository over
+#     https:// none is needed)
+#   sudo -u visualproof-<name> -H sh -c 'ssh-keyscan github.com >> ~/.ssh/known_hosts'
+#     (nothing ever waits on a prompt: an unknown host key is a failure)
+# Then copy this file to /etc/systemd/system/visualproof-<name>.service, replace the placeholders in
+# <…>, and: systemctl daemon-reload && systemctl enable --now visualproof-<name>
+# Logs: journalctl -u visualproof-<name>; each build's whole log is in the deployment's folder of
+# the cache, <cache>/deploy/<repo>-<hash>/logs/<commit>.log (the server names the folder as it starts).
+
+[Unit]
+Description=VisualProof for <owner>/<repo>, branch <branch>
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=visualproof-<name>
+Group=visualproof-<name>
+# elan's lean and lake (the builds, the extractor, the Lean server), git, and the Node the server
+# runs on, beside which `npm install --global` put the visualproof command
+Environment=PATH=/var/lib/visualproof-<name>/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
+# the user's home: the clone and its builds go in its cache (~/.cache/visualproof/deploy/), the site
+# in ~/.local/share/visualproof/sites/ unless --site says otherwise; Mathlib's cache in
+# ~/.cache/mathlib, elan's toolchains in ~/.elan
+Environment=HOME=/var/lib/visualproof-<name>
+WorkingDirectory=/var/lib/visualproof-<name>
+# the address: https://github.com/<owner>/<repo> (public), git@github.com:<owner>/<repo>.git (a
+# deploy key); --branch, else the remote's default branch; --poll, how often the remote is asked, in
+# minutes. --access-key-file lets in only those given the link; put a proxy with TLS in front of it
+# (and give --public-url) when the server is reached over the internet. --updates auto (the
+# default): the server takes VisualProof's patches by itself at a quiet moment — never during a
+# build — and a build cut short anyway is done again.
+ExecStart=<directory of node>/visualproof serve git@github.com:<owner>/<repo>.git --branch <branch> --poll 2 --port 4173 --host 0.0.0.0 --access-key-file /var/lib/visualproof-<name>/key --jobs 8 --public-url https://<host>
+Restart=on-failure
+RestartSec=30
+# what the user may not touch: nothing outside its home and /tmp is written by it
+ProtectSystem=strict
+ReadWritePaths=/var/lib/visualproof-<name>
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
