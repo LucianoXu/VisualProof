@@ -22,6 +22,7 @@ import { spawn } from "node:child_process";
 import { childEnv, DETACH, grouped } from "./children.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { freemem, totalmem } from "node:os";
 import { join } from "node:path";
 import type { ModuleContexts } from "../shared/context.ts";
 import type { FileContext } from "../shared/scope.ts";
@@ -39,6 +40,47 @@ import { compiledTextHash, lakeTextHash } from "./status.ts";
 export const DEFAULT_JOBS = 8;
 /** A worker still running after this long is stopped, and its module reported as failed. */
 const WORKER_TIMEOUT_MS = 10 * 60_000;
+
+const GB = 2 ** 30;
+/** What a worker may hold at most, the `.olean` files it maps counted, on a large project on
+ *  Mathlib: the showcase's (NavierStokesAndEuler, 2,657 modules) at 6 jobs peaked at 39 GB resident,
+ *  15 GB of it shared. Off Mathlib, a worker holds far less. */
+export const WORKER_PEAK = 6 * GB;
+
+/** What the machine keeps for itself and the rest while the pass runs: with less available, no new
+ *  worker starts while another runs (`roomForWorker`). */
+export function memoryFloor(total = totalmem()): number {
+  return Math.max(2 * GB, total / 20);
+}
+
+/** Whether one more worker may start, `running` running: the first always; another while the
+ *  machine has more than the floor available (os.freemem: MemAvailable on Linux). Workers come and
+ *  go a module at a time, so that the pass holds back to what the memory allows. */
+export function roomForWorker(running: number, available = freemem(), floor = memoryFloor()): boolean {
+  return running === 0 || available >= floor;
+}
+
+/** Whether a project is on Mathlib, as its lakefile or manifest says: whose workers each map
+ *  gigabytes. */
+export function onMathlib(root: string): boolean {
+  return ["lakefile.toml", "lakefile.lean", "lake-manifest.json"].some((f) => {
+    try {
+      return /mathlib/i.test(readFileSync(join(root, f), "utf8"));
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** What `jobs` workers may hold on a project on Mathlib, against `available` bytes: null where it
+ *  fits (or off Mathlib), else what they may need and how many fit. */
+export function jobsAdvice(jobs: number, mathlib: boolean, available = freemem()): { need: number; fits: number } | null {
+  if (!mathlib || jobs <= 1 || jobs * WORKER_PEAK <= available) return null;
+  return { need: jobs * WORKER_PEAK, fits: Math.max(1, Math.floor(available / WORKER_PEAK)) };
+}
+
+/** Bytes in GB, in words. */
+export const inGB = (bytes: number) => `${(bytes / GB).toFixed(bytes < 10 * GB ? 1 : 0)} GB`;
 /** Mixed into the fingerprint of a merged graph: bumped when the merge changes, so that graphs
  *  merged before are not served as if made by this one. 3: the units' proof spans. (A change to
  *  extractor/Usage.lean changes every module's key by itself: its text is in the salt.) */
@@ -164,6 +206,9 @@ export class UsagePass {
   status: PassStatus;
   /** the run going on, to stop when a newer build supersedes it */
   private current: { cancelled: boolean; children: Set<ReturnType<typeof spawn>> } | null = null;
+
+  /** the machine's memory available, as the pass asks it before each worker (a test's own) */
+  available: () => number = freemem;
 
   constructor(project: Project, dirs: Pick<Dirs, "cache" | "lean">, jobs: number, log: (l: string) => void) {
     this.project = project;
@@ -304,8 +349,17 @@ export class UsagePass {
         const modsFile = join(this.dir, "project-modules.txt");
         writeFileSync(modsFile, plan.modules.join("\n") + "\n");
         const queue = plan.todo.slice();
+        const floor = memoryFloor();
+        let held = false;
         const worker = async () => {
           while (queue.length && !run.cancelled) {
+            // memory short, another worker running: this one waits for it (said once a pass)
+            while (!roomForWorker(run.children.size, this.available(), floor) && !run.cancelled) {
+              if (!held) this.log(`usage pass: ${inGB(this.available())} of memory available, less than ${inGB(floor)}: fewer workers at a time until there is more`);
+              held = true;
+              await new Promise((ok) => setTimeout(ok, 250));
+            }
+            if (!queue.length || run.cancelled) return;
             const t = queue.shift()!;
             const e = await this.one(run, bin, env!, modsFile, t);
             if (run.cancelled) return;

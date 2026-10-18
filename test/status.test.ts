@@ -1,14 +1,14 @@
 // Build status against real Lake builds of a copy of the fixture. Skipped where there is no lake.
 
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { openProject } from "../src/server/project.ts";
 import type { Project } from "../src/server/project.ts";
-import { BuildTracker, importable, lakeTextHash, parseImports, scanModules } from "../src/server/status.ts";
+import { BuildTracker, commandsInProc, compiling, importable, lakeTextHash, parseImports, probeAll, scanModules, stampOf } from "../src/server/status.ts";
 import type { ModuleInfo } from "../src/server/status.ts";
 import { copyFixture, leanAtLeast } from "./fixturecopy.ts";
 
@@ -146,6 +146,76 @@ test("only outputs written are a build: a file the project gains or loses while 
     // Lake writes P.B's outputs: a build
     built("P.B", Date.now());
     assert.equal((await t.status(more)).active, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a compile running is seen, from /proc where there is one, else ps: a process `lean … -o <libDir>/M.olean`, one that runs it a moment after it started too", async () => {
+  const root = mkdtempSync(join(tmpdir(), "vp-compiling-"));
+  const kids: ReturnType<typeof spawn>[] = [];
+  try {
+    const lib = join(root, ".lake", "build", "lib", "lean");
+    const p = { root, name: "p", toolchain: "tc", roots: ["P"], libDir: lib, files: new Map() } as Project;
+    const run = (args: string[]) => {
+      const k = spawn(process.execPath, args, { stdio: "ignore" });
+      kids.push(k);
+      return k;
+    };
+    const until = async (f: () => Promise<boolean>) => {
+      for (const end = Date.now() + 5000; Date.now() < end; await new Promise((ok) => setTimeout(ok, 50))) if (await f()) return true;
+      return false;
+    };
+    const sees = (m: string) => async () => (await compiling(p)).has(m);
+    assert.equal((await compiling(p)).size, 0);
+    // a compile as Lake runs one (here a process whose arguments say so)
+    const k = run(["-e", "setTimeout(() => {}, 20000)", "--", "lean", "P/A.lean", "-o", `${lib}/P/A.olean`, "-i", `${lib}/P/A.ilean`]);
+    assert.ok(await until(sees("P.A")), "seen");
+    // a process that becomes the compile after it started (forked, then running lean): seen too
+    const later = join(root, "later.mjs");
+    writeFileSync(later, `setTimeout(() => process.exit(0), 20000);`);
+    // its own arguments say nothing of the compile: the script does, which it runs after a while
+    writeFileSync(join(root, "later.sh"), `sleep 0.6\nexec "${process.execPath}" ${later} -- lean P/B.lean -o ${lib}/P/B.olean\n`);
+    const sh = spawn("sh", [join(root, "later.sh")], { stdio: "ignore" });
+    kids.push(sh);
+    // looked at before it runs lean, and after
+    if (process.platform === "linux") commandsInProc();
+    assert.ok(await until(sees("P.B")), "seen once it runs lean");
+    k.kill();
+    assert.ok(await until(async () => !(await compiling(p)).has("P.A")), "a compile over is no longer seen");
+    if (process.platform === "linux") assert.ok(commandsInProc() !== null, "/proc is read on Linux");
+  } finally {
+    for (const k of kids) k.kill();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a look reads each module's files once: the stamp moves with an output written and a source edited, and the status from it is the status", async () => {
+  const root = mkdtempSync(join(tmpdir(), "vp-probe-"));
+  try {
+    const lib = join(root, ".lake", "build", "lib", "lean");
+    mkdirSync(join(root, "P"), { recursive: true });
+    mkdirSync(join(lib, "P"), { recursive: true });
+    const p = { root, name: "p", toolchain: "tc", roots: ["P"], libDir: lib, files: new Map() } as Project;
+    const mods = new Map<string, ModuleInfo>([["P", { name: "P", file: "P.lean", imports: ["P.A"] }], ["P.A", { name: "P.A", file: "P/A.lean", imports: [] }]]);
+    writeFileSync(join(root, "P.lean"), "import P.A\n");
+    writeFileSync(join(root, "P/A.lean"), "def a := 1\n");
+    const long = (Date.now() - 60_000) / 1000;
+    for (const f of ["P.olean", "P.trace", "P/A.olean", "P/A.trace"]) {
+      writeFileSync(join(lib, f), "{}");
+      utimesSync(join(lib, f), long, long);
+    }
+    const s0 = stampOf(probeAll(p, mods));
+    assert.equal(stampOf(probeAll(p, mods)), s0, "nothing moved");
+    utimesSync(join(lib, "P/A.olean"), long + 5, long + 5);
+    const s1 = stampOf(probeAll(p, mods));
+    assert.notEqual(s1, s0, "an output written");
+    writeFileSync(join(root, "P/A.lean"), "def a := 2\n");
+    utimesSync(join(root, "P/A.lean"), long + 9, long + 9);
+    assert.notEqual(stampOf(probeAll(p, mods)), s1, "a source edited");
+    // the status made from a look is the status made by itself
+    const probes = probeAll(p, mods);
+    assert.deepEqual(await new BuildTracker(p).status(mods, probes, new Set()), await new BuildTracker(p).status(mods));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

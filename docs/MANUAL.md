@@ -166,6 +166,11 @@ The README says how to install the `visualproof` command. A checkout also runs a
   touched 11 of them: 8 s; one of Sphere-Packing-Lean that changed a module 80 others import: those 81 in
   24 s, the merged graph served 51 s after the build), and a restart without a build serves the
   merged graph at once (under a second).
+  On Mathlib a worker can hold several GB (the showcase's pass at 6 jobs peaked at 39 GB resident,
+  15 GB of it the `.olean` files mapped once): `serve` and `doctor` say where the default `--jobs`
+  may take more than the machine has available, and which `--jobs` fits. While less than a twentieth
+  of the memory (2 GB at least) is available, the pass starts no worker until another ends, and says
+  so in its log.
   Progress is in `GET /api/status` (`usage`) and the log; a module that cannot be elaborated is
   reported there and keeps the text-based context and no notation edges.
 - `--graph <saved.json>` serves a saved extraction instead of reading the build.
@@ -219,8 +224,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - Pages far from the server wait on bytes, so the page's files and the graph are sent gzipped with
   a tag of their content: a browser that has them is answered 304 and loads in a second (14 KB
   instead of 727 KB for flt-regular, most of which is the page's own code). The edges go packed (shared/edgecodec.ts, a quarter of the
-  bytes); JSON answers over 2 KB go gzipped. Brotli would be smaller still, but browsers take it
-  only over HTTPS.
+  bytes); JSON answers over 2 KB go gzipped. The review goes gzipped too, tagged with its revision:
+  the event stream says only which revision the server holds and what changes, so a page reads the
+  whole review as it loads, and again only where it missed a change (a reload of an unchanged
+  review is answered 304). Brotli would be smaller still, but browsers take it only over HTTPS.
 - `docs/deploy/visualproof.service.example` is an example systemd user unit that serves a project this
   way: copy it and fill in its placeholders (it says how).
 - `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data
@@ -329,7 +336,10 @@ While `serve` runs, it follows the builds you run yourself:
   (`Offline` when the server cannot be reached), followed by ` · reading…` while a new graph is
   read, ` · partial graph` while some modules are missing from it, or ` · reading notation…` while
   the usage pass runs; click it (or press `b`) for the list of files and why, and click a file to
-  fly to it.
+  fly to it. At rest this costs next to nothing: the server watches the folders of the project's
+  files and the compiles running, and looks at the files when something moves (and every 30 s
+  besides). On a network or FUSE filesystem, which does not tell of changes made elsewhere, it looks
+  at them every second instead, as its log says (`watch: …`).
 - **A new graph when a build settles**, swapped into the open page: same camera, same folds, same
   selection. Nodes that existed keep their place; new ones are fitted in beside their cluster.
   `Re-layout` (⚙ Board, over the side panel's tree) starts the board afresh: its pins are dropped, other boards keep theirs.

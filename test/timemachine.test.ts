@@ -16,6 +16,7 @@ import type { Answer, Ask, World } from "../src/server/agent.ts";
 import { viewEndpoints } from "../src/server/agentviews.ts";
 import { diffGraphs, History } from "../src/server/history.ts";
 import { historyAnswer } from "../src/server/historyapi.ts";
+import { identityOf, jobsDone } from "../src/server/historythread.ts";
 import type { HistoryWorld } from "../src/server/historyapi.ts";
 import { Presence } from "../src/server/presence.ts";
 import { ownName } from "../src/server/versions.ts";
@@ -613,7 +614,7 @@ function raw(o: { rename?: boolean } = {}): RawGraph {
   };
 }
 
-test("a snapshot's graph in the page's two parts, made once and kept under the renames in force; a rename alone is no change", () => {
+test("a snapshot's graph in the page's two parts, made once and kept under the renames in force; a rename alone is no change", async () => {
   const dir = mkdtempSync(join(tmpdir(), "vp-tm-history-"));
   try {
     const h = new History(dir);
@@ -623,9 +624,8 @@ test("a snapshot's graph in the page's two parts, made once and kept under the r
     let tag = "";
     const w: HistoryWorld = { history: h, identity: () => ownName, identityTag: () => tag };
     const get = (query: string) => historyAnswer(w, { method: "GET", path: "/api/history/graph", query: new URLSearchParams(query), body: null, caller: { name: null, kind: "person" } } as Ask);
-    const nodes = get("id=1&part=nodes");
-    const edges = get("id=1&part=edges");
-    const whole = get("id=1").body as Json;
+    const [nodes, edges, wholeGz] = await Promise.all([get("id=1&part=nodes"), get("id=1&part=edges"), get("id=1")]);
+    const whole = JSON.parse(gunzipSync(wholeGz.gz!.body).toString("utf8")) as Json;
     const N = JSON.parse(gunzipSync(nodes.gz!.body).toString("utf8"));
     assert.equal(N.edges, undefined, "no edges among the declarations");
     assert.equal(N.edgeCount, whole.edges.length / 3);
@@ -636,17 +636,57 @@ test("a snapshot's graph in the page's two parts, made once and kept under the r
     const triples = (xs: ArrayLike<number>) => Array.from({ length: xs.length / 3 }, (_, k) => `${xs[3 * k]},${xs[3 * k + 1]},${xs[3 * k + 2]}`).sort();
     assert.deepEqual(triples(E), triples(whole.edges));
     // kept: the same bytes again (tagged once, answered 304 to a page that has them)
-    assert.equal(get("id=1&part=nodes").gz!.body, nodes.gz!.body);
+    assert.equal((await get("id=1&part=nodes")).gz!.body, nodes.gz!.body);
     // other renames in force: made again
     tag = "A.g→A.f";
-    assert.notEqual(get("id=1&part=nodes").gz!.body, nodes.gz!.body);
-    assert.equal(get("id=1&part=what").status, 400);
+    assert.notEqual((await get("id=1&part=nodes")).gz!.body, nodes.gz!.body);
+    assert.equal((await get("id=1&part=what")).status, 400);
     // the diff: A.f renamed to A.g, and B.t, which refers to it, not changed though the renames in
     // force do not hold that rename (it touched nothing said)
     const d = diffGraphs(h.graph(1)!, h.graph(2)!, ownName, new Map([["A.f", "A.g"]]));
     assert.deepEqual([d.renamed, d.changed, d.added, d.removed], [[["A.f", "A.g"]], [], [], []]);
     // without the rename between them, B.t refers to another name: changed, as before
     assert.deepEqual(diffGraphs(h.graph(1)!, h.graph(2)!, ownName).changed, ["B.t"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("off the server's thread: a snapshot's parts, its whole graph and what changed are those made on it, under the renames in force; asks that come at once are one job", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-tm-thread-"));
+  try {
+    const opts = (at: number, fingerprint: string) => ({ at, fingerprint, commit: { hash: "abc", branch: "main" }, toolchain: "tc", missing: [] as string[] });
+    const h0 = new History(dir);
+    h0.record(raw(), opts(T0, "f1"));
+    h0.record(raw({ rename: true }), opts(T0 + H, "f2"));
+    // A.f renamed to A.g, in force: A.g's identity is A.f's
+    const renamed: [string, string][] = [["A.g", "A.f"]];
+    const between = () => new Map([["A.f", "A.g"]]);
+    // the same history twice, so that neither answers from what the other kept: one world on the
+    // server's thread (it does not say its renames), one off it
+    const here: HistoryWorld = { history: new History(dir), identity: () => identityOf(renamed), identityTag: () => "A.g→A.f", renamesBetween: between };
+    const there: HistoryWorld = { history: new History(dir), identity: () => identityOf(renamed), renamed: () => renamed, identityTag: () => "A.g→A.f", renamesBetween: between };
+    const get = (w: HistoryWorld, path: string, query: string) => historyAnswer(w, { method: "GET", path, query: new URLSearchParams(query), body: null, caller: { name: null, kind: "person" } } as Ask);
+    const asks = (w: HistoryWorld) => Promise.all([get(w, "/api/history/graph", "id=2&part=nodes"), get(w, "/api/history/graph", "id=2&part=edges"), get(w, "/api/history/graph", "id=2"), get(w, "/api/history/diff", "from=1&most=100")]);
+    const before = { ...jobsDone };
+    const a = await asks(here);
+    assert.equal(jobsDone.worker, before.worker, "a world that does not say its renames is answered on the server's thread");
+    const b = await asks(there);
+    assert.equal(jobsDone.worker - before.worker, 3, "the two parts one job, the whole graph one, the diff one");
+    assert.equal(jobsDone.here, before.here);
+    const json = (x: Answer) => JSON.parse(gunzipSync(x.gz!.body).toString("utf8"));
+    assert.deepEqual(json(b[0]), json(a[0]), "the declarations");
+    assert.ok(gunzipSync(b[1].gz!.body).equals(gunzipSync(a[1].gz!.body)), "the edges");
+    assert.deepEqual(json(b[2]), json(a[2]), "the whole graph");
+    assert.deepEqual(b[3].body, a[3].body, "what changed");
+    assert.deepEqual((b[3].body as HistoryDiff).renamed, [["A.f", "A.g"]]);
+    // under the renames in force: A.g has A.f's version, which a rename alone does not change
+    const v = (x: Answer, name: string) => json(x).nodes.find((n: Json) => n.name === name)?.hash;
+    assert.equal(v(b[0], "A.g"), v(a[0], "A.g"));
+    // asked again: kept, no job
+    const kept = await get(there, "/api/history/graph", "id=2&part=nodes");
+    assert.equal(kept.gz!.body, b[0].gz!.body);
+    assert.equal(jobsDone.worker - before.worker, 3);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

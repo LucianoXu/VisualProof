@@ -20,7 +20,8 @@
 //
 // What changed is told as a change (`ReviewChange`): the events that came after everything replayed
 // so far, which a page applies to its own review — or, when an event came in between (older events
-// restored from a backup, a rewrite), the whole review again.
+// restored from a backup, a rewrite), none: the page reads the whole review again, which its tag
+// (the run and the revision) keeps from being sent to a page that has it.
 
 import { createHash, randomBytes } from "node:crypto";
 import type { Hash } from "node:crypto";
@@ -120,14 +121,28 @@ export class ReviewStore {
     return { epoch: this.epoch, rev: this.rev, data: this.data, problems: this.problems, error: this.error };
   }
 
-  /** the whole review as JSON, and the revision it is of */
+  /** the review's data as JSON, and the whole review, each with the revision it is of */
+  private dataJson: { rev: number; text: string } | null = null;
   private wholeJson: { rev: number; text: string } | null = null;
-  /** The whole review as JSON, written once a revision: every page's event stream opens with it and
-   *  every page that loads asks for it, and with thousands of opinions it is megabytes (7.6 MB for
-   *  5,000 on Sphere-Packing-Lean: 50 ms each time, a hundred pages opening held the server 5 s). */
+  /** The review's data as JSON, written once a revision. */
+  private dataText(): string {
+    if (this.dataJson?.rev !== this.rev) this.dataJson = { rev: this.rev, text: JSON.stringify(this.data) };
+    return this.dataJson.text;
+  }
+  /** The whole review as JSON (`whole()`), written once a revision: every page that loads asks for
+   *  it, and every page whose review fell behind (GET /api/review), and with thousands of opinions it
+   *  is megabytes (7.6 MB for 5,000 on Sphere-Packing-Lean: 50 ms each time, a hundred pages opening
+   *  held the server 5 s). */
   wholeText(): string {
-    if (this.wholeJson?.rev !== this.rev) this.wholeJson = { rev: this.rev, text: JSON.stringify(this.whole()) };
+    if (this.wholeJson?.rev !== this.rev)
+      this.wholeJson = { rev: this.rev, text: `{"epoch":${JSON.stringify(this.epoch)},"rev":${this.rev},"data":${this.dataText()},"problems":${JSON.stringify(this.problems)},"error":${JSON.stringify(this.error)}}` };
     return this.wholeJson.text;
+  }
+
+  /** The tag of the whole review as it is now (GET /api/review's ETag): its run and its revision,
+   *  which every change moves. */
+  tag(): string {
+    return `"r${this.epoch}.${this.rev}"`;
   }
 
   /** The file a writer's events go to (shared/review.ts, logFileName). */
@@ -241,13 +256,17 @@ export class ReviewStore {
   /** Replay what was read, and say what changed: the new events alone where they all come after
    *  what was replayed before, else the whole review. A log read whole again has events of its own
    *  (new objects), and one gone has none: either way what was replayed is no longer where it was,
-   *  and the review is replayed whole. */
+   *  and the review is replayed whole. A replay whole that comes to the review it replaced (a new
+   *  graph's reading that binds every opinion as before, a log rewritten as it was) is told as a
+   *  change of no events: no page reads the whole review again for it. */
   private commit(): ReviewChange {
     const logs = [...this.files.values()].map((f) => ({ file: f.file, events: f.tail?.event ? [...f.events, f.tail.event] : f.events }));
     const next = merged(logs).map((x) => this.readAs(x.e));
     const before = this.order;
     const appended = !this.again && next.length >= before.length && before.every((e, k) => next[k] === e);
     this.again = false;
+    // what the review was, where it is replayed whole: compared with what the replay makes
+    const was = appended ? null : this.dataText();
     const base = this.rev;
     this.rev++;
     this.order = next;
@@ -258,6 +277,7 @@ export class ReviewStore {
     } else {
       this.data = emptyReview();
       for (const e of next) applyEvent(this.data, e);
+      if (this.dataText() === was) events = [];
     }
     const c: ReviewChange = { epoch: this.epoch, base, rev: this.rev, events, problems: this.problems };
     this.onChange?.(c);

@@ -195,9 +195,10 @@ export interface World {
    *  agent with a token is doing */
   talk?: Pick<Talk, "thread" | "conversation" | "post" | "allow" | "talk" | "wait" | "seen" | "setStatus" | "left">;
   /** the snapshots of the graph (server/history.ts), the identities the renames in force give
-   *  (server/versions.ts), and the renames recorded between two snapshots */
+   *  (server/versions.ts) and those renames, and the renames recorded between two snapshots */
   history?: History | null;
   identity?(): Identity;
+  renamed?(): [string, string][] | null;
   renamesBetween?(from: number, to: number): Map<string, string>;
   /** the people invited by a personal link (server/invites.ts): the name each goes by now, by the
    *  link's id; none behind a sign-in proxy, or in a test that has none */

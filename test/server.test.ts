@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 import { get, request } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gunzipSync } from "node:zlib";
@@ -229,10 +229,9 @@ test("event streams: at most MAX_STREAMS, a few per page, and one that does not 
 test("a stream's hello, however large, is read before it counts as not reading; past it, MAX_BUFFERED as for any", async () => {
   const S = await site();
   try {
-    // the whole review, which the hello carries, of thousands of opinions: twice MAX_BUFFERED
-    const review = S.live.review;
-    const whole = review.whole.bind(review);
-    review.whole = () => ({ ...whole(), pad: "x".repeat(2 * MAX_BUFFERED) }) as ReturnType<typeof whole>;
+    // the build's status of every file, which the hello carries, on a project of thousands of
+    // modules: twice MAX_BUFFERED
+    S.live.build = { active: false, progress: null, files: [], counts: {}, pad: "x".repeat(2 * MAX_BUFFERED) } as unknown as typeof S.live.build;
     /** a page's stream whose page reads `read(n)` characters at a time, or nothing */
     const open = () => {
       const r = fakeResponse();
@@ -250,7 +249,7 @@ test("a stream's hello, however large, is read before it counts as not reading; 
     };
     const reading = open();
     assert.ok(reading.writableLength > 2 * MAX_BUFFERED, "the hello waits");
-    assert.ok(reading.written.some((t) => t.startsWith("event: graph")), "the hello is whole: the graph after the review");
+    assert.ok(reading.written.some((t) => t.startsWith("event: graph")), "the hello is whole: the graph after the build");
     const idle = open();
     event();
     assert.equal(reading.destroyed || idle.destroyed, false, "a hello read is no page that does not read");
@@ -273,28 +272,68 @@ test("a stream's hello, however large, is read before it counts as not reading; 
   }
 });
 
-test("the whole review is written as JSON once a revision: every stream's hello and GET /api/review carry the one text, made again after a change", async () => {
+test("the event stream says the review's revision, never the whole review; GET /api/review is tagged with it, 304 to a page that has it, and compressed once a revision", async () => {
   const S = await site();
   try {
     const review = S.live.review;
+    // a review worth compressing: a few long comments
+    for (const n of ["N.a", "N.b"]) review.append({ name: "Alice", agent: false }, { op: "opinion", name: n, by: "Alice", verdict: "comment", comment: `why so? ${"x".repeat(1500)}` }, "tc");
     let made = 0;
-    const whole = review.whole.bind(review);
-    review.whole = () => (made++, whole());
+    const wholeText = review.wholeText.bind(review);
+    review.wholeText = () => (made++, wholeText());
     const open = () => {
       const r = fakeResponse();
       S.live.subscribe(r as unknown as ServerResponse, null);
       return r;
     };
-    const hello = (r: ReturnType<typeof fakeResponse>) => r.written.find((t) => t.startsWith("event: review\n"))!;
+    const said = (r: ReturnType<typeof fakeResponse>, event: string) => r.written.filter((t) => t.startsWith(`event: ${event}\n`)).map((t) => JSON.parse(t.slice(`event: ${event}\ndata: `.length)));
     const [a, b] = [open(), open()];
-    const asked = await S.ask("GET", "/api/review");
-    assert.equal(made, 1, "once for two hellos and a page's ask");
-    assert.equal(hello(a), hello(b));
-    assert.deepEqual(JSON.parse(hello(a).slice("event: review\ndata: ".length)), asked.json);
+    for (const r of [a, b]) {
+      assert.deepEqual(said(r, "review-rev"), [{ epoch: review.epoch, rev: review.rev }], "the revision, as the stream opens");
+      assert.deepEqual(said(r, "review"), [], "never the whole review");
+      assert.ok(r.written.join("").length < 4000, "the hello is small");
+    }
+    assert.equal(made, 0, "no stream made the review's JSON");
+    // the page asks: compressed, tagged with the review's run and revision
+    const gz = { "accept-encoding": "gzip" };
+    const first = await S.ask("GET", "/api/review", undefined, gz);
+    const tag = first.headers.get("etag")!;
+    assert.equal(first.status, 200);
+    assert.equal(tag, review.tag());
+    assert.equal(first.headers.get("content-encoding"), "gzip");
+    assert.match(first.headers.get("cache-control") ?? "", /no-cache/);
+    assert.deepEqual(first.json, JSON.parse(wholeText()));
+    // a page that has it (a reload): 304, nothing sent
+    const again = await S.ask("GET", "/api/review", undefined, { ...gz, "if-none-match": tag });
+    assert.equal(again.status, 304);
+    assert.equal(again.json, null);
+    // others asking at once: the same bytes
+    const raw = () =>
+      new Promise<Buffer>((ok) =>
+        get({ host: "127.0.0.1", port: S.port, path: "/api/review", headers: gz }, (res) => {
+          const parts: Buffer[] = [];
+          res.on("data", (d: Buffer) => parts.push(d));
+          res.on("end", () => ok(Buffer.concat(parts)));
+        }),
+      );
+    const [x, y] = await Promise.all([raw(), raw()]);
+    assert.ok(x.equals(y) && x.length < wholeText().length / 2, "compressed");
+    // a change that is a delta: the events go by the stream, the tag moves on
     review.append({ name: "Alice", agent: false }, { op: "target", name: "N.b", by: "Alice", on: true }, "tc");
-    const c = open();
-    assert.equal(made, 2, "a change: written again");
-    assert.ok(JSON.parse(hello(c).slice("event: review\ndata: ".length)).data.targets["N.b"]);
+    await new Promise((ok) => setImmediate(ok));
+    assert.equal(said(a, "review-delta").at(-1).events.length, 1);
+    assert.notEqual(review.tag(), tag);
+    const after = await S.ask("GET", "/api/review", undefined, { ...gz, "if-none-match": tag });
+    assert.equal(after.status, 200, "an older tag is sent the review as it is now");
+    assert.ok(after.json!.data.targets["N.b"]);
+    // a change that is no delta (a log rewritten by hand): the revision alone, which the page reads
+    const log = join(review.logDir, review.fileOf({ name: "Alice", agent: false }));
+    writeFileSync(log, readFileSync(log, "utf8").replace("why so?", "why so!"));
+    review.refresh();
+    await new Promise((ok) => setImmediate(ok));
+    assert.deepEqual(said(a, "review-rev").at(-1), { epoch: review.epoch, rev: review.rev });
+    assert.deepEqual(said(a, "review"), []);
+    assert.equal((await S.ask("GET", "/api/review", undefined, { ...gz, "if-none-match": review.tag() })).status, 304);
   } finally {
     await S.close();
   }

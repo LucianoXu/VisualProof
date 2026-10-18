@@ -384,6 +384,28 @@ test("what changed goes to pages as events: a page applying them holds the serve
   }
 });
 
+test("a replay whole that comes to the review it replaced is a change of no events: no page reads the whole review for it", () => {
+  const F = folder();
+  try {
+    const store = new ReviewStore(F.root, ".visualproof");
+    ok(store.append(alice, { op: "opinion", name: "A.a", by: "Alice", verdict: "approve", hash: "k" }, "tc"));
+    ok(store.append(bob, { op: "target", name: "A.t", by: "Bob", on: true }, "tc"));
+    const before = { rev: store.rev, text: store.wholeText() };
+    // a new graph's reading that binds nothing otherwise (server/live.ts, a build read): replayed
+    // whole, the same review
+    const c = store.setReading((e) => e);
+    assert.deepEqual([c.base, c.rev, c.events], [before.rev, before.rev + 1, []]);
+    assert.deepEqual({ ...JSON.parse(store.wholeText()), rev: before.rev }, JSON.parse(before.text));
+    assert.equal(store.tag(), `"r${store.epoch}.${store.rev}"`, "the tag moves on with the revision");
+    // a reading that changes what an opinion is bound to: the whole review
+    const bound = store.setReading((e) => (e.op === "opinion" ? { ...e, hash: "v" } : e));
+    assert.equal(bound.events, null);
+    assert.equal(store.data.opinions["A.a"][0].hash, "v");
+  } finally {
+    F.done();
+  }
+});
+
 /** The whole review as a page holds it after JSON (web/src/data.ts, reviewState). */
 function reviewState(w: ReturnType<ReviewStore["whole"]>) {
   const j = JSON.parse(JSON.stringify(w));

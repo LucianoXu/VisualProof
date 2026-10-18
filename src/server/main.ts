@@ -9,8 +9,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { gunzipSync, gzip, gzipSync } from "node:zlib";
+import { freemem, tmpdir } from "node:os";
+import { gunzip, gunzipSync, gzip, gzipSync } from "node:zlib";
 import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
 import { makeArtwork, pngOf, projectView } from "./artcmd.ts";
@@ -38,7 +38,7 @@ import { AgentTokens, bearerOf, DEFAULT_DAYS, invalidAgentName, looksLikeToken, 
 import type { TokenRecord } from "./tokens.ts";
 import { agentPrompt } from "./prompt.ts";
 import { MAX_PERSON } from "./talk.ts";
-import { DEFAULT_JOBS, UsagePass, mergeUsage, saveMerged } from "./usage.ts";
+import { DEFAULT_JOBS, inGB, jobsAdvice, memoryFloor, onMathlib, UsagePass, mergeUsage, saveMerged, WORKER_PEAK } from "./usage.ts";
 import { extract } from "./extract.ts";
 import type { AgentLevel, Answer } from "./agent.ts";
 import { Exporter } from "./export.ts";
@@ -177,8 +177,10 @@ function usage(code = 2): never {
   --jobs  how many modules the usage pass elaborates at once (default ${DEFAULT_JOBS}; 0: no pass). The
            pass finds which notation each declaration is written in and the exact context it is
            written in (TCBSpec.md, decisions 2 and 4); its findings follow the extractor's graph
-           as its next version. Each worker takes about 400 MB of its own and the import of a
-           module is bound by memory bandwidth: past about a quarter of the cores it gains little.
+           as its next version. Each worker takes about 400 MB of its own, several GB on a large
+           project on Mathlib (serve and doctor say which --jobs the memory fits); with memory
+           short, fewer run at a time. The import of a module is bound by memory bandwidth: past
+           about a quarter of the cores it gains little.
 
   --access-key-file  let in only those given the link http://<host>:<port>/k/<key>, the key being
            what the file holds (one is made there, readable by its owner alone, if there is none).
@@ -1002,7 +1004,7 @@ export class App {
         // name — a private reader's too (CollabSpec decision 8) — with the personal link of someone
         // invited by one, whose moves go to their link's log (decision 9); by an agent at level full
         const person = this.ids.person(req)?.id;
-        const a = historyAnswer(live, { method: req.method ?? "GET", path, query: url.searchParams, body, caller: { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person } : {}) } }, (q) =>
+        const a = await historyAnswer(live, { method: req.method ?? "GET", path, query: url.searchParams, body, caller: { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person } : {}) } }, (q) =>
           q.caller.kind === "agent" ? refusal(this.agents.level, "full") : null,
         );
         // a snapshot's graph in parts, as the Time Machine takes it: compressed once, and tagged
@@ -1025,8 +1027,8 @@ export class App {
       // an agent may use the page's own endpoints too: the same rules hold there (AgentSpec)
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
-      // logs that cannot be read
-      if (path === "/api/review" && req.method === "GET") return sendJsonText(res, live.review.wholeText());
+      // logs that cannot be read; tagged with its revision, compressed once a revision
+      if (path === "/api/review" && req.method === "GET") return sendReview(req, res, live.review);
       if (path === "/api/review" && req.method === "POST") {
         // an opinion, a target, a trusted prefix or a key declaration is recorded under the
         // reader's name (CollabSpec decision 3), not one in the body; what it is about is
@@ -1332,7 +1334,7 @@ export function sendJson(res: ServerResponse, body: unknown, code = 200, headers
   sendJsonText(res, JSON.stringify(body), code, headers);
 }
 
-/** The same, of an answer written as JSON already (the whole review, server/review.ts). */
+/** The same, of an answer written as JSON already. */
 function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Record<string, string> = {}): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
   // a small answer is not worth compressing; a status with its build log, a source file, are; a
@@ -1344,6 +1346,43 @@ function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Re
   }
   res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...headers });
   res.end(text);
+}
+
+/** the whole review compressed, under the tag of the revision it is of, per review */
+const reviewGz = new WeakMap<ReviewStore, { tag: string; gz: Promise<Buffer> }>();
+
+/** The whole review (GET /api/review), tagged with its run and its revision (server/review.ts): a
+ *  page that has it is answered 304, which a reload is, and one whose review fell behind is sent it
+ *  compressed — once a revision, off the server's thread when it is large, the same bytes for every
+ *  page (a review of 5,000 opinions on Sphere-Packing-Lean: 8.5 MB of JSON, 1.1 MB sent). */
+function sendReview(req: IncomingMessage, res: ServerResponse, review: ReviewStore): void {
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
+  const tag = review.tag();
+  const head = { "content-type": "application/json", "cache-control": "private, no-cache", etag: tag, vary: "accept-encoding" };
+  if (fresh(req, tag)) {
+    res.writeHead(304, head);
+    return void res.end();
+  }
+  const text = review.wholeText();
+  if (text.length <= JSON_GZIP_FROM || !acceptsGzip(req)) {
+    res.writeHead(200, head);
+    return void res.end(text);
+  }
+  let c = reviewGz.get(review);
+  if (c?.tag !== tag) {
+    const gz = text.length < JSON_GZIP_AWAY_FROM ? Promise.resolve(gzipSync(text)) : new Promise<Buffer>((ok, fail) => gzip(text, (e, b) => (e ? fail(e) : ok(b))));
+    reviewGz.set(review, (c = { tag, gz }));
+    // a compression that failed is tried again by the next page that asks
+    gz.catch(() => reviewGz.get(review)?.gz === gz && reviewGz.delete(review));
+  }
+  c.gz.then(
+    (gz) => {
+      if (res.headersSent || res.destroyed) return;
+      res.writeHead(200, { ...head, "content-encoding": "gzip" });
+      res.end(gz);
+    },
+    (e: Error) => res.destroy(e),
+  );
 }
 
 /** Send a text that is not JSON (the agents' documentation, the MCP server's file), compressed
@@ -1394,16 +1433,23 @@ export const JSON_GZIP_AWAY_FROM = 1 << 20;
 /** the graph's parts as sent, each tagged once (a graph's buffers live as long as it does) */
 const gzTags = new WeakMap<Buffer, string>();
 
-/** A part of the graph, gzipped already: tagged, so that a page that has it gets 304. */
+/** A part of the graph, gzipped already: tagged, so that a page that has it gets 304; a client that
+ *  does not take gzip (an agent's) is sent it as it is, made so off the server's thread. */
 function sendGz(req: IncomingMessage, res: ServerResponse, gz: Buffer, type: string): void {
   if (refused.has(res)) return;
   let etag = gzTags.get(gz);
   if (!etag) gzTags.set(gz, (etag = tagOf(gz)));
-  const head = { "content-type": type, "cache-control": "private, no-cache", etag };
+  const head = { "content-type": type, "cache-control": "private, no-cache", etag, vary: "accept-encoding" };
   if (fresh(req, etag)) {
     res.writeHead(304, head);
     return void res.end();
   }
+  if (!acceptsGzip(req))
+    return void gunzip(gz, (e, plain) => {
+      if (e) return res.destroy(e);
+      res.writeHead(200, head);
+      res.end(plain);
+    });
   res.writeHead(200, { ...head, "content-encoding": "gzip" });
   res.end(gz);
 }
@@ -1612,6 +1658,13 @@ async function main(): Promise<void> {
     console.log(`  editor: ${o.editor ?? "no link unless a reader sets one"}`);
     console.log(`  agents: ${o.agents} — their API is http://${o.host}:${o.port}/api/agent`);
     console.log(`  usage pass: ${o.graph ? "none for a saved graph" : o.jobs > 0 ? `${o.jobs} module(s) at a time` : "off (--jobs 0)"}`);
+    // what the pass's workers may hold on a project on Mathlib, against what the machine has
+    const memory = o.graph || o.jobs <= 0 ? null : jobsAdvice(o.jobs, onMathlib(project.root));
+    if (memory)
+      console.log(
+        `  memory: ${inGB(freemem())} available; on Mathlib the pass's workers may hold up to ${inGB(WORKER_PEAK)} each, ${inGB(memory.need)} at ${o.jobs}: ` +
+          `--jobs ${memory.fits} if memory runs short (it starts fewer while less than ${inGB(memoryFloor())} is available)`,
+      );
     console.log(
       `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : `anyone who reaches the port, by its address, localhost${[...(o.publicUrl ? [urlHost(o.publicUrl)] : []), ...o.allowedHosts].map((n) => `, ${n}`).join("")} (other names are refused: --allowed-host)`}`,
     );
