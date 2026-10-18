@@ -15,6 +15,7 @@ import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
 import { sectionHead } from "./targetlist.ts";
 import { holdFocus } from "./keepfocus.ts";
+import { ringed } from "./axiomring.ts";
 
 export interface PanelHooks {
   /** go to a declaration: a click there with the tool (web/src/selection.ts), and the view flies
@@ -283,7 +284,7 @@ export class Panel {
       ${banner(this.hooks.fileOf(i))}
       ${then ?? ""}
       <div class="p-head">
-        <div class="p-kind k-${kind}"><span class="dot"></span>${kind}${flags}</div>
+        <div class="p-kind k-${kind}"><span class="dot${ringed(v.kind) ? " axiom" : ""}"></span>${kind}${flags}</div>
         <button class="icon" data-close title="Close (Esc)" aria-label="Close">✕</button>
       </div>
       <h1 class="p-name">${escapeHtml(v.display ?? parts[parts.length - 1])}</h1>

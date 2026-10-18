@@ -69,6 +69,7 @@ import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
 import { namespacesOf, resolver, scopeAt } from "./scope.ts";
 import { asideRect, MIN, openBounds, openRect } from "./sources.ts";
+import { kindDot } from "./axiomring.ts";
 import type { SourcePane } from "./sources.ts";
 
 export interface SourceHooks {
@@ -741,7 +742,7 @@ export class SourceWindow implements SourcePane {
     const own = resolver(g, v.name, null);
     const isRef = (w: string) => (w === v.name ? w : own(w));
     return (
-      `<div class="hc-where"><span class="dot k-${g.isExt(i) ? "external" : v.kind}"></span>${escapeHtml(v.kind)} · ${escapeHtml(v.module)}</div>` +
+      `<div class="hc-where"><span class="dot ${kindDot(v.kind, g.isExt(i))}"></span>${escapeHtml(v.kind)} · ${escapeHtml(v.module)}</div>` +
       `<pre class="code">${highlightLean(v.type ? `${v.name} : ${v.type}` : v.name, isRef)}</pre>` +
       (v.doc ? `<hr>${renderDoc(v.doc)}` : "")
     );
@@ -827,7 +828,7 @@ export class SourceWindow implements SourcePane {
     // the editor opens the file as it is now: at the compiled place, unless the window found the
     // declaration somewhere else in a file that changed since
     const head = (where: string, editor: string | null) =>
-      `<div class="sw-head">${pinned ? "" : nav()}<span class="dot k-${kind}"></span><span class="sw-name" title="${escapeHtml(v.name)}">${short}</span>` +
+      `<div class="sw-head">${pinned ? "" : nav()}<span class="dot ${kindDot(v.kind, ext)}"></span><span class="sw-name" title="${escapeHtml(v.name)}">${short}</span>` +
       `<span class="sw-ns">${escapeHtml(parts.slice(0, -1).join("."))}</span><span class="sw-loc">${where}</span>` +
       (editor ? editorAnchor(editor) : "") +
       `<span class="sw-acts">${pin}<button class="icon" data-sw-collapse aria-label="Collapse" title="Collapse to one line (or double-click the title bar)">${COLLAPSE}</button>` +
@@ -840,7 +841,7 @@ export class SourceWindow implements SourcePane {
         `<div class="sw-scroll"><div class="sw-body">${body}</div><div class="sw-review">${this.box.html(i, false)}</div></div>`;
       // collapsed, a pill with the declaration's name; a click opens the window again
       this.pillEl.innerHTML =
-        `<button class="sw-pill-open" type="button" title="Open the source of ${escapeHtml(v.name)} again"><span class="dot k-${kind}"></span>` +
+        `<button class="sw-pill-open" type="button" title="Open the source of ${escapeHtml(v.name)} again"><span class="dot ${kindDot(v.kind, ext)}"></span>` +
         `<span class="sw-pill-name">${short}</span>${pinned ? `<span class="sw-pinned" aria-label="Pinned">${PIN}</span>` : ""}</button>` +
         `<button class="icon sw-close" data-sw-close aria-label="Close" title="Close">✕</button>`;
       if (final) this.drew();

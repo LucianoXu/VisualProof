@@ -78,6 +78,7 @@ import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
 import { Guide, restsOnCounts } from "./guide.ts";
 import type { RestsOn } from "./guide.ts";
 import { reducedMotion } from "./tipcards.ts";
+import { kindDot, ringed } from "./axiomring.ts";
 import { keepFocus } from "./keepfocus.ts";
 import { Legend } from "./legend.ts";
 import { applyTheme, themeChoices } from "./theme.ts";
@@ -950,7 +951,8 @@ async function boot(): Promise<void> {
             : f && STATE_LABEL[f.state]
               ? ` <span class="tip-st st-${f.state}">${STATE_LABEL[f.state]}</span>`
               : "";
-        const dot = canvas.scheme === "status" ? `ss s-${ss}${vg().isExt(i) ? " k-external" : ""}` : `k-${vg().isExt(i) ? "external" : v.kind}`;
+        // an axiom's ringed, by either scheme (web/src/axiomring.ts)
+        const dot = canvas.scheme === "status" ? `ss s-${ss}${vg().isExt(i) ? " k-external" : ""}${ringed(v.kind) ? " axiom" : ""}` : kindDot(v.kind, vg().isExt(i));
         // on a past graph, what became of it since
         const then = markWords(canvas.pastMarkOf(i), canvas.nowNameOf(i));
         tip.innerHTML = `<span class="dot ${dot}"></span>${escapeHtml(v.name)}${st}${then.length ? ` <span class="tip-st tip-tm">${escapeHtml(then.join(" · "))}</span>` : ""}`;
@@ -959,7 +961,7 @@ async function boot(): Promise<void> {
         const vis = visitors[t.k];
         const i = vis ? g.byName.get(vis.name) : undefined;
         if (!vis || i === undefined) return void (tip.hidden = true);
-        const dot = `k-${g.isExt(i) ? "external" : g.nodes[i].kind}`;
+        const dot = kindDot(g.nodes[i].kind, g.isExt(i));
         // on a folded cluster's card: which one, and that selecting it opens it for the reader alone
         const card = canvas.visitorCard(t.k);
         const inside = card >= 0 ? `; inside folded ${escapeHtml(canvas.layout.clusters[card].label)}, a click opens it for you` : "";
@@ -2504,6 +2506,7 @@ async function boot(): Promise<void> {
         ext: g.isExt(i),
         place: v.place,
         kind: g.isExt(i) ? "external" : node.kind,
+        axiom: ringed(node.kind),
         status: statusState(boardReview(), g, i, g.isExt(i) || pastShown() ? undefined : fileIndex.get(node.module), g.axiomsOf(i).includes("sorryAx")),
         target: Object.hasOwn(targets, v.name),
         key: r !== null && r !== i && flow.isKey(r, i),
