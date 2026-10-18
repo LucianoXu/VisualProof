@@ -239,6 +239,9 @@ export interface StickyHooks {
   unfold(c: number): void;
   /** the library's record of a file a note carries, or null where it has none */
   file(sha: string): FileRecord | null;
+  /** whether no file can be had here (a snapshot of the page, which carries the library's records,
+   *  not its files): a card says so in place of a drawing */
+  noFiles?(): boolean;
   /** one of the files or clips a note carries clicked: opened in the reference window */
   openCarry(id: string, c: NoteCarry): void;
 }
@@ -612,7 +615,11 @@ export class Stickies {
     const f = this.hooks.file(c.file);
     if (!f) return `<div class="sk-att sk-att-none" data-att="${k}">A file the library has no record of (<code>${c.file.slice(0, 12)}…</code>): it came with a note, not with the review.</div>`;
     const archived = f.archived ? `<span class="sk-att-arch" title="Archived by ${e(f.archived.by)}: restore it from the Library">archived</span>` : "";
-    const img = (src: string, cls: string) => `<img class="${cls}" src="${src}" loading="lazy" decoding="async" alt="" draggable="false">`;
+    // a snapshot of the page asks for no drawing (there is no server to draw it): it says so, a
+    // PDF's title and pages standing alone
+    const none = this.hooks.noFiles?.() ?? false;
+    const img = (src: string, cls: string) =>
+      none ? (cls === "sk-att-page" ? "" : `<span class="sk-att-why">${e(f.title)} is drawn on the server: a snapshot of the page carries no files.</span>`) : `<img class="${cls}" src="${src}" loading="lazy" decoding="async" alt="" draggable="false">`;
     if (f.type !== "pdf")
       return `<button type="button" class="sk-att sk-att-img${f.archived ? " arch" : ""}" data-att="${k}" data-sha="${f.sha}" title="${e(f.title)} — open it in the reference window">${img(`/api/library/file?sha=${f.sha}`, "sk-att-pic")}${archived}</button>`;
     if (c.region) {

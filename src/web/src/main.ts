@@ -649,6 +649,7 @@ async function boot(): Promise<void> {
     relayoutSource: () => sources.following?.relayout(),
     repaint: () => showSelected(),
     readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : reader ? READ_ONLY : null),
+    noFiles: () => (data.snapshot ? "A snapshot of the page carries the library's records and links, not its files: open it on the server." : null),
     // what notes carry (AttachmentSpec decision 12): a clip made into a note, a file attached to one
     cannotNote: () => noteRefused(),
     clip: (c, text) => clipToNote(c, text),
@@ -1019,6 +1020,7 @@ async function boot(): Promise<void> {
     unfold: (c) => canvas.toggleFold(c),
     // the library is the server's now, whatever build the board shows
     file: (sha) => fileOf(review.data, sha),
+    noFiles: () => !!data.snapshot,
     openCarry: (_id, c) => papers.openCarry(c),
   });
   canvas.onFrame = () => stickies.frame();

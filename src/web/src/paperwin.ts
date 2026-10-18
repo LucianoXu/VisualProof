@@ -79,6 +79,9 @@ export interface PaperHooks {
   placed(): void;
   /** why no note can be written here (a preview of a view, a snapshot), or null */
   cannotNote(): string | null;
+  /** why no file can be opened here (a snapshot of the page carries the library's records, not its
+   *  files), or null */
+  noFiles?(): string | null;
   /** Clip to a note: a note of the project carrying the clip, with that text; whether it was made */
   clip(c: NoteCarry, text: string): Promise<boolean>;
   /** a file or a clip attached to note `note` (its menu's Attach…); whether it was */
@@ -264,6 +267,11 @@ export class PaperWin {
     this.page = 1;
     this.pages = f.pages ?? 0;
     this.unpick();
+    const none = this.hooks.noFiles?.();
+    if (none) {
+      this.host.innerHTML = `<div class="pw-missing"><p><b>${escapeHtml(f.title)}</b></p><p>${escapeHtml(none)}</p></div>`;
+      return;
+    }
     this.host.innerHTML = `<div class="pw-wait">Opening ${escapeHtml(f.title)}…</div>`;
     const url = `/api/library/file?sha=${f.sha}`;
     // a file whose record came through the logs from another server: this one may lack its bytes
