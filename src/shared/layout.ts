@@ -22,7 +22,7 @@
 import { packEnclose, packSiblings } from "d3-hierarchy";
 import type { Cluster, ClusterMode, Layout, ViewNode } from "./graph.ts";
 import { acos, cos, hypot, log1p, sin } from "./libm.ts";
-import { type Bodies, Separator } from "./separate.ts";
+import { type Bodies, BoxGrid, Separator } from "./separate.ts";
 
 const LEAF_R = 5;
 /** gap between declarations that touch, as the page packs them */
@@ -222,6 +222,10 @@ const SIN = Float64Array.from({ length: ANGLES }, (_, s) => sin((2 * Math.PI * s
  * first, take the free spot nearest their height, sideways being cheap; declarations then fill the
  * hexagonal lattice cells nearest the centre that the sub-clusters leave free, the highest
  * potential in the highest cell.
+ *
+ * What a spot is checked against is found in a grid of the discs placed (shared/separate.ts,
+ * BoxGrid), which gives what checking every one of them gave, so that a folder of 1,800 files
+ * settles in time proportional to its size.
  */
 function settle(items: Item[], phi: Float64Array): void {
   const n = items.length;
@@ -260,6 +264,15 @@ function settle(items: Item[], phi: Float64Array): void {
     });
     return;
   }
+  // the sub-clusters' sizes: the grids' cells about as wide as a middling one, the largest tenth
+  // filed by their boxes and the others by their centres
+  const radii = Float64Array.from(big, (k) => items[k].r).sort();
+  const rMax = radii[radii.length - 1];
+  const rPoint = radii[Math.floor(0.9 * (radii.length - 1))];
+  const cell = Math.max(PITCH, 2 * radii[radii.length >> 1]);
+  const grid = new BoxGrid();
+  /** so few that looking at each is quicker than the grid */
+  const few = big.length < 32;
   // placed as tall as the estimate says, then stretched or squeezed until it comes out round
   let scale = R;
   for (let pass = 0; pass < 3; pass++) {
@@ -280,8 +293,27 @@ function settle(items: Item[], phi: Float64Array): void {
   function place(ty: Float64Array): void {
   // 1. sub-clusters, largest first
   const px: number[] = [], py: number[] = [], pr: number[] = [];
+  // the placed ones in a grid over where they can go, every target height inside it
+  let t0 = 0, t1 = 0;
+  for (const k of big) {
+    t0 = Math.min(t0, ty[k]);
+    t1 = Math.max(t1, ty[k]);
+  }
+  const span = 3 * (R + Math.max(-t0, t1)) + 2 * rMax;
+  if (!few) grid.reset(Math.max(cell, Math.sqrt((2 * span * (t1 - t0 + 2 * span)) / (8 * big.length + 64))), big.length, -span, t0 - span, span, t1 + span);
+  const reachFree = rPoint + 0.3 + 1e-6;
   const free = (x: number, y: number, r: number) => {
-    for (let j = 0; j < px.length; j++) {
+    if (few) {
+      for (let j = 0; j < px.length; j++) {
+        const need = r + pr[j] + 0.3;
+        if (sq(x - px[j]) + sq(y - py[j]) < need * need) return false;
+      }
+      return true;
+    }
+    const e = r + reachFree;
+    const m = grid.find(x - e, y - e, x + e, y + e);
+    for (let f = 0; f < m; f++) {
+      const j = grid.found[f];
       const need = r + pr[j] + 0.3;
       if (sq(x - px[j]) + sq(y - py[j]) < need * need) return false;
     }
@@ -294,8 +326,7 @@ function settle(items: Item[], phi: Float64Array): void {
     let bx = 0, by = t, best = free(0, t, r) ? 0 : Infinity;
     if (best > 0) {
       // touching one of the placed discs nearest the target
-      const near = px.map((_, j) => j).sort((a, b) => hypot(px[a], py[a] - t) - pr[a] - (hypot(px[b], py[b] - t) - pr[b])).slice(0, 12);
-      for (const j of near) {
+      for (const j of nearest(px, py, pr, t)) {
         const d = r + pr[j] + 0.3;
         for (let s = 0; s < ANGLES; s++) {
           const x = px[j] + d * COS[s], y = py[j] + d * SIN[s];
@@ -314,6 +345,7 @@ function settle(items: Item[], phi: Float64Array): void {
     }
     items[k].x = bx;
     items[k].y = by;
+    if (!few) grid.add(px.length, bx, by, r <= rPoint ? 0 : r + 0.3 + 1e-6);
     px.push(bx);
     py.push(by);
     pr.push(r);
@@ -349,6 +381,16 @@ function settle(items: Item[], phi: Float64Array): void {
   if (leaves.length) {
     const rowH = (PITCH * Math.sqrt(3)) / 2;
     let Rl = Math.sqrt(leaves.length) * PITCH * 0.55 + 2 * PITCH;
+    // the discs by the boxes a cell's centre must stay out of
+    let x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    for (let q = 0; q < px.length; q++) {
+      x0 = Math.min(x0, px[q] - pr[q]);
+      x1 = Math.max(x1, px[q] + pr[q]);
+      y0 = Math.min(y0, py[q] - pr[q]);
+      y1 = Math.max(y1, py[q] + pr[q]);
+    }
+    grid.reset(Math.max(cell, Math.sqrt(((x1 - x0) * (y1 - y0)) / (8 * px.length + 64))), px.length, x0, y0, x1, y1);
+    for (let q = 0; q < px.length; q++) grid.add(q, px[q], py[q], pr[q] + LEAF_R + 0.3 + 1e-6);
     let cells: [number, number, number][] = [];
     for (let attempt = 0; attempt < 60; attempt++) {
       cells = [];
@@ -357,12 +399,15 @@ function settle(items: Item[], phi: Float64Array): void {
         const y = j * rowH;
         const off = j & 1 ? PITCH / 2 : 0;
         const cols = Math.ceil(Rl / PITCH) + 1;
+        const gj = grid.row(y);
         for (let i = -cols; i <= cols; i++) {
           const x = i * PITCH + off;
           const d2 = x * x + y * y;
           if (d2 > Rl * Rl) continue;
           let ok = true;
-          for (let q = 0; q < px.length && ok; q++) {
+          const m = grid.cell(grid.col(x), gj, grid.wideOnes(0));
+          for (let f = 0; f < m && ok; f++) {
+            const q = grid.found[f];
             const need = pr[q] + LEAF_R + 0.3;
             if (sq(x - px[q]) + sq(y - py[q]) < need * need) ok = false;
           }
@@ -379,6 +424,53 @@ function settle(items: Item[], phi: Float64Array): void {
       items[k].y = chosen[j][1];
     });
   }
+  }
+
+  /** The (at most) twelve placed discs nearest (0, t) — by the distance to their edge, the first
+   *  placed first among equals — found ring by ring of cells round it: a disc not found yet is at
+   *  least as far as the rings reach, less the largest radius filed by its centre. */
+  function nearest(px: number[], py: number[], pr: number[], t: number): number[] {
+    const key = (j: number) => hypot(px[j], py[j] - t) - pr[j];
+    const byKey = (a: number, b: number, ka: number, kb: number) => ka - kb || a - b;
+    if (px.length <= 12 || few) {
+      const ks = px.map((_, j) => key(j));
+      return px.map((_, j) => j).sort((a, b) => byKey(a, b, ks[a], ks[b])).slice(0, 12);
+    }
+    const qi = grid.col(0), qj = grid.row(t);
+    const nx = grid.columns, ny = grid.rows, w = grid.width;
+    const seen = new Set<number>();
+    const cand: number[] = [], ks: number[] = [];
+    for (let k = 0; ; k++) {
+      // the discs too wide to file by their cells, with the first ring
+      const wide = k === 0 ? grid.wideOnes(0) : 0;
+      for (let f = 0; f < wide; f++) {
+        const b = grid.found[f];
+        if (seen.has(b)) continue;
+        seen.add(b);
+        cand.push(b);
+        ks[b] = key(b);
+      }
+      for (let j = qj - k; j <= qj + k; j++) {
+        if (j < 0 || j >= ny) continue;
+        const edge = j === qj - k || j === qj + k;
+        for (let i = qi - k; i <= qi + k; i += edge ? 1 : 2 * k) {
+          if (i < 0 || i >= nx) continue;
+          const m = grid.cell(i, j, 0);
+          for (let f = 0; f < m; f++) {
+            const b = grid.found[f];
+            if (seen.has(b)) continue;
+            seen.add(b);
+            cand.push(b);
+            ks[b] = key(b);
+          }
+        }
+      }
+      const all = qi - k <= 0 && qi + k >= nx - 1 && qj - k <= 0 && qj + k >= ny - 1;
+      if (cand.length >= 12 || all) {
+        cand.sort((a, b) => byKey(a, b, ks[a], ks[b]));
+        if (all || ks[cand[11]] + 1e-6 < k * w - rPoint) return cand.slice(0, 12);
+      }
+    }
   }
 
   function finish(): void {
@@ -752,6 +844,10 @@ export function stabilize(fresh: Layout, nodes: ViewNode[], mem: LayoutMemory | 
   const x = [...fresh.x];
   const y = [...fresh.y];
   const occ = new Occupancy();
+  // each cluster's sub-clusters, and the top level's
+  const kids: number[][] = cs.map(() => []);
+  const top: number[] = [];
+  cs.forEach((k, i) => (k.parent >= 0 ? kids[k.parent] : top).push(i));
   const placed = new Uint8Array(nodes.length);
   nodes.forEach((n, i) => {
     const old = mem.nodes[n.name];
@@ -780,7 +876,7 @@ export function stabilize(fresh: Layout, nodes: ViewNode[], mem: LayoutMemory | 
       ty = cs[c].y + (fresh.y[i] - fresh.clusters[c].y);
     }
     // stay out of the sub-clusters of its own cluster, as they stand now
-    const discs = cs.filter((k) => k.parent === c).map((k) => ({ x: k.x, y: k.y, r: k.r }));
+    const discs = (c >= 0 ? kids[c] : top).map((k) => ({ x: cs[k].x, y: cs[k].y, r: cs[k].r }));
     [x[i], y[i]] = nearestFree(occ, tx, ty, discs).map(round) as [number, number];
     occ.add(x[i], y[i]);
     // a disc grows to hold what was placed outside it, and so do the discs around it
@@ -844,6 +940,134 @@ export function regroup(tree: Layout, nodes: ViewNode[], mem: LayoutMemory, at?:
   return anew.size ? relax(L, anew) : L;
 }
 
+/**
+ * The siblings of one parent pushed apart, as relax does: up to 40 rounds, each pushing every pair
+ * that overlaps — a cluster (the first `nc` items) against every item after it — in that order, the
+ * smaller one moving more; `DX`, `DY` add up how far each item moved. Returns how many pushes there
+ * were. While a cluster meets the others in turn nothing moves but it and the one it meets, so what
+ * it may meet is found in a grid of where they were (shared/separate.ts, BoxGrid), which gives what
+ * looking at every pair gave, to the last bit.
+ */
+function apart(nc: number, n: number, X: Float64Array, Y: Float64Array, R: Float64Array, DX: Float64Array, DY: Float64Array): number {
+  const push = (a: number, b: number): number => {
+    let dx = X[b] - X[a], dy = Y[b] - Y[a];
+    let d = hypot(dx, dy);
+    // packed discs touch exactly: only a real overlap counts
+    const need = R[a] + R[b];
+    if (d >= need - 0.5) return 0;
+    if (d < 1e-6) {
+      dx = 1;
+      dy = 0;
+      d = 1;
+    }
+    const over = need - d;
+    const wa = (R[b] * R[b]) / (R[a] * R[a] + R[b] * R[b]); // the smaller one moves more
+    const ax = (-dx / d) * over * wa, ay = (-dy / d) * over * wa;
+    X[a] += ax;
+    Y[a] += ay;
+    DX[a] += ax;
+    DY[a] += ay;
+    const bx = (dx / d) * over * (1 - wa), by = (dy / d) * over * (1 - wa);
+    X[b] += bx;
+    Y[b] += by;
+    DX[b] += bx;
+    DY[b] += by;
+    return 1;
+  };
+  let moved = 0;
+  if (n < 64) {
+    for (let iter = 0; iter < 40; iter++) {
+      let any = false;
+      for (let a = 0; a < nc; a++) for (let b = a + 1; b < n; b++) if (push(a, b)) (any = true), moved++;
+      if (!any) break;
+    }
+    return moved;
+  }
+  // the largest tenth filed by their boxes, the others by their centres; slacks a fraction of the
+  // middling radius
+  const radii = R.slice().sort();
+  const rPoint = radii[Math.floor(0.9 * (n - 1))], mid = radii[n >> 1];
+  const slackFiled = mid / 4, slackLook = mid / 2;
+  const reachOut = slackLook + rPoint + slackFiled;
+  const grid = new BoxGrid();
+  const seen = new Int32Array(n).fill(-1);
+  let cand = new Int32Array(64);
+  const rects: number[] = [];
+  /** what cluster `a` may meet seen from (qx, qy), in the cells no earlier look of its turn visited:
+   *  those after `after`, in order, into the candidates from `from` on, where `to` ended them */
+  const gather = (a: number, qx: number, qy: number, after: number, from: number, to: number): number => {
+    const e = R[a] + reachOut;
+    const i0 = grid.col(qx - e), i1 = grid.col(qx + e), j0 = grid.row(qy - e), j1 = grid.row(qy + e);
+    let m = rects.length ? 0 : grid.wideOnes(0);
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        let done = false;
+        for (let v = 0; v < rects.length && !done; v += 4) done = i >= rects[v] && i <= rects[v + 1] && j >= rects[v + 2] && j <= rects[v + 3];
+        if (!done) m = grid.cell(i, j, m);
+      }
+    }
+    rects.push(i0, i1, j0, j1);
+    if (cand.length < to + m) {
+      const c = new Int32Array(Math.max(2 * cand.length, to + m));
+      c.set(cand.subarray(0, to));
+      cand = c;
+    }
+    let k = to;
+    for (let f = 0; f < m; f++) {
+      const b = grid.found[f];
+      if (seen[b] === a) continue;
+      seen[b] = a;
+      if (b > after) cand[k++] = b;
+    }
+    if (from === to) cand.subarray(from, k).sort();
+    else {
+      for (let j = to; j < k; j++) {
+        const q = cand[j];
+        let i = j;
+        while (i > from && cand[i - 1] > q) {
+          cand[i] = cand[i - 1];
+          i--;
+        }
+        cand[i] = q;
+      }
+    }
+    return k;
+  };
+  const s2 = sq(slackLook * 0.999), f2 = sq(slackFiled * 0.999);
+  for (let iter = 0; iter < 40; iter++) {
+    let any = false;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let k = 0; k < n; k++) {
+      x0 = Math.min(x0, X[k]);
+      x1 = Math.max(x1, X[k]);
+      y0 = Math.min(y0, Y[k]);
+      y1 = Math.max(y1, Y[k]);
+    }
+    grid.reset(Math.max(1, 0.75 * (rPoint + reachOut), Math.sqrt(((x1 - x0) * (y1 - y0)) / (4 * n + 64))), n, x0, y0, x1, y1);
+    for (let k = 0; k < n; k++) grid.add(k, X[k], Y[k], R[k] <= rPoint ? 0 : R[k] + slackFiled);
+    seen.fill(-1);
+    for (let a = 0; a < nc; a++) {
+      let qx = X[a], qy = Y[a];
+      rects.length = 0;
+      let nc2 = gather(a, qx, qy, a, 0, 0);
+      for (let ci = 0; ci < nc2; ) {
+        const b = cand[ci++];
+        if (!push(a, b)) continue;
+        any = true;
+        moved++;
+        if (sq(X[b] - grid.fx[b]) + sq(Y[b] - grid.fy[b]) > f2) grid.add(b, X[b], Y[b], grid.fe[b]);
+        if (sq(X[a] - qx) + sq(Y[a] - qy) > s2) {
+          qx = X[a];
+          qy = Y[a];
+          nc2 = gather(a, qx, qy, b, ci, nc2);
+        }
+      }
+    }
+    if (!any) break;
+  }
+  return moved;
+}
+
 /** Clusters that grew in place (new members) or arrived (new clusters) can overlap their
  *  siblings. Push siblings apart in each parent's local frame, smallest moving most, bottom-up so
  *  a parent sees its children's final sizes; then let each parent grow to hold its children and
@@ -864,49 +1088,24 @@ export function relax(L: Layout, only?: ReadonlySet<number>): Layout {
   const dnx = new Float64Array(L.x.length), dny = new Float64Array(L.x.length);
   const separate = (kc: number[], kn: number[]) => {
     if (!kc.length) return 0;
-    const items = [...kc.map((c) => ({ c, i: -1, r: cs[c].r })), ...kn.map((i) => ({ c: -1, i, r: LEAF_R }))];
-    const pos = (it: { c: number; i: number }) => (it.c >= 0 ? [cs[it.c].lx, cs[it.c].ly] : [L.lx[it.i], L.ly[it.i]]);
-    const shift = (it: { c: number; i: number }, dx: number, dy: number) => {
-      if (it.c >= 0) {
-        cs[it.c].lx += dx;
-        cs[it.c].ly += dy;
-        dcx[it.c] += dx;
-        dcy[it.c] += dy;
-      } else {
-        L.lx[it.i] += dx;
-        L.ly[it.i] += dy;
-        dnx[it.i] += dx;
-        dny[it.i] += dy;
-      }
-    };
-    let moved = 0;
-    for (let iter = 0; iter < 40; iter++) {
-      let any = false;
-      // only pairs with a cluster in them: declarations among themselves were placed apart
-      for (let a = 0; a < kc.length; a++) {
-        for (let b = a + 1; b < items.length; b++) {
-          const A = items[a], B = items[b];
-          const [ax, ay] = pos(A), [bx, by] = pos(B);
-          let dx = bx - ax, dy = by - ay;
-          let d = hypot(dx, dy);
-          // packed discs touch exactly: only a real overlap counts
-          const need = A.r + B.r;
-          if (d >= need - 0.5) continue;
-          if (d < 1e-6) {
-            dx = 1;
-            dy = 0;
-            d = 1;
-          }
-          const push = need - d;
-          const wa = (B.r * B.r) / (A.r * A.r + B.r * B.r); // the smaller one moves more
-          shift(A, (-dx / d) * push * wa, (-dy / d) * push * wa);
-          shift(B, (dx / d) * push * (1 - wa), (dy / d) * push * (1 - wa));
-          any = true;
-          moved++;
-        }
-      }
-      if (!any) break;
-    }
+    const nc = kc.length, n = nc + kn.length;
+    const X = new Float64Array(n), Y = new Float64Array(n), R = new Float64Array(n);
+    const DX = new Float64Array(n), DY = new Float64Array(n);
+    kc.forEach((c, j) => ([X[j], Y[j], R[j]] = [cs[c].lx, cs[c].ly, cs[c].r]));
+    kn.forEach((i, j) => ([X[nc + j], Y[nc + j], R[nc + j]] = [L.lx[i], L.ly[i], LEAF_R]));
+    const moved = apart(nc, n, X, Y, R, DX, DY);
+    kc.forEach((c, j) => {
+      cs[c].lx = X[j];
+      cs[c].ly = Y[j];
+      dcx[c] += DX[j];
+      dcy[c] += DY[j];
+    });
+    kn.forEach((i, j) => {
+      L.lx[i] = X[nc + j];
+      L.ly[i] = Y[nc + j];
+      dnx[i] += DX[nc + j];
+      dny[i] += DY[nc + j];
+    });
     return moved;
   };
   const look = only ? new Set(only) : null;
