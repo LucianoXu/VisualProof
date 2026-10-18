@@ -650,10 +650,7 @@ export class App {
       res.writeHead(303, { location: "/", "set-cookie": this.live.invites.cookie(c.ok), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
-    if (c) {
-      const r = c.record;
-      return sendText(req, res, `This personal link was revoked by ${r.revokedBy} on ${r.revoked!.slice(0, 10)}. Ask whoever invited you for a new one.\n`, "text/plain; charset=utf-8", 410);
-    }
+    if (c) return sendText(req, res, revokedWords(c.record, "personal") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
 
@@ -667,10 +664,7 @@ export class App {
       res.writeHead(303, { location: "/", "set-cookie": this.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
-    if (c) {
-      const l = c.link;
-      return sendText(req, res, `This read-only link was revoked by ${l.revokedBy} on ${l.revoked!.slice(0, 10)}. Ask whoever gave it to you for a new one.\n`, "text/plain; charset=utf-8", 410);
-    }
+    if (c) return sendText(req, res, revokedWords(c.link, "read-only") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
 
@@ -816,6 +810,17 @@ export class App {
         if (a === "out") {
           // nothing lets them in to write: their read-only link does, or --public, to read
           const reader = ro && "ok" in ro ? ro.ok.id : this.publicRead && !this.ids.header ? "public" : null;
+          // a page whose link was revoked, which nothing else lets in, is told so (CollabSpec
+          // decisions 9 and 11): its requests are answered 410 with who revoked it and when, and the
+          // page, reloaded, says it in words; the cookie is forgotten there, once it has been said
+          const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? revokedWords(link.record, "personal") : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
+          if (revoked) {
+            if (path === "/" || path === "/index.html") {
+              res.setHeader("set-cookie", cookies);
+              return sendText(req, res, revoked + "\n", "text/plain; charset=utf-8", 410);
+            }
+            return sendJson(res, { error: revoked, revoked: true }, 410);
+          }
           if (reader === null || this.ids.kind(req) === "agent") {
             if (cookies.length) res.setHeader("set-cookie", cookies);
             return sendJson(res, { error: "not found" }, 404);
@@ -1101,6 +1106,11 @@ export class App {
       sendJson(res, { error: "not found" }, 404);
     }
   }
+}
+
+/** What a revoked link's holder is told, opening it or on a page it had opened. */
+function revokedWords(r: { revokedBy?: string | null; revoked?: string | null }, kind: "personal" | "read-only"): string {
+  return `This ${kind} link was revoked by ${r.revokedBy} on ${(r.revoked ?? "").slice(0, 10)}. Ask whoever ${kind === "personal" ? "invited you" : "gave it to you"} for a new one.`;
 }
 
 /** an artwork's font file (assets/webfonts/) */

@@ -490,8 +490,13 @@ export class People {
     this.renderPeers();
     this.beat();
     // a page that came by a personal link asks who it is when its stream comes back: a link
-    // revoked ends its streams, and the key may still let it in, as a guest
-    if (again && this.mode === "person") void this.init();
+    // revoked ends its streams, and the key may still let it in, as a guest; or, on a server open to
+    // all (--public), let it read only — the page is reloaded then, a read-only reader's (CollabSpec
+    // decision 11)
+    if (again && this.mode === "person")
+      void this.init().then(() => {
+        if (this.readOnly) location.reload();
+      });
   }
 
   /** How many private readers the server counts (CollabSpec decision 8). */

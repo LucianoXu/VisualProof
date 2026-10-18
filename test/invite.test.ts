@@ -133,13 +133,20 @@ test("the personal link lets its holder in, as who it says, and its cookie does 
     assert.equal((await S.ask("POST", "/api/share/people/revoke", { id: inv.id }, { ...OWNER, cookie: e.cookie })).status, 200);
     await s.until(() => open() === 0);
     s.close();
-    // revoked: the link says so, and the cookie lets nobody in and is forgotten
+    // revoked: the link says so, and the cookie lets nobody in: its page's requests are told who
+    // revoked it (410), and the page, reloaded, says it in words and forgets the cookie
     const again = await enter(S, link);
     assert.equal(again.status, 410);
     assert.match(again.text, /revoked by Bob/, "Bob revoked his own, under his name");
     const out = await fetch(S.base + "/api/identity", { headers: { cookie: e.cookie } });
-    assert.equal(out.status, 404);
-    assert.ok(out.headers.getSetCookie().some((c) => c.startsWith(`${S.live.invites.cookieName}=;`) && /Max-Age=0/.test(c)));
+    assert.equal(out.status, 410);
+    assert.match(((await out.json()) as { error: string }).error, /^This personal link was revoked by Bob on \d{4}-\d\d-\d\d\. Ask whoever invited you for a new one\.$/);
+    assert.equal((await fetch(S.base + "/api/events?session=bbbbbbbb2222", { headers: { cookie: e.cookie } })).status, 410);
+    const told = await fetch(S.base + "/", { headers: { cookie: e.cookie } });
+    assert.equal(told.status, 410);
+    assert.match(await told.text(), /revoked by Bob/);
+    assert.ok(told.headers.getSetCookie().some((c) => c.startsWith(`${S.live.invites.cookieName}=;`) && /Max-Age=0/.test(c)));
+    assert.equal((await fetch(S.base + "/api/identity")).status, 404, "the cookie gone, nothing says anything");
     // with the key too, the browser comes in as a guest, and is told why it is one
     const guest = await S.ask("GET", "/api/identity", undefined, { cookie: e.cookie, authorization: `Bearer ${KEY}` });
     assert.equal(guest.status, 200);

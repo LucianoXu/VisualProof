@@ -63,9 +63,20 @@ test("a read-only link lets its holder read, by a cookie that is not the token; 
     const again = await enter(S, link.path);
     assert.equal(again.status, 410);
     assert.match(again.text, /revoked by Olivia/);
+    // its page's requests are told who revoked it (410); the page, reloaded, says it in words and
+    // forgets the cookie
     const out = await fetch(S.base + "/api/identity", { headers: { cookie: e.cookie } });
-    assert.equal(out.status, 404);
-    assert.ok(out.headers.getSetCookie().some((c) => c.startsWith(`${S.live.readOnly.cookieName}=;`) && /Max-Age=0/.test(c)));
+    assert.equal(out.status, 410);
+    assert.match(((await out.json()) as { error: string }).error, /^This read-only link was revoked by Olivia on \d{4}-\d\d-\d\d\. Ask whoever gave it to you for a new one\.$/);
+    const told = await fetch(S.base + "/", { headers: { cookie: e.cookie } });
+    assert.equal(told.status, 410);
+    assert.match(await told.text(), /revoked by Olivia/);
+    assert.ok(told.headers.getSetCookie().some((c) => c.startsWith(`${S.live.readOnly.cookieName}=;`) && /Max-Age=0/.test(c)));
+    // with --public the address alone reads: such a page reads on, its cookie forgotten
+    S.app.publicRead = true;
+    const pub = await fetch(S.base + "/api/identity", { headers: { cookie: e.cookie } });
+    assert.deepEqual([pub.status, ((await pub.json()) as { readOnly: unknown }).readOnly], [200, { by: "public" }]);
+    assert.ok(pub.headers.getSetCookie().some((c) => c.startsWith(`${S.live.readOnly.cookieName}=;`)));
   } finally {
     await S.close();
   }
