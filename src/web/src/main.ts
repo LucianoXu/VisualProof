@@ -3272,7 +3272,7 @@ async function boot(): Promise<void> {
       // refused rather than lost (a server with as many pages open as it serves): the browser does
       // not try again by itself, so the page does, a while later — unless the link this page came by
       // was revoked (CollabSpec decisions 9 and 11), which the server says (410): the page is
-      // reloaded, and says by whom
+      // reloaded, and the server's page says the link no longer opens the site (decision 7)
       if (es.readyState === EventSource.CLOSED)
         void fetch("/api/identity")
           .then((r) => (r.status === 410 ? location.reload() : setTimeout(listen, 10_000)))

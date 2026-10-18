@@ -31,14 +31,24 @@ into the latest release only.
   (`/k/<key>`) or a personal link made in Share (`/i/vpp_…`, revoked on its own), and answers
   everything else 404; or put an authenticating proxy in front. Agents send the key, or a token
   made in Share (`vpa_…`), which reaches the agents' API alone and lasts a few days.
+- **Who is not let in.** A browser asking for a page (GET or HEAD, accepting HTML, not the API nor a
+  file, no `Authorization: Bearer`) is shown, rather than the 404, a page saying the site is private
+  — or that its link no longer opens it, alike for a key replaced and for a personal or read-only
+  link revoked or never made, naming nobody — 403. It is the same page on every server, made of
+  nothing the site holds: whoever comes learns that a VisualProof server is there, and nothing else —
+  not the project, the version, the people or how many there are. No script, nothing fetched, a CSP
+  of `default-src 'none'`, never cached. A browser the key lets in is still told who revoked a link
+  and when; so is what does not ask for a page (a 410), as before.
 - **Web pages on this machine.** Without `--access-key-file`, whoever reaches the port is in, and a
   web page a browser here opens could reach it too, by DNS rebinding: its own name made to resolve
   to this machine, its scripts would then read and write the server as their own site. So a server
   without a key answers a request only for an IP address (IPv6 in brackets), `localhost` and the
   names under it, `--public-url`'s host and the names given with `--allowed-host`, at any port; any
-  other name, and a request without one, is answered 403, whatever it asks. A page reaches an
-  address only as that address, and browsers resolve `localhost` themselves, so neither can be a
-  name the page chose. With a key, the key keeps out whoever was not given it, by any name.
+  other name, and a request without one, is answered 403, whatever it asks — to a browser asking
+  for a page, a page for whoever runs the server, which names the options and does not repeat the
+  name. A page reaches an address only as that address, and browsers resolve `localhost`
+  themselves, so neither can be a name the page chose. With a key, the key keeps out whoever was
+  not given it, by any name.
 - **Read-only readers.** Anyone let in can make a read-only link in Share (`/r/vpr_…`): it lets
   whoever holds it read what a guest reads — the graph, the sources, the review, the history, the
   library's files — and nothing else. The server refuses every other request from them (403)
