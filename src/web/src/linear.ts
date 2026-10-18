@@ -1028,8 +1028,9 @@ export class LinearForm {
   /** Take a row up, where it was pressed: it, and what goes with it, follow the pointer. */
   private lift(row: Row, px: number, py: number): void {
     const sibs = this.siblings(row);
-    // an attached note taken up leaves its declaration's block
-    const blocks = sibs.map((r) => (r === row ? [row] : this.blockOf(r).filter((x) => x !== row)));
+    // it takes what goes with it (a section's rows, a declaration's notes); an attached note taken
+    // up leaves its declaration's block
+    const blocks = sibs.map((r) => (r === row ? this.blockOf(row) : this.blockOf(r).filter((x) => x !== row)));
     const from = sibs.indexOf(row);
     const block = blocks[from] ?? [row];
     const h = Math.max(...block.map((r) => r.y1)) - row.y0;
