@@ -7,6 +7,7 @@
 // (AgentSpec decision 2).
 
 import type { FileStatus } from "../../shared/build.ts";
+import type { ClusterMode } from "../../shared/graph.ts";
 import { statusOf } from "../../shared/review.ts";
 import type { ReviewData } from "../../shared/review.ts";
 import { needsReview } from "../../shared/reviewqueue.ts";
@@ -85,4 +86,33 @@ export function statusCounts(codes: Uint8Array, counted: (i: number) => boolean 
   const n = new Array<number>(STATUSES.length).fill(0);
   for (let i = 0; i < codes.length; i++) if (counted(i)) n[codes[i]]++;
   return n;
+}
+
+/** A file cluster's own build trouble, as a Status code (failed, building, sorry), or -1: what its
+ *  outline shows in the Status scheme. Trouble inherited from below (blocked, out of date because
+ *  something under it changed) is left out, so that one failure does not ring every file above it. */
+export function fileTrouble(f: FileStatus | undefined): number {
+  switch (f?.state) {
+    case "failed":
+    case "unbuilt":
+      return ST_FAILED;
+    case "building":
+      return ST_BUILDING;
+    case "sorry":
+      return ST_SORRY;
+    default:
+      return -1;
+  }
+}
+
+/** Each cluster's outline in the Status scheme (CanvasSpec, "Files and clusters"): its file's own
+ *  trouble (fileTrouble) where the clusters are files, -1 (none, the plain outline) for every other
+ *  cluster. Under namespaces a cluster's key is a namespace, which can read like a module's name
+ *  without being its file: none has an outline there. -1, not 0, is "none": 0 is failed's code, and
+ *  an array left at zeros ringed every namespace in failed's colour (the owner's report of
+ *  2026-10-18). */
+export function clusterTroubles(clusters: readonly { key: string }[], clustering: ClusterMode, files: ReadonlyMap<string, FileStatus>): Int8Array<ArrayBuffer> {
+  const out = new Int8Array(clusters.length).fill(-1);
+  if (clustering === "module") clusters.forEach((c, k) => (out[k] = fileTrouble(files.get(c.key))));
+  return out;
 }

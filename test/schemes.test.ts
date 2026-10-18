@@ -9,7 +9,7 @@ import type { ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { emptyReview } from "../src/shared/review.ts";
 import type { Opinion } from "../src/shared/review.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
-import { STATUSES, statusCodes, statusCounts } from "../src/web/src/status.ts";
+import { clusterTroubles, STATUSES, statusCodes, statusCounts } from "../src/web/src/status.ts";
 import { Store } from "../src/web/src/store.ts";
 
 /** Declarations in four files, one of them reaching sorry, and two from outside the project. */
@@ -88,6 +88,20 @@ test("what the legend counts: every declaration once, in its state, of those it 
   const own = statusCounts(codes, (i) => !g.isExt(i));
   assert.equal(own.reduce((a, b) => a + b, 0), g.projectCount);
   assert.equal(own[STATUSES.indexOf("trusted")], 0);
+});
+
+test("a file's own trouble outlines its cluster, by files only: no namespace has an outline, whatever its key reads like", () => {
+  const files = new Map([file("P.A", "failed"), file("P.B", "ok"), file("P.C", "sorry"), file("P.D", "building"), file("P.E", "blocked"), file("P.F", "unbuilt")]);
+  const clusters = ["P.A", "P.B", "P.C", "P.D", "P.E", "P.F", "P", "Mathlib"].map((key) => ({ key }));
+  const outline = (t: Int8Array) => [...t].map((c) => (c < 0 ? "none" : STATUSES[c]));
+  // by file: failed or never built, sorry and building; blocked (trouble from below), a clean file,
+  // a directory and the outside world have none
+  assert.deepEqual(outline(clusterTroubles(clusters, "module", files)), ["failed", "none", "sorry", "building", "none", "failed", "none", "none"]);
+  // by namespace, none at all: not failed's 0, which ringed every cluster (the owner's report of
+  // 2026-10-18), though P.A's key is a failed module's name
+  assert.deepEqual(outline(clusterTroubles(clusters, "namespace", files)), Array(clusters.length).fill("none"));
+  assert.deepEqual(outline(clusterTroubles(clusters, "namespace", new Map())), Array(clusters.length).fill("none"));
+  assert.equal(clusterTroubles([], "module", files).length, 0);
 });
 
 test("a view where the review has a focus opens in Status and every other view in Kind, until the reader chooses, apart for each", () => {

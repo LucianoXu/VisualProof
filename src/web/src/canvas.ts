@@ -30,7 +30,7 @@ import { artNameId } from "../../shared/collab.ts";
 import type { ArtStyle } from "../../shared/collab.ts";
 import { dragKeyHeld, dragMoves, menuClick } from "./drag.ts";
 import { Motion } from "./motion.ts";
-import { ST_APPROVED, ST_BUILDING, ST_COMMENTED, ST_FAILED, ST_SORRY, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
+import { clusterTroubles, ST_APPROVED, ST_COMMENTED, ST_TRUSTED, ST_UNREVIEWED, STATUSES } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { LEAF_R, Scene } from "./scene.ts";
 import { AXIOM_AT, AXIOM_OUT, AXIOM_W, kindDot, LIT, outside, pickRadius, ringed } from "./axiomring.ts";
@@ -272,23 +272,6 @@ const CARD_CAP = 180;
  *  bundled through them (web/src/visits.ts, visitChain) */
 const VISIT_SLOTS = 256;
 
-/** A file cluster's own build trouble, as a Status code (failed, building, sorry), or -1: what its
- *  outline shows in the Status scheme. Trouble inherited from below (blocked, out of date because
- *  something under it changed) is left out, so that one failure does not ring every file above it. */
-function troubleOf(f: FileStatus | undefined): number {
-  switch (f?.state) {
-    case "failed":
-    case "unbuilt":
-      return ST_FAILED;
-    case "building":
-      return ST_BUILDING;
-    case "sorry":
-      return ST_SORRY;
-    default:
-      return -1;
-  }
-}
-
 /** A press, until it is let go. On a target with the layout locked, `pan` holds where the camera
  *  was: a drag pans, a click still selects and a double-click still folds. */
 type Gesture =
@@ -380,7 +363,8 @@ export class GraphCanvas {
   private sceneDirty = true;
   private anim: number | null = null;
   private repSeen = -1;
-  /** each file cluster's own build trouble (troubleOf), for its outline in the Status scheme */
+  /** each cluster's own build trouble (status.ts, clusterTroubles), -1 for none: its outline in the
+   *  Status scheme */
   private clusterTrouble = new Int8Array(0);
   private files = new Map<string, FileStatus>();
   /** how the layout on show clusters: a file's own build trouble outlines its cluster only when
@@ -814,11 +798,9 @@ export class GraphCanvas {
 
   private recomputeStates(): void {
     if (!this.layout) return;
-    this.clusterTrouble = new Int8Array(this.layout.clusters.length);
-    // in the file layout a cluster is a module (or a directory of them); under namespaces a
-    // cluster's key is a namespace, which can read like a module's name without being its file
-    if (this.clustering !== "module") return;
-    this.layout.clusters.forEach((c, k) => (this.clusterTrouble[k] = troubleOf(this.files.get(c.key))));
+    // in the file layout a cluster is a module (or a directory of them); under namespaces none has
+    // an outline of its own
+    this.clusterTrouble = clusterTroubles(this.layout.clusters, this.clustering, this.files);
   }
 
   setLayout(layout: Layout, places: PinState, foldedKeys: string[], clustering: ClusterMode): void {
