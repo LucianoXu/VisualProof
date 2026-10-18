@@ -226,6 +226,53 @@ test("event streams: at most MAX_STREAMS, a few per page, and one that does not 
   }
 });
 
+test("a stream's hello, however large, is read before it counts as not reading; past it, MAX_BUFFERED as for any", async () => {
+  const S = await site();
+  try {
+    // the whole review, which the hello carries, of thousands of opinions: twice MAX_BUFFERED
+    const review = S.live.review;
+    const whole = review.whole.bind(review);
+    review.whole = () => ({ ...whole(), pad: "x".repeat(2 * MAX_BUFFERED) }) as ReturnType<typeof whole>;
+    /** a page's stream whose page reads `read(n)` characters at a time, or nothing */
+    const open = () => {
+      const r = fakeResponse();
+      const write = r.write;
+      r.write = (text: string) => ((r.writableLength += text.length), write(text));
+      S.live.subscribe(r as unknown as ServerResponse, null);
+      return Object.assign(r, { read: (n: number) => void (r.writableLength = Math.max(0, r.writableLength - n)) });
+    };
+    /** `n` events, which `reader` reads as they come */
+    const event = (n = 1, reader?: { read(n: number): void; writableLength: number }) => {
+      for (let k = 0; k < n; k++) {
+        S.live.placesChanged([], null, "Alice");
+        reader?.read(reader.writableLength);
+      }
+    };
+    const reading = open();
+    assert.ok(reading.writableLength > 2 * MAX_BUFFERED, "the hello waits");
+    assert.ok(reading.written.some((t) => t.startsWith("event: graph")), "the hello is whole: the graph after the review");
+    const idle = open();
+    event();
+    assert.equal(reading.destroyed || idle.destroyed, false, "a hello read is no page that does not read");
+    assert.equal((S.live.status() as Json).streams.closedForNotReading, 0);
+    // one reads it, the other reads nothing: once more than MAX_BUFFERED waits beyond its hello, closed
+    reading.read(reading.writableLength);
+    const size = reading.written.at(-1)!.length;
+    event(Math.ceil(MAX_BUFFERED / size) + 2, reading);
+    assert.equal(reading.destroyed, false);
+    assert.equal(idle.destroyed, true, "closed for not reading");
+    // its hello read, a page has MAX_BUFFERED alone
+    reading.read(reading.writableLength);
+    event();
+    reading.writableLength = MAX_BUFFERED + 1;
+    event();
+    assert.equal(reading.destroyed, true);
+    assert.equal((S.live.status() as Json).streams.closedForNotReading, 2);
+  } finally {
+    await S.close();
+  }
+});
+
 test("only the graph's modules are served or given to Lean, whatever files the project's folder holds", async () => {
   const S = await site();
   try {

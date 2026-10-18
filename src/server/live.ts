@@ -102,6 +102,12 @@ interface Stream {
   /** told all of the server's own releases (UpdateSpec decision 11): someone let in fully, not a
    *  read-only reader nor an agent */
   toldAll: boolean;
+  /** what may wait to be sent before it is closed (push): MAX_BUFFERED beyond its hello, which a
+   *  page reads first however large it is (the whole review: megabytes, with thousands of opinions);
+   *  MAX_BUFFERED once the hello is read */
+  room: number;
+  /** what was written to it since its hello, while that is not all read */
+  after: number;
 }
 
 export interface GraphInfo {
@@ -1070,7 +1076,7 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll, room: Infinity, after: 0 };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
@@ -1093,6 +1099,8 @@ export class Live {
     // to come has it worked out
     if (this.lostSent.sig) this.write(res, "lost", lostNews(this.lostSent));
     else this.lostChanged();
+    st.room = MAX_BUFFERED + res.writableLength;
+    st.after = 0;
   }
 
   private write(res: ServerResponse, event: string, data: unknown): void {
@@ -1108,15 +1116,21 @@ export class Live {
     for (const st of [...this.streams.values()]) this.push(st, text);
   }
 
-  /** Write to a stream, unless what it has not read yet passed MAX_BUFFERED: then it is closed
-   *  instead, and its page reconnects to the present state. */
+  /** Write to a stream, unless what it has not read yet passed MAX_BUFFERED beyond its hello (`room`):
+   *  then it is closed instead, and its page reconnects to the present state. A review of 5,000
+   *  opinions on Sphere-Packing-Lean is 7 MB: counted against MAX_BUFFERED, it closed every page's
+   *  stream as it opened, and the pages reconnected every two seconds, never live. */
   private push(st: Stream, text: string): void {
-    if (st.res.writableLength > MAX_BUFFERED) {
+    const waiting = st.res.writableLength;
+    // all that waits was written since the hello: the hello is read
+    if (st.room > MAX_BUFFERED && st.room !== Infinity && waiting <= st.after) st.room = MAX_BUFFERED;
+    if (waiting > st.room) {
       this.dropped++;
       this.close(st);
       return;
     }
     st.res.write(text);
+    if (st.room > MAX_BUFFERED) st.after += text.length;
   }
 
   /** A stream is over: its page leaves the list, its secret means nothing any more. */
