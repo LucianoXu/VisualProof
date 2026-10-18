@@ -364,8 +364,11 @@ Implementation notes:
   | not yet reviewed | mid grey, a plain dot |
   | trusted | a very light green |
 
-  `--status-*` (web/style.css), both themes; on the dark canvas failed's grey is lighter, trusted's
-  green lighter still, not yet reviewed darker than failed. Agents' advice is never a state.
+  `--status-*` (web/style.css), both themes. On the dark canvas the quiet states go the other way
+  (the owner's decision of 2026-10-18, with the dark theme's palette, midnight: a blue-black ground):
+  the quieter, the closer to the ground — trusted a dim green, not yet reviewed a mid grey, failed
+  the brightest, near white, as the light theme's failed is its darkest. Agents' advice is never a
+  state.
 - **Two palettes for the review, on purpose; do not unify them.** `--rv-*` colour what reviewers said
   where the review is read (opinions, progress, TCB lists and queues, trust shields, advice);
   `--status-*` only the Status scheme (points, file outlines and arcs, legend, card dots). The build

@@ -149,44 +149,57 @@
   --tm-renamed: #0f97ab;
 }
 
-/* dark: chosen, or following the system (web/src/theme.ts sets data-theme before the first paint) */
+/* dark: chosen, or following the system (web/src/theme.ts sets data-theme before the first paint).
+   Midnight (the owner's decision of 2026-10-18, chosen against a graphite and the neutral black
+   #0b0b0d before it): a blue-black ground, its surfaces, lines and discs tinted the same blue, its
+   text a cool white. Every colour the dark theme changes is in this one block; what it leaves out
+   is the light theme's. The artwork command reads the same two blocks (web/src/artwork.ts,
+   cssTheme), so a selector of its own here would be missed there. */
 :root { color-scheme: light; }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  /* the ground, the surfaces over it, and the text on them */
+  --canvas: #0d1017;
+  --surface: rgba(23, 27, 37, 0.84);
+  --surface-solid: #181c26;
+  --line: rgba(170, 185, 255, 0.11);
+  --text: #eef0f6;
+  --text-2: #a4a9ba;
+  --text-3: #7f8597;
+  --accent: #a08cff;
   --verified: #ab97ff;
-  --canvas: #0b0b0d;
-  --surface: rgba(28, 28, 30, 0.78);
-  --surface-solid: #1c1c1e;
-  --line: rgba(255, 255, 255, 0.09);
-  --text: #f5f5f7;
-  --text-2: #a1a1a6;
-  --text-3: #6e6e73;
-  --disc: rgba(255, 255, 255, 0.025);
-  --disc-line: rgba(255, 255, 255, 0.08);
-  --label: rgba(245, 245, 247, 0.5);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.4), 0 22px 60px rgba(0, 0, 0, 0.6);
-  --code-bg: rgba(255, 255, 255, 0.05);
-  --edge-from: rgba(255, 169, 77, 0.7);
-  --edge-to: rgba(116, 143, 252, 0.7);
+  --code-bg: rgba(160, 178, 255, 0.07);
+  /* the board: the clusters' discs and lines, the names, the edges */
+  --disc: rgba(150, 170, 255, 0.045);
+  --disc-line: rgba(160, 178, 255, 0.15);
+  --label: rgba(226, 231, 246, 0.62);
+  --edge-from: rgba(255, 140, 80, 0.6);
+  --edge-to: rgba(120, 138, 255, 0.68);
   --target-star-edge: rgba(0, 0, 0, 0.55);
+  --k-theorem: #8b7fd0;
+  --k-notation: #b89b74;
+  --k-external: #5f6578;
+  /* the Status scheme's quiet states, the other way round from the light theme's (the owner's
+     decision of 2026-10-18): the quieter a state, the closer to the ground — trusted a dim green,
+     not yet reviewed a mid grey, failed the brightest, near white, as the light theme's failed is
+     its darkest. Not yet reviewed is L* 47, between trusted's 39 and the states that ask for a
+     look: at the L* 60 first tried it was, to a deuteranope, sorry's reddish purple (ΔE2000 3.6;
+     15.4 here, and no two states under 10.7 under any of the three simulations). Commented's blue
+     is a step lighter than the light theme's, so that it stands out of a dark cluster as the other
+     states do, and still darker than building's sky blue */
+  --status-failed: #e9ecf5;
+  --status-commented: #4a84e8;
+  --status-unreviewed: #6c6f7a;
+  --status-trusted: #35664f;
+  /* the review, the banners, the code, a past graph's marks, the notes' dots */
   --rv-trusted: #7f9cbf;
   --rv-advice-approve: rgba(80, 200, 130, 0.55);
   --rv-advice-comment: #8aaef0;
-  --k-theorem: #8b7fd0;
-  --k-notation: #b89b74;
   --banner-bad: #ff7b72;
   --banner-warn: #ffc56b;
   --banner-info: #7ab8ff;
-  --k-external: #636366;
-  /* on the dark canvas the failed grey is lighter, so that it still shows, and the very light green
-     of trusted lighter still; not yet reviewed is a dim grey, darker than failed's, so that the two
-     greys never meet in lightness. Commented's blue is a step lighter too, so that it stands out of a dark cluster as
-     the other states do, and still darker than building's sky blue */
-  --status-failed: #77777c;
-  --status-commented: #3570d0;
-  --status-unreviewed: #4c4c52;
-  --status-trusted: rgba(170, 222, 187, 0.82);
   --tk-keyword: #ff7ab2;
   --tk-type: #6bdfff;
   --tk-comment: #7f8c98;
@@ -2067,7 +2080,7 @@ kbd {
 .film-stage { outline: none; border-radius: 12px; }
 .film-stage:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
 .film-frame { position: relative; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: #f5f5f7; border: 1px solid var(--line); box-shadow: var(--shadow); }
-:root[data-theme="dark"] .film-frame { border: 6px solid #2c2c2e; box-shadow: 0 0 0 1px var(--line), var(--shadow); }
+:root[data-theme="dark"] .film-frame { border: 6px solid #262b38; box-shadow: 0 0 0 1px var(--line), var(--shadow); }
 :root[data-theme="dark"] .film-video, :root[data-theme="dark"] .film-still { filter: brightness(0.92); }
 .film-video, .film-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 /* the controls over the film: play, captions, larger — light, as the film is */
