@@ -38,9 +38,9 @@ const loopbackOnly = { allowed: (a: string) => a === "127.0.0.1" };
 test("the addresses the server never fetches from: loopback, private, link-local, unique-local, multicast, reserved, IPv4 written as IPv6", () => {
   for (const a of ["127.0.0.1", "127.255.0.9", "10.0.0.1", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "224.0.0.1", "255.255.255.255", "198.18.0.1", "192.0.0.8"])
     assert.ok(blockedAddress(a), a);
-  for (const a of ["::1", "::", "fe80::1", "fc00::1", "fd12:3456::1", "ff02::1", "::ffff:127.0.0.1", "::ffff:10.1.2.3", "64:ff9b::a00:1", "2001:db8::1", "::ffff:7f00:1", "not an address"])
+  for (const a of ["::1", "::", "fe80::1", "fc00::1", "fd12:3456::1", "ff02::1", "::ffff:127.0.0.1", "::ffff:10.1.2.3", "64:ff9b::a00:1", "2001:db8::1", "::ffff:7f00:1", "2002:7f00:1::", "2002:a01:203::1", "192.0.2.1", "198.51.100.7", "203.0.113.9", "192.88.99.1", "not an address"])
     assert.ok(blockedAddress(a), a);
-  for (const a of ["93.184.216.34", "151.101.1.69", "172.32.0.1", "100.128.0.1", "2606:4700::6810:84e5", "::ffff:93.184.216.34", "2a00:1450:4001:80b::200e"]) assert.ok(!blockedAddress(a), a);
+  for (const a of ["93.184.216.34", "151.101.1.69", "172.32.0.1", "100.128.0.1", "2606:4700::6810:84e5", "::ffff:93.184.216.34", "2a00:1450:4001:80b::200e", "2002:5db8:d822::1", "192.0.3.1", "203.0.114.1"]) assert.ok(!blockedAddress(a), a);
   // the server's own interfaces, whatever range they are in
   assert.ok(!defaultAllowed("127.0.0.1"));
 });

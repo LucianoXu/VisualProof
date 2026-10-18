@@ -85,14 +85,18 @@ function blockedV4(b: number[]): boolean {
     (a === 172 && c >= 16 && c <= 31) || // private
     (a === 192 && c === 168) || // private
     (a === 192 && c === 0 && b[2] === 0) || // IETF protocol assignments
+    (a === 192 && c === 0 && b[2] === 2) || // documentation (TEST-NET-1)
+    (a === 192 && c === 88 && b[2] === 99) || // 6to4 relays, deprecated
     (a === 198 && (c === 18 || c === 19)) || // benchmarking
+    (a === 198 && c === 51 && b[2] === 100) || // documentation (TEST-NET-2)
+    (a === 203 && c === 0 && b[2] === 113) || // documentation (TEST-NET-3)
     a >= 224 // multicast, reserved, broadcast
   );
 }
 
 /** Whether the server refuses to fetch from an address: loopback, private, link-local, unique-local,
- *  multicast, reserved or unspecified, an IPv4 one written as IPv6 (mapped, NAT64) included. Anything
- *  that is not an address at all is refused too. */
+ *  multicast, reserved, documentation or unspecified, an IPv4 one written as IPv6 (mapped, NAT64,
+ *  6to4) included. Anything that is not an address at all is refused too. */
 export function blockedAddress(address: string): boolean {
   const kind = isIP(address.replace(/%.*$/, ""));
   if (kind === 4) return blockedV4(address.split(".").map(Number));
@@ -105,6 +109,7 @@ export function blockedAddress(address: string): boolean {
   if (p.slice(0, 5).every((x) => x === 0) && p[5] === 0xffff) return blockedV4(v4(p[6], p[7])); // IPv4-mapped
   if (p.slice(0, 6).every((x) => x === 0)) return true; // IPv4-compatible, deprecated
   if (p[0] === 0x64 && p[1] === 0xff9b && p.slice(2, 6).every((x) => x === 0)) return blockedV4(v4(p[6], p[7])); // NAT64
+  if (p[0] === 0x2002) return blockedV4(v4(p[1], p[2])); // 6to4: the IPv4 address it carries
   if ((p[0] & 0xfe00) === 0xfc00) return true; // unique local
   if ((p[0] & 0xffc0) === 0xfe80) return true; // link-local
   if ((p[0] & 0xffc0) === 0xfec0) return true; // site-local, deprecated
@@ -217,7 +222,7 @@ async function guardedFetch(raw: string, kind: keyof typeof KINDS, o: { maxBytes
     }
     if (!addresses.length) return { ok: false, status: 400, error: `${host} cannot be found.` };
     const refused = addresses.find((a) => !allowed(a.address));
-    if (refused) return { ok: false, status: 403, error: `${host} is ${refused.address}, an address of a private or local network or of this server: the server does not fetch from there.` };
+    if (refused) return { ok: false, status: 403, error: `${host === refused.address ? host : `${host} is ${refused.address}, which`} is an address of a private or local network or of this server: the server does not fetch from there.` };
     const left = deadline - Date.now();
     if (left <= 0) return { ok: false, status: 504, error: "The address took too long to answer." };
     const pinned = addresses[0];
