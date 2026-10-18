@@ -695,6 +695,13 @@ export class Live {
     return renamed ? (u) => identityIn(renamed, u) : ownName;
   }
 
+  /** The renames in force (to → from), which `identity` follows: what the history's worker makes it
+   *  again from (server/historythread.ts). */
+  renamed(): [string, string][] | null {
+    const renamed = this.review.data.renamed;
+    return renamed ? Object.entries(renamed) : null;
+  }
+
   /** Keep a snapshot of the graph just read (server/history.ts): a new build's, or its own again;
    *  then pair what vanished since the build before with what appeared (server/renames.ts), and
    *  migrate the renames of high confidence. The pages are told of a snapshot made or changed

@@ -12,15 +12,17 @@
 // in 0.6 s): the page takes it in two parts, its declarations as JSON and its
 // edges packed as the graph on show's are (shared/edgecodec.ts), each compressed once and kept for
 // the last few snapshots asked, under the renames in force, and tagged so that a page that has one
-// is answered 304.
+// is answered 304. The parts, a snapshot's whole graph and what changed between two snapshots are
+// made off the server's thread (server/historythread.ts), which meanwhile answers others: on
+// NavierStokesAndEuler the Time Machine's first look at a build held it 4 s.
 
-import { gzipSync } from "node:zlib";
-import { packEdges } from "../shared/edgecodec.ts";
+import { dirname } from "node:path";
 import type { Answer, Ask } from "./agent.ts";
 import { MAX_ARCHIVE_KEYS, validKey } from "./lostfound.ts";
 import type { AgentEndpoint } from "./agentviews.ts";
-import { diffGraphs, pageGraph } from "./history.ts";
-import type { History } from "./history.ts";
+import type { History, SnapshotInfo } from "./history.ts";
+import { offThread, runJob } from "./historythread.ts";
+import type { Done, Job, Parts } from "./historythread.ts";
 import type { Identity } from "./versions.ts";
 import type { LastHad, LostAnswer } from "../shared/lostfound.ts";
 import type { HistoryDiff } from "../shared/pastgraph.ts";
@@ -38,6 +40,10 @@ export interface HistoryWorld {
   history: History | null;
   /** the identities the renames in force give (server/versions.ts) */
   identity(): Identity;
+  /** the renames in force (to → from), which `identity` follows: what the history's worker makes
+   *  them again from (server/historythread.ts). A world without them is answered on the server's
+   *  thread. */
+  renamed?(): [string, string][] | null;
   /** the renames in force as a key: what a snapshot's graph is kept under (server/live.ts) */
   identityTag?(): string;
   /** the renames recorded from snapshot `from` to snapshot `to`, composed: a name at `from` → its
@@ -58,54 +64,71 @@ export interface HistoryWorld {
 const no = (status: number, error: string): Answer => ({ status, body: { error } });
 const ok = (body: unknown): Answer => ({ status: 200, body });
 
-/** A snapshot's graph in the page's two parts, compressed. */
-interface Parts {
-  nodes: Buffer;
-  edges: Buffer;
-}
 /** the parts of the last snapshots asked, per history, by snapshot, build read and renames */
 const kept = new WeakMap<History, Map<string, Parts>>();
 /** how many snapshots' parts are kept: about a megabyte each, compressed, on a large project (Sphere-Packing-Lean's:
- *  0.7 MB of declarations, 0.5 MB of edges) */
+ *  0.7 MB of declarations, 0.5 MB of edges; NavierStokesAndEuler's 5.2 and 4.0 MB) */
 const KEEP_PARTS = 8;
 /** what changed between two snapshots, as answered last (a step on the Time Machine's timeline asks
  *  it of each build against the latest, every reader the same), by the builds as read and the renames
  *  in force; a few hundred KB at most each */
 const diffsKept = new WeakMap<History, Map<string, HistoryDiff>>();
 const KEEP_DIFFS = 32;
+/** what is being made off the thread, by what it will be kept under: the Time Machine asks a
+ *  snapshot's two parts at once, made by one job */
+const making = new WeakMap<History, Map<string, Promise<Done>>>();
 
-/** Snapshot `id`'s graph as the page takes it (`part`): its declarations — the answer of /graph
- *  without the edges, and how many there are — or its edges, packed. Made together, once. */
-export function snapshotParts(w: HistoryWorld, id: number): Parts {
-  const h = w.history!;
-  const info = h.get(id)!;
-  // its texts, once backfilled, change what the declarations' part says
-  const key = `${id}\u0000${info.fingerprint}\u0000${info.read}\u0000${w.identityTag?.() ?? ""}\u0000${JSON.stringify(info.sources ?? null)}`;
-  let byKey = kept.get(h);
-  if (!byKey) kept.set(h, (byKey = new Map()));
-  const have = byKey.get(key);
-  if (have) {
-    // most recently asked last: the oldest goes first
-    byKey.delete(key);
-    byKey.set(key, have);
-    return have;
-  }
-  const g = h.graph(id)!;
-  const { edges: _flat, ...rest } = pageGraph({ ...g, edges: [] }, w.identity());
-  const E = new Int32Array(3 * g.edges.length);
-  g.edges.forEach(([s, d, m], k) => E.set([s, d, m], 3 * k));
-  const parts = { nodes: gzipSync(JSON.stringify({ ...rest, edgeCount: g.edges.length, sources: keptTexts(h, id) })), edges: gzipSync(packEdges(E, g.nodes.length, 2), { level: 9 }) };
-  byKey.set(key, parts);
-  while (byKey.size > KEEP_PARTS) byKey.delete(byKey.keys().next().value!);
-  return parts;
+const mapOf = <K extends object, V>(m: WeakMap<K, Map<string, V>>, k: K): Map<string, V> => {
+  let x = m.get(k);
+  if (!x) m.set(k, (x = new Map()));
+  return x;
+};
+
+/** Keep `v` under `key`, the most recently asked last: the oldest goes first. */
+function keep<V>(byKey: Map<string, V>, key: string, v: V, most: number): void {
+  byKey.delete(key);
+  byKey.set(key, v);
+  while (byKey.size > most) byKey.delete(byKey.keys().next().value!);
 }
 
-/** The modules whose text snapshot `id` keeps, each with how it was matched to its build
- *  (server/sourcestore.ts): what the page says of a declaration's source then before it asks. */
-function keptTexts(h: History, id: number): Record<string, "lake" | "places"> {
-  const out: Record<string, "lake" | "places"> = {};
-  for (const [m, r] of Object.entries(h.sourcesOf(id) ?? {})) if (r.blob && r.check) out[m] = r.check;
-  return out;
+/** What a snapshot's parts are kept under: the snapshot, its build as read, the renames in force,
+ *  and its texts (once backfilled, they change what the declarations' part says). */
+const partsKey = (info: SnapshotInfo, tag: string) => `${info.id}\u0000${info.fingerprint}\u0000${info.read}\u0000${tag}\u0000${JSON.stringify(info.sources ?? null)}`;
+const diffKey = (fa: SnapshotInfo, fb: SnapshotInfo, most: number, tag: string) => [fa.id, fa.fingerprint, fa.read, fb.id, fb.fingerprint, fb.read, most, tag].join("\u0000");
+
+/** A job, made once however many ask for it at once (`key`): in the history's worker where the
+ *  world says its renames, else on this thread. */
+function made(w: HistoryWorld, key: string, job: Job): Promise<Done> {
+  const h = w.history!;
+  const byKey = mapOf(making, h);
+  let p = byKey.get(key);
+  if (!p) {
+    const here = () => runJob(h, w.identity(), job);
+    const renamed = w.renamed?.();
+    p = (renamed === undefined ? Promise.resolve().then(here) : offThread(dirname(h.dir), renamed, job, here)).finally(() => byKey.delete(key));
+    byKey.set(key, p);
+  }
+  return p;
+}
+
+/** Snapshot `id`'s graph as the page takes it (`part`): its declarations — the answer of /graph
+ *  without the edges, and how many there are — or its edges, packed. Made together, once, off the
+ *  server's thread. */
+export async function snapshotParts(w: HistoryWorld, id: number): Promise<Parts> {
+  const h = w.history!;
+  const tag = w.identityTag?.() ?? "";
+  const key = partsKey(h.get(id)!, tag);
+  const byKey = mapOf(kept, h);
+  const have = byKey.get(key);
+  if (have) {
+    keep(byKey, key, have, KEEP_PARTS);
+    return have;
+  }
+  const d = await made(w, `parts\u0000${key}`, { kind: "parts", id });
+  if (d.kind !== "parts") throw new Error("not the parts asked for");
+  // kept as the job read the snapshot: one read again meanwhile is made again for whoever asks next
+  keep(byKey, partsKey(d.info, tag), d.parts, KEEP_PARTS);
+  return d.parts;
 }
 
 /** Module `module`'s text at snapshot `id`'s build (GET /source; HistorySpec decision 23): the
@@ -140,7 +163,7 @@ function snapshotOf(w: HistoryWorld, a: Ask, key: string, dflt: boolean): number
 
 /** A request under /api/history (or /api/agent/history). `refuse`: why the caller may not move
  *  things (an agent below level full), or null. */
-export function historyAnswer(w: HistoryWorld, a: Ask, refuse: (a: Ask) => Answer | null = () => null): Answer {
+export async function historyAnswer(w: HistoryWorld, a: Ask, refuse: (a: Ask) => Answer | null = () => null): Promise<Answer> {
   const h = w.history;
   if (!h) return no(404, "This server serves a saved graph: it reads no builds, and keeps no history.");
   const path = a.path.replace(/^\/api(\/agent)?\/history/, "").replace(/\/+$/, "");
@@ -188,10 +211,14 @@ export function historyAnswer(w: HistoryWorld, a: Ask, refuse: (a: Ask) => Answe
     const id = snapshotOf(w, a, "id", true);
     if (typeof id !== "number") return id;
     const part = a.query.get("part");
-    if (part === "nodes") return { status: 200, body: null, gz: { type: "application/json", body: snapshotParts(w, id).nodes } };
-    if (part === "edges") return { status: 200, body: null, gz: { type: "application/octet-stream", body: snapshotParts(w, id).edges } };
+    if (part === "nodes") return { status: 200, body: null, gz: { type: "application/json", body: (await snapshotParts(w, id)).nodes } };
+    if (part === "edges") return { status: 200, body: null, gz: { type: "application/octet-stream", body: (await snapshotParts(w, id)).edges } };
     if (part !== null) return no(400, "part is nodes or edges; leave it out for the whole graph.");
-    return ok(pageGraph(h.graph(id)!, w.identity()));
+    // the whole graph, which agents ask (105 MB of JSON on NavierStokesAndEuler): made and
+    // compressed off the thread, each time
+    const d = await made(w, `graph\u0000${partsKey(h.get(id)!, w.identityTag?.() ?? "")}`, { kind: "graph", id });
+    if (d.kind !== "graph") throw new Error("not the graph asked for");
+    return { status: 200, body: null, gz: { type: "application/json", body: d.gz } };
   }
   if (path === "/source") {
     const id = snapshotOf(w, a, "id", false);
@@ -206,7 +233,7 @@ export function historyAnswer(w: HistoryWorld, a: Ask, refuse: (a: Ask) => Answe
     const to = snapshotOf(w, a, "to", true);
     if (typeof to !== "number") return to;
     const most = Math.min(MOST_DIFF, Math.max(0, Number(a.query.get("most") ?? 2000) || 0));
-    return ok(snapshotDiff(w, from, to, most));
+    return ok(await snapshotDiffOff(w, from, to, most));
   }
   return no(404, "not found");
 }
@@ -217,20 +244,42 @@ export const MOST_DIFF = 20000;
 
 /** What changed from snapshot `from` to snapshot `to` (both in the history), at most `most` names of
  *  each kind, as GET /diff answers it: made once, then kept for every reader and for the export of a
- *  view at a past build (server/pastdoc.ts), which makes the same past graph the page does. */
+ *  view at a past build (server/pastdoc.ts), which makes the same past graph the page does. Made
+ *  here, on the server's thread, where it is not kept. */
 export function snapshotDiff(w: HistoryWorld, from: number, to: number, most: number): HistoryDiff {
   const h = w.history!;
-  const [fa, fb] = [h.get(from)!, h.get(to)!];
-  const key = [from, fa.fingerprint, fa.read, to, fb.fingerprint, fb.read, most, w.identityTag?.() ?? ""].join("\u0000");
-  let byKey = diffsKept.get(h);
-  if (!byKey) diffsKept.set(h, (byKey = new Map()));
+  const key = diffKey(h.get(from)!, h.get(to)!, most, w.identityTag?.() ?? "");
+  const byKey = mapOf(diffsKept, h);
   let body = byKey.get(key);
   if (body === undefined) {
-    body = { from, to, ...diffGraphs(h.graph(from)!, h.graph(to)!, w.identity(), w.renamesBetween?.(from, to) ?? new Map(), most) };
-    byKey.set(key, body);
-    while (byKey.size > KEEP_DIFFS) byKey.delete(byKey.keys().next().value!);
+    const d = runJob(h, w.identity(), diffJob(w, from, to, most));
+    if (d.kind !== "diff") throw new Error("not the diff asked for");
+    body = d.diff;
   }
+  keep(byKey, key, body, KEEP_DIFFS);
   return body;
+}
+
+/** The same, made off the server's thread where it is not kept (GET /diff). */
+async function snapshotDiffOff(w: HistoryWorld, from: number, to: number, most: number): Promise<HistoryDiff> {
+  const h = w.history!;
+  const tag = w.identityTag?.() ?? "";
+  const key = diffKey(h.get(from)!, h.get(to)!, most, tag);
+  const byKey = mapOf(diffsKept, h);
+  const have = byKey.get(key);
+  if (have) {
+    keep(byKey, key, have, KEEP_DIFFS);
+    return have;
+  }
+  const d = await made(w, `diff\u0000${key}`, diffJob(w, from, to, most));
+  if (d.kind !== "diff") throw new Error("not the diff asked for");
+  keep(byKey, diffKey(d.infos[0], d.infos[1], most, tag), d.diff, KEEP_DIFFS);
+  return d.diff;
+}
+
+/** The job of what changed from `from` to `to`, with the renames recorded between them. */
+function diffJob(w: HistoryWorld, from: number, to: number, most: number): Job {
+  return { kind: "diff", from, to, most, renames: [...(w.renamesBetween?.(from, to) ?? new Map())] };
 }
 
 /** What the history's answers read, from what the agents' API has (server/agent.ts, World): what
@@ -241,6 +290,8 @@ export function historyWorld(world: Partial<HistoryWorld>): HistoryWorld {
       return world.history ?? null;
     },
     identity: () => world.identity?.() ?? ((u: string) => u),
+    // the renames, where the world says them or has no identity of its own (each name its own)
+    ...(world.renamed || !world.identity ? { renamed: () => world.renamed?.() ?? null } : {}),
     identityTag: () => world.identityTag?.() ?? "",
     renamesBetween: (from, to) => world.renamesBetween?.(from, to) ?? new Map(),
     moves: () => world.moves?.() ?? { migrations: [], suggestions: [] },

@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { gunzipSync, gzip, gzipSync } from "node:zlib";
+import { gunzip, gunzipSync, gzip, gzipSync } from "node:zlib";
 import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
 import { makeArtwork, pngOf, projectView } from "./artcmd.ts";
@@ -968,7 +968,7 @@ export class App {
         // name — a private reader's too (CollabSpec decision 8) — with the personal link of someone
         // invited by one, whose moves go to their link's log (decision 9); by an agent at level full
         const person = this.ids.person(req)?.id;
-        const a = historyAnswer(live, { method: req.method ?? "GET", path, query: url.searchParams, body, caller: { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person } : {}) } }, (q) =>
+        const a = await historyAnswer(live, { method: req.method ?? "GET", path, query: url.searchParams, body, caller: { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person } : {}) } }, (q) =>
           q.caller.kind === "agent" ? refusal(this.agents.level, "full") : null,
         );
         // a snapshot's graph in parts, as the Time Machine takes it: compressed once, and tagged
@@ -1397,16 +1397,23 @@ export const JSON_GZIP_AWAY_FROM = 1 << 20;
 /** the graph's parts as sent, each tagged once (a graph's buffers live as long as it does) */
 const gzTags = new WeakMap<Buffer, string>();
 
-/** A part of the graph, gzipped already: tagged, so that a page that has it gets 304. */
+/** A part of the graph, gzipped already: tagged, so that a page that has it gets 304; a client that
+ *  does not take gzip (an agent's) is sent it as it is, made so off the server's thread. */
 function sendGz(req: IncomingMessage, res: ServerResponse, gz: Buffer, type: string): void {
   if (refused.has(res)) return;
   let etag = gzTags.get(gz);
   if (!etag) gzTags.set(gz, (etag = tagOf(gz)));
-  const head = { "content-type": type, "cache-control": "private, no-cache", etag };
+  const head = { "content-type": type, "cache-control": "private, no-cache", etag, vary: "accept-encoding" };
   if (fresh(req, etag)) {
     res.writeHead(304, head);
     return void res.end();
   }
+  if (!acceptsGzip(req))
+    return void gunzip(gz, (e, plain) => {
+      if (e) return res.destroy(e);
+      res.writeHead(200, head);
+      res.end(plain);
+    });
   res.writeHead(200, { ...head, "content-encoding": "gzip" });
   res.end(gz);
 }
