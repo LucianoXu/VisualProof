@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -401,6 +401,30 @@ test("the typeset document has every glyph: no character is missing from its fon
   const log = readFileSync(join(dir, "doc.log"), "utf8");
   assert.ok(!/Missing character/.test(log), log.split("\n").filter((l) => /Missing character/.test(l)).slice(0, 5).join("\n"));
   assert.ok(!/Overfull \\hbox \((\d{3,}|[5-9]\d)\./.test(log), "nothing sticks out of the page by more than 50pt");
+});
+
+test("a document that has left the cache (newer ones took its place) is typeset again when asked again, not answered with files that are gone", async () => {
+  // a XeLaTeX of its own that writes a page at once, so that the cache's turnover is quick to see
+  const dir = mkdtempSync(join(state, "turnover-"));
+  const fake = join(dir, "xelatex");
+  writeFileSync(fake, '#!/bin/sh\nprintf "%%PDF-1.4\\n" > doc.pdf\nprintf "Output written on doc.pdf (1 page, 9 bytes).\\n" > doc.log\n');
+  chmodSync(fake, 0o755);
+  const ex = new Exporter(dir, { xelatex: fake, maxCached: 1 });
+  const a = await ex.wait(ex.compile("A").id);
+  assert.equal(a?.state, "done", a?.error);
+  // the newer document's files push the older's out of the cache
+  utimesSync(join(dir, "export", "cache", a!.id), new Date(0), new Date(0));
+  const b = await ex.wait(ex.compile("B").id);
+  assert.equal(b?.state, "done", b?.error);
+  assert.ok(!existsSync(join(dir, "export", "cache", a!.id)), "the older document has left the cache");
+  assert.equal(ex.job(a!.id), null, "it is no longer known: its files are gone");
+  assert.equal(ex.file(a!.id, "pdf"), null);
+  // asked again, it is typeset again
+  const again = ex.compile("A");
+  assert.equal(again.id, a!.id);
+  assert.equal(again.state, "running");
+  assert.equal((await ex.wait(again.id))?.state, "done");
+  assert.ok(ex.file(a!.id, "pdf")?.body.toString().startsWith("%PDF"));
 });
 
 test("a document that fails, or takes too long, says why; its temporary directory goes all the same", { skip: haveXelatex ? false : "xelatex is not installed" }, async () => {

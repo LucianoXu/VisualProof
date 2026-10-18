@@ -139,7 +139,7 @@ export class Exporter {
       else delete j.notes;
       return j;
     };
-    const known = this.jobs.get(id);
+    const known = this.known(id);
     if (known && known.state !== "failed") return note(known);
     const kept = this.fromCache(id);
     if (kept) {
@@ -170,9 +170,20 @@ export class Exporter {
   /** A job by its id: one this server knows, or one the cache holds. */
   job(id: string): ExportJob | null {
     if (!/^[0-9a-f]{32}$/.test(id)) return null;
-    const j = this.jobs.get(id) ?? this.fromCache(id);
+    const j = this.known(id) ?? this.fromCache(id);
     if (j) this.remember(j);
     return j;
+  }
+
+  /** A job this server knows, unless it is done and its files have left the cache since (newer
+   *  documents took their place): that one is forgotten, so that the same document asked for again
+   *  is typeset again rather than answered with files that are gone. */
+  private known(id: string): ExportJob | undefined {
+    const j = this.jobs.get(id);
+    if (j?.state !== "done" || existsSync(join(this.cacheDir, id, "doc.pdf"))) return j;
+    this.jobs.delete(id);
+    this.ends.delete(id);
+    return undefined;
   }
 
   /** The job once it is over. */
