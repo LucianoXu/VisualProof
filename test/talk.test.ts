@@ -717,6 +717,20 @@ test("the MCP server without its environment says so, and keeps to the protocol"
   }
 });
 
+test("the MCP server with a token the server does not know says what to check", async () => {
+  const S = await site({ key: "k".repeat(40) });
+  const M = mcp({ VISUALPROOF_URL: S.base, VISUALPROOF_TOKEN: `vpa_0123456789_${"A".repeat(43)}` });
+  try {
+    await M.start();
+    const why = await M.ask("tools/call", { name: "connection", arguments: {} });
+    assert.equal(why.result.isError, true);
+    assert.match(why.result.content[0].text, /answered 404: not found — .*VISUALPROOF_TOKEN is the whole token from Share/);
+  } finally {
+    M.stop();
+    await S.close();
+  }
+});
+
 test("an agent's text is rendered from escaped text: a little Markdown, declarations as links, never HTML of its own", () => {
   const names = new Map([["N.a", "N.a"], ["a", "N.a"], ["N.b", "N.b"]]);
   const resolve = (n: string) => names.get(n) ?? null;

@@ -124,7 +124,10 @@ function fetchOffer() {
       const r = await fetch(`${URL_}/api/agent/mcp/tools`, { headers: auth(), signal: AbortSignal.timeout(15_000) });
       const body = await r.json().catch(() => null);
       if (!r.ok || !body || !Array.isArray(body.tools)) {
-        offerError = `${URL_} answered ${r.status}: ${body?.error ?? "no tools"}${body?.hint ? ` — ${body.hint}` : ""}`;
+        // a server that lets in only those given its link answers a token it does not know as it
+        // answers anyone: 404, saying nothing more
+        const unknown = r.status === 404 && !body?.hint ? " — a server that lets in only those given its link answers so to a token it does not know: check that VISUALPROOF_TOKEN is the whole token from Share (vpa_…), and VISUALPROOF_URL the server it came with" : "";
+        offerError = `${URL_} answered ${r.status}: ${body?.error ?? "no tools"}${body?.hint ? ` — ${body.hint}` : ""}${unknown}`;
         return;
       }
       offer = body;
