@@ -48,6 +48,8 @@ export const BUILD_MS = 6 * 3600_000;
 /** the most of a build's log kept for the pages, in lines and characters */
 const TAIL_LINES = 60;
 const TAIL_CHARS = 8000;
+/** the lines of the build going on the pages are shown */
+const LIVE_LINES = 6;
 /** build logs kept, the newest */
 const LOGS_KEPT = 30;
 
@@ -475,14 +477,11 @@ class BuildLog {
     if (this.lines.length > TAIL_LINES * 2) this.lines.splice(0, this.lines.length - TAIL_LINES);
   }
 
-  /** its end, as the pages are given it */
-  tail(): string {
-    if (this.partial) {
-      this.push(this.partial);
-      this.partial = "";
-    }
+  /** its end, as the pages are given it: its last `n` lines, the one being written included */
+  tail(n = TAIL_LINES): string {
+    const last = this.partial.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").split("\r").pop()!.trimEnd();
     const home = homedir();
-    let t = this.lines.slice(-TAIL_LINES).join("\n").split(this.root).join(".");
+    let t = [...this.lines, ...(last ? [last] : [])].slice(-n).join("\n").split(this.root).join(".");
     if (home && home.length > 1) t = t.split(home).join("~");
     return t.length > TAIL_CHARS ? `…${t.slice(-TAIL_CHARS)}` : t;
   }
@@ -586,6 +585,8 @@ export class Deployment {
   private lakeEnv: NodeJS.ProcessEnv;
   /** every build tried since the start, in order: what the tests read */
   readonly tried: string[] = [];
+  /** the log of the build going on */
+  private log: BuildLog | null = null;
 
   constructor(o: DeploymentOptions) {
     this.o = o;
@@ -672,7 +673,8 @@ export class Deployment {
       branch: this.branch,
       every: Math.round(this.o.everyMs / 1000),
       asked: this.asked,
-      building: this.building,
+      // what the build going on says now (the cache's download, Lake's last lines)
+      building: this.building && { ...this.building, ...(this.log ? { tail: this.log.tail(LIVE_LINES) } : {}) },
       next: this.want && this.want !== this.done && this.want !== this.building?.commit ? this.want : null,
       last: this.state.last,
       built: this.state.outputs?.commit ?? null,
@@ -757,7 +759,7 @@ export class Deployment {
     this.o.hooks.changed();
     const short = shortCommit(commit);
     const say = this.o.hooks.log;
-    const log = new BuildLog(this.folder.logs, commit, this.folder.checkout);
+    const log = (this.log = new BuildLog(this.folder.logs, commit, this.folder.checkout));
     const g = (args: string[], ms = GIT_MS) => {
       log.say(`$ git ${args.join(" ")}`);
       return git(["-C", this.folder.checkout, ...args], this.env, ms, (t) => log.text(t));
@@ -833,6 +835,7 @@ export class Deployment {
       return ended({ ok: false, retry: true, error: e instanceof Error ? e.message : String(e) });
     } finally {
       log.close();
+      this.log = null;
     }
   }
 

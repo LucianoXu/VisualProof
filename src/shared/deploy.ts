@@ -36,8 +36,9 @@ export interface DeployStatus {
   every: number;
   /** the last time the remote was asked: when, the branch's head then, or why it could not be */
   asked: { at: string; head: string | null; error?: string } | null;
-  /** the build going on: of which commit, since when, at which step */
-  building: { commit: string; since: string; step: DeployStep } | null;
+  /** the build going on: of which commit, since when, at which step, and its last lines (for
+   *  those let in fully and agents, as `last.tail`) */
+  building: { commit: string; since: string; step: DeployStep; tail?: string } | null;
   /** the newest commit seen that waits for the build going on: the only one built after it */
   next: string | null;
   /** the last build that ended */
@@ -47,11 +48,14 @@ export interface DeployStatus {
   built: string | null;
 }
 
-/** The same without what is for those let in fully: the end of the build's log. */
+/** The same without what is for those let in fully: the builds' logs. */
 export function slimDeploy(d: DeployStatus): DeployStatus {
-  if (!d.last?.tail) return d;
-  const { tail: _, ...last } = d.last;
-  return { ...d, last };
+  const drop = <T extends { tail?: string }>(x: T | null): T | null => {
+    if (!x || x.tail === undefined) return x;
+    const { tail: _, ...rest } = x;
+    return rest as T;
+  };
+  return { ...d, building: drop(d.building), last: drop(d.last) };
 }
 
 /** A commit as a page writes it. */

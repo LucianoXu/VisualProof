@@ -75,9 +75,9 @@ those: they are what 0.5.0 does until decided otherwise).
    and in the build popover; the popover also gives the commit and the end of the build's log.
    - *Proposed*: the pill says the step where Lake says nothing of its progress (`Fetching a1b2c3d`,
      `Checking out …`, `Mathlib's cache …`, `Building …`), and `Build failed · a1b2c3d` (or `Not
-     built` where it could not be made) where no file says it. The popover, under its head: the
+     built` where it could not be made) where no file says it. The popover, under its buttons: the
      branch and the remote (linked on GitHub), how often and when last it was asked, the build going
-     on and its step, the newest commit waiting for it ("commits pushed before it are not built"),
+     on, its step and its last lines, the newest commit waiting for it ("commits pushed before it are not built"),
      the last build that ended — when, how long, why it failed, the end of its log.
    - *Proposed*: the history keeps a snapshot per build as it does (HistorySpec decision 4), keyed
      by the build's newest `.olean`: a failing commit whose build wrote no newer `.olean` (it only

@@ -218,7 +218,7 @@ export function doctor(o: DoctorOptions): Report {
       : { level: "info", what: "XeLaTeX not found: needed only for the printed document (Export)", fix: install("xelatex", platform) },
   );
   if (exec("git", ["--version"]) === null) {
-    checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them" });
+    checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them; a branch cannot be followed (serve <git URL>)" });
   }
 
   const film = filmLine(o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES);

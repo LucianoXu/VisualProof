@@ -3,7 +3,7 @@
 // recent builds the history keeps (GET /api/history), and has the two ways into the history: the
 // Time Machine, and the lost-and-found with the count of what it lists. Under them, what it showed
 // before: the graph on show, what could not be read, and the files in trouble. A server that follows
-// a branch of a git repository (DeploySpec) says so under the head: the build going on, the newest
+// a branch of a git repository (DeploySpec) says so under the buttons: the build going on, the newest
 // commit waiting for it, the last build that ended, with the end of its log where it failed.
 //
 // What it holds is a pure function of what the page knows (`popHtml`), tested in
@@ -98,7 +98,10 @@ export function deployHtml(d: DeployStatus, now = new Date()): string {
     `<div class="bp-deploy"><div class="bp-follow">Following <b>${escapeHtml(d.branch)}</b> of ${from}: each new commit is built here, ` +
     `the remote asked every ${every}${d.asked ? `, last ${escapeHtml(stamp(d.asked.at, now))}` : ""}.</div>`;
   if (d.asked?.error) html += `<div class="banner bad">The remote could not be asked: ${escapeHtml(d.asked.error)}</div>`;
-  if (d.building) html += `<div class="banner info">Building ${commit(d.building.commit)} since ${escapeHtml(stamp(d.building.since, now))}: ${STEP_WORDS[d.building.step]}.</div>`;
+  if (d.building)
+    html +=
+      `<div class="banner info">Building ${commit(d.building.commit)} since ${escapeHtml(stamp(d.building.since, now))}: ${STEP_WORDS[d.building.step]}.</div>` +
+      (d.building.tail ? `<pre class="bp-log" aria-label="What the build says now">${escapeHtml(d.building.tail)}</pre>` : "");
   if (d.next) html += `<div class="bp-next">Then ${commit(d.next)}, the newest commit pushed meanwhile: commits pushed before it are not built.</div>`;
   const l = d.last;
   if (l) {
@@ -120,7 +123,7 @@ export function deployWaiting(d: DeployStatus, st: { state: string; error?: stri
   const every = d.every >= 60 ? `${Math.round(d.every / 6) / 10} min` : `${d.every} s`;
   if (d.building) {
     const p = d.building.step === "build" && st.progress?.total ? `, ${st.progress.done} of ${st.progress.total} files` : "";
-    return { title: `${d.built ? "Building" : "The first build of"} ${where} at ${shortCommit(d.building.commit)}: ${STEP_WORDS[d.building.step]}${p}… The board appears once it is done.`, log: null };
+    return { title: `${d.built ? "Building" : "The first build of"} ${where} at ${shortCommit(d.building.commit)}: ${STEP_WORDS[d.building.step]}${p}… The board appears once it is done.`, log: d.building.tail ?? null };
   }
   const l = d.last;
   if (!d.built) {
@@ -163,7 +166,6 @@ export function popHtml(s: PopState): string {
           ? `<span class="bp-built" title="When the build finished: its newest .olean">Built ${latest.approx ? "about " : ""}${escapeHtml(stamp(latest.at, now))}</span>${commitHtml(latest.commit)}`
           : `<span class="muted">No build is kept yet.</span>`) +
       `</div>`;
-    if (s.deploy) html += deployHtml(s.deploy, now);
     const lost = s.lost;
     const what = lost ? `${lost.lost} lost, ${lost.count - lost.lost} migration${lost.count - lost.lost === 1 ? "" : "s"} listed` : "";
     html +=
@@ -172,6 +174,9 @@ export function popHtml(s: PopState): string {
       `<button class="bp-btn" data-bp="lost" title="What was said of declarations the graph no longer has, and what moved to a new name${what ? `: ${what}` : ""}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.5 6h11v7.5h-11zM4 3.5h8L13.5 6h-11z"/><path d="M6.5 8.5h3"/></svg>Lost-and-found` +
       (lost && lost.count ? `<span class="bp-count${lost.lost ? " lost" : ""}">${lost.count > 999 ? "999+" : lost.count}</span>` : "") +
       `</button></div>`;
+    // the branch followed, under the ways into the history: the keyboard still lands on the Time
+    // Machine first
+    if (s.deploy) html += deployHtml(s.deploy, now);
     // the newest first: each opens the Time Machine there
     const recent = list.slice(-RECENT_BUILDS).reverse();
     if (recent.length) {

@@ -262,6 +262,10 @@ test("a push during a build: only the newest commit pushed meanwhile is built af
   await until(() => d.status(true).building?.step === "build");
   assert.equal(d.holds(), true);
   assert.equal(d.busy, true);
+  // what the build says now, to those let in fully
+  assert.match(d.status(true).building?.tail ?? "", /\$ lake build M$/);
+  assert.equal(d.status(false).building?.tail, undefined);
+  assert.equal(d.status(false).building?.commit, a);
   const b = r.commit({ "M.lean": "def x := 2\n" });
   const c = r.commit({ "M.lean": "def x := 3\n" });
   await d.poll();

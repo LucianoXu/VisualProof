@@ -1441,7 +1441,7 @@ details.lf-archived > summary { cursor: pointer; }
 .bp-when { min-width: 104px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bp-notes { margin-left: auto; color: var(--text-3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the history above, the graph on show and its files below */
-.bp-build + .pop-h, .bp-btns + .pop-h { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.bp-build + .pop-h, .bp-btns + .pop-h, .bp-deploy + .pop-h { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .pop-ok { padding: 4px; }
 /* a branch the server follows and builds (DeploySpec): under the head, its builds */
 .bp-deploy { margin: 0 4px 10px; font-size: 12px; line-height: 1.45; }
