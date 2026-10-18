@@ -18,7 +18,11 @@ import { githubBlob, slimDeploy } from "../src/shared/deploy.ts";
 import { deployHtml, deployWaiting, stepPill, took } from "../src/web/src/buildpop.ts";
 
 const ROOT = mkdtempSync(join(tmpdir(), "vp-deploy-"));
-after(() => rmSync(ROOT, { recursive: true, force: true }));
+// a test that failed midway may leave its Lake waiting: stopped, so that the run ends
+after(async () => {
+  await stopChildren(500);
+  rmSync(ROOT, { recursive: true, force: true });
+});
 
 const G = { ...process.env, GIT_AUTHOR_NAME: "T", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "T", GIT_COMMITTER_EMAIL: "t@t" };
 function git(dir: string, ...args: string[]): string {
@@ -51,8 +55,8 @@ function repo() {
 }
 
 /** The test's Lake: it says what it was asked; a build waits while the commit has a SLOW file
- *  until GO is there, writes an `.olean`, and fails where BUILD says so, naming its file by its
- *  path on this machine. */
+ *  until GO is there (a minute at most), writes an `.olean`, and fails where BUILD says so, naming
+ *  its file by its path on this machine. */
 const BIN = join(ROOT, "bin");
 mkdirSync(BIN);
 const LAKE = join(BIN, "lake");
@@ -63,7 +67,8 @@ writeFileSync(
   `#!/bin/sh
 echo "lake $*" >> "${LAKE_LOG}"
 if [ "$1" = "exe" ]; then echo "cache: 3 files"; exit 0; fi
-if [ -f SLOW ]; then while [ ! -f "${GO}" ]; do sleep 0.05; done; fi
+n=0
+if [ -f SLOW ]; then while [ ! -f "${GO}" ] && [ $n -lt 1200 ]; do sleep 0.05; n=$((n+1)); done; fi
 mkdir -p .lake/build/lib/lean
 date +%s%N > .lake/build/lib/lean/M.olean
 if grep -q fail BUILD 2>/dev/null; then echo "error: $PWD/M.lean:1:0: unknown identifier 'oops'" >&2; exit 1; fi
@@ -103,7 +108,8 @@ function make(remote: Remote, folder: ReturnType<typeof deployFolder>, head: str
   return { d, folder, project, seen, remote };
 }
 
-const until = async (f: () => boolean, ms = 10_000) => {
+// generous: a machine under load runs git and the test's Lake slowly
+const until = async (f: () => boolean, ms = 60_000) => {
   for (const end = Date.now() + ms; !f() && Date.now() < end; ) await new Promise((ok) => setTimeout(ok, 20));
   assert.ok(f(), "waited in vain");
 };
@@ -355,7 +361,7 @@ test("a build cut short (a restart) is done again by the next server; Mathlib's 
   const a = r.commit({ ...PROJECT, SLOW: "", "lake-manifest.json": JSON.stringify({ version: "1.1.0", packages: [{ name: "mathlib", type: "git" }] }) });
   const first = await deployment(r);
   void first.d.poll();
-  await until(() => first.d.status(true).building?.step === "build");
+  await until(() => /lake build M/.test(lakeSaid()));
   assert.match(lakeSaid(), /lake exe cache get\nlake build M/);
   // the server stops: its programs are stopped with it
   first.d.stop();

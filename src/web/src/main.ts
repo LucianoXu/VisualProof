@@ -3133,6 +3133,8 @@ async function boot(): Promise<void> {
     });
     // drawn again as the build goes on: the keyboard keeps its place in it
     keepFocus(pop, () => (pop.innerHTML = html));
+    // a build's log is read from its end, where it says what failed
+    for (const l of pop.querySelectorAll<HTMLElement>(".bp-log")) l.scrollTop = l.scrollHeight;
   };
 
   /** Show a file: its cluster where the board clusters by file, else its first declaration. The

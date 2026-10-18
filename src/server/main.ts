@@ -1589,6 +1589,7 @@ async function main(): Promise<void> {
           // the pages are told at the live loop's next look, within a second
           changed: () => {},
           log: (l) => live.say(l),
+          ended: () => live.reread(),
         },
       })
     : null;

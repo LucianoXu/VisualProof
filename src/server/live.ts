@@ -722,7 +722,8 @@ export class Live {
       const merged = await this.merge(ex, plan, progress);
       // a re-layout going on is let finish; a newer build supersedes the pass
       while (this.extracting && this.passFor === ex.fingerprint) await new Promise((ok) => setTimeout(ok, 200));
-      if (!merged || this.passFor !== ex.fingerprint) return;
+      // a branch's build that started meanwhile changes the tree: its graph is read once it ends
+      if (!merged || this.passFor !== ex.fingerprint || this.deploy?.holds()) return;
       this.passFor = null;
       await this.install(merged, missing, "done", ex.fingerprint);
     } catch (e) {
@@ -1099,6 +1100,12 @@ export class Live {
    *  for a workspace. */
   following(): DeployStatus | null {
     return this.deploy?.status(true) ?? null;
+  }
+
+  /** A branch's build ended (DeploySpec decision 5): the tree is read again once it settles,
+   *  whatever the build wrote — a usage pass it cut short is done then, from what it finished. */
+  reread(): void {
+    this.extractedStamp = "";
   }
 
   /** The branch's builds as the pages were last told them (`deploy`). */

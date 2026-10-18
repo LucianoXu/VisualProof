@@ -536,6 +536,9 @@ export interface DeployHooks {
   changed(): void;
   /** a line for the server's log */
   log(line: string): void;
+  /** a build ended, whatever came of it: the tree is read again once it settles (what the build
+   *  before left half done, the usage pass cut short, is done then) */
+  ended?(): void;
 }
 
 export interface DeploymentOptions {
@@ -675,7 +678,8 @@ export class Deployment {
       asked: this.asked,
       // what the build going on says now (the cache's download, Lake's last lines)
       building: this.building && { ...this.building, ...(this.log ? { tail: this.log.tail(LIVE_LINES) } : {}) },
-      next: this.want && this.want !== this.done && this.want !== this.building?.commit ? this.want : null,
+      // a commit waiting for its try to be made again is said by the last build's
+      next: this.building && this.want && this.want !== this.done && this.want !== this.building.commit ? this.want : null,
       last: this.state.last,
       built: this.state.outputs?.commit ?? null,
     };
@@ -773,9 +777,12 @@ export class Deployment {
         if (f.code !== 0) return ended({ ok: false, retry: true, error: `it could not be fetched: ${gitWhy(f)}` });
         if (!(await this.has(commit))) return ended({ ok: false, retry: true, error: "the branch moved on before it could be fetched: its newest commit is built next" });
       }
+      // a graph being made ready to serve as the fetch went on (the usage pass's) is let finish: the
+      // tree changes from here
+      while (this.o.hooks.reading() && !this.stopped) await new Promise((ok) => setTimeout(ok, 100));
       if (this.stopped) return;
-      // the tree changes from here: the build is recorded as going on, so that one cut short is
-      // done again (DeploySpec decision 8)
+      // the build is recorded as going on, so that one cut short is done again (DeploySpec
+      // decision 8)
       this.step("checkout");
       this.o.hooks.starting();
       this.state.building = { commit, since };
@@ -889,6 +896,7 @@ export class Deployment {
     if (!b.retry) this.state.done = this.done = commit;
     else this.later = commit;
     this.save();
+    this.o.hooks.ended?.();
     const secs = ms < 60_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 60_000)} min`;
     const short = shortCommit(commit);
     if (b.ok) this.o.hooks.log(`build: ${short} built in ${secs}`);

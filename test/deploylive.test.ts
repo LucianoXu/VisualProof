@@ -22,7 +22,7 @@ import { Identities } from "../src/server/identity.ts";
 import { Live } from "../src/server/live.ts";
 import { openProject } from "../src/server/project.ts";
 import { ReviewStore } from "../src/server/review.ts";
-import { copyFixture } from "./fixturecopy.ts";
+import { copyFixture, leanAtLeast } from "./fixturecopy.ts";
 import { stream } from "./site.ts";
 import type { Json } from "./site.ts";
 import { testDirs } from "./tmpdirs.ts";
@@ -58,7 +58,8 @@ const push = (msg: string, edit: () => void): string => {
 };
 const append = (file: string, text: string) => writeFileSync(join(work, file), readFileSync(join(work, file), "utf8") + text);
 const get = async (path: string): Promise<Json> => (await fetch(base + path, { headers: { "x-visualproof-kind": "agent", "x-visualproof-name": "T" } })).json();
-const until = async (f: () => boolean | Promise<boolean>, ms = 120_000) => {
+// the first build of a toolchain compiles the extractor for it: minutes, on a machine under load
+const until = async (f: () => boolean | Promise<boolean>, ms = 600_000) => {
   for (const end = Date.now() + ms; Date.now() < end; await new Promise((ok) => setTimeout(ok, 100))) if (await f()) return;
   assert.fail("waited in vain");
 };
@@ -103,7 +104,7 @@ before(async () => {
     roots: [],
     everyMs: 3600_000,
     head: c.commit,
-    hooks: { reading: () => live.reading, starting: () => live.usage.cancel(), toolchainChanged: () => hover.toolchainChanged(), changed: () => {}, log: () => {} },
+    hooks: { reading: () => live.reading, starting: () => live.usage.cancel(), toolchainChanged: () => hover.toolchainChanged(), changed: () => {}, log: () => {}, ended: () => live.reread() },
   });
   live.deploy = d;
   const app = new App(live, hover, new Identities(null), new AgentApi(live, hover, "full"), null);
@@ -168,11 +169,16 @@ test("a failing commit: its files failed, the build's end of log, what could be 
   assert.equal(st.deploy.last.ok, false);
   assert.equal(st.deploy.last.exit, 1);
   assert.match(st.deploy.last.tail, /Fixture\/Leaf\.lean:\d+:\d+: .*\n/);
-  assert.ok(st.build.files.some((f: Json) => f.module === "Fixture.Leaf" && f.state === "failed"));
-  assert.ok(st.graph.missing.includes("Fixture.Leaf"));
   const h = await get("/api/history");
   assert.equal(h.snapshots.at(-1).commit.hash, bad);
-  assert.ok(h.snapshots.at(-1).missing.includes("Fixture.Leaf"));
+  // before v4.29 Lake keeps a failed file's .olean: it shows as out of date, read as last built
+  // (the manual's Live)
+  const leaf = st.build.files.find((f: Json) => f.module === "Fixture.Leaf");
+  if (leanAtLeast(4, 29)) {
+    assert.equal(leaf?.state, "failed");
+    assert.ok(st.graph.missing.includes("Fixture.Leaf"));
+    assert.ok(h.snapshots.at(-1).missing.includes("Fixture.Leaf"));
+  } else assert.equal(leaf?.state, "stale");
 });
 
 test("two quick pushes: the newest alone is built, and is the next build of the history", { skip: !haveLake }, async () => {
