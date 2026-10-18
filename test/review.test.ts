@@ -381,6 +381,18 @@ test("a declaration of the project can be marked as target from its panel; one o
   record(d, { op: "target", name: "Nat.Prime", by: "Alice", on: true }, "tc", at(1));
   assert.match(box(false).html(1, true), /data-rv-target>★ Target</);
   assert.match(box(true).html(1, true), /<div class="rv-tag">★ Target<\/div>/);
+  // a read-only reader opens no view (CollabSpec decision 11): no Key view to be refused
+  assert.match(box(true).html(1, true), /data-rv-keyview/);
+  const reader = new ReviewBox(g, {
+    review: () => ({ data: d, error: null, blocked: null, readOnly: true, reviewer: null }),
+    editedNow: () => false,
+    reviewRoot: () => null,
+    progress: () => ({ total: 1, approved: 0, commented: 0, stale: 0 }),
+    keyProgress: () => ({ total: 1, approved: 0, commented: 0, stale: 0, unreviewed: 1 }),
+    queue: () => ({ order: [0], axioms: [] }),
+    canOpenViews: () => false,
+  } as unknown as ReviewHooks);
+  assert.doesNotMatch(reader.html(1, true), /data-rv-keyview/);
 });
 
 test("a non-standard axiom is marked and counted as needing review whatever trusts it (ReviewSpec decision 3)", () => {

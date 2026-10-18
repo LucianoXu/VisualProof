@@ -94,6 +94,9 @@ export interface ReviewHooks {
   keyProgress(i: number): StatusCounts;
   /** open a view of a target's key declarations alone, `key(T)` */
   keyView(i: number): void;
+  /** whether this reader may open a view at all: a read-only reader opens none (CollabSpec decision
+   *  11), and is offered no Key view; true where absent */
+  canOpenViews?(): boolean;
   /** go to declaration `i`: where a quoted opinion on it is shown */
   go(i: number): void;
   /** open the source of declaration `name` at lines `from`–`to` of its file, which read as
@@ -722,7 +725,7 @@ export class ReviewBox {
     const esc = escapeHtml;
     const name = this.g.nodes[i].name;
     const tv = this.hooks.targetView?.(i) ?? null;
-    const key = `<button class="rv-btn" data-rv-keyview title="A view of its key declarations alone, focused on it: key(${esc(name)})">Key view</button>`;
+    const key = this.hooks.canOpenViews?.() === false ? "" : `<button class="rv-btn" data-rv-keyview title="A view of its key declarations alone, focused on it: key(${esc(name)})">Key view</button>`;
     const linkBtn = (title: string) =>
       tv?.why
         ? `<button class="rv-btn" disabled title="${esc(tv.why)}">Link to this view</button>`

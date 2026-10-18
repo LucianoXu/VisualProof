@@ -552,6 +552,7 @@ async function boot(): Promise<void> {
     inReview: (r, i) => flow.inReview(r, i),
     isKey: (r, i) => flow.isKey(r, i),
     keyProgress: (i) => flow.keyProgress(i),
+    canOpenViews: () => !reader,
     keyView: (i) => {
       // a view made from the board on show: at its build, leaving the Time Machine for it; focused
       // on the target it is made from (ViewSpec decision 28)
