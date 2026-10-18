@@ -2301,10 +2301,11 @@ async function boot(): Promise<void> {
   const say = (text: string) => {
     const hint = $("#hint");
     if (saying) clearTimeout(saying);
+    // shown before it is written: a live region in the page when its words change is read out
+    hint.hidden = false;
     hint.textContent = text;
     hint.classList.add("say");
     hint.classList.toggle("below", !$("#lensbar").hidden);
-    hint.hidden = false;
     saying = setTimeout(() => {
       saying = null;
       hint.hidden = true;
@@ -4227,6 +4228,8 @@ async function boot(): Promise<void> {
     sources.release();
   }
   $("#loader").classList.add("gone");
+  // faded out, it leaves the page: a screen reader would read "Reading the project…" at its end
+  setTimeout(() => ($("#loader").hidden = true), 450);
   // the guide (GuideSpec): the tour on a first visit, the ? sheet at any time, its tips; tips in place
   /** The tour's and Show me's own moves (GuideSpec decisions 3 and 7): a theorem selected, a tool
    *  chosen, as a click and a mode's button would, but without a step in the history each, and
