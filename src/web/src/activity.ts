@@ -510,7 +510,10 @@ ${tip}">${title(name)}</button>`
           e.what === "created"
             ? `${who(e.by, e.agent, e.person)} saved the view ${view(e.name)} for everyone` + (e.name ? ` <span class="muted mono">${escapeHtml(e.scope)}</span>` : "")
             : e.what === "renamed"
-              ? `${who(e.by, e.agent, e.person)} renamed ${e.was ? `the view <b>${escapeHtml(e.was)}</b>` : "a view"} to ${view(e.name)}`
+              ? // a name taken away (an empty Rename): the view is called by its scope again
+                e.name === null && e.was
+                ? `${who(e.by, e.agent, e.person)} took the name <b>${escapeHtml(e.was)}</b> off a view, called ${view(null)} again`
+                : `${who(e.by, e.agent, e.person)} renamed ${e.was ? `the view <b>${escapeHtml(e.was)}</b>` : "a view"} to ${view(e.name)}`
               : e.what === "scope"
                 ? `${who(e.by, e.agent, e.person)} changed the scope of ${view(e.name)} to <span class="muted mono">${escapeHtml(e.scope)}</span>`
                 : e.what === "deleted"
