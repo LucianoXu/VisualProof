@@ -461,14 +461,15 @@ function received(line) {
 }
 
 /** The client went: what is under way ends, and VisualProof is told the agent left (offline at
- *  once), within a second and a half. */
+ *  once), within a second and a half — by this session, so that a session a newer one replaced
+ *  (its wait answered `replaced`) leaves the newer one listening. */
 let leaving = false;
 async function leave() {
   if (leaving) return;
   leaving = true;
   for (const ctl of running.values()) ctl.abort();
   if (URL_ && TOKEN && !stopped)
-    await fetch(`${URL_}/api/agent/view`, { method: "POST", headers: { ...auth(), "content-type": "application/json" }, body: '{"leave":true}', signal: AbortSignal.timeout(1500) }).catch(() => {});
+    await fetch(`${URL_}/api/agent/view`, { method: "POST", headers: { ...auth(), "content-type": "application/json", "x-visualproof-session": SESSION }, body: '{"leave":true}', signal: AbortSignal.timeout(1500) }).catch(() => {});
   process.exit(0);
 }
 

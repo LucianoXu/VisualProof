@@ -2388,9 +2388,10 @@ export class AgentApi {
     const me = whoOf(a.caller);
     const b = body(a);
     if (b.leave === true) {
+      // an agent with a token that leaves is offline until it listens or asks again — unless its
+      // MCP server says it is a session that a newer one replaced, which goes on
+      if (a.caller.token && this.world.talk && !this.world.talk.left(a.caller.token.id, a.session ?? null)) return ok({ ok: true, left: false, note: "Another session of your token listens now: it stays." });
       this.world.presence.drop(agentKey(me));
-      // an agent with a token that leaves is offline until it listens or asks again
-      if (a.caller.token) this.world.talk?.left(a.caller.token.id);
       return ok({ ok: true, left: true });
     }
     const p = this.goingTo(a, b);
