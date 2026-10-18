@@ -485,7 +485,11 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   seen by whoever follows you). In
   Status each cluster's outline shows its review's progress, an arc for what is approved and one
   for what is commented. The **legend** at the bottom left folds to a chip naming the scheme; open,
-  it counts the board's declarations per colour. No rings tell of status on the canvas.
+  it counts the board's declarations per colour. No rings tell of status on the canvas. **An axiom
+  is a ring**, in either scheme: its dot has a ring of its own colour around it, a gap apart, on the
+  board, in an artwork, in the legend, the panel and the search, so that it is told by its shape
+  where its colour is not (to a red-green colour-blind reader the Kind palette's axiom red and
+  structure green are one colour).
 - `/` searches names, statements and docstrings (every word must be found; name matches first,
   then statements, then docstrings, each with the matching words highlighted in a snippet). A
   name Lean generated from a command finds the declaration it is folded into ("also declares").

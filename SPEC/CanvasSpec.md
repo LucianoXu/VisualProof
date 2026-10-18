@@ -336,6 +336,17 @@ Implementation notes:
 ## Colour schemes and the legend
 
 - **Kind**: a hue per kind (theorems their own); the outside world as rings, not dots.
+- **An axiom is a ring** (the owner's decision of 2026-10-18): every axiom on the board, the
+  project's and the outside world's, is drawn with a ring of its point's own colour a gap apart
+  (1.5 px wide, 1.5 px out; web/src/axiomring.ts), in both schemes and every artwork style, lit or
+  not. The palette stays: to a deuteranope Kind's axiom red and structure green are one colour
+  (ΔE2000 1.2), and the shape tells them apart; the ring stands out from its ground as much as its
+  point does. Its colour says nothing of its own, so it stays apart from every mark round a point,
+  which go outside it: the pointer's and the selection's accent rings, the others' rings in their
+  colours, a pin's grey ring, a past build's amber and teal, a key's gold diamond; the selection's
+  and the others' clear of a lit axiom's ring by 2.5 px. An axiom's name is written beyond it. Every
+  dot on the page that shows a kind or a state rings an axiom the same way: the legend's, the
+  panel's, a card's, the search's, the source window's, the pointer's tip.
 - **Status**: the most urgent state wins: building > failed or not built > contains `sorry` (anywhere
   below, through `sorryAx`) > commented > stale > approved > not yet reviewed / trusted (ReviewSpec,
   "What the page shows" and decision 3; trusted only with no opinion on it). Out of date, queued and
@@ -360,8 +371,8 @@ Implementation notes:
   `--status-*` only the Status scheme (points, file outlines and arcs, legend, card dots). The build
   status (pill, outline dots) has `--st-*`.
 - **No status rings on the canvas**: the picks', other readers' (CollabSpec decision 4), the target's
-  gold star, a key declaration's diamond (ExportSpec decision 4) and a pin's thin ring are the only
-  marks; status is read by switching to Status. A card shows its point's colour in the scheme in force
+  gold star, a key declaration's diamond (ExportSpec decision 4), a pin's thin ring and an axiom's own
+  ring are the only marks; status is read by switching to Status. A card shows its point's colour in the scheme in force
   and no other mark of status. The outside world is a ring in its state's colour.
 - **Files and clusters**: plain by kind. In Status, with clusters as files, a file whose own build
   failed, is building or has a `sorry` gets a thin outline in that colour (never a namespace); trouble
@@ -369,7 +380,8 @@ Implementation notes:
   clockwise: approved, then commented, of what it holds that needs review.
 - **The legend** (bottom left) folds to a chip naming the scheme (by status a pie of the board's
   review). Open: Kind | Status, each colour with its count among the board's declarations (outside
-  included while shown), and the edges' key. Open or folded is kept in the browser.
+  included while shown), and the edges' key; by kind the axiom's dot is ringed, by status a line of
+  its own says that a ring is an axiom. Open or folded is kept in the browser.
 - **Which scheme**: a view where the review has a focus (ViewSpec decision 28) opens in Status, others
   in Kind. The reader's switch is kept in the browser per project, apart for focused views and others;
   never shared, but followed (CollabSpec decision 4). Key `c`.
