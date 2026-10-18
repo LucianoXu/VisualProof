@@ -86,7 +86,7 @@ import { ReviewFlow } from "./reviewqueue.ts";
 import { SearchBox } from "./search.ts";
 import { SelectionBar } from "./selbar.ts";
 import type { LitCount } from "./selbar.ts";
-import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
+import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, followRenames, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Shown, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -2138,7 +2138,22 @@ async function boot(): Promise<void> {
   /** The review changed, once per change whoever made it (this reader, someone else, the logs on disk):
    *  everything that shows it follows. A board whose scope reads the review (trusted, statuses,
    *  advice) may hold another set now: the board on show is drawn again at once. */
+  /** What the reader selected follows a rename of it (web/src/selection.ts, followRenames): a build
+   *  that renamed it, or a move that says so, which may come before or after the new graph. True
+   *  where it did; the board is drawn again by the caller. */
+  const followSelection = (): boolean => {
+    const r = followRenames(picks, shown, review.data.renamed, (name) => present.byName.has(name));
+    if (r.picks === picks && r.shown === shown) return false;
+    ({ picks, shown } = r);
+    return true;
+  };
+  /** Where a selection that followed a rename is told: the address, and those following. */
+  const selectionFollowed = () => {
+    writeAddress(false);
+    people.report();
+  };
   const reviewChanged = () => {
+    const followed = followSelection();
     targetTcbs.clear();
     views.reviewChanged();
     if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => boardPanel.render());
@@ -2148,7 +2163,7 @@ async function boot(): Promise<void> {
     // what is lit reads the review when a pick does (key declarations, trust, statuses), and the
     // key graph's edges under Keys always: lit again; else what shows the review is drawn again
     const q = selectionQuery(picks);
-    if (S.mode === "keys" || (q && readsReview(q))) apply();
+    if (followed || S.mode === "keys" || (q && readsReview(q))) apply();
     else {
       outline.render();
       // a visitor's colour by status, and its diamond, are the review's too
@@ -2163,6 +2178,7 @@ async function boot(): Promise<void> {
     papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
     stickies.render();
+    if (followed) selectionFollowed();
   };
   /** The whole review (on connecting, or where events came in between): taken unless this page
    *  holds that revision already. */
@@ -2906,10 +2922,13 @@ async function boot(): Promise<void> {
     views.graphChanged();
     tm.presentChanged();
     targetTcbs.clear();
+    // a declaration selected that this build renamed: the selection is on its name now
+    const followed = followSelection();
     // the board on show again, of the new graph (showBoard takes it as `g`)
     await nav.redraw();
     trust.render();
     activity.changed();
+    if (followed) selectionFollowed();
   };
 
   // ---------------------------------------------------------------- build status

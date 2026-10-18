@@ -4,6 +4,7 @@
 // it (web/src/state.ts).
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { Cluster, ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../src/shared/graph.ts";
@@ -11,7 +12,7 @@ import { cleanQuery, describe, evaluate, namesIn, parseQuery, printQuery, readsR
 import type { Query } from "../src/shared/query.ts";
 import { emptyReview } from "../src/shared/review.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
-import { click, clusterPick, clusterSet, declPick, edgeMode, pickWords, readSelection, remove, retool, selectionQuery, selectionText, shownOf } from "../src/web/src/selection.ts";
+import { click, clusterPick, clusterSet, declPick, edgeMode, followRenames, pickWords, readSelection, remove, retool, selectionQuery, selectionText, shownOf } from "../src/web/src/selection.ts";
 import type { Pick } from "../src/web/src/selection.ts";
 import { decodeState, encodeState } from "../src/web/src/state.ts";
 import type { ViewState } from "../src/web/src/state.ts";
@@ -199,4 +200,45 @@ test("another tool selects the pick last clicked again, alone: the last of sever
   assert.equal(retool(none, null, "tcb").picks, none);
   const byHand = readSelection("kind(def) and sorry");
   assert.equal(retool(byHand, null, "tcb").picks, byHand);
+});
+
+test("a build renames what is selected: the selection and the panel are on its name now, through a chain of renames (HistorySpec decision 10)", () => {
+  const text = (r: { picks: Pick[] }) => selectionText(r.picks);
+  // N.d was renamed N.d2, then N.d3: the graph has N.d3 and N.t, no longer N.d
+  const renamed = { "N.d2": "N.d", "N.d3": "N.d2" };
+  const has = (n: string) => n === "N.d3" || n === "N.t";
+  const picks = [declPick("tcb", "N.d"), declPick("tcb", "N.t")];
+  const r = followRenames(picks, { decl: "N.d" }, renamed, has);
+  assert.equal(text(r), "tcb(N.d3) or tcb(N.t)");
+  assert.deepEqual(r.picks[0].root, { decl: "N.d3" });
+  assert.equal(r.picks[1], picks[1], "what the graph has stays as it is");
+  assert.deepEqual(r.shown, { decl: "N.d3" });
+  // under Keys, the target whose key declarations it holds is renamed with it
+  assert.equal(text(followRenames([declPick("keys", "N.d", "N.d")], null, renamed, has)), text({ picks: [declPick("keys", "N.d3", "N.d3")] }));
+  // gone without a rename, a cluster, a pick written by hand, nothing renamed: the same list and object
+  const gone = [declPick("plain", "N.x")];
+  const shown = { decl: "N.x" };
+  const same = followRenames(gone, shown, renamed, has);
+  assert.equal(same.picks, gone);
+  assert.equal(same.shown, shown);
+  const N = { key: "N", label: "N", parent: -1, depth: 0, x: 0, y: 0, lx: 0, ly: 0, r: 1, count: 5, ext: false } as Cluster;
+  const others = [clusterPick("plain", N, "namespace"), ...readSelection("uses(N.d) and kind(def)")];
+  assert.equal(others[1].root, null, "no click makes it");
+  assert.equal(followRenames(others, { cluster: "N" }, renamed, has).picks, others);
+  assert.equal(followRenames(picks, null, undefined, has).picks, picks);
+  // a rename that leads to nothing the graph has (renamed again, then gone): left as it is
+  assert.equal(followRenames(picks, null, renamed, (n) => n === "N.t").picks, picks);
+  // a loop, as a log edited by hand could make one: no answer, no hang
+  assert.equal(followRenames(picks, null, { "N.a": "N.d", "N.d": "N.a" }, (n) => n === "N.t").picks, picks);
+});
+
+test("the page follows a rename of what is selected at a new graph and at the move, whichever comes first", () => {
+  // the server sends the graph before the move it found (server/live.ts): the page follows at both
+  const main = readFileSync(new URL("../src/web/src/main.ts", import.meta.url), "utf8");
+  const install = main.slice(main.indexOf("const install = async"), main.indexOf("const renderBuild = () => {"));
+  assert.match(install, /const followed = followSelection\(\);[^]*await nav\.redraw\(\);[^]*if \(followed\) selectionFollowed\(\);/);
+  const changed = main.slice(main.indexOf("const reviewChanged = () => {"), main.indexOf("const takeWhole = "));
+  assert.match(changed, /const followed = followSelection\(\);/);
+  assert.match(changed, /if \(followed \|\| S\.mode === "keys"/);
+  assert.match(changed, /if \(followed\) selectionFollowed\(\);/);
 });
