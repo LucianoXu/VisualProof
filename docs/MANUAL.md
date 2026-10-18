@@ -485,6 +485,9 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   selection among what this board holds — laid out on its own by the same rules (see Views).
   Inside it everything works as anywhere. It is greyed out where it would change nothing: nothing
   lit, or this board holds just what is lit already. A cluster's panel has a Zoom in of its own.
+  A large view takes a moment to lay out (seconds, for tens of thousands of declarations): the board
+  you are on stays and answers meanwhile, the tabs say *laying out* where the new tab will be, and
+  going back, or to another tab, gives the new view up.
 - **Colours**: by kind, or by **status** — one colour per declaration for where it stands, the
   most urgent winning: being compiled, build failed, contains `sorry`, commented, stale, approved,
   not yet reviewed (hollow), trusted (CanvasSpec, "Colour schemes"). A view where the review has a

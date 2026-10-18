@@ -4,13 +4,16 @@
 // forgets it once no page has it open, and the query opens it again, freshly laid out.
 //
 // Showing a view waits for its board (its record, and a layout laid out here may wait for the
-// board's memory, web/src/views.ts); a later step supersedes one still waiting.
+// board's memory, web/src/views.ts); a later step supersedes one still waiting. The board on show
+// stays meanwhile, and answers: a layout is made off the page's thread, and one for a board no step
+// goes to any more is given up (`aimed`, web/src/layoutqueue.ts's Skipped), never shown.
 
 import type { ClusterMode, Layout } from "../../shared/graph.ts";
 import { printQuery } from "../../shared/query.ts";
 import { PROJECT } from "../../shared/views.ts";
 import type { Seen, Store, Tab } from "./store.ts";
 import type { Board, Views } from "./views.ts";
+import { Skipped } from "./layoutqueue.ts";
 import type { Visitor } from "./visitors.ts";
 
 /** Where the reader is on a board: the tool, the selection, what the panel tells of, the camera
@@ -29,6 +32,16 @@ export interface ViewNavHooks {
   changed(): void;
 }
 
+/** A board's layout, or null where it was given up as no longer wanted. */
+async function given(p: Promise<Layout>): Promise<Layout | null> {
+  try {
+    return await p;
+  } catch (e) {
+    if (e instanceof Skipped) return null;
+    throw e;
+  }
+}
+
 export class ViewNav {
   board!: Board;
   private views: Views;
@@ -38,6 +51,9 @@ export class ViewNav {
   private step = 0;
   /** steps still waiting for their board */
   private waiting = 0;
+  /** the view the latest step goes to, while it waits for its board: with the board on show, the
+   *  boards whose layouts are wanted */
+  aimed: string | null = null;
 
   constructor(views: Views, store: Store, hooks: ViewNavHooks) {
     this.views = views;
@@ -86,15 +102,31 @@ export class ViewNav {
 
   private async showing(id: string, to: Place | null): Promise<boolean> {
     const step = ++this.step;
+    this.aimed = id;
+    try {
+      return await this.shown(step, id, to);
+    } finally {
+      if (step === this.step) this.aimed = null;
+    }
+  }
+
+  private async shown(step: number, id: string, to: Place | null): Promise<boolean> {
     const rec = await this.views.record(id);
     if (!rec || step !== this.step) return false;
     // a view kept at a past build waits for that build's graph (web/src/timemachine.ts)
     await this.views.prepare(id);
     if (step !== this.step) return false;
-    const b = this.views.board(id);
-    if (!b) return false;
-    const L = await this.views.layout(b, rec.clustering);
-    if (step !== this.step) return false;
+    let b: Board | null;
+    let L: Layout | null;
+    for (;;) {
+      b = this.views.board(id);
+      if (!b) return false;
+      L = await given(this.views.layout(b, rec.clustering));
+      if (!L || step !== this.step) return false;
+      // a new graph came while it was laid out (its board is made anew), or the review changed what
+      // it holds: that board is laid out and shown
+      if (this.views.board(id) === b) break;
+    }
     const fresh = !this.board || this.board.id !== id || this.board !== b;
     if (this.board && this.board.id !== id) this.remember();
     this.addTab(id);
@@ -105,6 +137,14 @@ export class ViewNav {
     this.hooks.place(to ?? this.store.data.seen[id] ?? { cam: null, mode: this.store.data.mode, picks: null, shown: null }, fresh);
     this.hooks.changed();
     return true;
+  }
+
+  /** The reader stays on the board on show (back or forward to one of its places, a click on its
+   *  tab): a step still waiting for another board is given up, as a later step would supersede it. */
+  stay(): void {
+    if (!this.aimed || this.aimed === this.board?.id) return;
+    this.step++;
+    this.aimed = null;
   }
 
   /** Show the view on a query (an open one with the same scope and build, or a new one nobody
@@ -161,9 +201,9 @@ export class ViewNav {
       if (this.board.id !== id) return;
       const next = this.views.board(id);
       if (!next) return;
-      const L = await this.views.layout(next, next.rec.clustering);
+      const L = await given(this.views.layout(next, next.rec.clustering));
       // moved on to another view meanwhile: that one is laid out when it is shown
-      if (this.board.id !== id) return;
+      if (!L || this.board.id !== id) return;
       if (this.views.board(id) !== next) continue;
       const here = this.hooks.here();
       this.board = next;
