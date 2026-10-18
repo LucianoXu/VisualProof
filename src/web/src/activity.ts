@@ -641,7 +641,7 @@ ${tip}">${title(name)}</button>`
       return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
     };
     let html =
-      `<div class="act-head"><div class="act-title">Activity</div><button class="icon" data-act-close title="Close">✕</button></div>` +
+      `<div class="act-head"><div class="act-title">Activity</div><button class="icon" data-act-close title="Close" aria-label="Close">✕</button></div>` +
       `<div class="act-filters">${FILTERS.map(([k, label]) => `<button class="sbtn toggle${this.filter === k ? " on" : ""}" data-filter="${k}">${label}</button>`).join("")}` +
       // someone else's targets, taken by following them, are named as theirs
       (this.mineOnly && this.mineOf

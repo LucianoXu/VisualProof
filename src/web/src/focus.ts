@@ -11,6 +11,7 @@
 // draws the header's button and its menu.
 
 import { escapeHtml } from "./highlight.ts";
+import { firstControl } from "./popover.ts";
 
 /** The focus the review is on for a reader: the view's own (`view`) where they chose nothing
  *  (`mine` undefined), none where they chose none, else the target they chose — while it is still a
@@ -67,7 +68,11 @@ export class FocusMenu {
     this.btn = btn;
     this.menu = menu;
     this.hooks = hooks;
-    btn.addEventListener("click", () => this.toggle());
+    btn.addEventListener("click", (e) => {
+      this.toggle();
+      // opened from the keyboard: its first item takes the focus, as a menu's does
+      if (this.open && e.detail === 0) firstControl(this.menu)?.focus();
+    });
     menu.addEventListener("click", (e) => void this.clicked(e));
     menu.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {

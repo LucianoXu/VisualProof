@@ -44,6 +44,7 @@ import { withSnapshot } from "../../shared/sharesnap.ts";
 import { BOT } from "./agentmark.ts";
 import type { AgentShares, DataSource, ReadOnlyLinkShown, ShareInfo } from "./data.ts";
 import { escapeHtml } from "./highlight.ts";
+import { focusBack, keepFocus } from "./keepfocus.ts";
 import { ago } from "./reviewbox.ts";
 import { VERIFIED } from "./verified.ts";
 import { composing } from "./ime.ts";
@@ -329,7 +330,9 @@ export class Share {
         `</div>` +
         `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-copy>${copied ? "Copy again" : "Copy"}</button></div>`;
     } else body = this.tab === "readonly" ? this.readOnlyBody() : this.tab === "invite" ? this.inviteBody() : this.agentBody();
-    this.pop.innerHTML = tabs + `<div class="sh-body">${body}</div>` + this.readOnlyList() + this.peopleList() + this.tokenList();
+    // drawn again (the lists come from the server after the window opened): the focus stays where
+    // it was in it, so that the keyboard keeps its place and Esc still closes it
+    keepFocus(this.pop, () => (this.pop.innerHTML = tabs + `<div class="sh-body">${body}</div>` + this.readOnlyList() + this.peopleList() + this.tokenList()));
     if (focus) this.pop.querySelector<HTMLElement>(`[data-f=${focus}]`)?.focus();
   }
 
@@ -647,6 +650,8 @@ export class Share {
   }
 
   close(): void {
+    // closed from inside it (Esc, Close): the focus goes back to Share
+    focusBack(this.pop, this.btn);
     this.pop.hidden = true;
     this.btn.classList.remove("on");
     this.arming = null;

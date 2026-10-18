@@ -226,7 +226,7 @@ export class ClusterPanel {
       ${modules.includes(cl.key) ? banner(this.hooks.fileOf(cl.key)) : ""}
       <div class="p-head">
         <div class="p-kind"><span class="dot cluster-dot"></span>${esc(clusterWhat(cl, mode, (m) => modules.includes(m), kids.length > 0))}${folded ? `<span class="chip">folded</span>` : ""}</div>
-        <button class="icon" data-close title="Close (Esc)">✕</button>
+        <button class="icon" data-close title="Close (Esc)" aria-label="Close">✕</button>
       </div>
       <h1 class="p-name">${esc(cl.label === "External" ? "Outside the project" : cl.label)}</h1>
       <div class="p-ns">${esc(key)}</div>

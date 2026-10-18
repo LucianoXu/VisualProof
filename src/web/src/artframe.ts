@@ -664,7 +664,7 @@ export class ArtFrame {
     const source = this.hooks.source();
     const section = (title: string, body: string) => `<section class="art-sec"><h3 class="art-sec-h">${title}</h3><div class="art-grid">${body}</div></section>`;
     this.panel.innerHTML =
-      `<div class="ex-head"><div class="modal-title">Artwork</div><button class="icon" data-art-done title="Done (Esc)">✕</button></div>` +
+      `<div class="ex-head"><div class="modal-title">Artwork</div><button class="icon" data-art-done title="Done (Esc)" aria-label="Done">✕</button></div>` +
       `<div class="modal-text">The board is the picture: pan, zoom, select and drag as ever. What the frame holds is saved; its title and its foot are set beside it.</div>` +
       `<div class="art-secs">` +
       section(

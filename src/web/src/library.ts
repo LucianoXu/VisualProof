@@ -16,6 +16,8 @@ import { filesOf, MAX_FILE, sizeWords, subjectWords } from "../../shared/library
 import type { FileRecord } from "../../shared/library.ts";
 import type { ReviewChange, ReviewData } from "../../shared/review.ts";
 import { escapeHtml } from "./highlight.ts";
+import { holdFocus } from "./keepfocus.ts";
+import { firstControl } from "./popover.ts";
 
 /** What a file is chosen for: a subject to link to a place in it (a panel's Link to a reference…), or
  *  a note to attach it to (the note's Attach…, its first words for the list's head). */
@@ -99,7 +101,12 @@ export class Library {
     this.btn = btn;
     this.pop = pop;
     this.hooks = hooks;
-    btn.addEventListener("click", () => (this.pop.hidden ? this.show(null) : this.hide()));
+    btn.addEventListener("click", (e) => {
+      if (!this.pop.hidden) return this.hide();
+      this.show(null);
+      // opened from the keyboard: its first control takes the focus
+      if (e.detail === 0) firstControl(this.pop)?.focus();
+    });
     // a press anywhere else closes it, as the bar's other popovers
     document.addEventListener("pointerdown", (e) => {
       if (!this.pop.hidden && !this.pop.contains(e.target as Node) && !this.btn.contains(e.target as Node)) this.hide();
@@ -279,7 +286,7 @@ export class Library {
         : `<button class="link" data-lb-rename-start="${f.sha}">Rename</button><button class="link" data-lb-archive="${f.sha}" title="Archive: it leaves the library, its links say so; restored from Archived">Archive</button>`;
     const missing = f.have
       ? ""
-      : `<div class="lb-missing">This server does not have this file. <label class="link">Add it…<input type="file" data-lb-upload="${f.sha}" hidden></label> <span class="muted">(only a file of exactly this content)</span></div>`;
+      : `<div class="lb-missing">This server does not have this file. <label class="link" tabindex="0" role="button">Add it…<input type="file" data-lb-upload="${f.sha}" hidden></label> <span class="muted">(only a file of exactly this content)</span></div>`;
     return `<div class="lb-row${archived ? " archived" : ""}">${title}<div class="lb-meta">${meta}</div>${missing}<div class="lb-acts">${acts}</div></div>`;
   }
 
@@ -290,11 +297,12 @@ export class Library {
     const archived = l?.archived ?? [];
     const no = this.hooks.cannot();
     const c = this.choosing;
+    const back = holdFocus(this.pop);
     this.pop.innerHTML =
       libraryHead(c) +
       (no
         ? `<div class="muted lb-note">${e(no)}</div>`
-        : `<div class="lb-add"><label class="rv-btn primary lb-upload">Upload a file…<input type="file" data-lb-upload="" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif" hidden></label>` +
+        : `<div class="lb-add"><label class="rv-btn primary lb-upload" tabindex="0" role="button">Upload a file…<input type="file" data-lb-upload="" multiple accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,application/pdf,image/png,image/jpeg,image/webp,image/gif" hidden></label>` +
           `<span class="muted lb-dropnote">or drop PDFs and images here</span></div>` +
           `<form class="lb-url" data-lb-url><input type="url" placeholder="Add by URL: a PDF, an image, or an arXiv abstract" spellcheck="false" autocomplete="off" aria-label="The file's address"><button class="rv-btn">Add</button></form>`) +
       (this.busy ? `<div class="lb-busy">${e(this.busy)}</div>` : "") +
@@ -304,5 +312,7 @@ export class Library {
         ? `<button class="link lb-arch-t" data-lb-archived>${this.showArchived ? "▾" : "▸"} Archived (${archived.length})</button>` + (this.showArchived ? `<div class="lb-list">${archived.map((f) => this.row(f, true)).join("")}</div>` : "")
         : "") +
       (l ? `<div class="muted lb-used">${sizeWords(l.used)} of ${sizeWords(l.limit)} · ${sizeWords(MAX_FILE)} a file at most</div>` : "");
+    // drawn again as the list comes from the server: the keyboard keeps its place
+    back();
   }
 }

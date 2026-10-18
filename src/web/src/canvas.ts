@@ -1615,6 +1615,11 @@ export class GraphCanvas {
     this.request();
   }
 
+  /** The camera where it is gliding to, at once (reduced motion: GuideSpec decision 4). */
+  arrive(): void {
+    if (this.camGoal) this.jumpTo(this.camGoal);
+  }
+
   /** Zoom by `f` around the middle of the unobstructed area (the zoom buttons, + and -). */
   zoomBy(f: number): void {
     const cx = this.insets.left + (this.w - this.insets.left - this.insets.right) / 2;

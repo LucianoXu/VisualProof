@@ -92,10 +92,18 @@ export class InTips {
         this.hooks.watch(shown.chapter);
       }
     });
-    // Esc, or a press elsewhere, puts it away unanswered
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !this.el.hidden) this.end(false);
-    });
+    // Esc, or a press elsewhere, puts it away unanswered. Esc is the tip's alone, as a popover's is:
+    // the next one closes what is open, leaves the Time Machine, clears the selection
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key !== "Escape" || this.el.hidden || e.isComposing) return;
+        e.stopPropagation();
+        e.preventDefault();
+        this.end(false);
+      },
+      true,
+    );
     document.addEventListener("pointerdown", (e) => {
       if (!this.el.hidden && !this.el.contains(e.target as Node)) this.end(false);
     });

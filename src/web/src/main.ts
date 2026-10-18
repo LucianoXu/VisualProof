@@ -78,6 +78,7 @@ import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
 import { Guide, restsOnCounts } from "./guide.ts";
 import type { RestsOn } from "./guide.ts";
 import { reducedMotion } from "./tipcards.ts";
+import { keepFocus } from "./keepfocus.ts";
 import { Legend } from "./legend.ts";
 import { applyTheme, themeChoices } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
@@ -2308,10 +2309,11 @@ async function boot(): Promise<void> {
   const say = (text: string) => {
     const hint = $("#hint");
     if (saying) clearTimeout(saying);
+    // shown before it is written: a live region in the page when its words change is read out
+    hint.hidden = false;
     hint.textContent = text;
     hint.classList.add("say");
     hint.classList.toggle("below", !$("#lensbar").hidden);
-    hint.hidden = false;
     saying = setTimeout(() => {
       saying = null;
       hint.hidden = true;
@@ -2987,7 +2989,7 @@ async function boot(): Promise<void> {
   };
   const renderPop = () => {
     if (buildsStale) readBuilds();
-    pop.innerHTML = popHtml({
+    const html = popHtml({
       graph: graphInfo,
       extractError,
       files: build?.files ?? null,
@@ -2995,6 +2997,8 @@ async function boot(): Promise<void> {
       builds: data.lost ? builds : null,
       lost: lostDrawer.counts,
     });
+    // drawn again as the build goes on: the keyboard keeps its place in it
+    keepFocus(pop, () => (pop.innerHTML = html));
   };
 
   /** Show a file: its cluster where the board clusters by file, else its first declaration. The
@@ -4058,6 +4062,23 @@ async function boot(): Promise<void> {
   const input = $<HTMLInputElement>("#search");
   const searchBox = new SearchBox(input, $("#results"), g, { go: (i) => go(i) });
 
+  // a file chosen by a button that is a label holding a hidden file field (the library's Upload, a
+  // missing file's Add it…): Enter or Space on it opens the chooser, as a click does — the control's
+  // own press, not a key of the page's
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      const t = e.target as HTMLElement | null;
+      const press = e.key === "Enter" || e.key === " ";
+      const field = press && t?.matches?.("label[role=button]") ? t.querySelector<HTMLInputElement>("input[type=file]") : null;
+      if (!field) return;
+      e.preventDefault();
+      e.stopPropagation();
+      field.click();
+    },
+    true,
+  );
+
   // ---------------------------------------------------------------- keyboard
 
   window.addEventListener("keydown", (e) => {
@@ -4095,6 +4116,10 @@ async function boot(): Promise<void> {
     const route = routeKey(e.key, win !== null, !!(e.target as Element | null)?.closest?.("button, a[href], summary, select"));
     // Space on a window's button or link presses it
     if (route === "press") return;
+    // and on any button reached from the keyboard, as everywhere (surfaces.ts: Enter or Space on a
+    // control presses it); on one the pointer pressed last, where the focus stays, Space is the page's
+    // key for the source
+    if (e.key === " " && (e.target as Element | null)?.matches?.(":focus-visible") && (e.target as Element).closest("button, summary")) return;
     if (win && route === "close") {
       e.preventDefault();
       sources.close(win);
@@ -4248,18 +4273,23 @@ async function boot(): Promise<void> {
     sources.release();
   }
   $("#loader").classList.add("gone");
+  // faded out, it leaves the page: a screen reader would read "Reading the project…" at its end
+  setTimeout(() => ($("#loader").hidden = true), 450);
   // the guide (GuideSpec): the tour on a first visit, the ? sheet at any time, its tips; tips in place
   /** The tour's and Show me's own moves (GuideSpec decisions 3 and 7): a theorem selected, a tool
    *  chosen, as a click and a mode's button would, but without a step in the history each, and
    *  without anything a tip in place counts as the reader's doing. */
   const tourSelect = (i: number) => {
-    if (selected() === i) return reveal(i);
-    if (toView(i) < 0) visitOn(i, selected());
-    const p = pickDecl(g.nodes[i].name);
-    picks = [p];
-    shown = shownOf(p);
-    apply();
+    if (selected() !== i) {
+      if (toView(i) < 0) visitOn(i, selected());
+      const p = pickDecl(g.nodes[i].name);
+      picks = [p];
+      shown = shownOf(p);
+      apply();
+    }
     reveal(i);
+    // with reduced motion nothing in the tour glides (GuideSpec decision 4): the camera is there at once
+    if (reducedMotion()) canvas.arrive();
   };
   const tourTool = (m: Tool) => {
     if (m === S.mode) return;
