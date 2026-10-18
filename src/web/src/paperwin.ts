@@ -264,6 +264,10 @@ export class PaperWin {
     this.page = 1;
     this.pages = f.pages ?? 0;
     this.unpick();
+    // a search was of the file shown before: its count goes, and Enter searches this one afresh
+    // rather than stepping through matches it no longer has
+    delete this.findEl.querySelector("input")!.dataset.done;
+    this.findEl.querySelector<HTMLElement>(".pw-found")!.textContent = "";
     this.host.innerHTML = `<div class="pw-wait">Opening ${escapeHtml(f.title)}…</div>`;
     const url = `/api/library/file?sha=${f.sha}`;
     // a file whose record came through the logs from another server: this one may lack its bytes
