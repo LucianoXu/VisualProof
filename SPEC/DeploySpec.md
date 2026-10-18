@@ -37,6 +37,10 @@ those: they are what 0.5.0 does until decided otherwise).
      (`<data home>/sites/<repo>-<hash>`), not the clone's path: a review does not move with
      `--cache`. One server follows a branch with a cache at a time (`.lock` in the deployment's
      folder, as a site is held); a second is refused, saying which process holds it.
+   - *Proposed*: what the build's own tools write for any build stays where they write it: elan's
+     toolchains (`~/.elan`) and Mathlib's cache (`~/.cache/mathlib`, shared by the user's builds,
+     so that a deployment fetches only what they have not; `MATHLIB_CACHE_DIR` would make it the
+     deployment's own, at the price of a whole cache each).
 3. **Polling the remote** (the owner's decision of 2026-10-18): `git ls-remote <url>
    refs/heads/<branch>` every 2 minutes by default; `--poll <minutes>` changes it (0.05 to 1440).
    Webhooks are later, not now. Asked at once at the start.
@@ -58,9 +62,11 @@ those: they are what 0.5.0 does until decided otherwise).
    - *Proposed*: **the tree is read only between builds.** A build starts only once nothing reads
      the tree (an extraction, a graph being made ready to serve), and from its start to its end
      nothing is read of it; the usage pass of the build before is cut short as the build starts
-     (what it finished is kept). Once a build ends, the live loop reads it as it reads a workspace's
-     build — but only where the build wrote something (the outputs' stamp, not the sources'): a
-     branch's sources change only with a checkout.
+     (what it finished is kept), and a graph being served as the fetch went on is let finish before
+     the checkout. Once a build ends, whatever came of it, the live loop reads the tree again as it
+     reads a workspace's build, once it settles (a usage pass cut short is done then, from what it
+     finished); and otherwise only where a build wrote something (the outputs' stamp, not the
+     sources'): a branch's sources change only with a checkout.
    - *Proposed*: **a try that does not build the tree leaves it as the last build had it**: a
      commit that is no Lean project VisualProof can read (no `lean-toolchain`, no default target), a
      checkout or `lake` that cannot be run — the tree is checked out at the last build's commit
@@ -177,12 +183,14 @@ those: they are what 0.5.0 does until decided otherwise).
   the tree held (`holds`), the commit of the tree's outputs (`commit`), and what pages are told
   (`status`). Its hooks: `reading` (the live loop reads the tree), `starting` (the usage pass is
   cut short), `toolchainChanged` (Lean's language server starts again with the new toolchain,
-  server/hover.ts), `log`.
+  server/hover.ts), `ended` (the live loop reads the tree again: `reread`), `log`. `next` is said
+  only while a build is going on; a commit whose try is to be made again, by the last build's.
 - The project is the server's one object, refreshed in place from each commit
   (`openProject(…, false)`: its toolchain, name and roots), after the checkout and again after the
   build (the modules a library's globs give, once built).
 - server/live.ts: `deploy` (the hooks it reads: `holds`, `commit`, `busy`, `status`); the tick
-  reads a branch's tree only where `holds()` is false and the outputs' stamp moved; `busy` and the
+  reads a branch's tree only where `holds()` is false and the outputs' stamp moved (or `reread`);
+  the usage pass's graph is not served while `holds()`; `busy` and the
   build status's `active` include a build going on; `reading` is an extraction or a graph being
   served (`installing`); the snapshot's commit is `deploy.commit()`; `shownCommit()`,
   `following()`; `stop()` ends the loop (a test's end).

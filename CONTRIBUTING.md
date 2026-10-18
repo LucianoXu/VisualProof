@@ -107,7 +107,8 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
 
 - A change to the extractor (`src/extractor/`), or to how the server runs Lean
   (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`,
-  `server/children.ts`), passes `npm run test:toolchains` on all of them. CI runs the toolchains on
+  `server/children.ts`, and `server/deploy.ts`, which builds a branch the server follows), passes
+  `npm run test:toolchains` on all of them. CI runs the toolchains on
   a pull request that touches those files, the fixture or its golden (`toolchains.yml` lists them),
   and every week; the suite (`test.yml`) runs once per pull request and once on `main` as a merge
   lands, which is what a release then checks. The newest Lean release and release candidate run
