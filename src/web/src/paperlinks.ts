@@ -554,7 +554,9 @@ export class Papers {
   private async relabel(id: string, label: string): Promise<void> {
     this.editing = null;
     if (label.trim()) await this.write("/api/library/link/edit", { id, label: label.trim() });
-    else this.hooks.repaint();
+    // the panel drawn again whatever the answer: a label saved as it was, or refused, changes
+    // nothing in the review, which is what draws it again otherwise, and Save left the form open
+    this.hooks.repaint();
   }
 
   private async remove(id: string): Promise<void> {
