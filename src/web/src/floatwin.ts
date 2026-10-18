@@ -15,6 +15,8 @@
 // hover cards and the page's modal windows lie above that layer. The geometry is pure functions,
 // tested without a browser (test/floatwin.test.ts).
 
+import { sheeted } from "./phone.ts";
+
 export interface Rect {
   x: number;
   y: number;
@@ -448,6 +450,8 @@ export class FloatWindow {
    *  touch alike, the pointer captured until it is let go. */
   private press(e: PointerEvent): void {
     if (!this.o.live() || this.collapsed || this.dragging || !e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+    // docked on a phone or a tall screen (style.css; PhoneSpec decisions 12 and 21): placed there, not by hand
+    if (sheeted()) return;
     const t = e.target as Element;
     const edge = t.closest<HTMLElement>("[data-rz]");
     const bar = t.closest<HTMLElement>(this.o.handle);

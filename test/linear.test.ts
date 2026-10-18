@@ -413,3 +413,33 @@ test("an arc is lit as the board lights its edge: between two lit declarations, 
   assert.deepEqual(pairs(), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit"]);
   assert.deepEqual(pairs([top, 1]), ["A.a0→A.a1 lit", "A.a2→A.a0", "top→A.a0 lit", "top→A.a1 lit key"]);
 });
+
+test("shown as a followed reader's, the form is the follower's own once following ends: ⋯ and the key put it away, and so may the follower's own Export window closing; the window's own form goes with it alone", async () => {
+  const { f } = await setup(OUTLINE);
+  // following someone whose board is drawn so
+  await f.show("followed");
+  assert.deepEqual([f.shown, f.asked, f.followed], [true, true, true]);
+  // their form put away, and with it one the follower had asked for themselves
+  await f.show("reader");
+  f.hide("reader", "followed");
+  assert.equal(f.shown, false);
+  // following ended with it shown: the key puts it away, the reader's own asking with it
+  await f.show("followed");
+  await f.show("reader");
+  f.toggle();
+  assert.deepEqual([f.shown, f.asked], [false, false]);
+  // the follower's own Export window opened over it and closed: the window's alone goes (web/src/
+  // main.ts says whether the one following left goes too)
+  await f.show("followed");
+  await f.show("export");
+  f.hide("export");
+  assert.deepEqual([f.shown, f.followed], [true, true]);
+  await f.show("export");
+  f.hide("export", "followed");
+  assert.equal(f.shown, false);
+  // the Export window open, the followed reader's put away: the window's stays
+  await f.show("export");
+  await f.show("followed");
+  f.hide("reader", "followed");
+  assert.deepEqual([f.shown, f.asked], [true, false]);
+});

@@ -556,6 +556,24 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
 - No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of
   the keys. The tour is the phone's own, in the words of fingers.
 
+### On a tall screen
+
+A screen wider than a phone and at least 1.2 times as high as it is wide — a tablet held upright, a
+narrow window, a monitor turned on its side — gets a larger screen's page, with everything on it,
+placed for the shape ([PhoneSpec.md](../SPEC/PhoneSpec.md), "Tall screens"). The page changes as
+the screen turns, keeping what you were doing.
+
+- **☰**, at the left of the view bar, opens the targets and the board's namespaces or folders as a
+  drawer, as on a phone; the board has the whole width.
+- **The panel** is a sheet from the bottom, across the screen, at half its height: drag its handle
+  to make it taller or shorter, or tap it for the tallest and back. Activity, the lost-and-found and
+  Export's window open in the same place.
+- **Source windows, the reference window and a conversation** dock there too, over the panel: side
+  by side on a wide enough screen, one over the other otherwise; the handle above them sets their
+  height. They are not dragged: the dock places them.
+- The review strip and the selection bar go across the top, under the view bar; the legend and the
+  zoom's buttons sit just above the sheet.
+
 ## Views
 
 A view is a board ([ViewSpec.md](../SPEC/ViewSpec.md)): what is on it and how it is arranged are shared by
