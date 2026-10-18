@@ -23,6 +23,7 @@ import type { DocPlan } from "../../shared/doc/sections.ts";
 import { DEFAULT_SETTINGS } from "../../shared/doc/settings.ts";
 import type { DocSettings } from "../../shared/doc/settings.ts";
 import { escapeHtml } from "./highlight.ts";
+import { focusBack, keepFocus, trapTab } from "./keepfocus.ts";
 
 /** The view on show, as the window tells of it: its id, its title (and what the page says of it under
  *  the pointer: its scope in full), its document's title, whether its name is fixed (the Project's),
@@ -136,10 +137,11 @@ export class ExportModal {
       if (t.closest("[data-ex-go]")) return void this.generate();
     });
     el.addEventListener("change", (e) => this.changed(e.target as HTMLInputElement));
-    // the page's keys stand aside while the window is open; Esc closes it
+    // the page's keys stand aside while the window is open; Esc closes it; Tab stays in it
     el.addEventListener("keydown", (e) => {
       e.stopPropagation();
       if (e.key === "Escape") this.close();
+      else trapTab(this.el.querySelector<HTMLElement>(".ex-box") ?? this.el, e);
     });
   }
 
@@ -169,6 +171,8 @@ export class ExportModal {
 
   close(): void {
     if (this.el.hidden) return;
+    // closed from the keyboard (Esc, its buttons): the focus back on Export, not at the page's start
+    focusBack(this.el, this.btn, true);
     this.el.hidden = true;
     this.btn.classList.remove("on");
     this.stopTimer();
@@ -244,9 +248,9 @@ export class ExportModal {
             // how the document was made, which it does not say itself: folded, for the curious
             (job.notes?.length ? `<details class="ex-log ex-notes"><summary>Notes (${job.notes.length})</summary><ul>${job.notes.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>` : "") +
             `</div>`;
-    this.el.innerHTML =
-      `<div class="modal-box glass ex-box" role="dialog" aria-label="Export a document" tabindex="-1">` +
-      `<div class="ex-head"><div class="modal-title">Export a document</div><button class="icon" data-ex-close title="Close (Esc)">✕</button></div>` +
+    const html =
+      `<div class="modal-box glass ex-box" role="dialog" aria-modal="true" aria-label="Export a document" tabindex="-1">` +
+      `<div class="ex-head"><div class="modal-title">Export a document</div><button class="icon" data-ex-close title="Close (Esc)" aria-label="Close">✕</button></div>` +
       // the document, or the board as a picture (ExportSpec decision 19), which the page frames
       (this.hooks.artwork ? `<div class="sh-tabs ex-tabs" role="tablist"><button role="tab" aria-selected="true">Document</button><button role="tab" aria-selected="false" data-ex-art title="The board as a picture, PNG or SVG, at the size you choose: frame it, then save it">Artwork</button></div>` : "") +
       `<div class="ex-sec">${this.summary()}</div>` +
@@ -264,6 +268,8 @@ export class ExportModal {
       `<div class="modal-actions"><button class="rv-btn" data-ex-close>Close</button>` +
       `<button class="rv-btn primary" data-ex-go${refused || busy ? " disabled" : ""}>${busy ? "Generating…" : job?.state === "done" ? "Generate again" : "Generate"}</button></div>` +
       `</div>`;
+    // drawn again as the job goes on, or the view's title comes: the focus stays where it was in it
+    keepFocus(this.el, () => (this.el.innerHTML = html));
     const again = this.el.querySelector<HTMLElement>(".ex-box");
     if (again) again.scrollTop = scroll;
   }

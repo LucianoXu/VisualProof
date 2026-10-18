@@ -14,6 +14,7 @@ import type { ReviewData } from "../../shared/review.ts";
 import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
 import { sectionHead } from "./targetlist.ts";
+import { holdFocus } from "./keepfocus.ts";
 
 export interface PanelHooks {
   /** go to a declaration: a click there with the tool (web/src/selection.ts), and the view flies
@@ -261,12 +262,15 @@ export class Panel {
     const why = this.hooks.why(i);
     const then = this.hooks.then?.(i) ?? null;
 
+    // the same declaration drawn again (a section folded, an opinion given): the keyboard keeps its
+    // place, the button pressed
+    const back = same ? holdFocus(this.el) : null;
     this.el.innerHTML = `
       ${banner(this.hooks.fileOf(i))}
       ${then ?? ""}
       <div class="p-head">
         <div class="p-kind k-${kind}"><span class="dot"></span>${kind}${flags}</div>
-        <button class="icon" data-close title="Close (Esc)">✕</button>
+        <button class="icon" data-close title="Close (Esc)" aria-label="Close">✕</button>
       </div>
       <h1 class="p-name">${escapeHtml(v.display ?? parts[parts.length - 1])}</h1>
       <div class="p-ns">${escapeHtml(ns)}</div>
@@ -300,6 +304,7 @@ export class Panel {
       ${notationHtml(g, i)}
       ${inTcb.counted ? part(PANEL_SECTIONS.tcb, "Its TCB", `${inTcb.counted}${queue === null ? "" : keyOnly ? " · key declarations" : inOrder ? " · in review order" : " · by kind"}`, () => `<div class="sec-tcb p-order">${orderSwitch}</div><div class="tcb-list">${inOrder ? queue : tcbList}</div>`, { id: "checks", title: "What a TCB is: the film's chapter on the ways to check" }) : ""}
     `;
+    back?.();
     this.el.classList.add("open");
     if (!same) this.el.scrollTop = 0;
     else this.el.scrollTop = keepScroll;

@@ -78,6 +78,7 @@ import { FocusMenu, readerFocus } from "./focus.ts";
 import { Guide, restsOnCounts } from "./guide.ts";
 import type { RestsOn } from "./guide.ts";
 import { reducedMotion } from "./tipcards.ts";
+import { keepFocus } from "./keepfocus.ts";
 import { Legend } from "./legend.ts";
 import { applyTheme, themeChoices } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
@@ -2968,7 +2969,7 @@ async function boot(): Promise<void> {
   };
   const renderPop = () => {
     if (buildsStale) readBuilds();
-    pop.innerHTML = popHtml({
+    const html = popHtml({
       graph: graphInfo,
       extractError,
       files: build?.files ?? null,
@@ -2976,6 +2977,8 @@ async function boot(): Promise<void> {
       builds: data.lost ? builds : null,
       lost: lostDrawer.counts,
     });
+    // drawn again as the build goes on: the keyboard keeps its place in it
+    keepFocus(pop, () => (pop.innerHTML = html));
   };
 
   /** Show a file: its cluster where the board clusters by file, else its first declaration. The
