@@ -354,14 +354,16 @@ export class Exporter {
   }
 }
 
-const README = `This is a document VisualProof exported, as LaTeX.
+/** The sources' README: how to typeset them again, and the macros a document is written in, each
+ *  one the style file defines (a test checks it). */
+export const README = `This is a document VisualProof exported, as LaTeX.
 
 Typeset it with XeLaTeX, twice (the second run resolves page references and bookmarks):
 
     xelatex doc.tex
     xelatex doc.tex
 
-doc.tex holds the content only, as semantic macros (\\vpPart, \\begin{vpDecl}, \\vpFullName, \\begin{vpCode}, ...).
+doc.tex holds the content only, as semantic macros (\\vpSection, \\begin{vpDecl}, \\vpFullName, \\begin{vpCode}, ...).
 How it looks is visualproof.sty's: change it, replace it, or load a package of your own after it
 and \\renewcommand what you want different. Its head lists every macro a document uses.
 

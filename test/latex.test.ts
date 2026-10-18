@@ -17,7 +17,7 @@ import { DOC_VERSION } from "../src/shared/doc/model.ts";
 import type { CodeBlock, CodeToken, DeclEntry, DocModel, Item, Section } from "../src/shared/doc/model.ts";
 import { DEFAULT_SETTINGS } from "../src/shared/doc/settings.ts";
 import { anchor, escapeLatex, escapeName, escapeVerbatim, renderLatex } from "../src/shared/doc/latex.ts";
-import { crc32, Exporter, pagesOf, rerun, zip } from "../src/server/export.ts";
+import { crc32, Exporter, pagesOf, README, rerun, zip } from "../src/server/export.ts";
 
 const HOSTILE = ["\\input{/etc/passwd}", "\\write18{rm -rf /}", "\\catcode`\\@=11", "}{\\end{document}", "%", "#1", "$x$", "^^5c^^5cinput", "~", "a\u0000b\u0007c\u001bd", "\\csname foo\\endcsname"];
 
@@ -200,6 +200,10 @@ test("a whole document: semantic macros only, nothing a reader wrote acts as LaT
   const header = sty.slice(0, sty.indexOf("\\NeedsTeXFormat"));
   for (const m of new Set([...tex.matchAll(/\\(vp[A-Z][A-Za-z]*)/g)].map((x) => x[1]))) assert.ok(header.includes(`\\${m}`) || (header.includes(m) && /^vpTk/.test(m)), `${m} is in the interface`);
   for (const old of ["vpPart", "vpMembers", "vpIndexItem", "vpContentsPart"]) assert.ok(!sty.includes(old), `${old} is gone`);
+  // the sources' README names macros of the interface, none gone
+  const named = [...README.matchAll(/\\(?:begin\{)?(vp[A-Z][A-Za-z]*)/g)].map((x) => x[1]);
+  assert.ok(named.length >= 3, README);
+  for (const m of named) assert.ok(header.includes(m), `the README's ${m} is in the interface`);
 });
 
 test("the head card: the project, the build and its commit, the toolchain, the trusted boundary, what the view holds from outside; no time", () => {
