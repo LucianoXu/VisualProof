@@ -1,377 +1,297 @@
-// An upright monitor with a mouse (the owner's correction of 2026-10-18 to PhoneSpec's tall screens):
-// prototypes of three layouts, for the owner to choose from — not decided, and not in the spec yet.
-// A monitor turned on its side has room and a fine pointer: a desktop's page, its height used, not a
-// phone's drawer and sheet. Each keeps every desktop affordance (popovers, hover, the menus, the
-// keys); they differ in where the side panel, the panel and the windows go.
+// An upright monitor, with a mouse (PhoneSpec decisions 29–35, the owner's choice of 2026-10-18): a
+// desktop's page, its height used. The board above, the side panel at its left; under them a work
+// area across the screen, where the panel — or Activity, the lost-and-found in its place — is a pane
+// at the left and the windows (the source windows, the reference window, a conversation) one column
+// at its right, stacked from the top in that order. Splitters set the work area's height, the
+// panel's width and each window's share of the column; a double-click gives them their own again,
+// and this browser keeps what the reader set. The panel alone takes the work area's width, as the
+// column does with no declaration selected; with nothing in it the board has the whole height. The
+// windows are placed there, not dragged (web/src/floatwin.ts). Everything else — the popovers,
+// hover, the menus, the keys, the selection bar under the modes — is a desktop's.
 //
-// - a, the desktop reflowed: the side panel down the left, the whole height; the panel a pane under
-//   the board, the board's width, its height the splitter's; the windows float as on a desktop and
-//   open in the pane's place, over it, the board staying in sight.
-// - b, the board above, a work area below: the side panel at the board's left; across the bottom,
-//   panes side by side — the panel (or Activity, the lost-and-found in its place), each open window
-//   — with splitters between them and above them; the windows do not float there.
-// - c, the board above, the desktop below: the board the screen's whole width; under it, the side
-//   panel at the left and the panel at the right as on a desktop, the windows floating between them.
-//
-// Chosen by `?monitor=a|b|c` (kept in this browser; `?monitor=0` forgets it), on a screen MONITOR
-// matches (web/src/phone.ts); 0.4.3's tall page everywhere else. While one is on show the root
-// carries `data-monitor`, the tall page's rules give way (style.css), and a small switch at the
-// bottom of the screen goes from one to another.
+// The geometry is a pure function (`workArea`), tested without a browser (test/monitor.test.ts);
+// the page applies it in `MonitorLayout`: the panel by the body's variables, each window by its own
+// (--dock-x, --dock-y, --dock-w, --dock-h, read by style.css's monitor block).
 
 import type { Rect, Size } from "./floatwin.ts";
-import { MONITOR } from "./phone.ts";
+import { isMonitor, MONITOR } from "./phone.ts";
 
-export type MonitorOption = "a" | "b" | "c";
-const OPTIONS: readonly MonitorOption[] = ["a", "b", "c"];
-const KEY = "visualproof:monitor-layout";
-const SIZES = "visualproof:monitor-sizes";
 const EDGE = 12;
 const GAP = 8;
+/** a window's least height in the column, and a collapsed one's pill */
+const WIN_MIN = 140;
+const PILL_H = 34;
+const SIZES = "visualproof:monitor-sizes";
 
-const matches = (q: string) => typeof matchMedia === "function" && matchMedia(q).matches;
-const $ = (id: string) => document.getElementById(id);
-const open = (id: string) => !!$(id)?.classList.contains("open");
-const store = {
-  get: (k: string) => {
-    try {
-      return localStorage.getItem(k);
-    } catch {
-      return null;
-    }
-  },
-  set: (k: string, v: string | null) => {
-    try {
-      if (v === null) localStorage.removeItem(k);
-      else localStorage.setItem(k, v);
-    } catch {
-      // not kept: the page works as asked all the same
-    }
-  },
-};
-
-/** The option asked for: the URL's, which this browser keeps, else the one it kept. */
-function asked(): { option: MonitorOption | null; prototyping: boolean } {
-  let v: string | null = null;
-  try {
-    v = new URLSearchParams(location.search).get("monitor");
-  } catch {
-    // no URL to read: none asked
-  }
-  if (v !== null) store.set(KEY, OPTIONS.includes(v as MonitorOption) ? v : null);
-  else v = store.get(KEY);
-  return { option: OPTIONS.includes(v as MonitorOption) ? (v as MonitorOption) : null, prototyping: v !== null };
-}
-let wanted: { option: MonitorOption | null; prototyping: boolean } = typeof location === "object" ? asked() : { option: null, prototyping: false };
-
-/** The option on show: one asked for, on an upright monitor. */
-export function monitorOption(): MonitorOption | null {
-  return wanted.option && matches(MONITOR) ? wanted.option : null;
-}
-
-/** The windows are panes of the work area (option b): placed there, not dragged. */
-export function windowsDocked(): boolean {
-  return monitorOption() === "b";
-}
-
-/** The sizes the reader gave the parts, per option, in px: the lower part's height, the side panel's
- *  and the panel's widths (b, c). */
-interface Sizes {
+/** What the reader set, kept in this browser: the work area's height as a share of the screen's, the
+ *  panel's width, and each kind of window's weight in the column. */
+export interface Sizes {
   low?: number;
-  side?: number;
   panel?: number;
+  stack?: Partial<Record<Kind, number>>;
 }
-let sizes: Partial<Record<MonitorOption, Sizes>> = (() => {
-  try {
-    return JSON.parse(store.get(SIZES) ?? "{}") ?? {};
-  } catch {
-    return {};
-  }
-})();
+export type Kind = "source" | "paper" | "talk";
+/** the column's order, from the top: the declaration's source, the reference beside it, a
+ *  conversation */
+const RANK: Record<Kind, number> = { source: 0, paper: 1, talk: 2 };
+/** each kind's share of the column, where the reader has set none: the reference the tallest, as a
+ *  page of a PDF is read best */
+const WEIGHT: Record<Kind, number> = { source: 2, paper: 3, talk: 2 };
 
-/** The parts' sizes for option `o` on a screen of `vp`: the reader's, within bounds, else the
- *  option's own. */
-function sizesOf(o: MonitorOption, vp: Size): Required<Sizes> {
-  const k = sizes[o] ?? {};
-  const low = { a: 0.42, b: 0.45, c: 0.45 }[o] * vp.h;
-  const side = o === "c" ? Math.min(340, Math.max(260, vp.w * 0.2)) : 300;
-  const panel = o === "b" ? Math.min(720, Math.max(420, vp.w * 0.34)) : Math.min(640, Math.max(400, vp.w * 0.3));
-  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
+/** The work area's height and the panel's width on a screen of `vp`: the reader's, within bounds, else
+ *  their own — half the screen; 30 % of its width, 380 to 640 px. */
+export function sized(s: Sizes, vp: Size): { low: number; panel: number; stack: Record<Kind, number> } {
+  const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
   return {
-    low: clamp(k.low ?? low, vp.h * 0.25, vp.h - 420),
-    side: clamp(k.side ?? side, 220, vp.w * 0.4),
-    panel: clamp(k.panel ?? panel, 340, vp.w * 0.5),
+    low: clamp((s.low ?? 0.5) * vp.h, vp.h * 0.25, vp.h - 420),
+    panel: clamp(s.panel ?? Math.min(640, Math.max(380, vp.w * 0.3)), 320, vp.w - 2 * EDGE - GAP - 360),
+    stack: { ...WEIGHT, ...s.stack },
   };
 }
 
-/** Where the board's room is, as the canvas's insets (web/src/main.ts) take it; null where no
- *  option is on show. Also sets what the page's style places by: `--mon-low`, `--mon-side-w`,
- *  `--mon-panel-w`, `--mon-room-bottom` (the foot of the board's room, for the legend and the zoom's
- *  box), and lays the splitters out. */
-export function monitorInsets(): { left: number; right: number; top: number; bottom: number } | null {
-  const o = monitorOption();
-  if (!o) return null;
-  const vp = { w: innerWidth, h: innerHeight };
-  const s = sizesOf(o, vp);
-  const body = document.body.style;
-  body.setProperty("--mon-low", `${Math.round(s.low)}px`);
-  body.setProperty("--mon-side-w", `${Math.round(s.side)}px`);
-  body.setProperty("--mon-panel-w", `${Math.round(s.panel)}px`);
-  const bar = $("selbar")!;
-  const strip = [$("lensbar"), $("tm-kept")].find((e) => e && !e.hidden);
-  const viewbar = $("viewbar")!.getBoundingClientRect().bottom;
-  const top = Math.max(!bar.hidden ? bar.getBoundingClientRect().bottom + 12 : 0, strip ? strip.getBoundingClientRect().bottom + 12 : viewbar + 28);
-  // option a keeps the pane's room only while something is in it; b and c keep their lower part
-  const pane = open("panel") || open("activity") || open("lostfound");
-  const low = o !== "a" || pane ? s.low + EDGE + GAP : EDGE;
-  body.setProperty("--mon-room-bottom", `${Math.round(low)}px`);
-  layoutSplitters(o, s, vp, pane);
-  const side = $("side")!.getBoundingClientRect();
-  return { left: o !== "c" && side.width ? side.right + GAP : 0, right: 0, top, bottom: low + 36 };
+/** A window in the work area: its kind, collapsed or not, and a collapsed one's pill's width. */
+export interface Docked {
+  kind: Kind;
+  collapsed: boolean;
+  pillW?: number;
 }
 
-/** The board's room, for the tour's spotlight (web/src/guide.ts); null where no option is on show. */
+export interface Split {
+  /** low: the work area's top; panel: between the panel and the column; stack: between two windows
+   *  of the column (their indices in `wins`) */
+  kind: "low" | "panel" | "stack";
+  rect: Rect;
+  between?: [number, number];
+}
+
+export interface Area {
+  /** the work area's top; null where nothing is in it and the board has the whole height */
+  top: number | null;
+  panel: Rect | null;
+  column: Rect | null;
+  /** each window's place, in the order given: an open one's in the column, a collapsed one's pill */
+  wins: Rect[];
+  splits: Split[];
+}
+
+/** Where everything in the work area goes on a screen of `vp` (decisions 32–35): the panel (`pane`:
+ *  it, Activity or the lost-and-found is open) and the windows `wins`. */
+export function workArea(vp: Size, s: Sizes, pane: boolean, wins: readonly Docked[]): Area {
+  const { low, panel: pw, stack } = sized(s, vp);
+  const open = wins.map((w, i) => ({ ...w, i })).filter((w) => !w.collapsed).sort((a, b) => RANK[a.kind] - RANK[b.kind] || a.i - b.i);
+  const pills = wins.map((w, i) => ({ ...w, i })).filter((w) => w.collapsed);
+  const out: Area = { top: null, panel: null, column: null, wins: wins.map(() => ({ x: 0, y: 0, w: 0, h: 0 })), splits: [] };
+  // the pills, in a row from the right at the foot of the column, or of the screen
+  const placePills = (right: number, bottom: number) => {
+    let x = right;
+    for (const p of pills) {
+      const w = Math.min(280, p.pillW ?? 200);
+      x -= w;
+      out.wins[p.i] = { x, y: bottom - PILL_H, w, h: PILL_H };
+      x -= GAP;
+    }
+  };
+  if (!pane && !open.length) {
+    placePills(vp.w - EDGE, vp.h - EDGE);
+    return out;
+  }
+  const top = vp.h - EDGE - low;
+  out.top = top;
+  out.splits.push({ kind: "low", rect: { x: EDGE, y: top - GAP, w: vp.w - 2 * EDGE, h: GAP } });
+  if (pane) out.panel = { x: EDGE, y: top, w: open.length ? pw : vp.w - 2 * EDGE, h: low };
+  if (!open.length) {
+    placePills(vp.w - EDGE - GAP, vp.h - EDGE - GAP);
+    return out;
+  }
+  const x = pane ? EDGE + pw + GAP : EDGE;
+  const column = { x, y: top, w: vp.w - EDGE - x, h: low };
+  out.column = column;
+  if (pane) out.splits.push({ kind: "panel", rect: { x: EDGE + pw, y: top, w: GAP, h: low } });
+  // the windows from the top, each its weight's share of what the pills leave
+  const room = low - (pills.length ? PILL_H + GAP : 0) - GAP * (open.length - 1);
+  const total = open.reduce((t, w) => t + stack[w.kind], 0);
+  let y = top;
+  open.forEach((w, k) => {
+    const last = k === open.length - 1;
+    const h = last ? top + room + GAP * (open.length - 1) - y : Math.max(WIN_MIN, Math.round((room * stack[w.kind]) / total));
+    out.wins[w.i] = { x, y, w: column.w, h };
+    if (!last) out.splits.push({ kind: "stack", rect: { x, y: y + h, w: column.w, h: GAP }, between: [w.i, open[k + 1].i] });
+    y += h + GAP;
+  });
+  placePills(vp.w - EDGE, vp.h - EDGE);
+  return out;
+}
+
+/** The weights two neighbouring windows of the column take when the splitter between them is
+ *  dragged by `d` px: their heights change by it, their sum stays, neither under its least. */
+export function restack(stack: Record<Kind, number>, a: { kind: Kind; h: number }, b: { kind: Kind; h: number }, d: number): Record<Kind, number> {
+  if (a.kind === b.kind) return stack;
+  const sum = a.h + b.h;
+  const ha = Math.min(Math.max(a.h + d, WIN_MIN), sum - WIN_MIN);
+  const w = stack[a.kind] + stack[b.kind];
+  return { ...stack, [a.kind]: (w * ha) / sum, [b.kind]: (w * (sum - ha)) / sum };
+}
+
+// ---------------------------------------------------------------- the page
+
+const $ = (id: string) => document.getElementById(id);
+const store = {
+  read(): Sizes {
+    try {
+      const o = JSON.parse(localStorage.getItem(SIZES) ?? "{}");
+      return o && typeof o === "object" ? o : {};
+    } catch {
+      return {};
+    }
+  },
+  write(s: Sizes): void {
+    try {
+      localStorage.setItem(SIZES, JSON.stringify(s));
+    } catch {
+      // not kept: the sizes hold while the page is open
+    }
+  },
+};
+let sizes: Sizes = typeof localStorage === "object" ? store.read() : {};
+
+const WINDOWS = "#windows > :is(.sw-win, .pw-win, #following.talking):not([hidden])";
+const kindOf = (el: Element): Kind => (el.classList.contains("sw-win") ? "source" : el.classList.contains("pw-win") ? "paper" : "talk");
+const paneOpen = () => ["panel", "activity", "lostfound"].some((id) => $(id)?.classList.contains("open"));
+
+/** the work area as it stands, and the windows it holds */
+function current(): { area: Area; els: HTMLElement[] } {
+  const els = [...document.querySelectorAll<HTMLElement>(WINDOWS)];
+  const wins = els.map((el) => ({ kind: kindOf(el), collapsed: el.classList.contains("collapsed"), pillW: el.classList.contains("collapsed") ? el.offsetWidth || undefined : undefined }));
+  return { area: workArea({ w: innerWidth, h: innerHeight }, sizes, paneOpen(), wins), els };
+}
+
+let splitEls: HTMLElement[] = [];
+let resizedHook: (() => void) | null = null;
+
+/** Each window where the work area puts it, the splitters at their edges, the page's variables;
+ *  then the board's room, as the canvas's insets (web/src/main.ts) take it. Null off a monitor. */
+export function monitorInsets(): { left: number; right: number; top: number; bottom: number } | null {
+  if (!isMonitor()) return null;
+  const { area, els } = current();
+  const body = document.body.style;
+  const { low } = sized(sizes, { w: innerWidth, h: innerHeight });
+  body.setProperty("--mon-low", `${Math.round(low)}px`);
+  body.setProperty("--mon-pane-w", `${Math.round(area.panel?.w ?? sized(sizes, { w: innerWidth, h: innerHeight }).panel)}px`);
+  body.setProperty("--mon-area", area.top === null ? "none" : "block");
+  const room = area.top === null ? EDGE : innerHeight - area.top + GAP;
+  body.setProperty("--mon-room-bottom", `${Math.round(room)}px`);
+  els.forEach((el, k) => {
+    const r = area.wins[k];
+    if (!el.classList.contains("mon-docked")) el.classList.add("mon-docked");
+    for (const [v, n] of [["--dock-x", r.x], ["--dock-y", r.y], ["--dock-w", r.w], ["--dock-h", r.h]] as const) el.style.setProperty(v, `${Math.round(n)}px`);
+  });
+  layoutSplits(area, els);
+  const bar = $("selbar")!;
+  const strip = [$("tm-kept"), $("lensbar")].find((e) => e && !e.hidden);
+  const viewbar = $("viewbar")!.getBoundingClientRect().bottom;
+  const top = Math.max(!bar.hidden ? bar.getBoundingClientRect().bottom + 12 : 0, strip ? strip.getBoundingClientRect().bottom + 12 : viewbar + 28);
+  const side = $("side")!.getBoundingClientRect();
+  return { left: side.width ? side.right + GAP : 0, right: 0, top, bottom: room + 36 };
+}
+
+/** The board's room, for the tour's spotlight (web/src/guide.ts); null off a monitor. */
 export function monitorRoom(): DOMRect | null {
   const i = monitorInsets();
   if (!i) return null;
   return new DOMRect(i.left + EDGE, i.top, Math.max(40, innerWidth - i.left - i.right - 2 * EDGE), Math.max(40, innerHeight - i.top - i.bottom));
 }
 
-/** Where a window the reader has not moved opens (web/src/floatwin.ts, and the reference window's
- *  pairing, web/src/paperdock.ts): the lower part — a: the pane's place, right of the side panel
- *  where a source and a reference fit there side by side (810 px), over it otherwise; c: between the
- *  side panel and the panel where they fit there, else across it, over the panels as windows lie
- *  over a desktop's — so that the board stays in sight; null where windows open as on a desktop (no option) or do not float (b). */
-export function windowRegion(vp: Size): Rect | null {
-  const o = monitorOption();
-  if (!o || o === "b") return null;
-  const s = sizesOf(o, vp);
-  const y = vp.h - EDGE - s.low;
-  if (o === "c") {
-    // between the side panel and the panel where a pair fits there, else across the lower part
-    const panel = ["panel", "activity", "lostfound"].map((id) => $(id)).find((e) => e?.classList.contains("open"))?.getBoundingClientRect();
-    const from = EDGE + s.side + GAP, to = panel ? vp.w - EDGE - s.panel - GAP : vp.w - EDGE;
-    return to - from >= PAIR_LEAST ? { x: from, y, w: to - from, h: s.low } : { x: EDGE, y, w: vp.w - 2 * EDGE, h: s.low };
-  }
-  const side = $("side")?.getBoundingClientRect();
-  const besideSide = side?.width ? side.right + GAP : EDGE;
-  const left = vp.w - besideSide - EDGE >= PAIR_LEAST ? besideSide : EDGE;
-  return { x: left, y, w: vp.w - left - EDGE, h: s.low };
-}
-/** a source and a reference window side by side at their least (web/src/paperdock.ts, PAIR_MIN) */
-const PAIR_LEAST = 810;
-
-// ---------------------------------------------------------------- splitters
-
-interface Split {
-  el: HTMLElement;
-  /** what a drag of `d` px (down or right) does to the sizes it started from */
-  drag: (start: Required<Sizes>, d: number) => Sizes;
-  axis: "x" | "y";
-}
-let splits: Split[] = [];
-let resizedHook: (() => void) | null = null;
-
-function splitter(axis: "x" | "y", drag: Split["drag"]): Split {
-  const el = document.createElement("div");
-  el.className = `mon-split mon-split-${axis}`;
-  el.setAttribute("aria-hidden", "true");
-  const sp: Split = { el, drag, axis };
-  el.addEventListener("pointerdown", (e) => {
-    const o = monitorOption();
-    if (!o || e.button !== 0) return;
-    e.preventDefault();
-    el.setPointerCapture(e.pointerId);
-    el.classList.add("on");
-    const start = sizesOf(o, { w: innerWidth, h: innerHeight });
-    const from = axis === "x" ? e.clientX : e.clientY;
-    const move = (ev: PointerEvent) => {
-      sizes = { ...sizes, [o]: { ...start, ...sp.drag(start, (axis === "x" ? ev.clientX : ev.clientY) - from) } };
-      resizedHook?.();
-    };
-    const end = () => {
-      el.removeEventListener("pointermove", move);
-      el.classList.remove("on");
-      store.set(SIZES, JSON.stringify(sizes));
-      resizedHook?.();
-      // the windows take their places in the new room
-      dispatchEvent(new Event("resize"));
-    };
-    el.addEventListener("pointermove", move);
-    el.addEventListener("pointerup", end, { once: true });
-    el.addEventListener("pointercancel", end, { once: true });
-  });
-  // a double-click gives the parts their own sizes again
-  el.addEventListener("dblclick", () => {
-    const o = monitorOption();
-    if (!o) return;
-    sizes = { ...sizes, [o]: {} };
-    store.set(SIZES, JSON.stringify(sizes));
-    resizedHook?.();
-    dispatchEvent(new Event("resize"));
-  });
-  document.body.append(el);
-  return sp;
-}
-
-/** Between two windows side by side in b's work area: a drag gives the one at the left its width,
- *  the rest following; a double-click shares the room again. Kept while the page is open. */
-let winSplits: HTMLElement[] = [];
-function windowSplitters(on: boolean): void {
-  const wins = on
-    ? [...document.querySelectorAll<HTMLElement>("#windows > :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])")]
-        .map((el) => ({ el, r: el.getBoundingClientRect() }))
-        .filter((w) => w.r.width)
-        .sort((a, b) => a.r.left - b.r.left)
-    : [];
-  while (winSplits.length < Math.max(0, wins.length - 1)) {
+/** The splitters where the work area has them; a drag sets what each moves, a double-click gives it
+ *  its own size again, and this browser keeps it. */
+function layoutSplits(area: Area, els: HTMLElement[]): void {
+  while (splitEls.length < area.splits.length) {
     const el = document.createElement("div");
-    el.className = "mon-split mon-split-x";
     el.setAttribute("aria-hidden", "true");
-    el.addEventListener("pointerdown", (e) => {
-      const left = (el as HTMLElement & { left?: HTMLElement }).left;
-      if (!left || e.button !== 0) return;
-      e.preventDefault();
-      el.setPointerCapture(e.pointerId);
-      el.classList.add("on");
-      const w0 = left.getBoundingClientRect().width, x0 = e.clientX;
-      const move = (ev: PointerEvent) => {
-        left.style.flex = `0 0 ${Math.max(280, w0 + ev.clientX - x0)}px`;
-        windowSplitters(true);
-      };
-      el.addEventListener("pointermove", move);
-      el.addEventListener("pointerup", () => (el.removeEventListener("pointermove", move), el.classList.remove("on")), { once: true });
-    });
+    el.addEventListener("pointerdown", (e) => drag(el, e));
     el.addEventListener("dblclick", () => {
-      for (const w of document.querySelectorAll<HTMLElement>("#windows > *")) w.style.flex = "";
-      windowSplitters(true);
+      const sp = (el as SplitEl).split;
+      if (!sp) return;
+      if (sp.kind === "low") sizes = { ...sizes, low: undefined };
+      else if (sp.kind === "panel") sizes = { ...sizes, panel: undefined };
+      else sizes = { ...sizes, stack: undefined };
+      store.write(sizes);
+      changed();
     });
     document.body.append(el);
-    winSplits.push(el);
+    splitEls.push(el);
   }
-  winSplits.forEach((el, k) => {
-    const a = wins[k], b = wins[k + 1];
-    el.hidden = !a || !b;
-    if (!a || !b) return;
-    (el as HTMLElement & { left?: HTMLElement }).left = a.el;
-    Object.assign(el.style, { left: `${a.r.right}px`, top: `${a.r.top}px`, width: `${b.r.left - a.r.right}px`, height: `${a.r.height}px` });
+  splitEls.forEach((el, k) => {
+    const sp = area.splits[k];
+    el.hidden = !sp;
+    (el as SplitEl).split = sp;
+    (el as SplitEl).els = els;
+    if (!sp) return;
+    el.className = `mon-split mon-split-${sp.kind === "panel" ? "x" : "y"}`;
+    Object.assign(el.style, { left: `${sp.rect.x}px`, top: `${sp.rect.y}px`, width: `${sp.rect.w}px`, height: `${sp.rect.h}px` });
   });
 }
+type SplitEl = HTMLElement & { split?: Split; els?: HTMLElement[] };
 
-/** Each splitter at the edge it moves, shown where that edge is. */
-function layoutSplitters(o: MonitorOption, s: Required<Sizes>, vp: Size, pane: boolean): void {
-  if (!splits.length) {
-    splits = [
-      // the lower part's top: dragged down, it is shorter
-      splitter("y", (st, d) => ({ low: st.low - d })),
-      // the side panel's right edge (c)
-      splitter("x", (st, d) => ({ side: st.side + d })),
-      // the panel's other edge: its right in b, its left in c
-      splitter("x", (st, d) => ({ panel: st.panel + (monitorOption() === "c" ? -d : d) })),
-    ];
-  }
-  const [low, side, panel] = splits;
-  const place = (sp: Split, r: Rect | null) => {
-    sp.el.hidden = !r;
-    if (r) Object.assign(sp.el.style, { left: `${r.x}px`, top: `${r.y}px`, width: `${r.w}px`, height: `${r.h}px` });
+function drag(el: SplitEl, e: PointerEvent): void {
+  const sp = el.split;
+  if (!sp || e.button !== 0) return;
+  e.preventDefault();
+  el.setPointerCapture(e.pointerId);
+  el.classList.add("on");
+  const vp = { w: innerWidth, h: innerHeight };
+  const start = sized(sizes, vp);
+  const from = sp.kind === "panel" ? e.clientX : e.clientY;
+  const pair = sp.between && el.els ? sp.between.map((i) => ({ kind: kindOf(el.els![i]), h: el.els![i].getBoundingClientRect().height })) : null;
+  const move = (ev: PointerEvent) => {
+    const d = (sp.kind === "panel" ? ev.clientX : ev.clientY) - from;
+    if (sp.kind === "low") sizes = { ...sizes, low: (start.low - d) / vp.h };
+    else if (sp.kind === "panel") sizes = { ...sizes, panel: start.panel + d };
+    else if (pair) sizes = { ...sizes, stack: restack(start.stack, pair[0], pair[1], d) };
+    changed(false);
   };
-  const y = vp.h - EDGE - s.low;
-  const left = o === "a" ? EDGE + s.side + GAP : EDGE;
-  place(low, o !== "a" || pane ? { x: left, y: y - GAP, w: vp.w - left - EDGE, h: GAP } : null);
-  place(side, o === "c" ? { x: EDGE + s.side, y, w: GAP, h: s.low } : null);
-  const panelOpen = open("panel") || open("activity") || open("lostfound");
-  // in b the panel alone takes the work area's width: its edge moves only beside a window
-  const beside = !!document.querySelector("#windows > :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])");
-  place(panel, !panelOpen || o === "a" || (o === "b" && !beside) ? null : o === "b" ? { x: EDGE + s.panel, y, w: GAP, h: s.low } : { x: vp.w - EDGE - s.panel - GAP, y, w: GAP, h: s.low });
-  // the windows' own, once they stand where the work area puts them
-  requestAnimationFrame(() => windowSplitters(monitorOption() === "b"));
+  const end = () => {
+    el.removeEventListener("pointermove", move);
+    el.classList.remove("on");
+    store.write(sizes);
+    changed();
+  };
+  el.addEventListener("pointermove", move);
+  el.addEventListener("pointerup", end, { once: true });
+  el.addEventListener("pointercancel", end, { once: true });
 }
 
-// ---------------------------------------------------------------- the switch
+/** The sizes changed: the board's room follows, and the windows' contents their new size. */
+function changed(settled = true): void {
+  resizedHook?.();
+  if (settled) dispatchEvent(new Event("resize"));
+}
 
 export interface MonitorHooks {
   /** the board's room changed: the canvas's insets follow (web/src/main.ts) */
   resized(): void;
 }
 
-/** The prototypes on the page: the root's mark, kept as the screen turns or the window is resized
- *  across MONITOR's line; and the switch from one to another while they are being chosen. */
+/** The work area on the page: laid out again as windows come, go, collapse or open, and as the
+ *  screen crosses MONITOR's line, where the windows go back to their own places. */
 export class MonitorLayout {
-  private hooks: MonitorHooks;
-  private pill: HTMLElement | null = null;
-
   constructor(hooks: MonitorHooks) {
-    this.hooks = hooks;
-    resizedHook = () => this.hooks.resized();
-    if (typeof matchMedia === "function") matchMedia(MONITOR).addEventListener("change", () => this.apply());
-    this.apply();
-    // the work area's panes follow the windows that come and go (b)
+    resizedHook = () => hooks.resized();
     const windows = $("windows");
     if (windows)
       new MutationObserver((ms) => {
-        if (monitorOption() && ms.some((m) => (m.type === "childList" ? m.target === windows : m.target.parentNode === windows))) this.hooks.resized();
+        if (isMonitor() && ms.some((m) => (m.type === "childList" ? m.target === windows : m.target.parentNode === windows))) hooks.resized();
       }).observe(windows, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "hidden"] });
-  }
-
-  /** The root marked with the option on show, or not; the switch drawn; then the board's room and
-   *  the windows' places, once the page has laid itself out. */
-  apply(): void {
-    const o = mark();
-    if (!o) for (const el of [...splits.map((sp) => sp.el), ...winSplits]) el.hidden = true;
-    this.drawSwitch();
-    setTimeout(() => {
-      this.hooks.resized();
-      dispatchEvent(new Event("resize"));
-    }, 0);
-  }
-
-  /** While the layouts are being chosen (one was asked for), on an upright monitor: a pill at the
-   *  bottom of the screen — 0.4.3, A, B, C. */
-  private drawSwitch(): void {
-    if (!wanted.prototyping || !matches(MONITOR)) {
-      this.pill?.remove();
-      this.pill = null;
-      return;
-    }
-    if (!this.pill) {
-      this.pill = document.createElement("div");
-      this.pill.id = "monitor-switch";
-      this.pill.className = "glass";
-      this.pill.addEventListener("click", (e) => {
-        const b = (e.target as HTMLElement).closest<HTMLElement>("[data-mon]");
-        if (!b) return;
-        const v = b.dataset.mon!;
-        wanted = { option: OPTIONS.includes(v as MonitorOption) ? (v as MonitorOption) : null, prototyping: true };
-        store.set(KEY, wanted.option ?? "0");
-        try {
-          const u = new URL(location.href);
-          u.searchParams.set("monitor", v);
-          history.replaceState(history.state, "", u);
-        } catch {
-          // the address stays; the choice is kept in this browser
+    if (typeof matchMedia === "function")
+      matchMedia(MONITOR).addEventListener("change", () => {
+        if (!isMonitor()) {
+          // off a monitor: each window at its own place again, no splitter
+          for (const el of document.querySelectorAll<HTMLElement>(".mon-docked")) {
+            el.classList.remove("mon-docked");
+            for (const v of ["--dock-x", "--dock-y", "--dock-w", "--dock-h"]) el.style.removeProperty(v);
+          }
+          for (const el of splitEls) el.hidden = true;
         }
-        this.apply();
+        setTimeout(() => changed(), 0);
       });
-      document.body.append(this.pill);
-    }
-    const on = wanted.option ?? "0";
-    const opt = (v: string, label: string, title: string) => `<button data-mon="${v}" class="${on === v ? "on" : ""}" title="${title}">${label}</button>`;
-    this.pill.innerHTML =
-      `<span class="mon-l">Monitor layout</span>` +
-      opt("0", "0.4.3", "As shipped: the drawer and the sheet") +
-      opt("a", "A", "The desktop reflowed: the side panel down the left, the panel a pane under the board") +
-      opt("b", "B", "The board above, a work area below: the side panel, the panel and the windows as panes") +
-      opt("c", "C", "The board above, the desktop below: the side panel and the panel under the board, windows floating between");
   }
 }
-
-/** The root marked with the option on show, or not. */
-function mark(): MonitorOption | null {
-  const o = monitorOption();
-  const root = document.documentElement;
-  if (o) root.dataset.monitor = o;
-  else delete root.dataset.monitor;
-  return o;
-}
-
-// marked as the page's code loads, before anything is laid out
-if (typeof document === "object") mark();

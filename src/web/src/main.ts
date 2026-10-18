@@ -1331,7 +1331,7 @@ async function boot(): Promise<void> {
     resized: () => syncInsets(),
     modeHint: (m) => TAP_HINT[m as Tool] ?? "",
   });
-  // an upright monitor's prototype layouts, while one is being chosen (web/src/monitor.ts)
+  // an upright monitor: the board above a work area (web/src/monitor.ts)
   new MonitorLayout({ resized: () => syncInsets() });
   const syncInsets = () => {
     const side = $("#side").getBoundingClientRect();

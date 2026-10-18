@@ -250,7 +250,7 @@ function around(...sels: string[]): DOMRect | null {
  *  phone or a tall screen, whose side panel is a drawer, above the panel's sheet and under the
  *  selection bar across the screen (PhoneSpec decisions 11 and 22). */
 function board(): DOMRect {
-  // an upright monitor's prototype (web/src/monitor.ts) knows its own
+  // an upright monitor's, above its work area (web/src/monitor.ts)
   const room = monitorRoom();
   if (room) return room;
   const side = $("#side")?.getBoundingClientRect();

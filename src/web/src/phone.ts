@@ -14,47 +14,56 @@
 //
 // On a touch screen nothing on the board is moved by a finger (web/src/canvas.ts): it is read.
 //
-// A tall screen (PhoneSpec, "Tall screens"): wider than a phone and upright — a tablet held upright,
-// a narrow window, a monitor on its side. It is a larger screen's page, its parts placed for the
-// shape with the phone's own mechanisms: the side panel is the drawer from ☰, the panel the sheet
-// from the bottom (a drag on its handle sets its height there, besides the tap), and Activity, the
-// lost-and-found, Export's window and the floating windows take the sheet's place; the board's room
-// is above them (`tallInsets`).
+// A tall screen (PhoneSpec, "Tall screens"): wider than a phone and upright, under a finger — a
+// tablet held upright — or too narrow for a desktop's panels — a narrow window. It is a larger
+// screen's page, its parts placed for the shape with the phone's own mechanisms: the side panel is
+// the drawer from ☰, the panel the sheet from the bottom (a drag on its handle sets its height
+// there, besides the tap), and Activity, the lost-and-found, Export's window and the floating
+// windows take the sheet's place; the board's room is above them (`tallInsets`). A monitor on its
+// side, with a mouse, is not one: it has a desktop's page, the board above a work area
+// (web/src/monitor.ts).
 
 import type { PageEl } from "./surfaces.ts";
 
 export const PHONE = "(max-width: 640px)";
-/** a tall screen: wider than a phone, and at least 1.2 times as high as it is wide */
-export const TALL = "(min-width: 641px) and (max-aspect-ratio: 5/6)";
+/** a tall screen: wider than a phone, at least 1.2 times as high as it is wide, and under a finger
+ *  or narrower than a desktop's panels need (999 px) */
+export const TALL = "(min-width: 641px) and (max-aspect-ratio: 5/6) and (pointer: coarse), (min-width: 641px) and (max-width: 999px) and (max-aspect-ratio: 5/6)";
 /** the shapes whose panel is a sheet and whose side panel a drawer: a phone, a tall screen (the
- *  `max-width: 640px` and `max-aspect-ratio: 5/6` blocks of `web/style.css`) */
-export const SHEETED = "(max-width: 640px), (max-aspect-ratio: 5/6)";
-/** an upright monitor with a mouse: the screens the prototypes of web/src/monitor.ts are for (the
- *  owner's question of 2026-10-18), where one is chosen; 0.4.3's tall page otherwise */
+ *  blocks of these queries in `web/style.css`) */
+export const SHEETED = `${PHONE}, ${TALL}`;
+/** an upright monitor, with a mouse: at least 1000 px wide and 1.2 times as high (PhoneSpec decision
+ *  29; web/src/monitor.ts) */
 export const MONITOR = "(min-width: 1000px) and (max-aspect-ratio: 5/6) and (pointer: fine)";
 
 const matches = (q: string) => typeof matchMedia === "function" && matchMedia(q).matches;
-/** a monitor's prototype is on show (web/src/monitor.ts): the tall page gives way to it */
-const prototyped = () => typeof document === "object" && document.documentElement.hasAttribute("data-monitor");
 
 export function isPhone(): boolean {
   return matches(PHONE);
 }
 
 export function isTall(): boolean {
-  return matches(TALL) && !prototyped();
+  return matches(TALL);
+}
+
+/** An upright monitor's page: the board above a work area (web/src/monitor.ts). */
+export function isMonitor(): boolean {
+  return matches(MONITOR);
 }
 
 /** The panel is a sheet and the side panel a drawer: a phone, or a tall screen. */
 export function sheeted(): boolean {
-  return matches(SHEETED) && !prototyped();
+  return matches(SHEETED);
 }
 
-/** The shape a screen of `w` × `h` px is: what TALL, PHONE and SHEETED decide, for a size (the
- *  queries' own arithmetic, tested without a browser). */
-export function shapeOf(w: number, h: number): "phone" | "tall" | "wide" {
+/** The shape a screen of `w` × `h` px is under a `pointer` (the primary one's, as `pointer:` asks):
+ *  what PHONE, TALL and MONITOR decide, for a size (the queries' own arithmetic, tested without a
+ *  browser). A screen with no pointer at all, upright and wide enough, has a larger screen's page. */
+export function shapeOf(w: number, h: number, pointer: "fine" | "coarse" | "none" = "fine"): "phone" | "tall" | "monitor" | "wide" {
   if (w <= 640) return "phone";
-  return w * 6 <= h * 5 ? "tall" : "wide";
+  if (w * 6 > h * 5) return "wide";
+  if (pointer === "coarse" || w <= 999) return "tall";
+  return pointer === "fine" ? "monitor" : "wide";
 }
 
 /** Whether a press at `t` in the drawer goes somewhere from it, which closes it (decisions 9 and 19):

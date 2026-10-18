@@ -14,7 +14,6 @@ import type { ClusterMode } from "../../shared/graph.ts";
 import type { Link } from "../../shared/library.ts";
 import { EDGE } from "./floatwin.ts";
 import type { Rect, Size } from "./floatwin.ts";
-import { windowRegion } from "./monitor.ts";
 
 /** What the pairing does as a source window shows a declaration: opens a link in the reference
  *  window — laid out afresh beside it, or where the reader left the two — keeps what it shows (the
@@ -93,10 +92,7 @@ export function pairTop(): number {
 export function pairArea(vp: Size, top: number): Area {
   const w = Math.min(PAIR_MAX, vp.w - 2 * EDGE);
   const left = Math.round((vp.w - w) / 2);
-  const a = { left, right: left + w, top: Math.min(top, vp.h - EDGE - MIN.h), bottom: vp.h - EDGE };
-  // an upright monitor's prototype (web/src/monitor.ts): within the part the windows open in
-  const r = windowRegion(vp);
-  return r ? { left: Math.max(a.left, r.x), right: Math.min(a.right, r.x + r.w), top: Math.max(a.top, r.y), bottom: Math.min(a.bottom, r.y + r.h) } : a;
+  return { left, right: left + w, top: Math.min(top, vp.h - EDGE - MIN.h), bottom: vp.h - EDGE };
 }
 
 /** How wide the source window may be beside the reference window: half the area at most, where that
