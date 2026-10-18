@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -441,7 +441,8 @@ test("a build's log names the clone '.', by the path given and by the path resol
   const link = join(ROOT, "linked-clone");
   symlinkSync(real, link);
   const log = new BuildLog(join(ROOT, "log-names"), "c0ffee", link);
-  log.text(`$ lake build M\nerror: ${real}/M.lean:1:0: unknown identifier 'oops'\n${link}/N.lean: built\n`);
+  // resolved all the way: on macOS ROOT itself is under /var
+  log.text(`$ lake build M\nerror: ${realpathSync(real)}/M.lean:1:0: unknown identifier 'oops'\n${link}/N.lean: built\n`);
   log.close();
   assert.equal(log.tail(), "$ lake build M\nerror: ./M.lean:1:0: unknown identifier 'oops'\n./N.lean: built");
 });
