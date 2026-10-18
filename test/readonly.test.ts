@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { ReadOnlyLinks } from "../src/server/readonly.ts";
 import { finalAnswer, ReadOnlyBounds, readOnlyAllows } from "../src/server/readonlygate.ts";
 import { site, stream } from "./site.ts";
+import { tinyPdf } from "./pdf.ts";
 
 const KEY = "k".repeat(40);
 const OWNER = { "x-visualproof-name": "Olivia", authorization: `Bearer ${KEY}` };
@@ -119,6 +120,31 @@ test("a read-only reader reads what a guest reads, and is refused everything tha
     }
     // nothing was written
     assert.equal(JSON.stringify(S.live.review.whole()), before);
+  } finally {
+    await S.close();
+  }
+});
+
+test("a read-only reader is drawn what the notes show of a PDF, and no other page or region of it", async () => {
+  const S = await site({ key: KEY });
+  try {
+    const up = await fetch(`${S.base}/api/library/upload?name=paper.pdf`, { method: "POST", headers: OWNER, body: new Uint8Array(tinyPdf([["One."], ["Two."]])) });
+    const sha = ((await up.json()) as { file: { sha: string } }).file.sha;
+    const link = (await S.ask("POST", "/api/share/readonly", {}, OWNER)).json!.made.path as string;
+    const { cookie } = await enter(S, link);
+    const get = (q: string, who: Record<string, string> = { cookie }) => fetch(`${S.base}/api/library/${q}`, { headers: who });
+    // the file came with a note of the project, which shows its first page
+    assert.equal((await get(`page?sha=${sha}&page=1&width=400`)).status, 200);
+    assert.equal((await get(`page?sha=${sha}&page=2&width=400`)).status, 403);
+    const clip = `clip?sha=${sha}&page=2&region=0.1,0.05,0.9,0.15&width=800`;
+    assert.equal((await get(clip)).status, 403, "a region no note carries");
+    assert.equal((await get(clip, OWNER)).status, 200, "a guest is drawn any");
+    // a note carries the clip: it is drawn for the reader too
+    assert.equal(S.live.views.arrangeNotes([{ op: "pnote", note: { id: "nclip00000000", text: "this", places: {}, open: true, by: "Olivia", at: "", carries: [{ file: sha, page: 2, region: [0.1, 0.05, 0.9, 0.15] }] } }], null, "Olivia"), null);
+    assert.equal((await get(clip)).status, 200);
+    assert.equal((await get(`clip?sha=${sha}&page=2&region=0.1,0.05,0.9,0.16&width=800`)).status, 403);
+    // the file itself, its text and its search are the reader's to read
+    for (const q of [`file?sha=${sha}`, `text?sha=${sha}&page=2`, `search?sha=${sha}&q=Two`]) assert.equal((await get(q)).status, 200, q);
   } finally {
     await S.close();
   }

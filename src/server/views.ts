@@ -293,6 +293,17 @@ export class Views {
     return this.book.notes.some(has) || this.book.list().some((v) => (v.notes ?? []).some(has));
   }
 
+  /** Whether a note, the project's or a view's, shows page `page` of PDF `sha` — a clip of
+   *  `region` of it (rounded as the library rounds a region), or, with none, the page a whole PDF
+   *  carried shows (its own, else the first): what a read-only page draws of the library
+   *  (CollabSpec decision 11). */
+  shows(sha: string, page: number, region: readonly number[] | null): boolean {
+    const same = (c: NoteCarry) =>
+      c.file === sha && (region ? !!c.region && (c.page ?? 1) === page && c.region.every((x, k) => Math.round(x * 1e4) === Math.round(region[k] * 1e4)) : !c.region && (c.page ?? 1) === page);
+    const has = (n: { carries?: NoteCarry[] }) => !!n.carries?.some(same);
+    return this.book.notes.some(has) || this.book.list().some((v) => (v.notes ?? []).some(has));
+  }
+
   /** A file came into the library (its first record, by upload or by URL, from a person or an agent):
    *  every item shows on the Project (the owner's decision of 2026-10-11), so a note of the project
    *  carries it — collapsed, its text the file's title, written by whoever added the file, at the

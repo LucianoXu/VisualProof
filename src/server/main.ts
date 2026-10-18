@@ -922,7 +922,17 @@ export class App {
       }
       // the library of papers and images, and the links into them (AttachmentSpec.md,
       // server/libraryroute.ts)
-      if (path === "/api/library" || path.startsWith("/api/library/")) return libraryRoute({ ids: this.ids, level: this.agents.level, api: this.library() }, req, res, url);
+      if (path === "/api/library" || path.startsWith("/api/library/")) {
+        // a read-only reader (CollabSpec decision 11) is drawn what the notes show of a PDF, kept in
+        // the cache as it is drawn, and no other page or region of one: each would be drawn by
+        // Poppler and kept anew, whoever comes asking
+        if (reader !== undefined && (path === "/api/library/page" || path === "/api/library/clip")) {
+          const q = url.searchParams;
+          const region = path === "/api/library/clip" ? (q.get("region") ?? "").split(",").map(Number) : null;
+          if (!live.views.shows(q.get("sha") ?? "", Number(q.get("page")), region)) return sendJson(res, { error: "A read-only page is drawn what the notes show of the library: open the file itself.", readOnly: true }, 403);
+        }
+        return libraryRoute({ ids: this.ids, level: this.agents.level, api: this.library() }, req, res, url);
+      }
       // an agent may use the page's own endpoints too: the same rules hold there (AgentSpec)
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
