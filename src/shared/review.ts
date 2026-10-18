@@ -801,10 +801,11 @@ export function trusted(d: ReviewData, name: string, module: string, external: b
 
 /** What the canvas and the lists mark a declaration with: what reviewers said about it, and when
  *  nobody has, whether a trusted prefix covers it — for the project's own declarations only:
- *  the outside world trusted by default is the rule there, not news. */
-export function markOf(d: ReviewData, name: string, module: string, external: boolean, hash: string | undefined): Status | "trusted" {
+ *  the outside world trusted by default is the rule there, not news; and never for a non-standard
+ *  axiom (`axiom`), which needs review whatever trusts it (decision 3). */
+export function markOf(d: ReviewData, name: string, module: string, external: boolean, hash: string | undefined, axiom = false): Status | "trusted" {
   const s = statusOf(d, name, hash);
-  if (s !== "none" || external) return s;
+  if (s !== "none" || external || axiom) return s;
   return trustedBy(d, name, module, false).length ? "trusted" : "none";
 }
 
@@ -816,11 +817,12 @@ export interface Progress {
   stale: number;
 }
 
-/** How far the review of a set (a target's TCB) has come. */
-export function progressOf(d: ReviewData, members: { name: string; module: string; ext: boolean; hash?: string }[]): Progress {
+/** How far the review of a set (a target's TCB, a cluster) has come: what needs review in it, a
+ *  non-standard axiom (`axiom`) whatever trusts it (decision 3). */
+export function progressOf(d: ReviewData, members: { name: string; module: string; ext: boolean; hash?: string; axiom?: boolean }[]): Progress {
   const p: Progress = { total: 0, approved: 0, commented: 0, stale: 0 };
   for (const m of members) {
-    if (trusted(d, m.name, m.module, m.ext)) continue;
+    if (!m.axiom && trusted(d, m.name, m.module, m.ext)) continue;
     p.total++;
     const s = statusOf(d, m.name, m.hash);
     if (s === "approved") p.approved++;

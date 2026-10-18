@@ -9,7 +9,7 @@ import { ALL_SITES, shortName } from "../../shared/viewgraph.ts";
 import type { FileStatus } from "../../shared/build.ts";
 import { escapeHtml, highlightLean, renderDoc } from "./highlight.ts";
 import { markOf } from "../../shared/review.ts";
-import { needsReview, trustSplit } from "../../shared/reviewqueue.ts";
+import { needsReview, nonStandardAxiom, trustSplit } from "../../shared/reviewqueue.ts";
 import type { ReviewData } from "../../shared/review.ts";
 import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
@@ -226,7 +226,7 @@ export class Panel {
         return (
           `<div class="grp"><div class="grp-h"><span class="dot k-${k}"></span>${k} <span class="muted">${xs.length}</span></div>` +
           xs
-            .map((j) => `<button class="row rv-${markOf(d, g.nodes[j].name, g.nodes[j].module, g.isExt(j), g.nodes[j].hash)}" data-go="${j}" title="Go to ${escapeHtml(g.nodes[j].name)}">${escapeHtml(g.nodes[j].name)}</button>`)
+            .map((j) => `<button class="row rv-${markOf(d, g.nodes[j].name, g.nodes[j].module, g.isExt(j), g.nodes[j].hash, nonStandardAxiom(g, j))}" data-go="${j}" title="Go to ${escapeHtml(g.nodes[j].name)}">${escapeHtml(g.nodes[j].name)}</button>`)
             .join("") +
           `</div>`
         );

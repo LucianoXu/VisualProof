@@ -382,3 +382,19 @@ test("a declaration of the project can be marked as target from its panel; one o
   assert.match(box(false).html(1, true), /data-rv-target>★ Target</);
   assert.match(box(true).html(1, true), /<div class="rv-tag">★ Target<\/div>/);
 });
+
+test("a non-standard axiom is marked and counted as needing review whatever trusts it (ReviewSpec decision 3)", () => {
+  const d = emptyReview();
+  record(d, { op: "trust", prefix: "Vendored", on: true, by: "Alice" } as ReviewOp, "tc", at(1));
+  // the lists' mark: trusted for a declaration, never for an axiom beyond the standard three
+  assert.equal(markOf(d, "Vendored.lemma", "Vendored", false, "h"), "trusted");
+  assert.equal(markOf(d, "Vendored.ax", "Vendored", false, "h", true), "none");
+  // a cluster's progress counts it
+  const members = [
+    { name: "Vendored.lemma", module: "Vendored", ext: false, hash: "h" },
+    { name: "Vendored.ax", module: "Vendored", ext: false, hash: "h", axiom: true },
+  ];
+  assert.equal(progressOf(d, members).total, 1);
+  record(d, { op: "opinion", name: "Vendored.ax", by: "Alice", verdict: "approve", hash: "h" } as ReviewOp, "tc", at(2));
+  assert.deepEqual(progressOf(d, members), { total: 1, approved: 1, commented: 0, stale: 0 });
+});
