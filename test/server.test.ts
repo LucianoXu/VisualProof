@@ -24,6 +24,7 @@ import type { ClusterMode, Layout, ViewMeta, ViewNode } from "../src/shared/grap
 import { LAYOUT_VERSION, SITE_STMT } from "../src/shared/graph.ts";
 import { computeLayout } from "../src/shared/layout.ts";
 import { isPackedEdges, unpackEdges } from "../src/shared/edgecodec.ts";
+import { JSON_GZIP_AWAY_FROM, sendJson } from "../src/server/main.ts";
 import { site, SOURCE, stream } from "./site.ts";
 import type { Json } from "./site.ts";
 
@@ -174,8 +175,8 @@ function fakeResponse() {
       r.status = status;
       return r;
     },
-    write(text: string) {
-      r.written.push(text);
+    write(text: string | Buffer) {
+      r.written.push(String(text));
       return true;
     },
     end(text?: string) {
@@ -220,6 +221,80 @@ test("event streams: at most MAX_STREAMS, a few per page, and one that does not 
     assert.match(refused.written.join(""), /pages open/);
     rest[0].destroy();
     assert.equal(open("eeeeeeee5555").status, 200);
+  } finally {
+    await S.close();
+  }
+});
+
+test("a stream's hello, however large, is read before it counts as not reading; past it, MAX_BUFFERED as for any", async () => {
+  const S = await site();
+  try {
+    // the whole review, which the hello carries, of thousands of opinions: twice MAX_BUFFERED
+    const review = S.live.review;
+    const whole = review.whole.bind(review);
+    review.whole = () => ({ ...whole(), pad: "x".repeat(2 * MAX_BUFFERED) }) as ReturnType<typeof whole>;
+    /** a page's stream whose page reads `read(n)` characters at a time, or nothing */
+    const open = () => {
+      const r = fakeResponse();
+      const write = r.write;
+      r.write = (text: string | Buffer) => ((r.writableLength += text.length), write(text));
+      S.live.subscribe(r as unknown as ServerResponse, null);
+      return Object.assign(r, { read: (n: number) => void (r.writableLength = Math.max(0, r.writableLength - n)) });
+    };
+    /** `n` events, which `reader` reads as they come */
+    const event = (n = 1, reader?: { read(n: number): void; writableLength: number }) => {
+      for (let k = 0; k < n; k++) {
+        S.live.placesChanged([], null, "Alice");
+        reader?.read(reader.writableLength);
+      }
+    };
+    const reading = open();
+    assert.ok(reading.writableLength > 2 * MAX_BUFFERED, "the hello waits");
+    assert.ok(reading.written.some((t) => t.startsWith("event: graph")), "the hello is whole: the graph after the review");
+    const idle = open();
+    event();
+    assert.equal(reading.destroyed || idle.destroyed, false, "a hello read is no page that does not read");
+    assert.equal((S.live.status() as Json).streams.closedForNotReading, 0);
+    // one reads it, the other reads nothing: once more than MAX_BUFFERED waits beyond its hello, closed
+    reading.read(reading.writableLength);
+    const size = reading.written.at(-1)!.length;
+    event(Math.ceil(MAX_BUFFERED / size) + 2, reading);
+    assert.equal(reading.destroyed, false);
+    assert.equal(idle.destroyed, true, "closed for not reading");
+    // its hello read, a page has MAX_BUFFERED alone
+    reading.read(reading.writableLength);
+    event();
+    reading.writableLength = MAX_BUFFERED + 1;
+    event();
+    assert.equal(reading.destroyed, true);
+    assert.equal((S.live.status() as Json).streams.closedForNotReading, 2);
+  } finally {
+    await S.close();
+  }
+});
+
+test("the whole review is written as JSON once a revision: every stream's hello and GET /api/review carry the one text, made again after a change", async () => {
+  const S = await site();
+  try {
+    const review = S.live.review;
+    let made = 0;
+    const whole = review.whole.bind(review);
+    review.whole = () => (made++, whole());
+    const open = () => {
+      const r = fakeResponse();
+      S.live.subscribe(r as unknown as ServerResponse, null);
+      return r;
+    };
+    const hello = (r: ReturnType<typeof fakeResponse>) => r.written.find((t) => t.startsWith("event: review\n"))!;
+    const [a, b] = [open(), open()];
+    const asked = await S.ask("GET", "/api/review");
+    assert.equal(made, 1, "once for two hellos and a page's ask");
+    assert.equal(hello(a), hello(b));
+    assert.deepEqual(JSON.parse(hello(a).slice("event: review\ndata: ".length)), asked.json);
+    review.append({ name: "Alice", agent: false }, { op: "target", name: "N.b", by: "Alice", on: true }, "tc");
+    const c = open();
+    assert.equal(made, 2, "a change: written again");
+    assert.ok(JSON.parse(hello(c).slice("event: review\ndata: ".length)).data.targets["N.b"]);
   } finally {
     await S.close();
   }
@@ -327,6 +402,37 @@ test("what a page has already is not sent again; the page's files, the graph and
   } finally {
     await S.close();
   }
+});
+
+test("a large JSON answer is compressed off the server's thread: the thread answers others meanwhile, the answer the same", async () => {
+  /** an answer as sendJson writes it: its head, then its body, and when */
+  const answer = () => {
+    const r = { head: null as Record<string, string> | null, body: null as Buffer | null, ended: false };
+    const res = {
+      headersSent: false,
+      writableEnded: false,
+      req: { headers: { "accept-encoding": "gzip" } },
+      writeHead: (_code: number, head: Record<string, string>) => void (r.head = head),
+      end: (b: Buffer) => {
+        r.body = b;
+        r.ended = true;
+      },
+      destroy: (e: Error) => assert.fail(e),
+    };
+    return { r, res: res as unknown as ServerResponse };
+  };
+  const large = { items: Array.from({ length: JSON_GZIP_AWAY_FROM / 8 }, (_, i) => `item ${i}`) };
+  assert.ok(JSON.stringify(large).length > JSON_GZIP_AWAY_FROM);
+  const a = answer();
+  sendJson(a.res, large);
+  assert.equal(a.r.head?.["content-encoding"], "gzip");
+  assert.equal(a.r.ended, false, "not compressed on the server's thread");
+  // a small one, meanwhile: at once
+  const b = answer();
+  sendJson(b.res, { items: large.items.slice(0, 1000) });
+  assert.equal(b.r.ended, true);
+  for (let k = 0; k < 200 && !a.r.ended; k++) await new Promise((ok) => setTimeout(ok, 10));
+  assert.deepEqual(JSON.parse(gunzipSync(a.r.body!).toString("utf8")), large);
 });
 
 test("export: people and agents typeset the document of a view and fetch it; an agent has one job at a time", async () => {
