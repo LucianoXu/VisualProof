@@ -8,9 +8,9 @@
 // changes the tree, nothing is read from it, and the board on show stays the last build's.
 //
 // What is kept, in the deployment's folder of the cache (`<cache>/deploy/<repo>-<hash>/`): the
-// clone, `state.json` (the commit the tree's outputs are of, the build going on, the last one
-// that ended, the newest head seen), each build's log (`logs/`), and `.lock`: one server follows a
-// branch with a cache at a time. A build cut short (a restart into a patch, a stop) is done again
+// clone, `state.json` (the commit the tree's outputs are of, the one checked out, the build going
+// on, the last one that ended, the newest head seen), each build's log (`logs/`), and `.lock`: one
+// server follows a branch with a cache at a time. A build cut short (a restart into a patch, a stop) is done again
 // by the next server, Lake keeping what it finished.
 //
 // Git and Lake are run with argument arrays, never a shell; the address is checked against the
@@ -29,7 +29,7 @@ import { shortCommit, slimDeploy } from "../shared/deploy.ts";
 import { childEnv, DETACH, end, grouped } from "./children.ts";
 import { dataHome, lockSite, SiteBusy } from "./dirs.ts";
 import type { HomeEnv } from "./dirs.ts";
-import { sourceAddress } from "./history.ts";
+import { buildTime, sourceAddress } from "./history.ts";
 import { openProject, ProjectError } from "./project.ts";
 import type { Project } from "./project.ts";
 
@@ -560,8 +560,13 @@ interface DeployState {
   version: 1;
   url: string;
   branch: string;
-  /** the commit whose `lake build` last ran in the tree: what the tree's outputs are of */
+  /** the commit whose build last wrote outputs in the tree, or built it whole: what the tree's
+   *  outputs are of, which the board reads — a failed build that wrote none is not built (the
+   *  owner's decision of 2026-10-19) */
   outputs: { commit: string; at: string } | null;
+  /** the commit whose `lake build` last ran in the tree, whatever came of it: what the tree is
+   *  checked out at between builds (0.5.0 kept none: its `outputs` were this) */
+  ran: string | null;
   /** a build that changed the tree and has not ended: one found here at a start was cut short */
   building: { commit: string; since: string } | null;
   /** the last commit tried, whatever came of it but a try that could not be made */
@@ -656,19 +661,20 @@ export class Deployment {
     this.buildMs = o.buildMs ?? DEFAULT_BUILD_HOURS * 3600_000;
     this.state = this.read();
     const head = this.headNow();
-    // the tree is one build's only where the outputs are of the commit checked out and no build
-    // was going on
-    this.interrupted = this.state.building !== null || (this.state.outputs !== null && head !== null && head !== this.state.outputs.commit);
+    // the tree is one build's only where the commit checked out is the one whose build last ran in
+    // it and no build was going on
+    this.interrupted = this.state.building !== null || (this.state.ran !== null && head !== null && head !== this.state.ran);
     this.want = this.state.head?.commit ?? this.state.building?.commit ?? o.head ?? head;
     this.done = this.interrupted ? null : this.state.done;
     if (this.state.building) o.hooks.log(`build: the build of ${shortCommit(this.state.building.commit)} was cut short (a restart, a stop): it is done again`);
   }
 
   private read(): DeployState {
-    const fresh: DeployState = { version: 1, url: this.remote.url, branch: this.branch, outputs: null, building: null, done: null, last: null, head: null };
+    const fresh: DeployState = { version: 1, url: this.remote.url, branch: this.branch, outputs: null, ran: null, building: null, done: null, last: null, head: null };
     try {
       const s = JSON.parse(readFileSync(this.folder.state, "utf8")) as Partial<DeployState>;
-      return { ...fresh, ...s, version: 1, url: this.remote.url, branch: this.branch };
+      // 0.5.0's: the commit whose build last ran is the one its outputs were said to be of
+      return { ...fresh, ...s, ran: s.ran ?? s.outputs?.commit ?? null, version: 1, url: this.remote.url, branch: this.branch };
     } catch {
       return fresh;
     }
@@ -718,8 +724,9 @@ export class Deployment {
     return this.running !== null;
   }
 
-  /** The commit what the tree holds was built from, and the branch: the history's for each build it
-   *  reads (HistorySpec decision 4). */
+  /** The commit what the tree's outputs were built from, and the branch: the history's for each
+   *  build it reads (HistorySpec decision 4) — the last whose build wrote outputs, not a failed one
+   *  that wrote none (DeploySpec decision 6). */
   commit(): { hash: string; branch: string } | null {
     return this.state.outputs ? { hash: this.state.outputs.commit, branch: this.branch } : null;
   }
@@ -795,6 +802,12 @@ export class Deployment {
         this.o.hooks.changed();
         this.kick();
       });
+  }
+
+  /** The commit built next where none is going on: the newest head seen, where it was not tried
+   *  (the server's first lines say it). */
+  toBuild(): string | null {
+    return this.want && this.want !== this.done && this.want !== this.later ? this.want : null;
   }
 
   /** Until the build going on and those waiting are done: what the tests wait for. */
@@ -874,6 +887,9 @@ export class Deployment {
       this.step("build");
       say(`build: ${short}: lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
       log.say(`$ lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
+      // the project's newest `.olean` before the build: whether it wrote any (as the history tells a
+      // new build: HistorySpec decision 4)
+      const before = buildTime(this.o.project);
       const b = await run(lake, ["build", ...this.o.roots], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: this.buildMs, onText: (t) => log.text(t) });
       // cut short by the server's stop: done again at the next start
       if (this.stopped) return;
@@ -881,8 +897,13 @@ export class Deployment {
         await this.restore(log);
         return ended({ ok: false, retry: true, error: `lake could not be run: ${b.error}` });
       }
-      // the tree is this build's, whatever came of it
-      this.state.outputs = { commit, at: new Date().toISOString() };
+      const ok = b.code === 0 && !b.timedOut;
+      // the tree is this build's, whatever came of it: checked out at its commit, its failed files
+      // shown as such; its outputs are, where it built the commit or wrote any. A failed build that
+      // wrote none leaves the board on the last build that did, which is what is said built (the
+      // owner's decision of 2026-10-19)
+      this.state.ran = commit;
+      if (ok || buildTime(this.o.project) > before) this.state.outputs = { commit, at: new Date().toISOString() };
       this.state.building = null;
       this.interrupted = false;
       // the modules a library's globs give, now that they are built
@@ -891,7 +912,6 @@ export class Deployment {
       } catch {
         // read as it was after the checkout
       }
-      const ok = b.code === 0 && !b.timedOut;
       // stopped past the limit: failed, and not tried again (DeploySpec decision 14)
       if (b.timedOut) log.say(`lake build took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped`);
       return ended({ ok, exit: b.code, ...(b.timedOut ? { error: `it took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped` } : {}) });
@@ -915,7 +935,7 @@ export class Deployment {
    *  out at that build's commit again, so that what is read of it, and a restart, are that build's.
    *  Where that cannot be done, the tree stays held until a build ends. */
   private async restore(log: BuildLog): Promise<void> {
-    const was = this.state.outputs?.commit;
+    const was = this.state.ran;
     if (was) {
       log.say(`back to ${shortCommit(was)}, the last build's commit`);
       const co = await git(["-C", this.folder.checkout, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force", "--detach", was], this.env);

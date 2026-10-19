@@ -1847,7 +1847,15 @@ async function main(): Promise<void> {
       const d = deployment.status(true);
       console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min; a build stopped past ${limitInWords(deployment.buildMs)}`);
       console.log(`  clone: ${deployment.folder.checkout}`);
-      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : `none yet: the first, of ${shortCommit(deploy!.head)}, starts now, and the page says so until it is done`}; their logs in ${deployment.folder.logs}`);
+      // a failed build that wrote nothing is not built (DeploySpec decision 6): before any that did,
+      // none is, and the next is the next commit pushed
+      const next = deployment.toBuild();
+      const l = d.last;
+      const why = l ? (l.error ?? (l.exit === null ? "lake build was stopped" : l.exit !== undefined ? `lake build exited with ${l.exit}` : null)) : null;
+      const none = next
+        ? `none yet: the first, of ${shortCommit(next)}, starts now, and the page says so until it is done`
+        : `none yet: that of ${shortCommit(l?.commit ?? deploy!.head)} failed${why ? ` (${why})` : ""}, and the next commit pushed is built`;
+      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : none}; their logs in ${deployment.folder.logs}`);
       // where the project is on Mathlib, its cache: the user's, or the deployment's own (DeploySpec decision 2)
       console.log(`  Mathlib's cache: ${o.mathlibCache === "own" ? `${deployment.folder.mathlib}, the deployment's own` : `${sharedMathlibCache()}, the user's, shared by their builds`}`);
     }

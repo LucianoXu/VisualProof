@@ -203,3 +203,28 @@ test("two quick pushes: the newest alone is built, and is the next build of the 
   assert.match(leaf.text, /\(1 : Nat\) = 1 := rfl/);
   assert.equal(leaf.from, "tree");
 });
+
+test("a failing commit that compiled nothing: failed, not built — the board, the history and the agents keep the build before", { skip: !haveLake }, async () => {
+  const was = d.status(true).built!;
+  const shown = live.graph!.version;
+  const snapshots = (await get("/api/history")).snapshots.length;
+  // Leaf alone changed, and fails: nothing is compiled
+  const broken = push("break Leaf alone", () => append("Fixture/Leaf.lean", "\ntheorem broken_again : (1 : Nat) = 2 := rfl\n"));
+  await d.poll();
+  await d.settled();
+  // the tree is read again once it settles: a new graph where what can be read of it changed (Lake
+  // since v4.29 removes a failed file's .olean), else the same one kept
+  const t0 = Date.now();
+  await until(() => ((live.graph?.version ?? 0) > shown || Date.now() - t0 > 8000) && !live.reading);
+  const st = await get("/api/status");
+  assert.equal(st.deploy.last.commit, broken);
+  assert.equal(st.deploy.last.ok, false);
+  // what is said built is the commit whose build the board reads (DeploySpec decision 6)
+  assert.equal(st.deploy.built, was);
+  assert.equal(st.graph.commit, was);
+  const h = await get("/api/history");
+  assert.equal(h.snapshots.length, snapshots);
+  assert.equal(h.snapshots.at(-1).commit.hash, was);
+  assert.equal((await get("/api/agent/history")).following.built, was);
+  assert.equal((await get("/api/git")).git.commit, was);
+});

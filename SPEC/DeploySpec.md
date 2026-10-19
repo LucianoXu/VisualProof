@@ -109,6 +109,24 @@ otherwise).
    - *Proposed*: the history keeps a snapshot per build as it does (HistorySpec decision 4), keyed
      by the build's newest `.olean`: a failing commit whose build wrote no newer `.olean` (it only
      failed) is no new build, and has no tick of its own; the popover says its failure.
+   - **What is said built is the commit whose build the board reads** (the owner's decision of
+     2026-10-19): the last whose build wrote outputs. A failed build that wrote none (no newer
+     `.olean` of the project: a lakefile that does not elaborate, a first file that fails, a build
+     stopped before it wrote any) shows as failed, not as built: the popover says it failed and
+     that the board shows the build before ("The build of d470b61 failed …: … The board shows the
+     build of 4789b65"), the pill `Build failed · d470b61`, the loading page and the agents' status
+     (`built`) the build before, and the history's snapshot of that build, read again, keeps its
+     commit.
+     - *Proposed*: a build that succeeds is built whatever it wrote: a commit that changes no Lean
+       file has the build before as its own, up to date.
+     - *Proposed*: the tree stays checked out at the failed commit, so that its files show what
+       failed (Status, the popover's files); a restart reads it as it is, neither cut short nor to
+       be built again. Before any build wrote outputs, none is built: nothing is read, and the
+       loading page says the first build failed and that the next commit pushed is built.
+     - *Proposed*: Lake (since Lean v4.29) removes a failed file's `.olean`, so a failed build that
+       wrote nothing can leave less of the build before to read: what can still be read is read, as
+       that build's; where nothing can (a restart: the board's graph was the server's alone), the
+       loading page says the failed build left nothing that can be read, with its log.
 7. **The first start, before any build exists** (the owner's decision of 2026-10-18): it says so
    clearly, on the page and in the terminal, never a dead end.
    - *Proposed*: the terminal says the clone being made, then where it is, and "none yet: the first,
@@ -211,8 +229,10 @@ otherwise).
 - `askRemote`: `ls-remote` of the branch's ref, the exact ref alone (a pattern matches refs that
   end so), or `--symref HEAD`.
 - `Deployment`: the polling (`poll`, every `everyMs`), the queue (`want`, the newest head seen;
-  `done`, the last commit tried; `later`, one whose try could not be made), the build (`attempt`),
-  the tree held (`holds`), the commit of the tree's outputs (`commit`), and what pages are told
+  `done`, the last commit tried; `later`, one whose try could not be made; `toBuild`, the next to
+  build), the build (`attempt`: whether `lake build` wrote outputs is the project's newest `.olean`
+  before and after it, `buildTime`, as the history tells a new build), the tree held (`holds`), the
+  commit of the tree's outputs (`commit`: decision 6, what is said built), and what pages are told
   (`status`). Its hooks: `reading` (the live loop reads the tree), `starting` (the usage pass is
   cut short), `toolchainChanged` (Lean's language server starts again with the new toolchain,
   server/hover.ts), `ended` (the live loop reads the tree again: `reread`), `log`. `next` is said
@@ -235,9 +255,12 @@ otherwise).
 
 - `remotes.json`: `{<url>: {branch, at}}`, the default branches as last asked.
 - `<repo>-<hash>/<repo>/`: the clone (the project; its `.lake` the builds' outputs and packages).
-- `<repo>-<hash>/state.json`: `{version: 1, url, branch, outputs: {commit, at} | null, building:
-  {commit, since} | null, done, last: DeployBuild | null, head: {commit, at} | null}` — `outputs`
-  the commit whose `lake build` last ran in the tree, `building` a build that changed the tree and
+- `<repo>-<hash>/state.json`: `{version: 1, url, branch, outputs: {commit, at} | null, ran,
+  building: {commit, since} | null, done, last: DeployBuild | null, head: {commit, at} | null}` —
+  `outputs` the commit whose build last wrote outputs in the tree, or succeeded (what is said built:
+  decision 6), `ran` the commit whose `lake build` last ran there, whatever came of it (what the
+  tree is checked out at between builds: one checked out otherwise at a start was cut short; 0.5.0
+  kept none, its `outputs` being this, and is read so), `building` a build that changed the tree and
   has not ended (one found at a start was cut short), `done` the last commit tried, `head` the newest
   seen. Written whole (a file moved into place).
 - `<repo>-<hash>/logs/<commit>.log`: everything a build's programs wrote, with the commands (`$ git
@@ -250,8 +273,9 @@ otherwise).
 ### What pages and agents are told (shared/deploy.ts)
 
 - `DeployStatus`: `{source, github, branch, every, asked: {at, head, error?}, building: {commit,
-  since, step}, next, last: DeployBuild, built}`; `DeployBuild`: `{commit, ok, at, ms, exit?, error?,
-  retry?, tail?}`. `slimDeploy` takes the tail out.
+  since, step}, next, last: DeployBuild, built}` (`built`: the commit whose build the board reads,
+  decision 6); `DeployBuild`: `{commit, ok, at, ms, exit?, error?, retry?, tail?}`. `slimDeploy`
+  takes the tail out.
 - The event `deploy`, as a stream opens and whenever it changes (a read-only reader's slim); `GET
   /api/status` `deploy`; `GraphInfo.commit`; `GET /api/agent/history` `following` (agents; the
   page's `GET /api/history` has none).

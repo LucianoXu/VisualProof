@@ -317,7 +317,9 @@ to a team. It needs git, besides elan.
   board reading what could be; `Build failed · a1b2c3d` where no file says it (a lakefile that does
   not elaborate). The history keeps each build's commit, on the branch, so that the Time Machine's
   ruler has a long tick per commit; a failing commit whose build compiled nothing new is no new
-  build. Each build's whole log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
+  build, and is never said built: the popover says it failed and that the board shows the build
+  before, which is what the history, the loading page and the agents call built. Each build's whole
+  log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
 - **The first start** clones the branch (the terminal says it), then builds its head; until a build
   can be read, the page says what is being done (`The first build of github.com/A/B (main) at
   a1b2c3d: lake build, 3 of 8 files…`), and where it failed, why and what comes next, with the end

@@ -56,8 +56,9 @@ function repo() {
 }
 
 /** The test's Lake: it says what it was asked, and Mathlib's cache where it was asked to keep it; a
- *  build waits while the commit has a SLOW file until GO is there (a minute at most), writes an
- *  `.olean`, and fails where BUILD says so, naming its file by its path on this machine. */
+ *  build fails at once, writing nothing, where BUILD says `broken` (a lakefile that does not
+ *  elaborate); else it waits while the commit has a SLOW file until GO is there (a minute at most),
+ *  writes an `.olean`, and fails where BUILD says so, naming its file by its path on this machine. */
 const BIN = join(ROOT, "bin");
 mkdirSync(BIN);
 const LAKE = join(BIN, "lake");
@@ -68,6 +69,7 @@ writeFileSync(
   `#!/bin/sh
 echo "lake $*" >> "${LAKE_LOG}"
 if [ "$1" = "exe" ]; then echo "cache: 3 files in \${MATHLIB_CACHE_DIR:-the shared cache}"; exit 0; fi
+if grep -q broken BUILD 2>/dev/null; then echo "error: lakefile.toml: broken" >&2; exit 1; fi
 n=0
 if [ -f SLOW ]; then while [ ! -f "${GO}" ] && [ $n -lt 1200 ]; do sleep 0.05; n=$((n+1)); done; fi
 mkdir -p .lake/build/lib/lean
@@ -361,6 +363,65 @@ test("a failing build: shown with its end of log, not tried again, the tree its 
   assert.equal(d.tried.filter((c) => c === bad).length, 1);
 });
 
+test("a failing build that wrote nothing: failed, not built — the board's build is the last that wrote outputs; a restart keeps it so", async () => {
+  const r = repo();
+  const a = r.commit(PROJECT);
+  const { d, folder, remote } = await deployment(r);
+  await d.poll();
+  await d.settled();
+  const bad = r.commit({ BUILD: "broken\n", "M.lean": "def x := 2\n" });
+  await d.poll();
+  await d.settled();
+  const s = d.status(true);
+  assert.equal(s.last?.commit, bad);
+  assert.equal(s.last?.ok, false);
+  assert.equal(s.last?.exit, 1);
+  // what is said built, and the commit of what the board reads: the build before
+  assert.equal(s.built, a);
+  assert.deepEqual(d.commit(), { hash: a, branch: "main" });
+  assert.equal(d.holds(), false);
+  // the tree is checked out at the failed commit, whose files show what failed
+  assert.equal(git(folder.checkout, "rev-parse", "HEAD"), bad);
+  assert.equal(readFileSync(join(folder.checkout, "M.lean"), "utf8"), "def x := 2\n");
+  const state = JSON.parse(readFileSync(folder.state, "utf8"));
+  assert.equal(state.outputs.commit, a);
+  assert.equal(state.ran, bad);
+  // the popover says it failed, the board showing the build before
+  assert.match(deployHtml(s), new RegExp(`failed .*The board shows the build of <span class="mono" title="${a}">${a.slice(0, 7)}</span>`));
+  // a restart: the tree is that try's, not cut short — read at once, the commit not built again
+  const next = make(remote, folder, bad);
+  assert.equal(next.d.holds(), false);
+  assert.equal(next.d.status(true).built, a);
+  assert.equal(next.d.toBuild(), null);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+  // the next commit that builds is built, and shown
+  const c = r.commit({ BUILD: "ok\n" });
+  await next.d.poll();
+  await next.d.settled();
+  assert.equal(next.d.status(true).built, c);
+  assert.deepEqual(next.d.commit(), { hash: c, branch: "main" });
+});
+
+test("a state kept by 0.5.0, which said built the commit whose build last ran, is read as it was", async () => {
+  const r = repo();
+  const a = r.commit(PROJECT);
+  const first = await deployment(r);
+  await first.d.poll();
+  await first.d.settled();
+  // as 0.5.0 wrote it: no `ran`
+  const state = JSON.parse(readFileSync(first.folder.state, "utf8"));
+  delete state.ran;
+  writeFileSync(first.folder.state, JSON.stringify(state));
+  const next = make(first.remote, first.folder, a);
+  assert.equal(next.d.holds(), false);
+  assert.equal(next.d.status(true).built, a);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+});
+
 test("a commit that is no Lean project: the tree goes back to the last build", async () => {
   const r = repo();
   const a = r.commit(PROJECT);
@@ -449,9 +510,10 @@ test("a build past --build-timeout is stopped and failed, the limit said; its co
   assert.equal(s.last?.exit, null);
   assert.equal(s.last?.error, "it took longer than 1.5 s (--build-timeout): stopped");
   assert.match(readFileSync(join(folder.logs, `${a}.log`), "utf8"), /\nlake build took longer than 1\.5 s \(--build-timeout\): stopped\n$/);
-  // the tree is that build's, read as a failed build's is
-  assert.equal(s.built, a);
-  assert.equal(d.holds(), false);
+  // stopped before it wrote anything: failed, not built, and with no build before it nothing is
+  // read (DeploySpec decision 6)
+  assert.equal(s.built, null);
+  assert.equal(d.holds(), true);
   await d.poll();
   await d.settled();
   assert.deepEqual(d.tried, [a]);
@@ -525,6 +587,18 @@ test("the popover, the pill and the loading page say the branch's builds", () =>
   const nothing = deployWaiting({ ...failed, built: "c".repeat(40) }, { state: "error", error: "No part of this build can be read" });
   assert.match(nothing.title, /left nothing that can be read: lake build exited with 1\. The next commit pushed to main is built/);
   assert.equal(nothing.log, failed.last.tail);
+  // a failed build after the one said built, which wrote nothing but took away what that one wrote
+  // (Lake removes a failed file's .olean): it is what left nothing (DeploySpec decision 6)
+  const after = deployWaiting(failed, { state: "error", error: "No part of this build can be read" });
+  assert.match(after.title, /^The build of github.com\/A\/B \(main\) at ccccccc left nothing that can be read: lake build exited with 1\. The next commit/);
+  assert.equal(after.log, failed.last.tail);
+  // a try that did not run lake build (the tree went back to the build said built): that build
+  const noProject = deployWaiting({ ...failed, last: { commit: "c".repeat(40), ok: false, at: "", ms: 1, error: "it is no Lean project VisualProof can read" } }, { state: "error", error: "No part of this build can be read" });
+  assert.match(noProject.title, /^The build of github.com\/A\/B \(main\) at aaaaaaa left nothing that can be read\. The next commit/);
+  assert.equal(noProject.log, "No part of this build can be read");
+  // the first build failed, writing nothing: nothing is built, and the page says so
+  const firstFailed = deployWaiting({ ...failed, built: null }, { state: "extracting" });
+  assert.match(firstFailed.title, /^The first build of github.com\/A\/B \(main\) at ccccccc failed: lake build exited with 1\. The next commit pushed to main is built/);
   assert.equal(githubBlob("A/B", "c".repeat(40), "Fixture/Leaf Two.lean", 3, 7), `https://github.com/A/B/blob/${"c".repeat(40)}/Fixture/Leaf%20Two.lean#L3-L7`);
   assert.equal(githubBlob("A/B", "c", "M.lean", 3, 3), "https://github.com/A/B/blob/c/M.lean#L3");
 });
