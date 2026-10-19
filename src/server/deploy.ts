@@ -8,10 +8,11 @@
 // changes the tree, nothing is read from it, and the board on show stays the last build's.
 //
 // What is kept, in the deployment's folder of the cache (`<cache>/deploy/<repo>-<hash>/`): the
-// clone, `state.json` (the commit the tree's outputs are of, the one checked out, the build going
-// on, the last one that ended, the newest head seen), each build's log (`logs/`), and `.lock`: one
-// server follows a branch with a cache at a time. A build cut short (a restart into a patch, a stop) is done again
-// by the next server, Lake keeping what it finished.
+// clone (`clone/<repo>/`, whatever the repository is called), `state.json` (the commit the tree's
+// outputs are of, the one checked out, the build going on, the last one that ended, the newest head
+// seen), each build's log (`logs/`), and `.lock`: one server follows a branch with a cache at a
+// time. A build cut short (a restart into a patch, a stop) is done again by the next server, Lake
+// keeping what it finished.
 //
 // Git and Lake are run with argument arrays, never a shell; the address is checked against the
 // schemes followed, the branch by git (`check-ref-format --branch`); nothing that git or Lake starts
@@ -23,7 +24,7 @@ import type { ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { DeployBuild, DeployStatus, DeployStep } from "../shared/deploy.ts";
 import { shortCommit, slimDeploy } from "../shared/deploy.ts";
 import { childEnv, DETACH, end, grouped } from "./children.ts";
@@ -184,9 +185,19 @@ export interface DeployFolder {
   mathlib: string;
 }
 
+/** What the deployment's folder keeps of its own beside the clone of 0.5.0, which was named after
+ *  its repository there (DeploySpec decision 2): a repository named so is moved out of their way. */
+const OWN = /^(?:logs|mathlib-cache|state\.json(?:\.tmp-\d+)?)$/;
+
+/** The deployment's folder: the clone in `clone/<repo>/`, apart from what the folder keeps of its
+ *  own, whatever the repository is called (DeploySpec decision 2); a clone made by 0.5.0, named
+ *  after its repository beside them, is kept where it is — never cloned again — unless its name is
+ *  one of theirs (ensureClone moves it). */
 export function deployFolder(cacheRoot: string, remote: Remote, branch: string): DeployFolder {
   const dir = join(cacheRoot, "deploy", deployKey(remote, branch));
-  return { dir, checkout: join(dir, remote.name), state: join(dir, "state.json"), logs: join(dir, "logs"), mathlib: join(dir, "mathlib-cache") };
+  const was = join(dir, remote.name);
+  const checkout = !OWN.test(remote.name) && existsSync(join(was, ".git")) ? was : join(dir, "clone", remote.name);
+  return { dir, checkout, state: join(dir, "state.json"), logs: join(dir, "logs"), mathlib: join(dir, "mathlib-cache") };
 }
 
 /** The site of a deployment, without `--site`: under the data home by the address and the branch,
@@ -393,17 +404,26 @@ export async function branchToFollow(remote: Remote, given: string | null, cache
  *  nothing half made. The commit checked out, or why there is none. */
 export async function ensureClone(remote: Remote, branch: string, folder: DeployFolder, log: (l: string) => void): Promise<{ commit: string; made: boolean } | { error: string }> {
   const env = gitEnv(remote);
+  // a clone of 0.5.0 named as what its folder keeps of its own (a repository called logs): moved
+  // into the clone's place, what it built with it
+  const was = join(folder.dir, remote.name);
+  if (was !== folder.checkout && OWN.test(remote.name) && existsSync(join(was, ".git")) && !existsSync(folder.checkout)) {
+    mkdirSync(dirname(folder.checkout), { recursive: true });
+    renameSync(was, folder.checkout);
+    log(`the clone moved to ${folder.checkout}: its folder keeps a ${remote.name} of its own`);
+  }
   if (existsSync(join(folder.checkout, ".git"))) {
     const r = await git(["-C", folder.checkout, "rev-parse", "--verify", "HEAD^{commit}"], env);
     const c = r.stdout.trim();
     if (r.code === 0 && SHA.test(c)) return { commit: c, made: false };
     return { error: `the clone ${folder.checkout} cannot be read (${gitWhy(r)}): remove it, and it is made again` };
   }
-  mkdirSync(folder.dir, { recursive: true });
+  const place = dirname(folder.checkout);
+  mkdirSync(place, { recursive: true });
   // what a start that died midway left
-  for (const f of readdirSync(folder.dir)) {
-    const m = new RegExp(`^${remote.name.replace(/[.]/g, "\\.")}\\.tmp-(\\d+)$`).exec(f);
-    if (m && !alive(Number(m[1]))) rmSync(join(folder.dir, f), { recursive: true, force: true });
+  for (const f of readdirSync(place)) {
+    const m = new RegExp(`^${basename(folder.checkout).replace(/[.]/g, "\\.")}\\.tmp-(\\d+)$`).exec(f);
+    if (m && !alive(Number(m[1]))) rmSync(join(place, f), { recursive: true, force: true });
   }
   const tmp = `${folder.checkout}.tmp-${process.pid}`;
   rmSync(tmp, { recursive: true, force: true });
@@ -876,7 +896,7 @@ export class Deployment {
         say(`build: ${short}: getting Mathlib's cache`);
         for (let n = 1; n <= 2 && !this.stopped; n++) {
           // the deployment's own cache, beside the clone in its folder (DeploySpec decision 2)
-          log.say(`$ ${this.o.mathlibCache === "own" ? `MATHLIB_CACHE_DIR=../${basename(this.folder.mathlib)} ` : ""}lake exe cache get`);
+          log.say(`$ ${this.o.mathlibCache === "own" ? `MATHLIB_CACHE_DIR=${relative(this.folder.checkout, this.folder.mathlib)} ` : ""}lake exe cache get`);
           const c = await run(lake, ["exe", "cache", "get"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
           if (c.code === 0) break;
           // Lake builds what the cache did not give

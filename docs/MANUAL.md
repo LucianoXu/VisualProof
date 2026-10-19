@@ -281,8 +281,9 @@ to a team. It needs git, besides elan.
 - **`--branch <name>`**: the branch followed, by default the remote's default branch (asked at each
   start, and remembered for a start without the network). Only that branch is ever fetched: never a
   pull request's or a fork's.
-- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/<repo>/`, one per URL and
-  branch, made at the first start; never your workspace. The site is the URL's and the branch's
+- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/clone/<repo>/`, one per URL
+  and branch, made at the first start; never your workspace. (A deployment made by 0.5.0 keeps its
+  clone where it was, `<repo>-<hash>/<repo>/`, and is not cloned again.) The site is the URL's and the branch's
   (`~/.local/share/visualproof/sites/<repo>-<hash>/`) unless `--site` says otherwise. One server
   follows a branch with a cache at a time. The other commands (`export`, `artwork`, `doctor`,
   `purge-file`) take the clone's folder, which the server names as it starts (`clone:`).

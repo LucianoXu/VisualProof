@@ -33,11 +33,11 @@ function git(dir: string, ...args: string[]): string {
 }
 
 let repos = 0;
-/** A bare repository on this machine, and a working copy that pushes to its main. */
-function repo() {
+/** A bare repository on this machine (`<name>.git`), and a working copy that pushes to its main. */
+function repo(name = "remote") {
   const dir = join(ROOT, `r${++repos}`);
   mkdirSync(dir);
-  const bare = join(dir, "remote.git");
+  const bare = join(dir, `${name}.git`);
   const work = join(dir, "work");
   spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare], { env: G });
   spawnSync("git", ["init", "-q", "-b", "main", work], { env: G });
@@ -235,7 +235,10 @@ test("a deployment's folders: per address and branch, its site wherever the cach
   const r = parseRemote("https://github.com/A/flt-regular") as Remote;
   const f = deployFolder("/c", r, "main");
   assert.match(f.dir, /^\/c\/deploy\/flt-regular-[0-9a-f]{8}$/);
-  assert.equal(f.checkout, join(f.dir, "flt-regular"));
+  // the clone apart from what the folder keeps of its own, whatever the repository is called
+  assert.equal(f.checkout, join(f.dir, "clone", "flt-regular"));
+  assert.equal(f.state, join(f.dir, "state.json"));
+  assert.equal(f.logs, join(f.dir, "logs"));
   // Mathlib's cache, where it is the deployment's own: removed with its folder
   assert.equal(f.mathlib, join(f.dir, "mathlib-cache"));
   assert.notEqual(deployFolder("/c", r, "dev").dir, f.dir);
@@ -277,6 +280,87 @@ test("the clone: made once, whole, at the branch's head; one server follows a br
   // another living process holds it
   writeFileSync(join(folder.dir, ".lock"), `${process.ppid}\n`);
   assert.throws(() => lockDeployment(folder, remote, "main"), DeployBusy);
+});
+
+test("every repository's name is safe: one called as the folder's own entries is cloned, built and followed", async () => {
+  for (const name of ["logs", "state.json", "mathlib-cache", "clone"]) {
+    const r = repo(name);
+    const a = r.commit({ ...PROJECT, "lake-manifest.json": JSON.stringify({ version: "1.1.0", packages: [{ name: "mathlib", type: "git" }] }) });
+    const { d, folder } = await deployment(r, { mathlibCache: "own" });
+    assert.equal(folder.checkout, join(folder.dir, "clone", name));
+    await d.poll();
+    await d.settled();
+    assert.equal(d.status(true).built, a, name);
+    // each in its place: the clone, the state, the log, Mathlib's own cache
+    assert.equal(git(folder.checkout, "rev-parse", "HEAD"), a);
+    assert.equal(JSON.parse(readFileSync(folder.state, "utf8")).outputs.commit, a);
+    assert.ok(existsSync(join(folder.logs, `${a}.log`)), name);
+    assert.ok(readFileSync(join(folder.logs, `${a}.log`), "utf8").includes(`cache: 3 files in ${folder.mathlib}\n`), name);
+  }
+});
+
+/** A deployment as 0.5.0 left it: the clone named after its repository beside the folder's own
+ *  entries, built, its state without `ran`. */
+async function made050(r: ReturnType<typeof repo>) {
+  const remote = parseRemote(r.url) as Remote;
+  const now = deployFolder(join(r.dir, "cache"), remote, "main");
+  const folder = { ...now, checkout: join(now.dir, remote.name) };
+  const c = await ensureClone(remote, "main", folder, () => {});
+  assert.ok("commit" in c);
+  const first = make(remote, folder, c.commit);
+  await first.d.poll();
+  await first.d.settled();
+  const state = JSON.parse(readFileSync(folder.state, "utf8"));
+  delete state.ran;
+  writeFileSync(folder.state, JSON.stringify(state));
+  return { remote, folder, head: c.commit, olean: readFileSync(join(folder.checkout, ".lake", "build", "lib", "lean", "M.olean"), "utf8") };
+}
+
+test("a deployment made by 0.5.0 keeps its clone where it is: not cloned again, its build read at once", async () => {
+  const r = repo("leanycrypt");
+  const a = r.commit(PROJECT);
+  const was = await made050(r);
+  const folder = deployFolder(join(r.dir, "cache"), was.remote, "main");
+  assert.equal(folder.checkout, join(folder.dir, "leanycrypt"));
+  assert.deepEqual(await ensureClone(was.remote, "main", folder, () => {}), { commit: a, made: false });
+  assert.equal(existsSync(join(folder.dir, "clone")), false);
+  const next = make(was.remote, folder, a);
+  assert.equal(next.d.holds(), false);
+  assert.equal(next.d.status(true).built, a);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+  // and goes on building there
+  const b = r.commit({ "M.lean": "def x := 2\n" });
+  await next.d.poll();
+  await next.d.settled();
+  assert.equal(next.d.status(true).built, b);
+  assert.equal(git(join(folder.dir, "leanycrypt"), "rev-parse", "HEAD"), b);
+});
+
+test("a clone of 0.5.0 named as the folder's own entries is moved into the clone's place, with what it built", async () => {
+  const r = repo("logs");
+  const a = r.commit(PROJECT);
+  const was = await made050(r);
+  const folder = deployFolder(join(r.dir, "cache"), was.remote, "main");
+  assert.equal(folder.checkout, join(folder.dir, "clone", "logs"));
+  const said: string[] = [];
+  assert.deepEqual(await ensureClone(was.remote, "main", folder, (l) => said.push(l)), { commit: a, made: false });
+  assert.match(said.join("\n"), /the clone moved to .*clone\/logs/);
+  // what it built came with it
+  assert.equal(readFileSync(join(folder.checkout, ".lake", "build", "lib", "lean", "M.olean"), "utf8"), was.olean);
+  const next = make(was.remote, folder, a);
+  assert.equal(next.d.holds(), false);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+  const b = r.commit({ "M.lean": "def x := 2\n" });
+  await next.d.poll();
+  await next.d.settled();
+  assert.equal(next.d.status(true).built, b);
+  // the logs in their own folder now
+  assert.ok(existsSync(join(folder.dir, "logs", `${b}.log`)));
+  assert.equal(existsSync(join(folder.dir, "logs", ".git")), false);
 });
 
 // ---------------------------------------------------------------- the deployment
@@ -531,9 +615,9 @@ test("Mathlib's cache: the deployment's own in its folder with --mathlib-cache o
   assert.equal(own.d.status(true).last?.ok, true);
   const said = readFileSync(join(own.folder.logs, `${a}.log`), "utf8");
   // the command as it was run, the folder beside the clone
-  assert.match(said, /^\$ MATHLIB_CACHE_DIR=\.\.\/mathlib-cache lake exe cache get$/m);
+  assert.match(said, /^\$ MATHLIB_CACHE_DIR=\.\.\/\.\.\/mathlib-cache lake exe cache get$/m);
   assert.ok(said.includes(`cache: 3 files in ${own.folder.mathlib}\n`), said);
-  assert.equal(join(own.folder.checkout, "..", "mathlib-cache"), own.folder.mathlib);
+  assert.equal(join(own.folder.checkout, "..", "..", "mathlib-cache"), own.folder.mathlib);
   // the default: the user's, as the server's environment says
   const r2 = repo();
   const b = r2.commit({ ...PROJECT, "lake-manifest.json": manifest });

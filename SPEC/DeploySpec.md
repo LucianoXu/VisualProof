@@ -31,9 +31,18 @@ otherwise).
      give `--branch` and ends.
 2. **Its own clone in the cache, per URL and branch** (the owner's decision of 2026-10-18), never
    the user's workspace; nothing written anywhere else. `<cache>/deploy/<repo>-<hash of the URL and
-   the branch>/<repo>/`, made at the first start: an empty repository whose `origin` is the URL, the
-   branch fetched alone, its head checked out detached — in a folder of its own, moved into place
-   once whole.
+   the branch>/clone/<repo>/`, made at the first start: an empty repository whose `origin` is the
+   URL, the branch fetched alone, its head checked out detached — in a folder of its own, moved into
+   place once whole.
+   - **Every repository's name is safe** (the owner's decision of 2026-10-19): the clone is in
+     `clone/` of the deployment's folder, apart from what the folder keeps of its own (`state.json`,
+     `logs/`, `mathlib-cache/`, `.lock`), whatever the repository is called, and **an existing
+     deployment is never cloned again** for it: a clone made by 0.5.0, named after its repository
+     beside those (`<repo>-<hash>/<repo>/`), is kept where it is, with its builds and the project's
+     caches (keyed by its path).
+     - *Proposed*: a clone of 0.5.0 whose name is one of the folder's own (a repository called
+       `logs` or `state.json`, whose logs or state went into it) is moved into `clone/` at the start,
+       what it built with it, rather than cloned again.
    - *Proposed*: the site, without `--site`, is the URL's and the branch's
      (`<data home>/sites/<repo>-<hash>`), not the clone's path: a review does not move with
      `--cache`. One server follows a branch with a cache at a time (`.lock` in the deployment's
@@ -254,7 +263,11 @@ otherwise).
 ### On disk (`<cache>/deploy/`)
 
 - `remotes.json`: `{<url>: {branch, at}}`, the default branches as last asked.
-- `<repo>-<hash>/<repo>/`: the clone (the project; its `.lake` the builds' outputs and packages).
+- `<repo>-<hash>/clone/<repo>/`: the clone (the project; its `.lake` the builds' outputs and
+  packages), named after the repository inside a folder of its own, so that no name collides with
+  the folder's own entries (decision 2); a clone of 0.5.0 stays at `<repo>-<hash>/<repo>/`
+  (`deployFolder` takes it where its `.git` is, unless its name is one of the folder's own:
+  `ensureClone` moves that one into `clone/`).
 - `<repo>-<hash>/state.json`: `{version: 1, url, branch, outputs: {commit, at} | null, ran,
   building: {commit, since} | null, done, last: DeployBuild | null, head: {commit, at} | null}` —
   `outputs` the commit whose build last wrote outputs in the tree, or succeeded (what is said built:
