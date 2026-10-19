@@ -207,10 +207,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
   to someone not given a link, so no reader can make a private project public. Not with
   `--identity-header`, where the sign-in decides who comes in.
 - `--public-url https://host` is the address people reach the server at, when it is not the one
-  their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
-  address, and Copy link makes links with it; a link of it is this site's in a conversation (a
-  chip) whichever address the page was opened at. Without it, the prompt and Copy link carry the
-  address the person's browser used.
+  their browser sends (a proxy in front): every link Share makes (the guest link, read-only and
+  personal links) and Copy link are made with it, and the prompt Share makes for an agent tells it
+  this address; a link of it is this site's in a conversation (a chip) whichever address the page
+  was opened at. Without it, the links and the prompt carry the address the person's browser used.
 - `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
   for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
   and the names given here; any other name is answered 403 (a browser is shown a page that says

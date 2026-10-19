@@ -2113,6 +2113,9 @@ async function boot(): Promise<void> {
   // own (web/src/share.ts); a snapshot is shared as a file
   new Share($("#share-btn"), $("#share-pop"), {
     info: () => data.shareInfo(),
+    // the guest link and a read-only reader's own at the public address, as the server makes the
+    // others (CollabSpec decision 7)
+    base: () => site.base,
     data,
     me: () => people.name,
     person: () => people.person?.id ?? null,

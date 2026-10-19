@@ -238,7 +238,8 @@ function usage(code = 2): never {
            may read (a showcase); never for a private one.
 
   --public-url  the address people reach this server at, when it is not the one their browser
-           sends (a proxy in front): the prompt Share makes for an agent tells it this address.
+           sends (a proxy in front): the links Share and Copy link make, and the prompt Share
+           makes for an agent, carry it.
 
   --allowed-host  without --access-key-file, a name this server is reached by; repeatable. A
            server without a key answers only requests for an IP address, localhost (and the names

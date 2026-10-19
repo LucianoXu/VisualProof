@@ -8,7 +8,10 @@
 // page it let in that link's path, `/k/<key>`, and the page's place goes after it as a fragment,
 // which the browser keeps across the link's redirect. The link is copied at once; where the browser
 // will not (over plain HTTP the clipboard API is not offered, and the old way may be refused too) it
-// is shown selected, to be copied by hand.
+// is shown selected, to be copied by hand. It is made with the server's public address
+// (`--public-url`) where it has one, as every link Share makes is (the read-only and personal links,
+// the agent's prompt: the server's), so that it opens for whoever it is sent to whichever address the
+// page was opened at; else with the page's own.
 //
 // *Read-only link* (server/readonly.ts): a link that shows the project and lets its holder change
 // nothing that is shared, nor be seen. Anyone let in makes one; it lasts until revoked, and is
@@ -55,6 +58,9 @@ export interface ShareHooks {
   /** what this page may share: the link's path on this server (`/k/<key>`, or null where anyone who
    *  reaches it is let in; a read-only reader's own), and whether there are read-only links */
   info(): Promise<ShareInfo>;
+  /** the address the page's links are made with: the server's public one (`--public-url`) where it
+   *  has one, else the page's own origin (web/src/chatlinks.ts, siteOrigins) */
+  base(): string;
   data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly">;
   /** the reader's name as the page knows it, for the agent's default name; null when there is none */
   me(): string | null;
@@ -191,10 +197,11 @@ export class Share {
     return (this.known ??= this.hooks.info().catch(() => ({ path: null })));
   }
 
-  /** The link to this page as it is now: for a read-only reader, the link they came by. */
+  /** The link to this page as it is now, at the server's public address where it has one: for a
+   *  read-only reader, the link they came by. */
   async link(): Promise<string> {
     const { path } = await this.shareInfo();
-    return `${location.origin}${path ?? "/"}${await this.fragment()}`;
+    return `${this.hooks.base()}${path ?? "/"}${await this.fragment()}`;
   }
 
   /** What a link carries after `#`: the address, and with Exactly what I see the snapshot of what the
@@ -269,7 +276,7 @@ export class Share {
       // shown again): shown and copied as the guest link is
       const listed = this.readOnly.kind === "link" && this.readOnly.id !== "";
       if (this.info.readOnly || (this.info.public && !listed)) {
-        const base = `${location.origin}${this.info.readOnly ? (this.info.path ?? "/") : "/"}`;
+        const base = `${this.hooks.base()}${this.info.readOnly ? (this.info.path ?? "/") : "/"}`;
         const link = base + (await this.fragment());
         this.readOnly = { kind: "link", id: "", base, link, made: false, copied: await copy(link) };
       }
