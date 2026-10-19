@@ -13,7 +13,7 @@
 
 import { completions, typingMention } from "../../shared/mentions.ts";
 import type { Mentionable } from "../../shared/mentions.ts";
-import { segments, withoutKeys } from "./chatlinks.ts";
+import { segments } from "./chatlinks.ts";
 import { escapeHtml } from "./highlight.ts";
 import { composing } from "./ime.ts";
 
@@ -57,6 +57,9 @@ export function textOf(root: BoxNode): string {
 export interface InputHooks {
   /** a link of this site as its chip's inner HTML, or null for a link it is not (or cannot read) */
   chip(url: string): string | null;
+  /** `text` with every link of this site that lets in made keyless (web/src/chatlinks.ts,
+   *  `withoutKeys`) */
+  unkeyed(text: string): string;
   /** Enter: send what the box says */
   send(): void;
   /** what the box says changed (its draft is kept) */
@@ -193,7 +196,7 @@ export class ChatInput {
    *  as chips — without the secret of a link that lets in (`withoutKeys`). */
   private nodesOf(text: string): Node[] {
     const out: Node[] = [];
-    for (const s of segments(withoutKeys(text, location.origin), (url) => this.hooks.chip(url) !== null)) {
+    for (const s of segments(this.hooks.unkeyed(text), (url) => this.hooks.chip(url) !== null)) {
       if ("url" in s) {
         out.push(chipNode(s.url, this.hooks.chip(s.url)!));
         continue;

@@ -37,7 +37,7 @@ import type { AgentTalk, ChatMessage, Peer, PresenceView } from "../../shared/co
 import type { Mentionable } from "../../shared/mentions.ts";
 import { BOT } from "./agentmark.ts";
 import { ChatInput } from "./chatinput.ts";
-import { hostOf, withoutKeys } from "./chatlinks.ts";
+import { hostOf } from "./chatlinks.ts";
 import type { Chip } from "./chatlinks.ts";
 import type { ChatWindow } from "./chatwin.ts";
 import type { DataSource } from "./data.ts";
@@ -77,6 +77,9 @@ export interface TalkHooks {
   chip(url: string): Chip | null;
   /** a link to what the reader sees, without the key; null where none can be made */
   seenLink(): Promise<string | null>;
+  /** `text` with every link of this site that lets in made keyless (web/src/chatlinks.ts,
+   *  `withoutKeys`, with the site's addresses) */
+  unkeyed(text: string): string;
   /** the button's count, and its mark */
   counted(n: number, marked: boolean): void;
   /** someone mentioned the reader where they do not read now */
@@ -124,6 +127,7 @@ export class Talk {
         const c = this.hooks.chip(url);
         return c ? chipInner(c) : null;
       },
+      unkeyed: (text) => this.hooks.unkeyed(text),
       send: () => void this.send(),
       changed: () => this.drafts.set(this.channel, this.input.text),
       names: () => this.mentionable(),
@@ -361,7 +365,7 @@ export class Talk {
     const channel = this.channel;
     const a = this.agentOf(channel);
     // a link that lets in, typed whole, is sent without its secret, as a pasted one is
-    const text = withoutKeys(this.input.text, location.origin).trim();
+    const text = this.hooks.unkeyed(this.input.text).trim();
     if (!text || this.sending || (a && (!a.talk || a.talk.state === "offline"))) return;
     if (!(await this.hooks.ensureName())) {
       this.error = "A message is sent under your name: give one first.";

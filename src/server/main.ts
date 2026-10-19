@@ -162,8 +162,8 @@ function usage(code = 2): never {
   --mathlib-cache  where \`lake exe cache get\` keeps Mathlib's files: shared (the default) — the
            user's, as their own builds' (~/.cache/mathlib, or MATHLIB_CACHE_DIR), so that a build
            fetches only what they have not; own — the deployment's, in its folder of the cache
-           (deploy/<repo>-<hash>/mathlib-cache/): about 0.45 GB per version of Mathlib the branch
-           builds, kept until that folder is removed
+           (deploy/<repo>-<hash>/mathlib-cache/): about 0.45 GB, the version of Mathlib checked
+           out alone (\`lake exe cache clean\` after each fetch), removed with that folder
 
   --root   what to read: a library of the lakefile (the modules Lake builds of it) or a module;
            repeatable. By default the lakefile's default targets.
@@ -1127,6 +1127,9 @@ export class App {
       // `?brief`: the build status without its files, which the page reads by GET /api/build
       if (path === "/api/status") {
         const st: Record<string, unknown> = { ...(live.status(url.searchParams.has("brief")) as Record<string, unknown>), lean: this.hover.state() };
+        // the address people reach the server at (--public-url): links of it are this site's, and the
+        // page makes its own with it (CollabSpec, "Copied links")
+        if (this.publicUrl) st.publicUrl = this.publicUrl;
         if (this.readOnlyOf.get(req) !== undefined) {
           delete st.log;
           st.review = { ...(st.review as object), folder: undefined };
@@ -1892,7 +1895,15 @@ async function main(): Promise<void> {
       const d = deployment.status(true);
       console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min; a build stopped past ${limitInWords(deployment.buildMs)}`);
       console.log(`  clone: ${deployment.folder.checkout}`);
-      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : `none yet: the first, of ${shortCommit(deploy!.head)}, starts now, and the page says so until it is done`}; their logs in ${deployment.folder.logs}`);
+      // a failed build that wrote nothing is not built (DeploySpec decision 6): before any that did,
+      // none is, and the next is the next commit pushed
+      const next = deployment.toBuild();
+      const l = d.last;
+      const why = l ? (l.error ?? (l.exit === null ? "lake build was stopped" : l.exit !== undefined ? `lake build exited with ${l.exit}` : null)) : null;
+      const none = next
+        ? `none yet: the first, of ${shortCommit(next)}, starts now, and the page says so until it is done`
+        : `none yet: that of ${shortCommit(l?.commit ?? deploy!.head)} failed${why ? ` (${why})` : ""}, and the next commit pushed is built`;
+      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : none}; their logs in ${deployment.folder.logs}`);
       // where the project is on Mathlib, its cache: the user's, or the deployment's own (DeploySpec decision 2)
       console.log(`  Mathlib's cache: ${o.mathlibCache === "own" ? `${deployment.folder.mathlib}, the deployment's own` : `${sharedMathlibCache()}, the user's, shared by their builds`}`);
     }

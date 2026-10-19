@@ -37,7 +37,8 @@ WorkingDirectory=/var/lib/visualproof-<name>
 # deploy key); --branch, else the remote's default branch; --poll, how often the remote is asked, in
 # minutes; --build-timeout, the hours past which a build is stopped and failed (6 by default);
 # --mathlib-cache own, Mathlib's cache the deployment's own, in its folder of the cache (about
-# 0.45 GB per version of Mathlib, removed with that folder) rather than the user's.
+# 0.45 GB, the version of Mathlib checked out alone, removed with that folder) rather than the
+# user's.
 # --access-key-file lets in only those given the link; put a proxy with TLS in front of it (and give
 # --public-url) when the server is reached over the internet. --updates auto (the
 # default): the server takes VisualProof's patches by itself at a quiet moment — never during a

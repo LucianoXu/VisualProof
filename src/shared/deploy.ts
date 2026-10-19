@@ -43,8 +43,9 @@ export interface DeployStatus {
   next: string | null;
   /** the last build that ended */
   last: DeployBuild | null;
-  /** the commit whose `lake build` made what the tree holds, which the graph is read from; null
-   *  before the first */
+  /** the commit whose build made what the tree's outputs are, which the graph is read from: the
+   *  last whose build wrote outputs, or built it whole — a failed build that wrote none is not built
+   *  (the owner's decision of 2026-10-19); null before the first */
   built: string | null;
 }
 

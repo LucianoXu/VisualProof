@@ -208,7 +208,9 @@ The README says how to install the `visualproof` command. A checkout also runs a
   `--identity-header`, where the sign-in decides who comes in.
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
-  address. Without it, the prompt carries the address the person's browser used.
+  address, and Copy link makes links with it; a link of it is this site's in a conversation (a
+  chip) whichever address the page was opened at. Without it, the prompt and Copy link carry the
+  address the person's browser used.
 - `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
   for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
   and the names given here; any other name is answered 403 (a browser is shown a page that says
@@ -281,8 +283,9 @@ to a team. It needs git, besides elan.
 - **`--branch <name>`**: the branch followed, by default the remote's default branch (asked at each
   start, and remembered for a start without the network). Only that branch is ever fetched: never a
   pull request's or a fork's.
-- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/<repo>/`, one per URL and
-  branch, made at the first start; never your workspace. The site is the URL's and the branch's
+- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/clone/<repo>/`, one per URL
+  and branch, made at the first start; never your workspace. (A deployment made by 0.5.0 keeps its
+  clone where it was, `<repo>-<hash>/<repo>/`, and is not cloned again.) The site is the URL's and the branch's
   (`~/.local/share/visualproof/sites/<repo>-<hash>/`) unless `--site` says otherwise. One server
   follows a branch with a cache at a time. The other commands (`export`, `artwork`, `doctor`,
   `purge-file`) take the clone's folder, which the server names as it starts (`clone:`).
@@ -301,12 +304,14 @@ to a team. It needs git, besides elan.
   default: the user's, as their own builds (`~/.cache/mathlib`, or `MATHLIB_CACHE_DIR` in the
   server's environment), so that a deployment fetches only what they have not. `own`: the
   deployment's, in its folder of the cache, `<cache root>/deploy/<repo>-<hash>/mathlib-cache/`,
-  apart from the user's builds. It costs about 0.45 GB per version of Mathlib the branch builds
-  (8,684 files for Mathlib of August 2026: a small project's first build on it, Mathlib cloned
-  and its cache fetched whole, took 75 s on a fast connection); a bump of Mathlib fetches
-  nearly all of it again, and the versions before stay until the folder is removed: remove
-  `mathlib-cache/` (the next build fetches what it needs again) or the deployment's whole folder,
-  the clone with it. Either way, Mathlib's build unpacked in the clone's `.lake` takes about 8 GB.
+  apart from the user's builds. It holds one version of Mathlib, about 0.45 GB (8,684 files for
+  Mathlib of August 2026: a small project's first build on it, Mathlib cloned and its cache
+  fetched whole, took 75 s on a fast connection): after each `lake exe cache get`, `lake exe cache
+  clean` deletes what the version checked out does not use, so that a bump of Mathlib, which
+  fetches nearly all of it again, leaves the version before deleted (the user's cache is never
+  cleaned). Removing `mathlib-cache/` frees it (the next build fetches what it needs again), the
+  deployment's whole folder the clone with it. Either way, Mathlib's build unpacked in the clone's
+  `.lake` takes about 8 GB.
 - **Meanwhile the board keeps answering**, showing the last build: the pill says the build's step
   (`Fetching a1b2c3d`, `Mathlib's cache · a1b2c3d`, `Building 12 / 40 · …`), and once it is read,
   the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
@@ -317,7 +322,9 @@ to a team. It needs git, besides elan.
   board reading what could be; `Build failed · a1b2c3d` where no file says it (a lakefile that does
   not elaborate). The history keeps each build's commit, on the branch, so that the Time Machine's
   ruler has a long tick per commit; a failing commit whose build compiled nothing new is no new
-  build. Each build's whole log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
+  build, and is never said built: the popover says it failed and that the board shows the build
+  before, which is what the history, the loading page and the agents call built. Each build's whole
+  log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
 - **The first start** clones the branch (the terminal says it), then builds its head; until a build
   can be read, the page says what is being done (`The first build of github.com/A/B (main) at
   a1b2c3d: lake build, 3 of 8 files…`), and where it failed, why and what comes next, with the end

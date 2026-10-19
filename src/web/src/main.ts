@@ -111,7 +111,7 @@ import { Tabs } from "./tabs.ts";
 import { Share } from "./share.ts";
 import { excerpt, ownAgents, PUBLIC, stateWords, Talk } from "./talk.ts";
 import { ChatWindow, keepStripClear } from "./chatwin.ts";
-import { chipOf, chipText, copyLink, noteHash, noteIn, siteLink } from "./chatlinks.ts";
+import { chipOf, chipText, copyLink, noteHash, noteIn, siteLink, siteOrigins, withoutKeys } from "./chatlinks.ts";
 import type { Chip } from "./chatlinks.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
@@ -186,12 +186,12 @@ interface GraphInfo {
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
-async function waitReady(data: DataSource): Promise<{ graph: GraphInfo | null; editor: string | null }> {
+async function waitReady(data: DataSource): Promise<{ graph: GraphInfo | null; editor: string | null; publicUrl: string | null }> {
   const log = $("#loader-log");
   for (;;) {
     const st = await data.status();
     log.textContent = (st.log ?? []).slice(-8).join("\n");
-    if (st.state === "ready") return { graph: (st as { graph?: GraphInfo }).graph ?? null, editor: st.editor ?? null };
+    if (st.state === "ready") return { graph: (st as { graph?: GraphInfo }).graph ?? null, editor: st.editor ?? null, publicUrl: st.publicUrl ?? null };
     // a server that builds what it shows (DeploySpec decision 7) says what it is doing, and what
     // failed, until a build can be read: never a dead end
     if (st.deploy) {
@@ -244,6 +244,10 @@ async function boot(): Promise<void> {
    *  set up; null for any other page. It changes nothing that is shared and offers nothing that would. */
   const reader: "link" | "public" | null = data.snapshot ? null : ((await data.identity()).readOnly?.by ?? null);
   const editor = new Editor(store, ready.editor);
+  /** this site's addresses (CollabSpec, "Copied links"): the page's own, and the one people reach
+   *  the server at (`--public-url`), whose links are this site's too and with which the page makes
+   *  its own, as agents and Share do */
+  const site = siteOrigins(location.origin, ready.publicUrl);
   // tips in place (GuideSpec decision 9; web/src/intip.ts): the moments the page tells of, before the
   // guide is made; and the release the server runs (UpdateSpec), as its event stream says it
   let offerTip = (_rule: string): void => {};
@@ -1636,7 +1640,8 @@ async function boot(): Promise<void> {
       openAddress(hash);
     },
     chip: (url) => chipFor(url),
-    seenLink: async () => copyLink(location, await seenHash()),
+    seenLink: async () => copyLink({ origin: site.base, pathname: location.pathname }, await seenHash()),
+    unkeyed: (text) => withoutKeys(text, site.origins),
     counted: (n, marked) => {
       const badge = $("#talk-badge");
       badge.hidden = n === 0;
@@ -1677,7 +1682,7 @@ async function boot(): Promise<void> {
   /** A link of this site's chip (CollabSpec decision 13, web/src/chatlinks.ts): named by what the page
    *  knows — a view's title, a note's words; null for any other link and one it cannot read. */
   const chipFor = (url: string): Chip | null => {
-    const l = siteLink(url, location.origin);
+    const l = siteLink(url, site.origins);
     if (!l) return null;
     return chipOf(l, {
       view: (id) => (id === PROJECT ? "the Project" : views.summary(id) ? views.title(id) : null),
@@ -3797,7 +3802,7 @@ async function boot(): Promise<void> {
     else if (t.kind === "cluster") hash = encodeState({ ...base, picks: null, shown: { cluster: t.key } });
     else if (t.kind === "note" && on.note) hash = noteHash(encodeState(base), on.note, noteOf(on.note)?.kind === "view");
     else hash = await seenHash();
-    const url = copyLink(location, hash);
+    const url = copyLink({ origin: site.base, pathname: location.pathname }, hash);
     const c = chipFor(url);
     await copyText(url, `Link copied: ${c ? chipText(c) : "this page"}. It carries no key: whoever opens it must be let in already.`);
   };

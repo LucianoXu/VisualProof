@@ -8,10 +8,11 @@
 // changes the tree, nothing is read from it, and the board on show stays the last build's.
 //
 // What is kept, in the deployment's folder of the cache (`<cache>/deploy/<repo>-<hash>/`): the
-// clone, `state.json` (the commit the tree's outputs are of, the build going on, the last one
-// that ended, the newest head seen), each build's log (`logs/`), and `.lock`: one server follows a
-// branch with a cache at a time. A build cut short (a restart into a patch, a stop) is done again
-// by the next server, Lake keeping what it finished.
+// clone (`clone/<repo>/`, whatever the repository is called), `state.json` (the commit the tree's
+// outputs are of, the one checked out, the build going on, the last one that ended, the newest head
+// seen), each build's log (`logs/`), and `.lock`: one server follows a branch with a cache at a
+// time. A build cut short (a restart into a patch, a stop) is done again by the next server, Lake
+// keeping what it finished.
 //
 // Git and Lake are run with argument arrays, never a shell; the address is checked against the
 // schemes followed, the branch by git (`check-ref-format --branch`); nothing that git or Lake starts
@@ -23,13 +24,13 @@ import type { ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { DeployBuild, DeployStatus, DeployStep } from "../shared/deploy.ts";
 import { shortCommit, slimDeploy } from "../shared/deploy.ts";
 import { childEnv, DETACH, end, grouped } from "./children.ts";
 import { dataHome, lockSite, SiteBusy } from "./dirs.ts";
 import type { HomeEnv } from "./dirs.ts";
-import { sourceAddress } from "./history.ts";
+import { buildTime, sourceAddress } from "./history.ts";
 import { openProject, ProjectError } from "./project.ts";
 import type { Project } from "./project.ts";
 
@@ -184,9 +185,19 @@ export interface DeployFolder {
   mathlib: string;
 }
 
+/** What the deployment's folder keeps of its own beside the clone of 0.5.0, which was named after
+ *  its repository there (DeploySpec decision 2): a repository named so is moved out of their way. */
+const OWN = /^(?:logs|mathlib-cache|state\.json(?:\.tmp-\d+)?)$/;
+
+/** The deployment's folder: the clone in `clone/<repo>/`, apart from what the folder keeps of its
+ *  own, whatever the repository is called (DeploySpec decision 2); a clone made by 0.5.0, named
+ *  after its repository beside them, is kept where it is — never cloned again — unless its name is
+ *  one of theirs (ensureClone moves it). */
 export function deployFolder(cacheRoot: string, remote: Remote, branch: string): DeployFolder {
   const dir = join(cacheRoot, "deploy", deployKey(remote, branch));
-  return { dir, checkout: join(dir, remote.name), state: join(dir, "state.json"), logs: join(dir, "logs"), mathlib: join(dir, "mathlib-cache") };
+  const was = join(dir, remote.name);
+  const checkout = !OWN.test(remote.name) && existsSync(join(was, ".git")) ? was : join(dir, "clone", remote.name);
+  return { dir, checkout, state: join(dir, "state.json"), logs: join(dir, "logs"), mathlib: join(dir, "mathlib-cache") };
 }
 
 /** The site of a deployment, without `--site`: under the data home by the address and the branch,
@@ -393,17 +404,26 @@ export async function branchToFollow(remote: Remote, given: string | null, cache
  *  nothing half made. The commit checked out, or why there is none. */
 export async function ensureClone(remote: Remote, branch: string, folder: DeployFolder, log: (l: string) => void): Promise<{ commit: string; made: boolean } | { error: string }> {
   const env = gitEnv(remote);
+  // a clone of 0.5.0 named as what its folder keeps of its own (a repository called logs): moved
+  // into the clone's place, what it built with it
+  const was = join(folder.dir, remote.name);
+  if (was !== folder.checkout && OWN.test(remote.name) && existsSync(join(was, ".git")) && !existsSync(folder.checkout)) {
+    mkdirSync(dirname(folder.checkout), { recursive: true });
+    renameSync(was, folder.checkout);
+    log(`the clone moved to ${folder.checkout}: its folder keeps a ${remote.name} of its own`);
+  }
   if (existsSync(join(folder.checkout, ".git"))) {
     const r = await git(["-C", folder.checkout, "rev-parse", "--verify", "HEAD^{commit}"], env);
     const c = r.stdout.trim();
     if (r.code === 0 && SHA.test(c)) return { commit: c, made: false };
     return { error: `the clone ${folder.checkout} cannot be read (${gitWhy(r)}): remove it, and it is made again` };
   }
-  mkdirSync(folder.dir, { recursive: true });
+  const place = dirname(folder.checkout);
+  mkdirSync(place, { recursive: true });
   // what a start that died midway left
-  for (const f of readdirSync(folder.dir)) {
-    const m = new RegExp(`^${remote.name.replace(/[.]/g, "\\.")}\\.tmp-(\\d+)$`).exec(f);
-    if (m && !alive(Number(m[1]))) rmSync(join(folder.dir, f), { recursive: true, force: true });
+  for (const f of readdirSync(place)) {
+    const m = new RegExp(`^${basename(folder.checkout).replace(/[.]/g, "\\.")}\\.tmp-(\\d+)$`).exec(f);
+    if (m && !alive(Number(m[1]))) rmSync(join(place, f), { recursive: true, force: true });
   }
   const tmp = `${folder.checkout}.tmp-${process.pid}`;
   rmSync(tmp, { recursive: true, force: true });
@@ -461,6 +481,24 @@ export function onMathlib(root: string): boolean {
   try {
     const m = JSON.parse(readFileSync(join(root, "lake-manifest.json"), "utf8")) as { packages?: { name?: unknown }[] };
     return Array.isArray(m.packages) && m.packages.some((p) => typeof p?.name === "string" && p.name.toLowerCase() === "mathlib");
+  } catch {
+    return false;
+  }
+}
+
+/** Whether the Mathlib checked out in the project reads `MATHLIB_CACHE_DIR` (since February 2025,
+ *  #21480; every supported toolchain's does): its cache program's source says so (`Cache/IO.lean`,
+ *  `CACHEDIR`). One before keeps its cache by `XDG_CACHE_HOME` alone: the user's. */
+export function mathlibReadsCacheDir(root: string): boolean {
+  let packages = join(".lake", "packages");
+  try {
+    const m = JSON.parse(readFileSync(join(root, "lake-manifest.json"), "utf8")) as { packagesDir?: unknown };
+    if (typeof m.packagesDir === "string" && m.packagesDir) packages = m.packagesDir;
+  } catch {
+    // Lake's default
+  }
+  try {
+    return readFileSync(join(root, packages, "mathlib", "Cache", "IO.lean"), "utf8").includes('"MATHLIB_CACHE_DIR"');
   } catch {
     return false;
   }
@@ -560,8 +598,13 @@ interface DeployState {
   version: 1;
   url: string;
   branch: string;
-  /** the commit whose `lake build` last ran in the tree: what the tree's outputs are of */
+  /** the commit whose build last wrote outputs in the tree, or built it whole: what the tree's
+   *  outputs are of, which the board reads — a failed build that wrote none is not built (the
+   *  owner's decision of 2026-10-19) */
   outputs: { commit: string; at: string } | null;
+  /** the commit whose `lake build` last ran in the tree, whatever came of it: what the tree is
+   *  checked out at between builds (0.5.0 kept none: its `outputs` were this) */
+  ran: string | null;
   /** a build that changed the tree and has not ended: one found here at a start was cut short */
   building: { commit: string; since: string } | null;
   /** the last commit tried, whatever came of it but a try that could not be made */
@@ -656,19 +699,20 @@ export class Deployment {
     this.buildMs = o.buildMs ?? DEFAULT_BUILD_HOURS * 3600_000;
     this.state = this.read();
     const head = this.headNow();
-    // the tree is one build's only where the outputs are of the commit checked out and no build
-    // was going on
-    this.interrupted = this.state.building !== null || (this.state.outputs !== null && head !== null && head !== this.state.outputs.commit);
+    // the tree is one build's only where the commit checked out is the one whose build last ran in
+    // it and no build was going on
+    this.interrupted = this.state.building !== null || (this.state.ran !== null && head !== null && head !== this.state.ran);
     this.want = this.state.head?.commit ?? this.state.building?.commit ?? o.head ?? head;
     this.done = this.interrupted ? null : this.state.done;
     if (this.state.building) o.hooks.log(`build: the build of ${shortCommit(this.state.building.commit)} was cut short (a restart, a stop): it is done again`);
   }
 
   private read(): DeployState {
-    const fresh: DeployState = { version: 1, url: this.remote.url, branch: this.branch, outputs: null, building: null, done: null, last: null, head: null };
+    const fresh: DeployState = { version: 1, url: this.remote.url, branch: this.branch, outputs: null, ran: null, building: null, done: null, last: null, head: null };
     try {
       const s = JSON.parse(readFileSync(this.folder.state, "utf8")) as Partial<DeployState>;
-      return { ...fresh, ...s, version: 1, url: this.remote.url, branch: this.branch };
+      // 0.5.0's: the commit whose build last ran is the one its outputs were said to be of
+      return { ...fresh, ...s, ran: s.ran ?? s.outputs?.commit ?? null, version: 1, url: this.remote.url, branch: this.branch };
     } catch {
       return fresh;
     }
@@ -718,8 +762,9 @@ export class Deployment {
     return this.running !== null;
   }
 
-  /** The commit what the tree holds was built from, and the branch: the history's for each build it
-   *  reads (HistorySpec decision 4). */
+  /** The commit what the tree's outputs were built from, and the branch: the history's for each
+   *  build it reads (HistorySpec decision 4) — the last whose build wrote outputs, not a failed one
+   *  that wrote none (DeploySpec decision 6). */
   commit(): { hash: string; branch: string } | null {
     return this.state.outputs ? { hash: this.state.outputs.commit, branch: this.branch } : null;
   }
@@ -797,6 +842,12 @@ export class Deployment {
       });
   }
 
+  /** The commit built next where none is going on: the newest head seen, where it was not tried
+   *  (the server's first lines say it). */
+  toBuild(): string | null {
+    return this.want && this.want !== this.done && this.want !== this.later ? this.want : null;
+  }
+
   /** Until the build going on and those waiting are done: what the tests wait for. */
   async settled(): Promise<void> {
     while (this.running || this.asking || this.retry) await (this.running ?? this.asking ?? new Promise((ok) => setTimeout(ok, 50)));
@@ -863,9 +914,12 @@ export class Deployment {
         say(`build: ${short}: getting Mathlib's cache`);
         for (let n = 1; n <= 2 && !this.stopped; n++) {
           // the deployment's own cache, beside the clone in its folder (DeploySpec decision 2)
-          log.say(`$ ${this.o.mathlibCache === "own" ? `MATHLIB_CACHE_DIR=../${basename(this.folder.mathlib)} ` : ""}lake exe cache get`);
+          log.say(`$ ${this.o.mathlibCache === "own" ? `MATHLIB_CACHE_DIR=${relative(this.folder.checkout, this.folder.mathlib)} ` : ""}lake exe cache get`);
           const c = await run(lake, ["exe", "cache", "get"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
-          if (c.code === 0) break;
+          if (c.code === 0) {
+            await this.cleanMathlibCache(lake, log);
+            break;
+          }
           // Lake builds what the cache did not give
           log.say(`Mathlib's cache could not be had (${c.error ?? (c.timedOut ? "it took too long" : `exit ${c.code}`)})${n === 1 ? ": trying again" : ": lake build builds what it lacks"}`);
         }
@@ -874,6 +928,9 @@ export class Deployment {
       this.step("build");
       say(`build: ${short}: lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
       log.say(`$ lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
+      // the project's newest `.olean` before the build: whether it wrote any (as the history tells a
+      // new build: HistorySpec decision 4)
+      const before = buildTime(this.o.project);
       const b = await run(lake, ["build", ...this.o.roots], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: this.buildMs, onText: (t) => log.text(t) });
       // cut short by the server's stop: done again at the next start
       if (this.stopped) return;
@@ -881,8 +938,13 @@ export class Deployment {
         await this.restore(log);
         return ended({ ok: false, retry: true, error: `lake could not be run: ${b.error}` });
       }
-      // the tree is this build's, whatever came of it
-      this.state.outputs = { commit, at: new Date().toISOString() };
+      const ok = b.code === 0 && !b.timedOut;
+      // the tree is this build's, whatever came of it: checked out at its commit, its failed files
+      // shown as such; its outputs are, where it built the commit or wrote any. A failed build that
+      // wrote none leaves the board on the last build that did, which is what is said built (the
+      // owner's decision of 2026-10-19)
+      this.state.ran = commit;
+      if (ok || buildTime(this.o.project) > before) this.state.outputs = { commit, at: new Date().toISOString() };
       this.state.building = null;
       this.interrupted = false;
       // the modules a library's globs give, now that they are built
@@ -891,7 +953,6 @@ export class Deployment {
       } catch {
         // read as it was after the checkout
       }
-      const ok = b.code === 0 && !b.timedOut;
       // stopped past the limit: failed, and not tried again (DeploySpec decision 14)
       if (b.timedOut) log.say(`lake build took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped`);
       return ended({ ok, exit: b.code, ...(b.timedOut ? { error: `it took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped` } : {}) });
@@ -905,6 +966,22 @@ export class Deployment {
     }
   }
 
+  /** The deployment's own Mathlib cache keeps the version checked out alone (DeploySpec decision 2,
+   *  the owner's decision of 2026-10-19): after each `lake exe cache get` that succeeded, `lake exe
+   *  cache clean` deletes the files (`<hash>.ltar`) the Mathlib checked out does not link, which
+   *  are what `get` fetches. Never the user's cache: only where the deployment has its own, and the
+   *  Mathlib checked out reads it (one before February 2025 would clean the user's). */
+  private async cleanMathlibCache(lake: string, log: BuildLog): Promise<void> {
+    if (this.o.mathlibCache !== "own" || this.lakeEnv.MATHLIB_CACHE_DIR !== this.folder.mathlib) return;
+    if (!mathlibReadsCacheDir(this.folder.checkout)) {
+      log.say("Mathlib's cache is not cleaned: this Mathlib does not read MATHLIB_CACHE_DIR (it is older than February 2025), and keeps its cache with the user's");
+      return;
+    }
+    log.say(`$ MATHLIB_CACHE_DIR=${relative(this.folder.checkout, this.folder.mathlib)} lake exe cache clean`);
+    const k = await run(lake, ["exe", "cache", "clean"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
+    if (k.code !== 0) log.say(`Mathlib's cache could not be cleaned (${k.error ?? (k.timedOut ? "it took too long" : `exit ${k.code}`)}): what it holds of other versions stays until the next build`);
+  }
+
   /** Whether the clone has `commit`. */
   private async has(commit: string): Promise<boolean> {
     const r = await git(["-C", this.folder.checkout, "cat-file", "-e", `${commit}^{commit}`], this.env, ASK_MS);
@@ -915,7 +992,7 @@ export class Deployment {
    *  out at that build's commit again, so that what is read of it, and a restart, are that build's.
    *  Where that cannot be done, the tree stays held until a build ends. */
   private async restore(log: BuildLog): Promise<void> {
-    const was = this.state.outputs?.commit;
+    const was = this.state.ran;
     if (was) {
       log.say(`back to ${shortCommit(was)}, the last build's commit`);
       const co = await git(["-C", this.folder.checkout, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force", "--detach", was], this.env);
