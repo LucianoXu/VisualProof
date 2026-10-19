@@ -2,8 +2,8 @@
 
 Targets, the members of a target's TCB that need review, its key declarations, why something is in
 a TCB, and references (`uses`, `users`): any level. Then marking targets and keys, and trust (needs
-full). Terms: [Words](words.md). MCP: `review` (actions `targets`, `tcb`, `keys`, `why`); `refs`
-(actions `uses`, `users`); `mark` (actions `target`, `key`); `trust`.
+full). Terms: [Words](words.md). MCP: `review` (`targets`, `tcb`, `keys`, `why`); `refs` (`uses`,
+`users`); `mark` (`target`, `key`); `trust`.
 
 ## `GET /api/agent/targets`
 
@@ -117,8 +117,7 @@ Each is checked as the page's requests are and recorded under your name in your 
 `"agent": true`, with your mark in the timeline.
 
 Names resolve as everywhere (`didYouMean`, folded names). `on` defaults to true. The answer says
-whether anything `changed`; if so, `recorded` is the event written; if it was so already, nothing is
-written.
+whether anything `changed` (`recorded`: the event written); where it was so already, nothing is.
 
 | request | what |
 |---|---|

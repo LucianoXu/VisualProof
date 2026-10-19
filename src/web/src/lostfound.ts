@@ -283,7 +283,10 @@ export class LostAndFound {
         // (ReviewSpec decision 8)
         const rec = e.recordedBy;
         const whose = rec ? `<b>${escapeHtml(e.by ?? "")}</b>` : by;
-        return `${whose} ${verb}${rec ? ` <span class="muted">· recorded by ${this.who(rec.by, undefined, rec.person)}</span>` : ""} ${when}` + (e.comment ? `<div class="act-quote md">${this.hooks.comment(e.comment, e.name)}</div>` : "");
+        // withdrawn since (ReviewSpec decision 9): kept with what was said, and said so
+        const w = e.withdrawn;
+        const gone = w ? ` <span class="muted">· withdrawn ${escapeHtml(stamp(w.at))}${w.recordedBy ? ` by ${this.who(w.recordedBy.by, undefined, w.recordedBy.person)}` : ""}</span>` : "";
+        return `${whose} ${verb}${rec ? ` <span class="muted">· recorded by ${this.who(rec.by, undefined, rec.person)}</span>` : ""} ${when}${gone}` + (e.comment ? `<div class="act-quote md">${this.hooks.comment(e.comment, e.name)}</div>` : "");
       }
       case "target":
         return `<span class="star">★</span> a target, marked by ${by} ${when}`;

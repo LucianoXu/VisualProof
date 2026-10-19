@@ -11,8 +11,14 @@
 // nothing here counts it.
 //
 // Key declarations (ExportSpec decision 1): where the review has a focus, a declaration its review
-// holds can be marked key for that target ("◆ Key for …"), here and in the source window; a
+// holds can be marked key for that target ("◇ Mark as key for …", "◆ Key for …"), in every review box
+// alike — the panel's and each source window's, following or pinned, on its own declaration; a
 // target's panel counts its key declarations apart.
+//
+// An opinion can be withdrawn (ReviewSpec decision 9, the owner's decision of 2026-10-19): Withdraw
+// stands beside the current opinion of whoever the box records for — the reader, or the person they
+// speak for (decision 8) — wherever a review box stands. An approval goes at once; a comment asks
+// first. The opinion and its withdrawal stay in the history ("Alice withdrew their approval").
 //
 // Comments (ReviewSpec, "Comments", decided 2026-10-09) read as light Markdown (web/src/markdown.ts),
 // people's and agents' alike. Each opinion with a comment has a Quote, which puts a quote of it into
@@ -23,8 +29,8 @@
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { insertBlock, MAX_COMMENT, opinionRef, parseRef, quoteOpinion } from "../../shared/comment.ts";
 import type { OpinionRef } from "../../shared/comment.ts";
-import { advice, current, findOpinion, fresh, judgedOn, keyMarked, STANDARD_AXIOMS, statusOf, trustedBy } from "../../shared/review.ts";
-import type { Opinion, Progress, ReviewData, ReviewRequest } from "../../shared/review.ts";
+import { advice, current, findOpinion, fresh, judgedOn, keyMarked, STANDARD_AXIOMS, standing, statusOf, trustedBy } from "../../shared/review.ts";
+import type { Author, Opinion, Progress, ReviewData, ReviewRequest } from "../../shared/review.ts";
 import type { StatusCounts } from "../../shared/keys.ts";
 import { nonStandardAxiom, offBoard } from "../../shared/reviewqueue.ts";
 import type { Queue } from "../../shared/reviewqueue.ts";
@@ -36,7 +42,7 @@ import { lineDiff } from "./linediff.ts";
 import type { LineDiff } from "./linediff.ts";
 import { renderComment } from "./markdown.ts";
 import { membersOf } from "./trust.ts";
-import { invitedNames, VERIFIED } from "./verified.ts";
+import { invitedId, invitedNames, VERIFIED } from "./verified.ts";
 import { reducedMotion } from "./theme.ts";
 import { MAX_NAME, sameName } from "../../shared/collab.ts";
 
@@ -52,6 +58,8 @@ export function ago(iso: string): string {
 }
 
 const VERB: Record<Opinion["verdict"], string> = { approve: "approved", comment: "commented" };
+/** what an opinion withdrawn was, as its withdrawal names it */
+const NOUN: Record<Opinion["verdict"], string> = { approve: "approval", comment: "comment" };
 
 export interface ReviewHooks {
   /** the review as it stands, whether it can be changed here, and who is reviewing: `error` says
@@ -59,11 +67,13 @@ export interface ReviewHooks {
    *  opinions are refused until their log is fixed by hand */
   /** the review, and whether it can be given here: `readOnly` in a snapshot or on a past graph, with
    *  what to say instead of the buttons (`note`; a snapshot's by default) */
-  review(): { data: ReviewData; error: string | null; blocked: string | null; readOnly: boolean; note?: string; reviewer: string | null };
+  review(): { data: ReviewData; error: string | null; blocked: string | null; readOnly: boolean; note?: string; reviewer: string | null; person?: string | null };
   /** the reviewer's name; asks for it (a modal window) when there is none yet; null if they decline */
   ensureReviewer(): Promise<string | null>;
   /** record something; resolves to why it was refused, or null */
   submit(op: ReviewRequest): Promise<string | null>;
+  /** tell the reader what was done, for a moment (an opinion withdrawn); else it is said in the box */
+  said?(text: string): void;
   /** a target's review (web/src/reviewqueue.ts): its review set, and how far it has come */
   queue(i: number): Queue;
   progress(i: number): Progress;
@@ -203,6 +213,25 @@ export class ReviewBox {
       on.innerHTML = f ? `Recording for <b>${escapeHtml(f)}</b> — their opinion, recorded by you` : "";
     }
     for (const w of document.querySelectorAll<HTMLElement>("[data-rv-for-who]")) w.textContent = f ? ` for ${f}` : "";
+    // Withdraw beside the opinion of whoever the boxes record for now
+    const mine = this.voiceMatch();
+    for (const b of document.querySelectorAll<HTMLElement>("button[data-rv-withdraw]")) b.hidden = !mine({ by: b.dataset.rvBy ?? "", person: b.dataset.rvPerson });
+  }
+
+  /** Whose opinions Withdraw takes back (ReviewSpec decision 9): the person the boxes record for
+   *  (decision 8), found as the server finds them (server/reviewapi.ts, voice) — someone invited by
+   *  their link in force, else a guest by their name in any case — or else the reader: by their link
+   *  where they were invited by one, else by their name as their log writes it. Never an agent's. */
+  private voiceMatch(): (o: Author) => boolean {
+    const f = this.forName();
+    const R = this.hooks.review();
+    if (f) {
+      const id = invitedId(f);
+      return (o) => !o.agent && (id ? o.person === id : !o.person && sameName(o.by, f));
+    }
+    const me = R.reviewer?.trim() ?? null;
+    const person = R.person ?? null;
+    return (o) => !o.agent && (person ? o.person === person : !!me && !o.person && o.by === me);
   }
 
   /** The names the "Speaking for" box offers: the people invited by a personal link and those the
@@ -303,6 +332,12 @@ export class ReviewBox {
       const target = this.g.nodes[r].name;
       return this.as(root, () => this.toggleKey(target, v.name));
     }
+    // an opinion taken back (ReviewSpec decision 9)
+    const wd = t.closest<HTMLElement>("[data-rv-withdraw]");
+    if (wd) {
+      this.withdraw(i, { by: wd.dataset.rvBy ?? "", ...(wd.dataset.rvPerson ? { person: wd.dataset.rvPerson } : {}) }, root);
+      return true;
+    }
     const verdict = t.closest<HTMLElement>("[data-rv]")?.dataset.rv as Opinion["verdict"] | undefined;
     if (verdict) {
       this.give(verdict, i, root);
@@ -397,6 +432,30 @@ export class ReviewBox {
     // about (the hash, the text judged) the server records from the graph (server/reviewapi.ts)
     const f = this.forName();
     this.send(root, v.name, async () => ((await this.hooks.edited(i)) ? EDITED : this.hooks.submit({ op: "opinion", name: v.name, verdict, comment: comment || undefined, ...(f ? { for: f } : {}) })));
+  }
+
+  /** Withdraw the opinion of `whose` on declaration `i`, as its Withdraw in `root` does (ReviewSpec
+   *  decision 9): theirs as it stands — the reader's own, or that of the person they speak for,
+   *  recorded as by the reader. An approval goes at once; a comment, whose text then leaves the
+   *  review for its history, is asked about first. What was done is said. */
+  withdraw(i: number, whose: Author, root: HTMLElement): void {
+    const v = this.g.nodes[i];
+    const R = this.hooks.review();
+    if (R.readOnly || R.blocked) return;
+    const o = standing(R.data, v.name, whose);
+    if (!o) return this.told(root, "That opinion is no longer the one that stands.");
+    const f = this.forName();
+    const theirs = f ? `${o.by}'s` : "your";
+    const what = `${theirs} ${NOUN[o.verdict]} ${o.verdict === "approve" ? "of" : "on"} ${this.g.short(i)}`;
+    if (o.verdict === "comment" && typeof confirm === "function" && !confirm(`Withdraw ${what}? It stays in the history; ${f ? `${o.by} will have` : "you will have"} no opinion on ${this.g.short(i)}.`)) return;
+    this.as(root, async () => {
+      const why = await this.hooks.submit({ op: "withdraw", name: v.name, ...(f ? { for: f } : {}) });
+      if (why) return why;
+      const done = `Withdrew ${what}${f ? ", recorded by you" : ""}.`;
+      if (this.hooks.said) this.hooks.said(done);
+      else this.told(root, done);
+      return null;
+    });
   }
 
   /** Approve or comment on an axiom by its name, from the panel of target `i` (the board has no
@@ -597,14 +656,22 @@ export class ReviewBox {
     const key = (o: Opinion) => esc(opinionRef(v.name, o.by, o.at));
     const quote = (o: Opinion) =>
       o.comment && writable ? ` <button type="button" class="rv-quote" data-rv-quote="${key(o)}" title="Quote this comment in yours, linking back to it">Quote</button>` : "";
-    // `compare`: a stale opinion offers what changed since (the latest ones; not the history)
+    // Withdraw, beside the current opinion of whoever the box records for (ReviewSpec decision 9):
+    // on every person's, shown on theirs alone, so that speaking for someone else moves it at once
+    const mine = this.voiceMatch();
+    const withdraw = (o: Opinion) =>
+      R.readOnly || R.blocked || o.agent
+        ? ""
+        : ` <button type="button" class="rv-quote rv-withdraw" data-rv-withdraw data-rv-by="${esc(o.by)}"${o.person ? ` data-rv-person="${esc(o.person)}"` : ""}${mine(o) ? "" : " hidden"} title="Withdraw this ${NOUN[o.verdict]}: afterwards there is no opinion of ${esc(o.by)}'s here (an earlier one is not restored); it stays in the history">Withdraw</button>`;
+    // `compare` (the latest ones): a stale opinion offers what changed since, and the reader's own
+    // can be withdrawn
     const opinion = (o: Opinion, compare = false) => {
       const now = fresh(o, v.hash);
       return (
         // recorded for them by someone else: theirs, without the mark they did not give it under
         // (ReviewSpec decision 8)
-        `<div class="rv-op rv-${o.verdict}${now ? "" : " old"}" data-rv-op="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person && !o.recordedBy ? VERIFIED : ""} ${VERB[o.verdict]}` +
-        ` <span class="muted">· ${ago(o.at)}${o.recordedBy ? ` · recorded by ${esc(o.recordedBy.by)}` : ""}${now ? "" : " · on an earlier version"}</span>${quote(o)}` +
+        `<div class="rv-op rv-${o.verdict}${now ? "" : " old"}${o.withdrawn ? " withdrawn" : ""}" data-rv-op="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person && !o.recordedBy ? VERIFIED : ""} ${VERB[o.verdict]}` +
+        ` <span class="muted">· ${ago(o.at)}${o.recordedBy ? ` · recorded by ${esc(o.recordedBy.by)}` : ""}${now ? "" : " · on an earlier version"}${o.withdrawn ? " · withdrawn" : ""}</span>${quote(o)}${compare ? withdraw(o) : ""}` +
         (o.comment ? `<div class="rv-c md">${this.comment(o.comment, v.name)}</div>` : "") +
         `</div>` +
         // beside the opinion, not in it: a stale opinion is faded, what changed must read clearly
@@ -613,8 +680,20 @@ export class ReviewBox {
     };
     const now = current(d, v.name);
     const all = (Object.hasOwn(d.opinions, v.name) ? d.opinions[v.name] : []).filter((o) => !o.agent);
-    const ops = now.length ? now.map((o) => opinion(o, true)).join("") : `<div class="muted">No opinions yet.</div>`;
-    const history = all.length > now.length ? `<details class="rv-hist"><summary>All ${all.length} opinions</summary>${all.map((o) => opinion(o)).join("")}</details>` : "";
+    const ops = now.length ? now.map((o) => opinion(o, true)).join("") : `<div class="muted">${all.length ? "No opinions now." : "No opinions yet."}</div>`;
+    // the history: every opinion, and each withdrawal at its time (ReviewSpec decision 9), whose it
+    // was and, where someone spoke for them, who typed it
+    const withdrawal = (o: Opinion) =>
+      `<div class="rv-op rv-wd" data-rv-wd="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person && !o.withdrawn!.recordedBy ? VERIFIED : ""} withdrew their ${NOUN[o.verdict]}` +
+      ` <span class="muted">· ${ago(o.withdrawn!.at)}${o.withdrawn!.recordedBy ? ` · recorded by ${esc(o.withdrawn!.recordedBy.by)}` : ""}</span></div>`;
+    const entries = all.flatMap((o) => [{ at: o.at, html: () => opinion(o) }, ...(o.withdrawn ? [{ at: o.withdrawn.at, html: () => withdrawal(o) }] : [])]);
+    // in time order, an opinion before its withdrawal (a stable sort)
+    entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+    const gone = all.filter((o) => o.withdrawn).length;
+    const history =
+      all.length > now.length
+        ? `<details class="rv-hist"><summary>All ${all.length} opinions${gone ? ` · ${gone} withdrawn` : ""}</summary>${entries.map((x) => x.html()).join("")}</details>`
+        : "";
     // each agent's latest advice, apart: what to look at first, not part of the review
     const adv = advice(d, v.name);
     const advised = adv.length
@@ -632,8 +711,8 @@ export class ReviewBox {
           .join("") +
         `</div>`
       : "";
-    // a reviewer's new opinion replaces their earlier one; nothing is taken back otherwise
-    // (ReviewSpec decision 1)
+    // a reviewer's new opinion replaces their earlier one (ReviewSpec decision 1); their current one
+    // is withdrawn beside it (decision 9)
     let controls: string;
     if (R.readOnly) controls = `<div class="muted rv-note">${esc(R.note ?? "A snapshot shows the review as it was when it was taken.")}</div>`;
     else if (R.blocked) controls = `<div class="banner bad">${esc(R.blocked)}</div>`;

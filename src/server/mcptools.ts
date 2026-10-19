@@ -181,7 +181,11 @@ export const TOOLS: ToolDef[] = [
   {
     name: "opinion",
     about: "Give advice on a declaration's present version: approve, or comment with what is wrong, unclear or worth checking, and where. Advice is shown apart and never counted.",
-    call: { method: "POST", path: "/api/agent/opinion" },
+    default: "give",
+    actions: {
+      give: { method: "POST", path: "/api/agent/opinion", says: "approve or comment; a later one replaces yours", args: ["name", "verdict", "comment", "opinions"] },
+      withdraw: { method: "POST", path: "/api/agent/opinion/withdraw", says: "take your advice on name back", args: ["name"] },
+    },
     args: {
       name: NAME,
       verdict: str("approve or comment", ["approve", "comment"]),

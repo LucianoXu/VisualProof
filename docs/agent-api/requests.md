@@ -6,8 +6,7 @@ that describe the API itself. The rules are in the [index](README.md).
 ## Requests and answers
 
 - `GET` parameters go in the query string, URL-encoded (`curl -G --data-urlencode name=…`).
-- A `POST` body is a JSON object, `content-type: application/json`, at most 1 MB (a larger one is
-  refused with 413).
+- A `POST` body is a JSON object, `content-type: application/json`, at most 1 MB (else 413).
 - Names are full Lean names (`FltRegular.CaseI.f0k₁`), as `search` returns them.
 - **A server that lets in only those given its link** (`--access-key-file`) answers 404 to
   everything, `/api/agent` included, unless the request carries `Authorization: Bearer <key>` (the
@@ -16,9 +15,8 @@ that describe the API itself. The rules are in the [index](README.md).
   **A server without a key** answers only its IP addresses, `localhost` and the names it was given
   (`--public-url`, `--allowed-host`): another name is 403, in plain text — use the address your
   prompt gives.
-- Every answer is JSON — but the documentation, the MCP server's file and install text, and the
-  files you download. **Every error
-  is `{error, hint}`**: what went wrong and what to do. A name that does not exist answers 404 with
+- Every answer is JSON but the documentation, the MCP server's file and install text, and files you
+  download. **Every error is `{error, hint}`**: what went wrong and what to do. A name that does not exist answers 404 with
   `didYouMean` (the same name in another case, a typo or two away, then search hits). A name the
   graph folds into a declaration ([words](words.md), Folded names) is answered for that declaration.
 - **503 with `Retry-After`** (and `retryAfter` in the body): ask again after that many seconds — the
@@ -26,12 +24,12 @@ that describe the API itself. The rules are in the [index](README.md).
 - **Several at once.** One request can carry what would otherwise take several:
   `declaration?include=…` (a declaration with its source, context, references and what Lean says),
   `declaration?names=…` or `declarations?names=…` (up to 25), `POST opinion {opinions}` or
-  `POST opinions` (up to 100 pieces of advice). Each part or item is answered on its own: one that
-  fails says why, with its own `status`, and does not refuse the others.
+  `POST opinions` (up to 100 pieces of advice). Each part or item is answered on its own: one
+  failing says why, with its own `status`, refusing no other.
 
 ```bash
-H=(-H "Authorization: Bearer $TOKEN")      # or: -H "X-VisualProof-Name: Claude" -H "X-VisualProof-Kind: agent"
-B=$VISUALPROOF/api/agent                   # the server's address (http://127.0.0.1:4173 by default), then /api/agent
+H=(-H "Authorization: Bearer $TOKEN")  # or: -H "X-VisualProof-Name: Claude" -H "X-VisualProof-Kind: agent"
+B=$VISUALPROOF/api/agent  # the server's address (http://127.0.0.1:4173 by default), then /api/agent
 curl -s "${H[@]}" "$B"                                   # the entry
 curl -s "${H[@]}" -G "$B/declaration" --data-urlencode name=IsRegularPrime \
   --data-urlencode include=source,context,uses
@@ -54,12 +52,11 @@ Share in the page (*AI agent*) makes a token for one agent and a prompt that car
   never print it, and store it nowhere but where a tool's configuration needs it — e.g. a curl
   config readable by you alone (`umask 077; mkdir -p ~/.visualproof; printf 'header =
   "Authorization: Bearer %s"\n' "$TOKEN" > ~/.visualproof/curl.cfg`, then `curl -K
-  ~/.visualproof/curl.cfg …`). The server keeps it, readable by its owner alone, so that people can
-  show your prompt again from Share while the token is in force (agents are refused that).
-- **fixes who you are**: the name you act under is the one the person gave you, as they wrote it —
-  by default theirs with "'s AI", `Alice's AI` — numbered while another agent in force has it
-  (`Alice's AI 2`), the same for the token's life: your advice, notes and layouts are recorded
-  under it. You are an agent whatever you say: `X-VisualProof-Name` and `X-VisualProof-Kind` are
+  ~/.visualproof/curl.cfg …`). The server keeps it, readable by its owner alone, so that your maker
+  can show your prompt again from Share while the token is in force (no agent can).
+- **fixes who you are**: the name you act under is the one the person gave you, as written — by
+  default theirs with "'s AI", `Alice's AI` — numbered while another agent in force has it
+  (`Alice's AI 2`), the same for the token's life: your advice, notes and layouts go under it. You are an agent whatever you say: `X-VisualProof-Name` and `X-VisualProof-Kind` are
   **ignored** with a token, never refused (the entry says so in `you.note` when a request named
   someone else).
 - **fixes what you may change**: `read`, `advise` (the default) or `full`, chosen by the person, at

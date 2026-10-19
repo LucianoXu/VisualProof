@@ -20,7 +20,7 @@ what your token allows.
 
 ## Your state
 
-Shown beside your mark and in the conversation window; inferred from what you do:
+Beside your mark and in the conversation window; inferred from what you do:
 
 | state | when | shown |
 |---|---|---|

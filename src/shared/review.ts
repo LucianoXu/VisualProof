@@ -33,6 +33,13 @@
 // stands at a build. A log may still hold such a line: the replay skips it (`readEvent`) without
 // calling it a problem, so that its writer writes on.
 //
+// Since 2026-10-19 a reviewer may withdraw their current opinion (ReviewSpec decision 9, the owner's
+// decision of 2026-10-19): a `withdraw` line, appended like any, never an erasure. The replay marks
+// the opinion it takes back (`withdrawn`), which stays in the declaration's history; `current` and
+// `advice`, and so every status, count and queue, read its author as having no opinion there, their
+// earlier ones not restored. An agent withdraws its own advice alone, and a person may withdraw the
+// opinion of the person they speak for, as recording one (decision 8).
+//
 // Since 2026-10-09 a move (HistorySpec.md) carries what was said of one declaration to another, and
 // says where one is another renamed: shared/moves.ts replays it. Since 2026-10-11 the library's
 // files and the links into them are events too (AttachmentSpec.md): shared/library.ts replays them.
@@ -78,6 +85,16 @@ export interface Opinion {
   was?: string[];
   /** recorded for them by someone else at the same screen (ReviewSpec decision 8): who typed it,
    *  and the link they came by where invited; `by` and `person` are theirs it was recorded for */
+  recordedBy?: { by: string; person?: string };
+  /** taken back by its author, or by someone speaking for them (ReviewSpec decision 9): it stays in
+   *  the history, and nothing that summarises the review reads it; absent while it stands */
+  withdrawn?: Withdrawal;
+}
+
+/** When an opinion was withdrawn, and — where someone speaking for its author did it at the same
+ *  screen (ReviewSpec decision 8) — who typed it, and the link they came by where invited. */
+export interface Withdrawal {
+  at: string;
   recordedBy?: { by: string; person?: string };
 }
 
@@ -174,6 +191,9 @@ export function validPersonId(s: unknown): s is string {
 export type ReviewRequest =
   /** `for`: recorded as another person's, named as the page gives them (ReviewSpec decision 8) */
   | { op: "opinion"; name: string; verdict: Verdict; comment?: string; for?: string }
+  /** the asker's current opinion on `name` taken back, or (`for`) the person's they speak for
+   *  (ReviewSpec decision 9) */
+  | { op: "withdraw"; name: string; for?: string }
   | { op: "target"; name: string; on: boolean }
   | { op: "trust"; prefix: string; on: boolean }
   /** `name` marked as a key declaration of `target`, or no longer (ExportSpec decision 1) */
@@ -189,6 +209,7 @@ export type ReviewOp = (
   /** `for`, `forPerson`: recorded as another person's, by name and, where they are invited, by
    *  their link's id, which the server finds (ReviewSpec decision 8) */
   | { op: "opinion"; name: string; verdict: Verdict; comment?: string; hash?: string; text?: string; statement?: string; for?: string; forPerson?: string }
+  | { op: "withdraw"; name: string; for?: string; forPerson?: string }
   | { op: "target"; name: string; on: boolean }
   | { op: "trust"; prefix: string; on: boolean }
   | { op: "key"; target: string; name: string; on: boolean }
@@ -205,6 +226,9 @@ export type ReviewOp = (
 export type ReviewEvent =
   /** `for`, `forPerson`: written by `by` as another person's (ReviewSpec decision 8) */
   | ({ op: "opinion"; name: string; for?: string; forPerson?: string } & Opinion)
+  /** the current opinion of `by` on `name` taken back — or, with `for`, `forPerson`, that of the
+   *  person spoken for (ReviewSpec decision 9) */
+  | { op: "withdraw"; at: string; by: string; name: string; for?: string; forPerson?: string; agent?: true; person?: string }
   | { op: "target"; at: string; by: string; name: string; on: boolean; agent?: true; person?: string }
   | { op: "trust"; at: string; by: string; prefix: string; on: boolean; agent?: true; person?: string }
   | { op: "key"; at: string; by: string; target: string; name: string; on: boolean; agent?: true; person?: string }
@@ -212,6 +236,7 @@ export type ReviewEvent =
   | MoveEvent
   | LibraryEvent;
 type OpinionEvent = Extract<ReviewEvent, { op: "opinion" }>;
+type WithdrawEvent = Extract<ReviewEvent, { op: "withdraw" }>;
 
 /** A prefix that can be trusted: a dotted Lean name, as a module or a namespace is written, and
  *  short enough to read in a list. */
@@ -241,9 +266,10 @@ export function invalid(r: unknown): string | null {
   // an agent may record is its level's to say, checked where the request comes in
   if (o.agent !== undefined && typeof o.agent !== "boolean") return "agent";
   if (o.person !== undefined && (!validPersonId(o.person) || o.agent)) return "person";
-  // an opinion recorded for someone else (ReviewSpec decision 8): a person's, for another person
+  // an opinion recorded for someone else (ReviewSpec decision 8), or withdrawn for them (decision
+  // 9): a person's, for another person
   if (o.for !== undefined || o.forPerson !== undefined) {
-    if (o.op !== "opinion") return "only an opinion is recorded for someone else";
+    if (o.op !== "opinion" && o.op !== "withdraw") return "only an opinion, or its withdrawal, is recorded for someone else";
     if (o.agent) return "an agent records for no one";
     if (typeof o.for !== "string" || !validName(o.for.trim())) return "for";
     if (o.forPerson !== undefined && !validPersonId(o.forPerson)) return "forPerson";
@@ -258,6 +284,8 @@ export function invalid(r: unknown): string | null {
       if (!str(o.text, MAX_TEXT, true)) return "text";
       if (!str(o.statement, MAX_TEXT, true)) return "statement";
       if (o.text !== undefined && o.statement !== undefined) return "a text or a statement, not both";
+      return null;
+    case "withdraw":
       return null;
     case "target":
       return typeof o.on === "boolean" ? null : "on";
@@ -306,6 +334,16 @@ export function eventOf(d: ReviewData, r: ReviewOp, toolchain: string, now: stri
       }
       return e;
     }
+    case "withdraw": {
+      const e: WithdrawEvent = { op: "withdraw", at: now, by, ...person, name: r.name };
+      // withdrawn for someone else (ReviewSpec decision 9)
+      if (r.for?.trim()) {
+        e.for = r.for.trim();
+        if (r.forPerson) e.forPerson = r.forPerson;
+      }
+      if (r.agent) e.agent = true;
+      return e;
+    }
     case "target":
       return { op: "target", at: now, by, ...person, name: r.name, on: r.on, ...agent };
     case "trust":
@@ -352,6 +390,17 @@ export function applyEvent(d: ReviewData, e: ReviewEvent): void {
     case "opinion": {
       const { op: _op, name, for: forName, forPerson, ...o } = e;
       (Object.hasOwn(d.opinions, name) ? d.opinions[name] : (d.opinions[name] = [])).push(forName === undefined ? o : recordedFor(d, o, forName, forPerson));
+      return;
+    }
+    case "withdraw": {
+      // the latest opinion of theirs, as `current` reads it, unless withdrawn already: marked, kept
+      // where it is (ReviewSpec decision 9); a line with nothing to take back does nothing
+      const ops = Object.hasOwn(d.opinions, e.name) ? d.opinions[e.name] : null;
+      const whose = voice(e);
+      const k = ops ? ops.findLastIndex((o) => author(o) === whose) : -1;
+      if (!ops || k < 0 || ops[k].withdrawn) return;
+      const by = e.for === undefined ? {} : { recordedBy: { by: e.by, ...person } };
+      ops[k] = { ...ops[k], withdrawn: { at: e.at, ...by } };
       return;
     }
     case "target":
@@ -407,6 +456,7 @@ function named(d: ReviewData, id: string, name: string): void {
     for (const o of ops) {
       if (o.person === id) o.by = name;
       if (o.recordedBy?.person === id) o.recordedBy.by = name;
+      if (o.withdrawn?.recordedBy?.person === id) o.withdrawn.recordedBy.by = name;
     }
   for (const t of Object.values(d.targets)) if (t.person === id) t.by = name;
   for (const marks of Object.values(d.keys)) for (const m of Object.values(marks)) if (m.person === id) m.by = name;
@@ -429,11 +479,14 @@ export function record(d: ReviewData, r: ReviewOp, toolchain: string, now: strin
 }
 
 /** Whether recording `r` would change nothing: a target marked that is one, a prefix trusted that
- *  is, a key declaration marked that is. Such a request is answered, and nothing is appended. */
+ *  is, a key declaration marked that is, a withdrawal with no opinion standing to take back. Such a
+ *  request is answered, and nothing is appended. */
 export function noChange(d: ReviewData, r: ReviewOp): boolean {
   if (r.op === "target") return Object.hasOwn(d.targets, r.name) === r.on;
   if (r.op === "trust") return d.trusted.includes(r.prefix) === r.on;
   if (r.op === "key") return keyMarked(d, r.target, r.name) === r.on;
+  // nothing standing to take back (ReviewSpec decision 9)
+  if (r.op === "withdraw") return !standing(d, r.name, r.for?.trim() ? { by: r.for.trim(), ...(r.forPerson ? { person: r.forPerson } : {}) } : { by: r.by.trim(), agent: r.agent, person: r.person });
   if (r.op === "move") return moveIsIdle(d, { ...r, rename: r.rename || undefined });
   if (isLibraryOp(r.op)) return libraryNoChange(d, r as LibraryOp);
   return false;
@@ -479,14 +532,19 @@ export function readEvent(raw: unknown, agentLog: boolean, personLog: string | n
       }
       if (e.text !== undefined && e.statement !== undefined) return "a text and a statement";
       // recorded for someone else (ReviewSpec decision 8): a person's line, for another person
-      if (o.for !== undefined || o.forPerson !== undefined) {
-        if (agentLog) return "an agent's opinion recorded for someone else";
-        if (typeof o.for !== "string" || !validName(o.for)) return "for";
-        if (o.forPerson !== undefined && !validPersonId(o.forPerson)) return "forPerson";
-        if (o.for === by || (o.forPerson !== undefined && o.forPerson === personLog)) return "an opinion recorded for its own writer";
-        e.for = o.for as string;
-        if (o.forPerson !== undefined) e.forPerson = o.forPerson as string;
-      }
+      const f = readFor(o, by, agentLog, personLog);
+      if (typeof f === "string") return f;
+      Object.assign(e, f);
+      if (agentLog) e.agent = true;
+      return e;
+    }
+    case "withdraw": {
+      if (!str(o.name, 2000)) return "name";
+      const e: WithdrawEvent = { op: "withdraw", at, by, ...person, name: o.name as string };
+      // withdrawn for someone else (ReviewSpec decision 9), as an opinion is recorded for them
+      const f = readFor(o, by, agentLog, personLog);
+      if (typeof f === "string") return f;
+      Object.assign(e, f);
       if (agentLog) e.agent = true;
       return e;
     }
@@ -507,6 +565,18 @@ export function readEvent(raw: unknown, agentLog: boolean, personLog: string | n
     default:
       return isLibraryOp(o.op) ? readLibraryEvent(o, at, by, agentLog, personLog) : "op";
   }
+}
+
+/** Whom a line of an opinion or of a withdrawal is for, where it is another person's (ReviewSpec
+ *  decisions 8 and 9): `for` and `forPerson` as read, none, or why the line cannot be read — an
+ *  agent's line for anyone, a line for its own writer. */
+function readFor(o: Record<string, unknown>, by: string, agentLog: boolean, personLog: string | null): { for?: string; forPerson?: string } | string {
+  if (o.for === undefined && o.forPerson === undefined) return {};
+  if (agentLog) return o.op === "withdraw" ? "an agent's withdrawal for someone else" : "an agent's opinion recorded for someone else";
+  if (typeof o.for !== "string" || !validName(o.for)) return "for";
+  if (o.forPerson !== undefined && !validPersonId(o.forPerson)) return "forPerson";
+  if (o.for === by || (o.forPerson !== undefined && o.forPerson === personLog)) return o.op === "withdraw" ? "a withdrawal for its own writer" : "an opinion recorded for its own writer";
+  return { for: o.for, ...(o.forPerson !== undefined ? { forPerson: o.forPerson as string } : {}) };
 }
 
 /** One writer's events, in the order of their file, and the file's name: what `replay` merges. */
@@ -677,16 +747,34 @@ export function problemsText(ps: LogProblem[]): string | null {
 
 export type Status = "none" | "approved" | "commented" | "stale";
 
+/** Someone whose opinions are told apart from everyone else's: a person or an agent by name, or
+ *  someone invited by a personal link by their link's id. */
+export interface Author {
+  by: string;
+  agent?: boolean;
+  person?: string;
+}
+
 /** Who gave an opinion: a person and an agent of the same name are two writers, and neither's
  *  replaces the other's; someone invited by a personal link is their link, whatever name they went
  *  by, and a guest who took a name they once had is someone else. */
-function author(o: Opinion): string {
+function author(o: Author): string {
   return o.person ? `link ${o.person}` : (o.agent ? "agent " : "person ") + o.by;
 }
 
-/** Whose an opinion line is: theirs it was recorded for (ReviewSpec decision 8), else its writer's. */
-function voice(e: OpinionEvent): string {
-  return e.for === undefined ? author(e) : author({ by: e.for, verdict: e.verdict, at: e.at, ...(e.forPerson ? { person: e.forPerson } : {}) });
+/** Whose a line of an opinion or a withdrawal is: theirs it was recorded for (ReviewSpec decisions 8
+ *  and 9), else its writer's. */
+function voice(e: OpinionEvent | WithdrawEvent): string {
+  return e.for === undefined ? author(e) : author({ by: e.for, ...(e.forPerson ? { person: e.forPerson } : {}) });
+}
+
+/** The opinion of `who` on `name` that a withdrawal would take back (ReviewSpec decision 9): their
+ *  latest, people's or an agent's, stale or not, unless it is withdrawn already; null where they
+ *  have none standing. */
+export function standing(d: ReviewData, name: string, who: Author): Opinion | null {
+  const whose = author(who);
+  const o = (Object.hasOwn(d.opinions, name) ? d.opinions[name] : []).findLast((p) => author(p) === whose);
+  return o && !o.withdrawn ? o : null;
 }
 
 /** An opinion recorded for someone else (ReviewSpec decision 8), as the review holds it: theirs —
@@ -698,12 +786,13 @@ function recordedFor(d: ReviewData, o: Opinion, forName: string, forPerson: stri
 }
 
 /** Each author's latest opinion on a declaration, people's or agents': a new one replaces their
- *  earlier one. */
+ *  earlier one; one withdrawn leaves its author none, their earlier ones not restored (ReviewSpec
+ *  decision 9). */
 function latest(d: ReviewData, name: string, agents: boolean): Opinion[] {
   const out = new Map<string, Opinion>();
   // own keys only: a declaration may be called `constructor` or `toString`
   for (const o of Object.hasOwn(d.opinions, name) ? d.opinions[name] : []) if (!!o.agent === agents) out.set(author(o), o);
-  return [...out.values()];
+  return [...out.values()].filter((o) => !o.withdrawn);
 }
 
 /** Each reviewer's latest opinion on a declaration: a new one replaces their earlier one. People

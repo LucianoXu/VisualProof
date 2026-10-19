@@ -10,8 +10,8 @@ It takes its tools from the server (`GET /api/agent/mcp/tools`: the instructions
 the server's address and project, who you are and when your token expires —, each tool with the
 request it makes, and the documentation's topics), so it never needs an update when the API
 changes. A tool of one domain's operations takes an **`action`**; each tool offers only the actions
-your token's level allows, with the arguments they take, and a tool that allows none is not offered.
-The server still refuses what your level does not allow.
+your level allows, with their arguments; a tool allowing none is not offered. The server still
+refuses what your level does not allow.
 
 ## The tools
 
@@ -28,7 +28,7 @@ Each wraps the endpoints of a topic, which says what their answers hold. `*`: th
 | `refs` | `uses`, `users` | `GET uses`, `users`, [tcb](tcb.md) |
 | `review` | `targets`, `tcb`, `keys`, `why` | `GET targets`, `tcb`, `keys`, `why`, [tcb](tcb.md) |
 | `activity` | — | `GET activity`, [history](history.md) |
-| `opinion` (advise) | — (`name`…, or `opinions` for several) | `POST opinion`, [advice](advice.md) |
+| `opinion` (advise) | `give`\* (`name`…, or `opinions`), `withdraw` | `POST opinion`, `opinion/withdraw`, [advice](advice.md) |
 | `view` | `move`\*, `link`; `ask_follow` (advise) | `POST view`, `view/link`, `ask-follow`, [following](following.md) |
 | `wait_for_message` | — (no arguments) | `GET inbox`, below and [talking](talking.md) |
 | `reply`, `status`, `conversation`, `channel` | — | `POST reply`, `POST status`, `GET conversation`, `GET channel`, [talking](talking.md) |
@@ -42,13 +42,12 @@ Each wraps the endpoints of a topic, which says what their answers hold. `*`: th
 | `history` | `snapshots`, `diff`, `moves`, `last`, `lost`, `archived`; `attach`, `unmove`, `archive` (full) | `history/…`, [history](history.md) |
 | `export` | `model`, `typeset`, `job`, `file`, `artwork` | `export`, `export/job`, `export/file`, `artwork`, [export](export.md) |
 
-Paths are under `/api/agent/`. `GET /api/agent/history/graph` has no tool (it is large: ask it over
-HTTP when you need a past build's whole graph).
+Paths are under `/api/agent/`; `history/graph` has no tool (large: over HTTP, [history](history.md)).
 
-- **Files.** `export` (action `file`) and `library` (action `save`) do not hand the model a file's
-  bytes: they save it as `saveTo` names it, an absolute path on your machine, never over a file that
-  exists. `library` (action `add_file`) reads the file `path` names on your machine and sends its
-  bytes. `library` (actions `page`, `clip`) hands you the page as an image.
+- **Files.** `export` (`file`) and `library` (`save`) do not hand the model a file's bytes: they
+  save it as `saveTo` names it, an absolute path on your machine, never over a file that exists.
+  `library` (`add_file`) reads the file `path` names on your machine and sends its bytes. `library`
+  (`page`, `clip`) hands you the page as an image.
 - **Resources.** The documentation is also offered as MCP resources, `visualproof://docs` (the
   index) and `visualproof://docs/<topic>`, Markdown.
 - **The instructions** it gives the client (at most 2,048 characters, as Claude Code keeps them) say

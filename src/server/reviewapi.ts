@@ -14,6 +14,12 @@
 // declaration of the project. A key declaration is marked for a target, and is a member of what its
 // review holds (shared/reviewqueue.ts).
 //
+// A withdrawal (ReviewSpec decision 9, the owner's decision of 2026-10-19) takes back the asker's
+// current opinion on a declaration — an agent's, its advice — or, at one screen, the current opinion
+// of the person they speak for (decision 8); it is refused where there is none standing. It binds
+// nothing: a declaration gone from the graph, or a file changed since compiled, keeps what was said
+// of it withdrawable.
+//
 // Every refusal is an answer: a status, and words that say what to do instead.
 
 import { readFileSync } from "node:fs";
@@ -22,7 +28,7 @@ import { MAX_NAME, sameName, validName } from "../shared/collab.ts";
 import { exactContext, judgedText } from "../shared/context.ts";
 import type { ModuleContexts } from "../shared/context.ts";
 import type { ViewMeta } from "../shared/graph.ts";
-import { MAX_TEXT, STANDARD_AXIOMS, validPrefix } from "../shared/review.ts";
+import { MAX_TEXT, STANDARD_AXIOMS, standing, validPrefix } from "../shared/review.ts";
 import type { ReviewOp } from "../shared/review.ts";
 import { reviewSet } from "../shared/reviewqueue.ts";
 import type { NewEvent, StoredEvent } from "../shared/timeline.ts";
@@ -154,7 +160,7 @@ export class ReviewApi {
         const comment = typeof b.comment === "string" ? b.comment.trim() : "";
         if (comment.length > 10000) return answer(refuse(400, "The comment is longer than 10,000 characters.", "Say it shorter."));
         if (b.verdict === "comment" && !comment) return answer(refuse(400, "A comment needs text.", "Write it in the box, then Comment."));
-        const voice = this.voice(b.for, who);
+        const voice = this.voice(b.for, who, "opinion");
         if ("status" in voice) return answer(voice);
         const v = this.graph();
         if ("status" in v) return answer(v);
@@ -162,6 +168,32 @@ export class ReviewApi {
         if ("status" in x) return answer(x);
         // an agent's opinion is advice, whatever its level (AgentSpec decision 2)
         return this.record({ op: "opinion", name: x.name, by, verdict: b.verdict, ...(comment ? { comment } : {}), ...(x.hash ? { hash: x.hash } : {}), ...(x.text !== undefined ? { text: x.text } : x.statement !== undefined ? { statement: x.statement } : {}), ...voice, ...agent }, who);
+      }
+      case "withdraw": {
+        if (typeof b.name !== "string" || !b.name.trim() || b.name.length > 2000) return answer(refuse(400, "name is missing.", "Give the declaration's full name."));
+        const voice = this.voice(b.for, who, "withdraw");
+        if ("status" in voice) return answer(voice);
+        // whose opinion it takes back: the one spoken for, else the asker's own (an agent's advice)
+        const whose = voice.for !== undefined ? { by: voice.for, ...(voice.forPerson ? { person: voice.forPerson } : {}) } : { by: me.trim(), agent: who.agent, ...(who.person ? { person: who.person } : {}) };
+        const o = standing(d, b.name, whose);
+        if (!o) {
+          const own = voice.for === undefined;
+          return answer(
+            refuse(
+              409,
+              `${own ? (who.agent ? "You have no advice" : "You have no opinion") : `${voice.for} has no opinion`} on ${b.name} to withdraw.`,
+              !own
+                ? "Only the opinion that stands is withdrawn: theirs, given or recorded for them, and not withdrawn since."
+                : who.agent
+                  ? "Only advice that stands is withdrawn: GET /api/agent/declaration?name=… shows yours (yours: true)."
+                  : "Only a standing opinion is withdrawn: one given, and not withdrawn since.",
+            ),
+          );
+        }
+        const r = this.record({ op: "withdraw", name: b.name, by, ...voice, ...agent }, who);
+        // what was taken back, for the answer: the opinion as it stood
+        if (r.status === 200) (r.body as Record<string, unknown>).withdrawn = { name: b.name, by: o.by, verdict: o.verdict, at: o.at };
+        return r;
       }
       case "target": {
         if (typeof b.on !== "boolean") return answer(refuse(400, "on is true or false.", "Send {op: \"target\", name, on}."));
@@ -210,17 +242,22 @@ export class ReviewApi {
         return this.record({ op: "key", target: b.target, name: b.name, by, on: b.on, ...agent }, who);
       }
       default:
-        return answer(refuse(400, "op is opinion, target, trust or key.", "Send {op, …}."));
+        return answer(refuse(400, "op is opinion, withdraw, target, trust or key.", "Send {op, …}."));
     }
   }
 
-  /** Whose an opinion is to be (ReviewSpec decision 8): the asker's own where `asked` is absent or
-   *  names them; else another person's, recorded for them — by their link's id where `asked` is an
-   *  invited person's name, a guest's as the logs write it — and never an agent's, nor by an agent. */
-  private voice(asked: unknown, who: Writer): { for?: string; forPerson?: string } | Refusal {
+  /** Whose an opinion is to be (ReviewSpec decision 8), or whose a withdrawal takes back (decision
+   *  9): the asker's own where `asked` is absent or names them; else another person's, recorded for
+   *  them — by their link's id where `asked` is an invited person's name, a guest's as the logs write
+   *  it — and never an agent's, nor by an agent. */
+  private voice(asked: unknown, who: Writer, op: "opinion" | "withdraw"): { for?: string; forPerson?: string } | Refusal {
     if (asked === undefined) return {};
-    if (who.agent) return refuse(403, "An agent records no opinion for anyone else.", "Leave out for: your opinion is your own, and advice.");
-    if (typeof asked !== "string" || !validName(asked.trim())) return refuse(400, `for is the name of the person the opinion is recorded for: 1–${MAX_NAME} characters, no line breaks.`, "Send {op: \"opinion\", name, verdict, for: \"<their name>\"}.");
+    if (who.agent)
+      return op === "withdraw"
+        ? refuse(403, "An agent withdraws its own advice alone.", "Leave out for: what you withdraw is your own advice.")
+        : refuse(403, "An agent records no opinion for anyone else.", "Leave out for: your opinion is your own, and advice.");
+    if (typeof asked !== "string" || !validName(asked.trim()))
+      return refuse(400, `for is the name of the person the opinion is ${op === "withdraw" ? "withdrawn" : "recorded"} for: 1–${MAX_NAME} characters, no line breaks.`, op === "withdraw" ? "Send {op: \"withdraw\", name, for: \"<their name>\"}." : "Send {op: \"opinion\", name, verdict, for: \"<their name>\"}.");
     const name = asked.trim();
     const held = this.world.invited?.(name);
     // one's own name, or one's own link: one's own opinion
@@ -232,7 +269,10 @@ export class ReviewApi {
       ...Object.values(d.targets).map((t) => ({ by: t.by, agent: !!t.agent, person: !!t.person })),
       ...Object.values(d.keys).flatMap((marks) => Object.values(marks).map((m) => ({ by: m.by, agent: !!m.agent, person: !!m.person }))),
     ];
-    if (this.world.agentNamed?.(name) || writers.some((w) => w.agent && sameName(w.by, name))) return refuse(400, `${name} is an agent: nobody records an opinion for an agent.`, "Record it for a person, or as your own.");
+    if (this.world.agentNamed?.(name) || writers.some((w) => w.agent && sameName(w.by, name)))
+      return op === "withdraw"
+        ? refuse(400, `${name} is an agent: its advice is withdrawn by it alone.`, "Withdraw a person's opinion, or your own.")
+        : refuse(400, `${name} is an agent: nobody records an opinion for an agent.`, "Record it for a person, or as your own.");
     if (held) return { for: held.name, forPerson: held.id };
     // a guest already in the logs, as they write their name: "bob" is Bob
     const guest = writers.find((w) => !w.agent && !w.person && sameName(w.by, name));

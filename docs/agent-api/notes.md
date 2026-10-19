@@ -1,7 +1,7 @@
 # Notes
 
 Writing notes that point people at something; listing, editing, moving, deleting them. MCP:
-`notes` (actions `write`, `list`, `edit`, `move`, `delete`).
+`notes` (`write`, `list`, `edit`, `move`, `delete`).
 
 ## `POST /api/agent/note` (needs advise)
 

@@ -598,9 +598,13 @@ async function boot(): Promise<void> {
       readOnly: !!data.snapshot || pastShown() || !!reader,
       ...(pastShown() ? { note: `Today's review, against this build. ${PAST_REVIEW}` } : reader ? { note: READ_ONLY_REVIEW } : {}),
       reviewer: people.name,
+      // someone invited by a personal link is their link (CollabSpec decision 9): their opinions
+      // are told by it, as Withdraw finds them
+      person: people.person?.id ?? null,
     }),
     ensureReviewer: () => people.ensure(),
     submit,
+    said: (text) => say(text),
     queue: (i) => flow.queue(i),
     progress: (i) => flow.progress(i),
     reviewLens: (i) => reviewTarget(i),
