@@ -2099,6 +2099,7 @@ async function boot(): Promise<void> {
     info: () => data.shareInfo(),
     data,
     me: () => people.name,
+    person: () => people.person?.id ?? null,
     ensureName: () => people.ensure(),
     // what the reader sees (the owner's decision of 2026-10-12): every followed part as the registry
     // reads it, the camera as the region of the board it shows

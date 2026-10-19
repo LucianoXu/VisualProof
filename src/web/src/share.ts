@@ -36,9 +36,10 @@
 // Below the tabs, the read-only links in force, each with who made it, when and when it was last
 // used, the link to be shown again, and a Revoke; the personal links in force, the same but for the
 // link; then the agents' tokens in force, each with when it was last used, its prompt to be shown
-// again (the token is in it), and a Revoke.
+// again to whoever made it (the token is in it, and whoever holds it reads the agent's private
+// channel: the owner's decision of 2026-10-19), and a Revoke, anyone's.
 
-import { defaultAgentName, uniqueName } from "../../shared/collab.ts";
+import { defaultAgentName, madeBy, uniqueName } from "../../shared/collab.ts";
 import type { AgentTokenInfo, PersonInvite } from "../../shared/collab.ts";
 import { withSnapshot } from "../../shared/sharesnap.ts";
 import { BOT } from "./agentmark.ts";
@@ -56,6 +57,9 @@ export interface ShareHooks {
   data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly">;
   /** the reader's name as the page knows it, for the agent's default name; null when there is none */
   me(): string | null;
+  /** the personal link the reader came by (CollabSpec decision 9), or null: with the name, which
+   *  tokens are theirs, whose prompts they are shown again (AgentSpec decision 7) */
+  person?(): string | null;
   /** the reader's name, asked for when there is none; null when they decline */
   ensureName(): Promise<string | null>;
   /** what the reader sees, as a link's snapshot carries it after `snap=`; null where none is made */
@@ -555,16 +559,18 @@ export class Share {
   }
 
   /** A token in force: who it is for and from whom, its prompt shown again on a click on it (or on
-   *  Show prompt), and Revoke. */
+   *  Show prompt) where the reader made it — whoever holds the token reads its agent's private
+   *  channel (AgentSpec decision 7, the owner's decision of 2026-10-19) —, and Revoke, anyone's. */
   private tokenRow(t: AgentTokenInfo): string {
     const armed = this.arming === t.id;
     const shown = this.agent.kind === "prompt" && this.agent.id === t.id && this.tab === "agent";
     const id = escapeHtml(t.id);
+    const mine = madeBy(t, { name: this.hooks.me(), person: this.hooks.person?.() ?? null });
     return (
       `<div class="sh-tok${shown ? " on" : ""}">` +
-      `<div class="sh-tok-text" data-show="${id}" title="Show its prompt again"><div>${BOT}<b>${escapeHtml(t.name)}</b> <span class="sh-lvl">${escapeHtml(t.level)}</span></div>` +
+      `<div class="sh-tok-text"${mine ? ` data-show="${id}" title="Show its prompt again"` : ` title="Its prompt is shown again to ${escapeHtml(t.by)} alone, who made it"`}><div>${BOT}<b>${escapeHtml(t.name)}</b> <span class="sh-lvl">${escapeHtml(t.level)}</span></div>` +
       `<div class="muted">by ${escapeHtml(t.by)}, ${escapeHtml(ago(t.created))} · expires ${escapeHtml(until(t.expires))} · ${t.lastUsed ? `last used ${escapeHtml(ago(t.lastUsed))}` : "not used yet"}</div></div>` +
-      `<button class="rv-btn sh-act" data-show="${id}" aria-pressed="${shown}" title="Its prompt, with the token, to give the agent again">Show prompt</button>` +
+      (mine ? `<button class="rv-btn sh-act" data-show="${id}" aria-pressed="${shown}" title="Its prompt, with the token, to give the agent again">Show prompt</button>` : "") +
       `<button class="rv-btn sh-act${armed ? " bad" : ""}" data-revoke="${id}" title="It lets the agent in no more, at once">${armed ? "Revoke it" : "Revoke"}</button>` +
       `</div>`
     );
