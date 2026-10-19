@@ -407,9 +407,11 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   browser in whatever the access key. A revoked link answers 410 (who, when) — to a browser asking
   for a page that the key or a personal link of its own does not let in, the page of a link that
   does not open the site (decision 7), as to a link never made; its cookie admits nobody and is
-  cleared. An old link or cookie of a link made anew answers as a revoked one's, saying when it was
-  made anew; a browser the key lets in too is a guest, and `/api/identity` tells it `replaced`
-  (`{at, name}`). A guest's request giving a holder's name counts as nameless. Making, listing and
+  cleared as a page loads (or is shown that page), not by the requests before, so that a browser
+  the key lets in too, a guest from then on, is told by `/api/identity` (`revoked`: who, when) —
+  and a request of a browser that made its link anew, on its way with the old cookie, never clears
+  the new one. An old link or cookie of a link made anew answers as a revoked one's, saying when it
+  was made anew (`replaced`: `{at, name}`). A guest's request giving a holder's name counts as nameless. Making, listing and
   revoking links: 403 to agents, 404 behind `--identity-header`; making and revoking need a name.
   The holder's id travels with what they record (`person`), never with a private reader's layout.
 - **The holder's own link** (decision 9, the owner's decision of 2026-10-19): `POST

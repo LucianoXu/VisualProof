@@ -7,7 +7,7 @@
 // alone. And the page: the item in the name's menu, the window's states.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -102,6 +102,31 @@ test("a personal link made now is kept in full, mode 600, and shown again to its
   }
 });
 
+test("without a key: the holder's link is shown and made anew alike; a browser of the old one is a guest, told why", async () => {
+  const S = await site();
+  try {
+    const made = await S.ask("POST", "/api/share/people", { name: "Bob" }, { "x-visualproof-name": "Olivia" });
+    const { cookie } = await enter(S, made.json!.link);
+    assert.equal((await mine(S, { cookie })).json!.link, made.json!.link);
+    assert.equal((await mine(S, { "x-visualproof-name": "Bob" })).status, 403, "a guest giving the holder's name is not the holder");
+    const anew = await renew(S, { cookie });
+    assert.equal(anew.status, 200);
+    // a request with the old cookie, as one of the renewing page's still on its way: answered as a
+    // guest's, and it does not make the browser forget the cookie — the new one, by then
+    const old = await S.ask("GET", "/api/identity", undefined, { cookie });
+    assert.equal(old.status, 200);
+    assert.equal(old.json!.person, undefined);
+    assert.equal(old.json!.replaced.name, "Bob");
+    assert.deepEqual(old.headers.getSetCookie(), []);
+    // a page loaded with it forgets it
+    const page = await fetch(S.base + "/", { headers: { cookie } });
+    assert.ok(page.headers.getSetCookie().some((c) => c.startsWith(`${S.live.invites.cookieName}=;`) && /Max-Age=0/.test(c)));
+    assert.equal((await S.ask("GET", "/api/identity", undefined, { cookie: anew.cookie })).json!.name, "Bob");
+  } finally {
+    await S.close();
+  }
+});
+
 test("behind a sign-in there are no personal links, and nobody's is shown", async () => {
   const S = await site({ identityHeader: "x-forwarded-user" });
   try {
@@ -181,6 +206,11 @@ test("a link made before 0.6.0 is not shown; made anew it keeps its id, names an
     // revoked since: the cookies of every secret it had say so
     assert.equal((await S.ask("POST", "/api/share/people/revoke", { id }, OWNER)).status, 200);
     for (const c of [as, now]) assert.match((await S.ask("GET", "/api/identity", undefined, c)).json!.error, /revoked by Olivia/);
+    // a browser the key lets in too is told by whom, its requests leaving the cookie for the page to
+    // forget as it loads
+    const told = await S.ask("GET", "/api/identity", undefined, { ...now, authorization: `Bearer ${KEY}` });
+    assert.equal(told.json!.revoked.by, "Olivia");
+    assert.deepEqual(told.headers.getSetCookie(), []);
   } finally {
     await S.close();
   }
@@ -241,6 +271,20 @@ test("the file: the token kept beside its digest, the last old digests, mode 600
     b.close();
     // a token written over by hand, of another id or not the digest's: never shown, the link as one
     // made before 0.6.0, which its holder makes anew
+    // a file that cannot be written: the link stays as it was, its old secret letting in
+    if (process.getuid?.() !== 0) {
+      const c = new Invites(dir);
+      chmodSync(dir, 0o500);
+      try {
+        assert.throws(() => c.renew(id));
+      } finally {
+        chmodSync(dir, 0o700);
+      }
+      assert.equal(c.tokenOf(id), token);
+      assert.equal(c.get(id)?.replaced?.length, 16);
+      assert.ok(c.check(token) && "ok" in c.check(token)!);
+      c.close();
+    }
     for (const bad of [token.replace(id, "0123456789"), `vpp_${id}_${"A".repeat(43)}`, 42]) {
       writeFileSync(file, JSON.stringify({ ...kept, invites: [{ ...kept.invites[0], token: bad, replaced: "nothing" }] }));
       const c = new Invites(dir);

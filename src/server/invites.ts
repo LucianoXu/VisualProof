@@ -250,10 +250,20 @@ export class Invites {
     const r = this.get(id);
     if (!r || r.revoked) return null;
     const token = newToken(r.id);
+    const was = { digest: r.digest, token: r.token, replaced: r.replaced };
     r.replaced = [...(r.replaced ?? []), { digest: r.digest, at: new Date(o.now ?? Date.now()).toISOString() }].slice(-REPLACED_KEPT);
     r.digest = digestOf(token);
     r.token = token;
-    this.save();
+    try {
+      this.save();
+    } catch (e) {
+      // not written: the link stays as it was, its browsers in, rather than made anew until the
+      // server restarts and reads the old one again
+      Object.assign(r, was);
+      if (was.token === undefined) delete r.token;
+      if (was.replaced === undefined) delete r.replaced;
+      throw e;
+    }
     this.onEnded(r, o.keep);
     return { token, record: r };
   }

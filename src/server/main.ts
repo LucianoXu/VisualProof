@@ -1032,7 +1032,13 @@ export class App {
       // read, where nothing else lets them in
       if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length), path);
       const link = this.ids.link(req);
-      const cookies: string[] = link && "ended" in link ? [live.invites.forget()] : [];
+      // a link that ended: its cookie is forgotten as a page loads, once the page has said so. Not
+      // before: the page's requests meanwhile are told (a browser the key lets in too, as a guest,
+      // by /api/identity: web/src/people.ts); and the browser that made a link anew has the new
+      // cookie under the same name, which a request of its pages still on its way with the old one
+      // would answer with the forgetting after it
+      const forget = link && "ended" in link && (path === "/" || path === "/index.html" || asksForPage(req, path));
+      const cookies: string[] = forget ? [live.invites.forget()] : [];
       const ro = this.access && !this.ids.header ? live.readOnly.ofCookie(req.headers.cookie) : null;
       if (ro && "ended" in ro) cookies.push(live.readOnly.forget());
       if (this.access) {
