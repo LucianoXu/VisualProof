@@ -209,10 +209,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
   to someone not given a link, so no reader can make a private project public. Not with
   `--identity-header`, where the sign-in decides who comes in.
 - `--public-url https://host` is the address people reach the server at, when it is not the one
-  their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
-  address, and Copy link makes links with it; a link of it is this site's in a conversation (a
-  chip) whichever address the page was opened at. Without it, the prompt and Copy link carry the
-  address the person's browser used.
+  their browser sends (a proxy in front): every link Share makes (the guest link, read-only and
+  personal links) and Copy link are made with it, and the prompt Share makes for an agent tells it
+  this address; a link of it is this site's in a conversation (a chip) whichever address the page
+  was opened at. Without it, the links and the prompt carry the address the person's browser used.
 - `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
   for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
   and the names given here; any other name is answered 403 (a browser is shown a page that says
@@ -319,7 +319,8 @@ to a team. It needs git, besides elan.
   the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
   its buttons, the branch and the remote, when it was last asked, the build going on and what it
   says now, the newest commit waiting, and the last build that ended: when, how long, and — where it
-  failed — why, with the end of its log (to those let in fully: never a read-only reader). A failed
+  failed — why, with the end of its log (to those let in fully: never a read-only reader), its
+  paths written from the clone's folder (`.`) and the home (`~`), however links lead there. A failed
   build shows its failed files as any failed build does, in the Status colours and the popover, the
   board reading what could be; `Build failed · a1b2c3d` where no file says it (a lakefile that does
   not elaborate). The history keeps each build's commit, on the branch, so that the Time Machine's
@@ -681,8 +682,9 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
   there; touch and hold opens the menu on what is under the finger. Nothing on the board is moved by
   a finger, so the lock is gone.
 - **⋯ at the top** holds the modes (each with what a tap selects), Share, the library, Export,
-  Activity, your name and help; **☰** opens the targets and the board's namespaces or folders as a
-  drawer.
+  Activity, the conversations, your name and help; what is new in Activity and in Everyone shows on
+  ⋯ as one count, with an @ where you were mentioned. **☰** opens the targets and the board's
+  namespaces or folders as a drawer.
 - **The panel** is a sheet from the bottom: a tap on its handle gives it the whole screen or half of
   it, ✕ closes it. A declaration's source, Activity and the lost-and-found take the whole screen.
 - No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of

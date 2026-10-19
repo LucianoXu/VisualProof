@@ -117,8 +117,13 @@ into the latest release only.
   boundary against the branch's code, which runs as the server's user and writes wherever that
   user can. The pages are told the branch, the remote (host and path),
   the build going on, the commit waiting and why a build failed; the end of a build's log, its paths
-  written from the clone's folder (`.`) and the home (`~`), goes to those let in fully and to
-  agents, never to a read-only reader.
+  written from the clone's folder (`.`; the deployment's folder that holds it, `../..`) and the home
+  (`~`), goes to those let in fully and to agents, never to a read-only reader. They are named so
+  whether the log writes them as given or resolved: a home reached through a symlink, and the
+  folders elan and Lake use under it (`~/.elan`, `~/.cache`, or `$ELAN_HOME`, `$XDG_CACHE_HOME` and
+  `$MATHLIB_CACHE_DIR` where they are set) where a symlink leads elsewhere (`~/.elan` →
+  `/data/.elan`), read `~/…` too, so that the log tells no path of the machine; a folder those
+  variables name outside the home is written as given.
 - **Links that save a picture.** A link to an artwork (ExportSpec decision 20) carries its recipe
   after `#`, unsigned: anyone who can send a reader a link — not only an agent the server answered —
   can make it, and make the reader's browser save the picture the page draws of the board, PNG or

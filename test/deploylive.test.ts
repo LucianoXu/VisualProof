@@ -6,11 +6,11 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { App } from "../src/server/main.ts";
@@ -169,6 +169,12 @@ test("a failing commit: its files failed, the build's end of log, what could be 
   assert.equal(st.deploy.last.ok, false);
   assert.equal(st.deploy.last.exit, 1);
   assert.match(st.deploy.last.tail, /Fixture\/Leaf\.lean:\d+:\d+: .*\n/);
+  // its paths named from the clone's folder and the home, whatever links lead there (DeploySpec
+  // decision 11): no path of the machine — the home's, elan's toolchains' (~/.elan → /data/.elan on
+  // a machine whose home has its tools on another disk), the temporary folder the clone is in
+  const elan = join(homedir(), ".elan");
+  for (const p of new Set([homedir(), realpathSync(homedir()), ...(existsSync(elan) ? [realpathSync(elan)] : []), realpathSync(tmpdir())]))
+    assert.ok(!st.deploy.last.tail.includes(`${p}/`), `the end of the log names ${p}: ${st.deploy.last.tail.slice(0, 2000)}`);
   const h = await get("/api/history");
   assert.equal(h.snapshots.at(-1).commit.hash, bad);
   // before v4.29 Lake keeps a failed file's .olean: it shows as out of date, read as last built

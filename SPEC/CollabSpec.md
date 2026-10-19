@@ -78,6 +78,12 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      one line says so.
    - **In the fragment**, which no server sees: `/k/<key>#<the address>&snap=<the snapshot>`.
      Agents make such links too (AgentSpec decision 5).
+   - **At the server's public address** (the owner's decision of 2026-10-19): the guest link is made
+     with `--public-url` where the server is given one, as every other link Share makes is — a
+     read-only link, and the address that is one with `--public` (decision 11), a personal link
+     (decision 9), the agent's prompt (AgentSpec decision 7) — and Copy link's ("Copied links"), so
+     that it opens for whoever it is sent to whichever address the page was opened at; without it,
+     the page's own address.
 8. **Visibility: Visible or Private**, per browser, effective at once. A private page tells nothing
    of where its reader is; they are not listed, cannot be followed or ask to be, but may follow
    others; the others see only a count ("+2 private"). Their layout changes are shared and recorded
@@ -478,7 +484,7 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
     links, made with it, are chips where the page was reached at another address (a proxy's inside
     name, the machine's own). Copy link and the box's link to what the reader sees are made with it
     too, not with the address the page was reached at — as the agents' prompt, their links and
-    Share's personal and read-only links are — so that a link copied opens for the others it is
+    every link Share makes are (decision 7) — so that a link copied opens for the others it is
     given to, whichever address its copier came by. Without `--public-url`, the page's own address.
 - **Writes from the server's own pages** (the owner's decision of 2026-10-19, SECURITY.md; server/access.ts
   `fromOwnPage`): a request other than GET and HEAD whose browser says it comes from another site or

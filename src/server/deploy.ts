@@ -506,28 +506,66 @@ export function mathlibReadsCacheDir(root: string): boolean {
 
 // ---------------------------------------------------------------- a build's log
 
+/** What a build's log names more briefly for the pages (DeploySpec decision 11, SECURITY.md), the
+ *  longest path first: the clone's folder `.`, the deployment's folder that holds it (its logs, its
+ *  own Mathlib cache) from it (`../..`), and the home `~` — each as given and as resolved, since Lean
+ *  prints paths resolved (macOS's /var is /private/var), git and Lake the ones given. A home reached
+ *  through a symlink, or a folder under it that is one, prints resolved too: the folders elan and
+ *  Lake use under it — `~/.elan` (or `$ELAN_HOME`), `~/.cache` (or `$XDG_CACHE_HOME`; Lake's cache,
+ *  Mathlib's), `$MATHLIB_CACHE_DIR` where it is set — read by the path given, under `~`, whatever
+ *  they resolve to (here `~/.elan` → `/data/.elan`: `/data/.elan/toolchains/…/bin/lean` reads
+ *  `~/.elan/toolchains/…/bin/lean`). A folder outside the home keeps the path given. */
+export function logNames(root: string, o: { folder?: string; home?: string; env?: NodeJS.ProcessEnv } = {}): [from: string, to: string][] {
+  const home = o.home ?? homedir();
+  const env = o.env ?? process.env;
+  // a folder not there yet (the clone before the first build's) as its nearest folder resolves
+  const resolved = (p: string): string => {
+    try {
+      return realpathSync(p);
+    } catch {
+      const up = dirname(p);
+      return up === p ? p : join(resolved(up), basename(p));
+    }
+  };
+  const names = new Map<string, string>();
+  const name = (path: string, as: string) => {
+    for (const from of [path, resolved(path)]) if (from.length > 1 && !names.has(from)) names.set(from, as);
+  };
+  name(root, ".");
+  if (o.folder) name(o.folder, relative(root, o.folder) || ".");
+  if (home && home.length > 1) {
+    const brief = (p: string) => (p === home ? "~" : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p);
+    for (const d of [env.ELAN_HOME || join(home, ".elan"), env.XDG_CACHE_HOME || join(home, ".cache"), env.MATHLIB_CACHE_DIR]) if (d) name(d, brief(d));
+    name(home, "~");
+  }
+  return [...names].sort((a, b) => b[0].length - a[0].length);
+}
+
+/** What names a text's paths as `names` (the longest first) says, each where it is a whole path or
+ *  begins one (not `/home/ann` in `/home/anne`, nor in `/mnt/home/ann`), once: what is put in stays. */
+export function pathNamer(names: readonly [string, string][]): (text: string) => string {
+  if (!names.length) return (text) => text;
+  const to = new Map(names);
+  const any = names.map(([from]) => from.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")).join("|");
+  const re = new RegExp(`(?<![\\w.~+@-])(?:${any})(?![\\w.~+@-])`, "g");
+  return (text) => text.replace(re, (m) => to.get(m) ?? m);
+}
+
 /** A build's log: everything its programs wrote, in `logs/<commit>.log` of the deployment (a build
- *  done again writes it again), and its end for the pages, where the clone's folder reads `.` and the
- *  home `~`, colours and redrawn lines taken out. */
+ *  done again writes it again), and its end for the pages, its paths named briefly (`logNames`: the
+ *  clone's folder `.`, the home `~`), colours and redrawn lines taken out. */
 export class BuildLog {
   readonly file: string;
   private fd: number | null = null;
   private lines: string[] = [];
   private partial = "";
-  /** the clone's path as the log may write it, the longest first: Lean prints the path resolved
-   *  (macOS's /var is /private/var), git and Lake the one given */
-  private roots: string[];
+  /** the paths the pages are given by another name (logNames) */
+  private named: (text: string) => string;
 
-  constructor(dir: string, commit: string, root: string) {
+  constructor(dir: string, commit: string, root: string, o: { folder?: string; home?: string; env?: NodeJS.ProcessEnv } = {}) {
     mkdirSync(dir, { recursive: true });
     this.file = join(dir, `${commit}.log`);
-    let real = root;
-    try {
-      real = realpathSync(root);
-    } catch {
-      // not there yet: the path as given
-    }
-    this.roots = [...new Set([real, root])].sort((a, b) => b.length - a.length);
+    this.named = pathNamer(logNames(root, o));
     try {
       this.fd = openSync(this.file, "w", 0o600);
     } catch {
@@ -565,10 +603,7 @@ export class BuildLog {
   /** its end, as the pages are given it: its last `n` lines, the one being written included */
   tail(n = TAIL_LINES): string {
     const last = this.partial.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").split("\r").pop()!.trimEnd();
-    const home = homedir();
-    let t = [...this.lines, ...(last ? [last] : [])].slice(-n).join("\n");
-    for (const r of this.roots) t = t.split(r).join(".");
-    if (home && home.length > 1) t = t.split(home).join("~");
+    const t = this.named([...this.lines, ...(last ? [last] : [])].slice(-n).join("\n"));
     return t.length > TAIL_CHARS ? `…${t.slice(-TAIL_CHARS)}` : t;
   }
 
@@ -870,7 +905,7 @@ export class Deployment {
     this.o.hooks.changed();
     const short = shortCommit(commit);
     const say = this.o.hooks.log;
-    const log = (this.log = new BuildLog(this.folder.logs, commit, this.folder.checkout));
+    const log = (this.log = new BuildLog(this.folder.logs, commit, this.folder.checkout, { folder: this.folder.dir }));
     const g = (args: string[], ms = GIT_MS) => {
       log.say(`$ git ${args.join(" ")}`);
       return git(["-C", this.folder.checkout, ...args], this.env, ms, (t) => log.text(t));

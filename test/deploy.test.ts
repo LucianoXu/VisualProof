@@ -11,7 +11,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { askRemote, branchProblem, branchToFollow, buildEnv, BuildLog, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, limitInWords, lockDeployment, mathlibReadsCacheDir, noPrompts, gitEnv, parseBuildHours, parseRemote, recordedDefault, sharedMathlibCache } from "../src/server/deploy.ts";
+import { askRemote, branchProblem, branchToFollow, buildEnv, BuildLog, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, limitInWords, lockDeployment, mathlibReadsCacheDir, noPrompts, pathNamer, gitEnv, parseBuildHours, parseRemote, recordedDefault, sharedMathlibCache } from "../src/server/deploy.ts";
 import type { DeploymentOptions, Remote } from "../src/server/deploy.ts";
 import { openProject } from "../src/server/project.ts";
 import { stopChildren } from "../src/server/children.ts";
@@ -747,4 +747,60 @@ test("a build's log names the clone '.', by the path given and by the path resol
   log.text(`$ lake build M\nerror: ${realpathSync(real)}/M.lean:1:0: unknown identifier 'oops'\n${link}/N.lean: built\n`);
   log.close();
   assert.equal(log.tail(), "$ lake build M\nerror: ./M.lean:1:0: unknown identifier 'oops'\n./N.lean: built");
+});
+
+test("a build's log names a home reached through a symlink, and elan's and Lake's folders under it, by the home: no path of the machine reaches a page", () => {
+  // as here: the home a link (/home/ann → elsewhere), its .elan and .cache links to a disk of their
+  // own (~/.elan → /data/.elan), which elan and Lake print resolved
+  const T = join(ROOT, "linked-home");
+  const realHome = join(T, "users", "ann");
+  const home = join(T, "home-ann");
+  const disk = join(T, "data");
+  mkdirSync(realHome, { recursive: true });
+  mkdirSync(join(disk, ".elan", "toolchains"), { recursive: true });
+  mkdirSync(join(disk, ".cache", "mathlib"), { recursive: true });
+  mkdirSync(join(disk, "tools", "elan2"), { recursive: true });
+  symlinkSync(realHome, home);
+  symlinkSync(join(disk, ".elan"), join(realHome, ".elan"));
+  symlinkSync(join(disk, ".cache"), join(realHome, ".cache"));
+  // the deployment under the home's cache, as --cache's default puts it; the clone not made yet
+  const folder = join(home, ".cache", "visualproof", "deploy", "r-0123abcd");
+  mkdirSync(folder, { recursive: true });
+  const clone = join(folder, "clone", "r");
+  const log = new BuildLog(join(folder, "logs"), "c0ffee", clone, { folder, home, env: {} });
+  const real = (p: string) => join(realpathSync(disk), p);
+  const lean = "toolchains/leanprover--lean4---v4.34.0/bin/lean";
+  log.text(
+    [
+      `trace: .> LEAN_PATH=${real(".cache/visualproof/deploy/r-0123abcd/clone/r/.lake/build/lib/lean")} ${real(`.elan/${lean}`)} ${real(".cache/visualproof/deploy/r-0123abcd/clone/r/M.lean")} -o ${clone}/.lake/build/M.olean`,
+      `${home}/.elan/bin/lake build M`,
+      `Decompressing ${real(".cache/mathlib/abc.ltar")}; own: ${real(".cache/visualproof/deploy/r-0123abcd/mathlib-cache/def.ltar")}`,
+      `${realpathSync(realHome)}/notes.txt and ${home}`,
+      // a neighbour's path is not the home's
+      `${home}2/x, /mnt${home}/y`,
+    ].join("\n") + "\n",
+  );
+  log.close();
+  const tail = log.tail().split("\n");
+  assert.deepEqual(tail.slice(0, 4), [
+    `trace: .> LEAN_PATH=./.lake/build/lib/lean ~/.elan/${lean} ./M.lean -o ./.lake/build/M.olean`,
+    "~/.elan/bin/lake build M",
+    "Decompressing ~/.cache/mathlib/abc.ltar; own: ../../mathlib-cache/def.ltar",
+    "~/notes.txt and ~",
+  ]);
+  assert.equal(tail[4], `${home}2/x, /mnt${home}/y`);
+  for (const line of tail.slice(0, 4)) assert.ok(!line.includes(T) && !line.includes(realpathSync(T)), `no path of the machine: ${line}`);
+
+  // ELAN_HOME, a folder under the home reached through a link: by its path under the home
+  const elanHome = join(home, "tools", "elan");
+  mkdirSync(join(realHome, "tools"), { recursive: true });
+  symlinkSync(join(disk, "tools", "elan2"), elanHome);
+  const viaEnv = new BuildLog(join(folder, "logs"), "c0ffee2", clone, { folder, home, env: { ELAN_HOME: elanHome } });
+  viaEnv.text(`${realpathSync(join(disk, "tools", "elan2"))}/${lean}\n`);
+  viaEnv.close();
+  assert.equal(viaEnv.tail(), `~/tools/elan/${lean}`);
+
+  // whole paths only, longest first, each once
+  assert.equal(pathNamer([["/a/b/c", "."], ["/a/b", "~"]])("/a/b/c /a/bc /a/b /a/b/c/d"), ". /a/bc ~ ./d");
+  assert.equal(pathNamer([])("/a/b"), "/a/b");
 });

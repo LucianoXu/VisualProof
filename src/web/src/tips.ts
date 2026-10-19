@@ -347,7 +347,7 @@ export const TIPS: Tip[] = [
     id: "conversations",
     group: "together",
     title: "Conversations",
-    text: "The conversation button opens your own window: <b>Everyone</b>, where @ and a name mentions someone, and a private channel with each agent you made. It stays in front, whoever you follow.",
+    text: "The conversation button (Conversations in ⋯ on a phone) opens your own window: <b>Everyone</b>, where @ and a name mentions someone, and a private channel with each agent you made. It stays in front, whoever you follow.",
     who: "full",
     where: "both",
     since: "0.6.0",
