@@ -94,9 +94,10 @@
         <button id="help-btn" class="help-btn" title="Help: tips, keys, the tour (?)" aria-label="Help" aria-haspopup="menu" aria-expanded="false">?</button>
         <div id="help-menu" class="glass" role="menu" aria-label="Help" hidden></div>
       </div>
-      <!-- on a phone the bar's buttons are in one menu (web/src/phone.ts) -->
+      <!-- on a phone the bar's buttons are in one menu, what is new under it on it: Activity's count
+           and the conversations', their mark (web/src/phone.ts) -->
       <div class="more-wrap">
-        <button id="more-btn" class="act-btn act-icon" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="Share, the library, export, activity, your name, help"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg><span id="more-badge" class="act-badge" hidden></span></button>
+        <button id="more-btn" class="act-btn act-icon" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="Share, the library, export, activity, the conversations, your name, help"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg><span id="more-badge" class="act-badge" hidden></span><span id="more-at" class="talk-at" aria-hidden="true" hidden>@</span></button>
         <div id="more-pop" class="glass" role="menu" aria-label="More" hidden></div>
       </div>
     </div>

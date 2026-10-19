@@ -25,6 +25,7 @@ import { stateWords } from "./talk.ts";
 import type { DataSource } from "./data.ts";
 import { escapeHtml } from "./highlight.ts";
 import { MyLink } from "./mylink.ts";
+import { isPhone, PHONE } from "./phone.ts";
 import type { Store } from "./store.ts";
 import { doubleClickActs, inYours, keyActs, pressActs, WHEEL } from "./surfaces.ts";
 import { typing } from "./typing.ts";
@@ -36,6 +37,19 @@ const BEAT_MS = 10_000;
 const IDLE_MS = 5 * 60_000;
 /** initials shown before the rest are counted as "+N" */
 const SHOWN = 5;
+/** On a phone (PhoneSpec decision 6) the people take at most this many places of the bar, "+N" and
+ *  the private readers' count among them, so that the build status and the project's name keep
+ *  theirs: four initials, or three and "+N". */
+const PHONE_PLACES = 4;
+
+/** How many of `people` show by their initials, the rest counted as "+N": on a larger screen five; on
+ *  a phone as many as PHONE_PLACES holds beside the private readers' count (`counted`), one of them
+ *  "+N" where they do not all fit. */
+export function initialsShown(people: number, counted: boolean, phone: boolean): number {
+  if (!phone) return Math.min(people, SHOWN);
+  const places = PHONE_PLACES - (counted ? 1 : 0);
+  return people <= places ? people : places - 1;
+}
 
 /** Where this reader's own name and visibility are changed, and a person's menu opened from their
  *  initials (web/src/peermenu.ts): nothing done there moves them, and Esc closes the menu first */
@@ -163,6 +177,8 @@ export class People {
     this.store = store;
     this.hooks = hooks;
     this.hidden = store.data.private === true;
+    // a phone's bar holds fewer of the others' initials: drawn again across its line
+    if (typeof matchMedia === "function") matchMedia(PHONE).addEventListener("change", () => this.renderPeers());
     // said from the first request on: nothing this page opens or arranges goes under its name
     data.privateSession = this.hidden ? this.session : null;
     this.myLink = new MyLink({
@@ -558,7 +574,7 @@ export class People {
     const all = this.people();
     const hidden = this.privateOthers;
     box.hidden = all.length === 0 && hidden === 0;
-    const shown = all.slice(0, SHOWN);
+    const shown = all.slice(0, initialsShown(all.length, hidden > 0, isPhone()));
     box.innerHTML =
       shown
         .map((p) => {
@@ -580,12 +596,13 @@ export class People {
           return `<button class="peer${p.agent ? " agent" : p.verified ? " verified" : ""}${state}${on}${ask ? " asked" : ""}" data-person="${escapeHtml(p.key)}" style="--c:${this.colorOf(p)}" title="${escapeHtml(tip)}"${menu}>${escapeHtml(this.label(p))}${bot}${dot}${mark}</button>`;
         })
         .join("") +
-      (all.length > SHOWN
-        ? `<span class="peer more" title="${escapeHtml(all.slice(SHOWN).map((p) => this.nameOf(p)).join(", "))}">+${all.length - SHOWN}</span>`
+      (all.length > shown.length
+        ? `<span class="peer more" title="${escapeHtml(all.slice(shown.length).map((p) => this.nameOf(p)).join(", "))}">+${all.length - shown.length}</span>`
         : "") +
-      // the private readers, counted: nothing else is known of them (CollabSpec decision 8)
+      // the private readers, counted: nothing else is known of them (CollabSpec decision 8); on a
+      // phone the count alone, dashed
       (hidden
-        ? `<span class="peer-private" title="${hidden === 1 ? "1 reader is" : `${hidden} readers are`} here privately: not listed, and cannot be followed">+${hidden} private</span>`
+        ? `<span class="peer-private" title="${hidden === 1 ? "1 reader is" : `${hidden} readers are`} here privately: not listed, and cannot be followed">+${hidden}<span class="pv-word"> private</span></span>`
         : "");
   }
 

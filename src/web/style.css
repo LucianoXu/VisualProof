@@ -666,7 +666,7 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 #windows > * { pointer-events: auto; }
 /* a popover lies above the windows: it was opened last, and goes on a press anywhere else. Those
    inside a bar raise the bar with them while they are open */
-#bar:has(#share-pop:not([hidden]), #results:not([hidden]), #who-menu:not([hidden]), #help-menu:not([hidden])), #viewbar:has(#views-menu:not([hidden]), #focus-menu:not([hidden])), #zoom:has(#eyes-pop:not([hidden])) { z-index: 36; }
+#bar:has(#share-pop:not([hidden]), #results:not([hidden]), #who-menu:not([hidden]), #help-menu:not([hidden]), #more-pop:not([hidden])), #viewbar:has(#views-menu:not([hidden]), #focus-menu:not([hidden])), #zoom:has(#eyes-pop:not([hidden])) { z-index: 36; }
 /* a source window (web/src/sourcewin.ts): floating, not modal; as large as its code needs until the
    reader moves or resizes it (floatwin.ts sets its place, and its bounds while it is fitted to its
    code), scrolling down beyond that */
@@ -2768,21 +2768,27 @@ span.tm-row { color: var(--text-2); cursor: default; }
 /* ---------------------------------------------------------------- a phone (PhoneSpec)
 
    At most 640 px wide: a page for reading and reviewing (web/src/phone.ts). The bar keeps Back, the
-   project's name, search and ⋯, which holds the modes and the rest; the side panel is a drawer from
-   ☰; the panel is a sheet from the bottom, the board above it. */
+   project's name, the build status, the people, search and ⋯, which holds the modes and the rest,
+   the conversations among them; the side panel is a drawer from ☰; the panel is a sheet from the
+   bottom, the board above it. */
 .more-wrap, .side-btn, .side-back { display: none; }
 @media (max-width: 640px) {
   /* over the sheet, which stops under it at its tallest, so that what opens from the bar (⋯, the
      search's results, Share) opens over the sheet too */
   #bar { top: 8px; left: 8px; right: 8px; height: 44px; gap: 6px; padding: 0 6px 0 4px; z-index: 31; }
-  #bar .right { gap: 4px; }
+  /* the buttons at the right take their own width, not half the bar: the project's name the rest */
+  #bar .right { gap: 4px; flex: 0 1 auto; }
   #nav-fwd, .brand .logo { display: none; }
   .brand { align-items: center; gap: 6px; }
   .brand .project { display: inline; font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #share-btn, #library-btn, #export-btn, #activity-btn, #who, #help-btn { display: none !important; }
+  #share-btn, #library-btn, #export-btn, #activity-btn, #talk-btn, #who, #help-btn { display: none !important; }
+  /* what is left of their places is their popovers, under the bar: no place of the bar's, nor a gap */
+  #bar .right > :is(.share-wrap, .library-wrap, .talk-wrap, .who-wrap, .help-wrap) { display: contents; }
   .more-wrap { display: block; position: relative; }
-  #more-btn { width: 38px; height: 34px; }
+  #more-btn { width: 36px; height: 34px; }
   #more-badge { position: absolute; top: -5px; right: -5px; }
+  /* the tour's dot on the help, at ⋯'s other corner: its right one is what is new's */
+  #more-btn.has-dot::after { right: auto; left: -1px; }
   #more-pop { position: fixed; top: 58px; right: 8px; width: min(260px, calc(100vw - 16px)); z-index: 46; border-radius: 14px; padding: 6px; display: flex; flex-direction: column; background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg); }
   #more-pop[hidden] { display: none; }
   /* the help menu, from ⋯ → Help: at the top right, as ⋯'s own */
@@ -2790,7 +2796,8 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .more-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 10px; background: none; color: var(--text); font: 15px var(--font); text-align: left; }
   .more-item:active { background: var(--code-bg); }
   .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-  .more-item .act-badge { position: static; margin-left: auto; }
+  .more-item .act-badge, .more-item .talk-at { position: static; margin-left: auto; box-shadow: none; }
+  .more-item .act-badge + .talk-at { margin-left: 4px; }
   /* the modes, at the top of ⋯: each with what a tap selects under its name, the one in use ticked */
   #more-pop { max-height: calc(100dvh - 70px); overflow-y: auto; }
   .more-h { padding: 6px 12px 2px; font-size: 12px; font-weight: 600; color: var(--text-2); }
@@ -2802,8 +2809,26 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .more-l { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
   .more-l small { font-size: 12px; color: var(--text-2); }
   .more-sep { height: 1px; margin: 6px 4px; background: var(--line); }
-  /* search: a narrow field that takes the whole bar while it is used */
-  #search { width: 92px; height: 34px; padding: 0 10px; }
+  /* the build status and the project's name keep their words beside the people and search: the
+     name what the bar leaves it beside the status's dot and first word, the status the rest up to its
+     whole text (in its popover whatever is cut, its progress in the bar's line) */
+  .build-pill { flex: 1 1 57px; gap: 5px; padding: 3px 8px; min-width: 57px; max-width: max-content; }
+  .build-pill .b-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* the people: smaller initials, closer together, at most four places (web/src/people.ts), the
+     private readers counted by their number alone */
+  .peer { width: 26px; height: 26px; margin-left: -8px; font-size: 10px; }
+  .peer-private { margin-left: 4px; padding: 0 7px; }
+  .pv-word { display: none; }
+  /* search: a narrow field, its magnifier alone (what was searched for shows again as it is used),
+     that takes the whole bar while it is used */
+  .search-wrap { display: flex; }
+  #search { width: 36px; height: 34px; padding: 0 10px; }
+  #search:not(:focus), #search:not(:focus)::placeholder { color: transparent; }
+  .search-wrap:not(:focus-within)::before {
+    content: ""; position: absolute; left: 10px; top: 50%; width: 16px; height: 16px; margin-top: -8px; pointer-events: none; background: var(--text-2);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='4.6'/%3E%3Cpath d='M10.4 10.4 14 14'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='4.6'/%3E%3Cpath d='M10.4 10.4 14 14'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
   .search-wrap:focus-within { position: fixed; top: 8px; left: 8px; right: 8px; z-index: 45; }
   .search-wrap:focus-within #search { width: 100%; height: 44px; font-size: 16px; box-shadow: var(--shadow-lg); }
   #results { position: fixed; top: 58px; left: 8px; right: 8px; width: auto; max-height: calc(100dvh - 70px); }

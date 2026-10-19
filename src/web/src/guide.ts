@@ -324,7 +324,7 @@ const TOUCH: [string, Row[]][] = [
     "Together, and the rest",
     [
       { g: "someone's initials", what: "follow them: you see what they see" },
-      { g: "⋯ at the top", what: "the modes, share, the library, export, activity, your name, this sheet" },
+      { g: "⋯ at the top", what: "the modes, share, the library, export, activity, the conversations, your name, this sheet" },
       { g: "⋯ at the bottom", what: "edges, the linear form, the theme" },
       { g: "Kind ▾", what: "colour by kind or by review status" },
     ],

@@ -679,8 +679,9 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
   there; touch and hold opens the menu on what is under the finger. Nothing on the board is moved by
   a finger, so the lock is gone.
 - **⋯ at the top** holds the modes (each with what a tap selects), Share, the library, Export,
-  Activity, your name and help; **☰** opens the targets and the board's namespaces or folders as a
-  drawer.
+  Activity, the conversations, your name and help; what is new in Activity and in Everyone shows on
+  ⋯ as one count, with an @ where you were mentioned. **☰** opens the targets and the board's
+  namespaces or folders as a drawer.
 - **The panel** is a sheet from the bottom: a tap on its handle gives it the whole screen or half of
   it, ✕ closes it. A declaration's source, Activity and the lost-and-found take the whole screen.
 - No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of
