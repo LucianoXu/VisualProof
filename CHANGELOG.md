@@ -5,6 +5,18 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.6.0
+
+- Talk in the page: one conversation window, your own, always in front of the source and reference windows, opened by its button and never by following. A public channel, *Everyone*, for every person and agent, with `@` mentions that wake an agent; a private channel with each of your own agents. Links of the site show as what they lead to; *Copy link* in the canvas's menu copies one without the key.
+- Withdraw an opinion: approve or comment, taken back from beside it, in the panel or a source window; the timeline keeps both.
+- Mark a trusted declaration key: a key declaration is any of the target's TCB, counted apart when trusted (+N trusted) and printed in its document. The panel and every source window now have the same review box, the target mark included.
+- Show your own personal link again, under your name, and make it anew if it leaked; personal links are kept in full (`person-invites.json`, mode 600). Links made before 0.6.0 are made anew to be shown.
+- Send pages only the files whose build status changed: on NavierStokesAndEuler 362 KB → 1 KB as a page connects, 373 → 26 KB per change during a build.
+- Following a branch: `--build-timeout <hours>` (6 by default) and `--mathlib-cache own`, a deployment's own Mathlib cache that keeps one version; a build that failed before compiling anything shows as failed, not built; the clone lives in `clone/<repo>/`, and a 0.5.0 deployment keeps its own.
+- Refuse writes from pages of other sites, and of other ports of the same host, whatever cookies they carry.
+- On a phone: Conversations in ⋯, a bar that keeps the project's name and the build's status readable, and popovers that fit the screen.
+- Record the tips' film again for all of this.
+
 ## 0.5.0
 
 - Follow a branch of a git repository: `visualproof serve <git URL> [--branch …]` builds each new commit itself, in a clone of its own, and shows its builds, commits and failures; the source window opens the line on GitHub. Whoever can push to that branch runs code on the server ([SECURITY.md](SECURITY.md)).
