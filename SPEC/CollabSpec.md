@@ -480,6 +480,12 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
     too, not with the address the page was reached at — as the agents' prompt, their links and
     Share's personal and read-only links are — so that a link copied opens for the others it is
     given to, whichever address its copier came by. Without `--public-url`, the page's own address.
+- **Writes from the server's own pages** (the owner's decision of 2026-10-19, SECURITY.md; server/access.ts
+  `fromOwnPage`): a request other than GET and HEAD whose browser says it comes from another site or
+  another port of this host (`Sec-Fetch-Site` other than `same-origin` or `none`; without it, an
+  `Origin` that is neither the Host's nor `--public-url`'s, `null` included) is answered 403 before
+  anything else is looked at, the cookies a browser sends with it notwithstanding. Requests without
+  either header (agents, the MCP server, scripts) are as before.
 - **Bounds**: at most 200 event streams (then 503), and 400 more for read-only readers, counted
   apart; 4 per page (the oldest goes); a stream with more than 4 MB unread is closed. Read-only
   readers' hovers: 60 a minute per address and 300 in all (429 with `Retry-After`), answers kept per

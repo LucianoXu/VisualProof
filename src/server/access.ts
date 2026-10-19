@@ -139,3 +139,28 @@ export function urlHost(url: string): string {
   const h = new URL(url).hostname;
   return h.startsWith("[") ? h.slice(1, -1) : h;
 }
+
+/** Whether a request that may change something comes from a page of this server's own (the
+ *  owner's decision of 2026-10-19, SECURITY.md). A browser sends its cookies — this server's key cookie, a personal
+ *  link's, a read-only link's — with a request any page makes of it, a form's or a script's: from
+ *  another site only on a navigation (SameSite=Lax), but from a page of another port of this host
+ *  always, for a browser counts that the same site. So a page of another server here could record
+ *  as the person a personal link names, or revoke links. What reads stays open (GET, HEAD); what
+ *  may write is answered only where the browser says the page is this server's own:
+ *  `Sec-Fetch-Site` same-origin (or none: the reader's own doing), else an `Origin` of this Host or
+ *  of `--public-url`. A request saying neither is no browser's — an agent, the MCP server, curl —
+ *  and what lets it in is what it carries. */
+export function fromOwnPage(method: string | undefined, headers: IncomingMessage["headers"], publicUrl: string | null): boolean {
+  if (method === "GET" || method === "HEAD") return true;
+  const site = headers["sec-fetch-site"];
+  if (typeof site === "string") return site === "same-origin" || site === "none";
+  const origin = headers.origin;
+  if (origin === undefined) return true;
+  try {
+    const o = new URL(origin);
+    return o.host === headers.host || (publicUrl !== null && o.origin === new URL(publicUrl).origin);
+  } catch {
+    // "null" (a sandboxed frame, a file), or no address at all
+    return false;
+  }
+}

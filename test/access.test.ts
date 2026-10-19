@@ -1,7 +1,8 @@
 // Who may reach the server (server/access.ts): with a key, only those given its link — a cookie
 // for a browser, the key itself for an agent — and nothing at all for anyone else. Without one,
 // only by the names it is reached at (CollabSpec decision 12): its addresses, localhost,
-// --public-url's host and --allowed-host's, so that no web page reaches it by DNS rebinding.
+// --public-url's host and --allowed-host's, so that no web page reaches it by DNS rebinding. What
+// may write, only from a page of its own: never another site's, nor another port's of this host.
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -13,7 +14,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { Access, hostAllowed, KEY_PATH, loadKey, newKey, urlHost } from "../src/server/access.ts";
+import { Access, fromOwnPage, hostAllowed, KEY_PATH, loadKey, newKey, urlHost } from "../src/server/access.ts";
 import { site } from "./site.ts";
 
 const req = (headers: Record<string, string> = {}) => ({ headers }) as unknown as IncomingMessage;
@@ -149,5 +150,63 @@ test("with a key, any name: the key keeps everyone else out", async () => {
     assert.equal((await viaHost(P.port, "other.example.org", "/api/identity")).status, 403);
   } finally {
     await P.close();
+  }
+});
+
+test("what may write comes only from a page of this server's own; reading, and what no browser sends, as before", () => {
+  const h = (o: Record<string, string>) => ({ host: "vp.example.org:4173", ...o });
+  // reading is open to whoever is let in
+  assert.ok(fromOwnPage("GET", h({ "sec-fetch-site": "cross-site" }), null));
+  assert.ok(fromOwnPage("HEAD", h({ origin: "https://evil.example" }), null));
+  // a browser says where the page is: this server's own, or the reader's own doing
+  assert.ok(fromOwnPage("POST", h({ "sec-fetch-site": "same-origin" }), null));
+  assert.ok(fromOwnPage("POST", h({ "sec-fetch-site": "none" }), null));
+  // another site, or another port of this host (the same site: its cookies go with it)
+  assert.ok(!fromOwnPage("POST", h({ "sec-fetch-site": "cross-site" }), null));
+  assert.ok(!fromOwnPage("POST", h({ "sec-fetch-site": "same-site", origin: "http://vp.example.org:3000" }), null));
+  assert.ok(!fromOwnPage("PUT", h({ "sec-fetch-site": "cross-site" }), null));
+  // a browser that does not say it: its Origin, this Host's or --public-url's
+  assert.ok(fromOwnPage("POST", h({ origin: "http://vp.example.org:4173" }), null));
+  assert.ok(fromOwnPage("POST", h({ origin: "https://vp.example.org" }), "https://vp.example.org"), "behind a proxy that names the server another way");
+  assert.ok(!fromOwnPage("POST", h({ origin: "http://vp.example.org:3000" }), null));
+  assert.ok(!fromOwnPage("POST", h({ origin: "https://evil.example" }), "https://vp.example.org"));
+  assert.ok(!fromOwnPage("POST", h({ origin: "null" }), null), "a sandboxed frame, a file");
+  // no browser: an agent, the MCP server, curl
+  assert.ok(fromOwnPage("POST", h({}), null));
+  assert.ok(fromOwnPage("POST", h({ authorization: "Bearer x" }), null));
+});
+
+/** A POST to the server at 127.0.0.1:`port`, with `headers`. */
+function post(port: number, path: string, body: string, headers: Record<string, string> = {}): Promise<{ status: number; text: string }> {
+  return new Promise((ok, fail) => {
+    const r = request({ host: "127.0.0.1", port, path, method: "POST", headers: { "content-type": "text/plain", ...headers } }, (res) => {
+      let text = "";
+      res.setEncoding("utf8");
+      res.on("data", (d: string) => (text += d));
+      res.on("end", () => ok({ status: res.statusCode ?? 0, text }));
+    });
+    r.on("error", fail);
+    r.end(body);
+  });
+}
+
+test("a page of another site, or of another port of this host, changes nothing, the key's cookie or not", async () => {
+  const key = "k".repeat(40);
+  const S = await site({ key });
+  try {
+    const cookie = (new Access(key).admit(req(), `${KEY_PATH}${key}`) as { enter: string }).enter.split(";")[0];
+    const body = JSON.stringify({ op: "approve", name: "N.a", by: "Mallory" });
+    for (const from of [{ "sec-fetch-site": "cross-site" }, { "sec-fetch-site": "same-site" }, { origin: `http://127.0.0.1:${S.port + 1}` }] as Record<string, string>[]) {
+      const r = await post(S.port, "/api/review", body, { cookie, "x-visualproof-name": "Mallory", ...from });
+      assert.equal(r.status, 403, JSON.stringify(from));
+      assert.match(r.text, /A page of another site cannot change anything here/);
+    }
+    // the page's own requests, and an agent's, go on as before
+    const own = await post(S.port, "/api/review", body, { cookie, "x-visualproof-name": "Alice", "sec-fetch-site": "same-origin" });
+    assert.doesNotMatch(own.text, /another site/);
+    const agent = await post(S.port, "/api/agent/advice", "{}", { authorization: `Bearer ${key}`, "x-visualproof-kind": "agent", "x-visualproof-name": "Claude" });
+    assert.doesNotMatch(agent.text, /another site/);
+  } finally {
+    await S.close();
   }
 });

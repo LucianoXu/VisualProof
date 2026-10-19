@@ -71,6 +71,16 @@ into the latest release only.
   name. A page reaches an address only as that address, and browsers resolve `localhost`
   themselves, so neither can be a name the page chose. With a key, the key keeps out whoever was
   not given it, by any name.
+- **Pages of other sites, and of other ports here.** A browser sends this server's cookies — the
+  key's, a personal link's, a read-only link's — with a request another page makes of it: from
+  another site only on a navigation (they are `SameSite=Lax`), but from a page of another port of
+  this host always, for a browser counts that the same site. Such a page could not read the
+  answers, but could write as the person a personal link names. So a request that may change
+  something (anything but GET and HEAD) is answered 403 unless the browser says it comes from a
+  page of this server's own: `Sec-Fetch-Site: same-origin` (or `none`), or, from a browser that
+  does not send it, an `Origin` of this Host or of `--public-url`. A request saying neither is no
+  browser's (an agent, the MCP server, a script) and gets in by what it carries. Behind a proxy that
+  changes the Host, give `--public-url`.
 - **Read-only readers.** Anyone let in can make a read-only link in Share (`/r/vpr_…`): it lets
   whoever holds it read what a guest reads — the graph, the sources, the review, the history, the
   library's files — and nothing else. The server refuses every other request from them (403)
