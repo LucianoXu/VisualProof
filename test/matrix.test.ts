@@ -50,12 +50,13 @@ test("the toolchains' matrix runs the tests that import test/fixturecopy.ts, and
   const runsLean = /\b(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\(\s*["'`](?:lake|lean|elan)["'`]/;
   const tests = readdirSync(join(ROOT, "test")).filter((f) => f.endsWith(".test.ts")).map((f) => `test/${f}`);
   for (const f of tests) if (runsLean.test(read(f))) assert.ok(set.includes(f), `${f} runs Lean or Lake: it builds its project with test/fixturecopy.ts, which puts it in the matrix`);
-  // CI runs them on every toolchain of the list, the newest releases' too, and on a pull request
-  // that changes one of them
+  // CI runs them on every toolchain of the list, the newest releases' too, on every pull request;
+  // one check, `toolchains`, stands for every toolchain's, as main requires it
   const ci = read(".github/workflows/toolchains.yml");
   assert.equal(ci.match(/node --test --import \.\/test\/setup\.ts \$\(node scripts\/test-toolchains\.mjs --files\)/g)?.length, 2);
   assert.match(ci, /jq -c \.toolchains test\/toolchains\.json/);
-  for (const f of set) assert.ok(ci.includes(`      - ${f}\n`), `toolchains.yml runs on a change to ${f}`);
+  assert.match(ci, /^on:\n  pull_request:\n  schedule:/m, "on every pull request, whatever it changes");
+  assert.match(ci, /^  toolchains:\n    if: always\(\)\n    needs: supported\n[\s\S]*?test "\$\{\{ needs\.supported\.result \}\}" = success/m);
 });
 
 test("locally the oldest and the newest toolchain of the list, every one when asked, or those named", () => {

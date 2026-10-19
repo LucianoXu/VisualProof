@@ -1,39 +1,15 @@
 # The tests whose answers can depend on the Lean toolchain (`node scripts/test-toolchains.mjs
 # --files`: those that import test/fixturecopy.ts) once per toolchain of test/toolchains.json
-# (VP_TOOLCHAIN), on a pull request that changes what reads Lean's output, how Lean is run, or one of
-# those tests, and every week; the rest of the suite answers the same on every toolchain, and
-# test.yml runs it. Every week, or by hand, also: allowed to fail, the newest stable release and a
-# release candidate newer than it, to hear early what the next release changes; and the
-# typesetting, with XeLaTeX. A workflow of its own because `paths` is a workflow's, not a job's.
+# (VP_TOOLCHAIN), on every pull request and every week; the rest of the suite answers the same on
+# every toolchain, and test.yml runs it. `toolchains` stands for them all: it is the check main
+# requires, so that a toolchain added to the list is required without the branch's protection
+# changing. Every week, or by hand, also: allowed to fail, the newest stable release and a release
+# candidate newer than it, to hear early what the next release changes; and the typesetting, with
+# XeLaTeX.
 name: toolchains
 
 on:
   pull_request:
-    paths:
-      - src/extractor/**
-      - src/server/extract.ts
-      - src/server/usage.ts
-      - src/server/status.ts
-      - src/server/hover.ts
-      - src/server/children.ts
-      - src/server/deploy.ts
-      - test/fixture/**
-      - test/golden/**
-      - test/toolchains.json
-      - test/fixturecopy.ts
-      - scripts/test-toolchains.mjs
-      # the tests it runs (test/matrix.test.ts keeps them listed)
-      - test/bodyversion.test.ts
-      - test/compat.test.ts
-      - test/deploylive.test.ts
-      - test/dirs.test.ts
-      - test/engines.test.ts
-      - test/extract.test.ts
-      - test/hover.test.ts
-      - test/package.test.ts
-      - test/status.test.ts
-      - test/usage.test.ts
-      - .github/workflows/toolchains.yml
   schedule:
     - cron: "0 4 * * 1"
   workflow_dispatch:
@@ -80,6 +56,15 @@ jobs:
       - run: node --test --import ./test/setup.ts $(node scripts/test-toolchains.mjs --files)
         env:
           VP_TOOLCHAIN: ${{ matrix.toolchain }}
+
+  # the check main requires (CONTRIBUTING.md, "Branches and releases"): every toolchain of the list
+  # passed
+  toolchains:
+    if: always()
+    needs: supported
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.supported.result }}" = success
 
   # only every week or by hand: a new release candidate is news, not a pull request's failure
   newest:

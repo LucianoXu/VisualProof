@@ -148,8 +148,8 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`,
   `server/children.ts`, and `server/deploy.ts`, which builds a branch the server follows), passes
   `npm run test:toolchains` locally, and CI runs those tests on every toolchain before it is
-  merged: on a pull request that touches those files, the fixture, its golden or those tests
-  (`toolchains.yml` lists them), and every week. The suite (`test.yml`) runs once per pull request
+  merged: on every pull request, and every week (`toolchains.yml`; its `toolchains` check stands
+  for every toolchain's, and `main` requires it). The suite (`test.yml`) runs once per pull request
   and once on `main` as a merge lands, which is what a release then checks. The newest Lean
   release and release candidate run every week only: news of the next release, not a pull
   request's failure.
@@ -170,8 +170,8 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
 
 - `main` is always releasable: work goes on a short-lived branch and comes in by a pull request
   whose CI passed. Nobody pushes to `main` directly, and GitHub holds to it: `main` takes pull
-  requests alone, once the test workflow's checks pass, administrators included, and is never
-  force-pushed or deleted.
+  requests alone, once the test workflow's checks and the toolchains' (`toolchains`) pass,
+  administrators included, and is never force-pushed or deleted.
 - A release is a tag on `main`, `vX.Y.Z`; a release candidate is `vX.Y.Z-rc.N`, published under
   npm's `next` tag, so that `npm install visualproof` never gets it. There is no long-lived
   release branch: a `release/X.Y` branch is made from its tag only if an older release must be
