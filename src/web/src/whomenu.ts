@@ -1,10 +1,12 @@
 // The menu under the reader's name at the top right (CollabSpec decision 8): the name, changed in its
 // window as before (behind a sign-in, the sign-in's, which cannot be; for someone who came by a
-// personal link, the link's, changed through the server: decision 9), asking everyone to follow this
-// reader (decision 10, the owner's decision of 2026-10-12; web/src/askfollow.ts), and whether the
-// others see this reader — Visible, the default, or Private. It opens on a click on the name and
-// closes on a click elsewhere or Esc, and works with the keyboard as a menu does (menuKey): the
-// arrows, Home and End move between its items, Enter or Space chooses one, Tab leaves it.
+// personal link, the link's, changed through the server: decision 9), their personal link, shown in
+// that window to them alone (decision 9, the owner's decision of 2026-10-19; web/src/mylink.ts),
+// asking everyone to follow this reader (decision 10, the owner's decision of 2026-10-12;
+// web/src/askfollow.ts), and whether the others see this reader — Visible, the default, or
+// Private. It opens on a click on the name and closes on a click elsewhere or Esc, and works with
+// the keyboard as a menu does (menuKey): the arrows, Home and End move between its items, Enter or
+// Space chooses one, Tab leaves it.
 
 import { escapeHtml } from "./highlight.ts";
 import { VERIFIED } from "./verified.ts";
@@ -54,6 +56,9 @@ export interface WhoMenuHooks {
   visibility(): Visibility;
   /** give or change the name, in its window */
   rename(): void;
+  /** show the personal link this reader came by, in the name's window (web/src/mylink.ts): offered
+   *  only to whoever came by one */
+  myLink?(): void;
   setVisibility(v: Visibility): void;
   /** ask everyone here to follow this reader (CollabSpec decision 10); absent where nobody can be */
   askAll?(): void;
@@ -63,6 +68,40 @@ export interface WhoMenuHooks {
 
 /** What asking everyone does, in a line. */
 const ASK_ALL = "Everyone here gets a request for 30 s.";
+
+/** The menu's items: the name, the personal link of a reader who came by one, asking everyone to
+ *  follow, the visibility. */
+export function menuHtml(h: WhoMenuHooks): string {
+  const name = h.name();
+  const vis = h.visibility();
+  const person = h.mode() === "person";
+  return (
+    (h.mode() === "header"
+      ? `<div class="wm-note">${name ? `Signed in as <b>${escapeHtml(name)}</b>` : "Not signed in"}: your name is the sign-in's, in front of this server.</div>`
+      : `<button type="button" role="menuitem" class="wm-item" data-act="rename"><span class="wm-t">${name ? "Change name…" : "Set your name…"}</span>` +
+        (person ? `<span class="wm-d">${VERIFIED} You came by a personal link: the name is yours, and what you did stays yours when you change it.</span>` : "") +
+        `</button>`) +
+    (person && h.myLink ? `<button type="button" role="menuitem" class="wm-item" data-act="mylink"><span class="wm-t">My personal link…</span><span class="wm-d">To open this site as you in another browser.</span></button>` : "") +
+    (h.askAll ? askItem(h.askWhy?.() ?? null) : "") +
+    `<div class="wm-sep" role="separator"></div>` +
+    `<div class="wm-h" id="wm-vis">Visibility</div>` +
+    `<div role="group" aria-labelledby="wm-vis">` +
+    CHOICES.map(
+      (c) =>
+        `<button type="button" role="menuitemradio" aria-checked="${c.key === vis}" class="wm-item wm-radio" data-act="vis" data-vis="${c.key}">` +
+        `<span class="wm-t">${c.title}</span><span class="wm-d">${c.line}</span></button>`,
+    ).join("") +
+    `</div>`
+  );
+}
+
+/** Ask everyone to follow me: greyed, with why, where this reader cannot now. */
+function askItem(why: string | null): string {
+  return (
+    `<button type="button" role="menuitem" class="wm-item" data-act="ask"${why ? ' aria-disabled="true"' : ""}>` +
+    `<span class="wm-t">Ask everyone to follow me</span><span class="wm-d">${escapeHtml(why ?? ASK_ALL)}</span></button>`
+  );
+}
 
 export class WhoMenu {
   private btn: HTMLElement;
@@ -135,48 +174,27 @@ export class WhoMenu {
   /** Draw it again, while it is open: the name or the visibility changed. The item focused stays. */
   render(): void {
     if (!this.open) return;
-    const h = this.hooks;
     const was = this.items().indexOf(document.activeElement as HTMLElement);
-    const name = h.name();
-    const vis = h.visibility();
-    this.el.innerHTML =
-      (h.mode() === "header"
-        ? `<div class="wm-note">${name ? `Signed in as <b>${escapeHtml(name)}</b>` : "Not signed in"}: your name is the sign-in's, in front of this server.</div>`
-        : `<button type="button" role="menuitem" class="wm-item" data-act="rename"><span class="wm-t">${name ? "Change name…" : "Set your name…"}</span>` +
-          (h.mode() === "person" ? `<span class="wm-d">${VERIFIED} You came by a personal link: the name is yours, and what you did stays yours when you change it.</span>` : "") +
-          `</button>`) +
-      (h.askAll ? this.askItem(h.askWhy?.() ?? null) : "") +
-      `<div class="wm-sep" role="separator"></div>` +
-      `<div class="wm-h" id="wm-vis">Visibility</div>` +
-      `<div role="group" aria-labelledby="wm-vis">` +
-      CHOICES.map(
-        (c) =>
-          `<button type="button" role="menuitemradio" aria-checked="${c.key === vis}" class="wm-item wm-radio" data-act="vis" data-vis="${c.key}">` +
-          `<span class="wm-t">${c.title}</span><span class="wm-d">${c.line}</span></button>`,
-      ).join("") +
-      `</div>`;
+    this.el.innerHTML = menuHtml(this.hooks);
     if (was >= 0) this.items()[was]?.focus();
-  }
-
-  /** Ask everyone to follow me: greyed, with why, where this reader cannot now. */
-  private askItem(why: string | null): string {
-    return (
-      `<button type="button" role="menuitem" class="wm-item" data-act="ask"${why ? ' aria-disabled="true"' : ""}>` +
-      `<span class="wm-t">Ask everyone to follow me</span><span class="wm-d">${escapeHtml(why ?? ASK_ALL)}</span></button>`
-    );
   }
 
   private items(): HTMLElement[] {
     return [...this.el.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]')];
   }
 
-  /** An item chosen: the name's window, which takes the menu's place; or a visibility, which the
-   *  menu stays open to show. */
+  /** An item chosen: the name's window, which takes the menu's place — to give the name, or to show
+   *  the personal link; or a visibility, which the menu stays open to show. */
   private choose(b: HTMLElement | undefined): void {
     if (!b) return;
     if (b.dataset.act === "rename") {
       this.toggle(false);
       this.hooks.rename();
+      return;
+    }
+    if (b.dataset.act === "mylink") {
+      this.toggle(false);
+      this.hooks.myLink?.();
       return;
     }
     if (b.dataset.act === "ask") {

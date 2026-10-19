@@ -1,8 +1,9 @@
 // Following a branch (server/deploy.ts, SPEC/DeploySpec.md), its pieces: the addresses and branches
 // followed, the programs' environment, and the deployment — the clone, the latest-only queue, a
-// failed build, a build cut short and done again, a commit that is no Lean project, Mathlib's cache —
-// against real git on bare repositories of a temporary folder, with a Lake of the test's own whose
-// every build does what its commit's BUILD file says.
+// failed build, a build cut short and done again, a build past its time, a commit that is no Lean
+// project, Mathlib's cache, the user's or the deployment's own — against real git on bare
+// repositories of a temporary folder, with a Lake of the test's own whose every build does what its
+// commit's BUILD file says.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -10,8 +11,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { askRemote, branchProblem, branchToFollow, BuildLog, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, lockDeployment, noPrompts, gitEnv, parseRemote, recordedDefault } from "../src/server/deploy.ts";
-import type { Remote } from "../src/server/deploy.ts";
+import { askRemote, branchProblem, branchToFollow, buildEnv, BuildLog, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, limitInWords, lockDeployment, mathlibReadsCacheDir, noPrompts, pathNamer, gitEnv, parseBuildHours, parseRemote, recordedDefault, sharedMathlibCache } from "../src/server/deploy.ts";
+import type { DeploymentOptions, Remote } from "../src/server/deploy.ts";
 import { openProject } from "../src/server/project.ts";
 import { stopChildren } from "../src/server/children.ts";
 import { githubBlob, slimDeploy } from "../src/shared/deploy.ts";
@@ -32,11 +33,11 @@ function git(dir: string, ...args: string[]): string {
 }
 
 let repos = 0;
-/** A bare repository on this machine, and a working copy that pushes to its main. */
-function repo() {
+/** A bare repository on this machine (`<name>.git`), and a working copy that pushes to its main. */
+function repo(name = "remote") {
   const dir = join(ROOT, `r${++repos}`);
   mkdirSync(dir);
-  const bare = join(dir, "remote.git");
+  const bare = join(dir, `${name}.git`);
   const work = join(dir, "work");
   spawnSync("git", ["init", "-q", "--bare", "-b", "main", bare], { env: G });
   spawnSync("git", ["init", "-q", "-b", "main", work], { env: G });
@@ -54,9 +55,12 @@ function repo() {
   return { dir, url: `file://${bare}`, commit };
 }
 
-/** The test's Lake: it says what it was asked; a build waits while the commit has a SLOW file
- *  until GO is there (a minute at most), writes an `.olean`, and fails where BUILD says so, naming
- *  its file by its path on this machine. */
+/** The test's Lake: it says what it was asked, and Mathlib's cache where it was asked to keep it; its
+ *  `cache get` fails where the commit has a NO_CACHE file, and checks Mathlib out as one that reads
+ *  `MATHLIB_CACHE_DIR` unless it has an OLD_MATHLIB file; its `cache clean` says where it cleans. A
+ *  build fails at once, writing nothing, where BUILD says `broken` (a lakefile that does not
+ *  elaborate); else it waits while the commit has a SLOW file until GO is there (a minute at most),
+ *  writes an `.olean`, and fails where BUILD says so, naming its file by its path on this machine. */
 const BIN = join(ROOT, "bin");
 mkdirSync(BIN);
 const LAKE = join(BIN, "lake");
@@ -66,7 +70,14 @@ writeFileSync(
   LAKE,
   `#!/bin/sh
 echo "lake $*" >> "${LAKE_LOG}"
-if [ "$1" = "exe" ]; then echo "cache: 3 files"; exit 0; fi
+if [ "$1" = "exe" ] && [ "$3" = "clean" ]; then echo "cache clean in \${MATHLIB_CACHE_DIR:-the shared cache}"; exit 0; fi
+if [ "$1" = "exe" ] && [ -f NO_CACHE ]; then echo "cache: the server cannot be reached" >&2; exit 1; fi
+if [ "$1" = "exe" ]; then
+  mkdir -p .lake/packages/mathlib/Cache
+  if [ -f OLD_MATHLIB ]; then echo 'IO.getEnv "XDG_CACHE_HOME"'; else echo 'IO.getEnv "MATHLIB_CACHE_DIR"'; fi > .lake/packages/mathlib/Cache/IO.lean
+  echo "cache: 3 files in \${MATHLIB_CACHE_DIR:-the shared cache}"; exit 0
+fi
+if grep -q broken BUILD 2>/dev/null; then echo "error: lakefile.toml: broken" >&2; exit 1; fi
 n=0
 if [ -f SLOW ]; then while [ ! -f "${GO}" ] && [ $n -lt 1200 ]; do sleep 0.05; n=$((n+1)); done; fi
 mkdir -p .lake/build/lib/lean
@@ -80,8 +91,11 @@ const lakeSaid = () => (existsSync(LAKE_LOG) ? readFileSync(LAKE_LOG, "utf8") : 
 
 const PROJECT = { "lean-toolchain": "leanprover/lean4:v4.33.1\n", "M.lean": "def x := 1\n", BUILD: "ok\n", ".gitignore": ".lake\n" };
 
+/** What a test may give a deployment besides its folder. */
+type More = Partial<Pick<DeploymentOptions, "ask" | "buildMs" | "mathlibCache">>;
+
 /** A deployment of `r`'s main in a cache of its own, its clone made. */
-async function deployment(r: ReturnType<typeof repo>, more: { ask?: () => Promise<{ head: string } | { error: string }> } = {}) {
+async function deployment(r: ReturnType<typeof repo>, more: More = {}) {
   const remote = parseRemote(r.url) as Remote;
   const cache = join(r.dir, "cache");
   const folder = deployFolder(cache, remote, "main");
@@ -90,7 +104,7 @@ async function deployment(r: ReturnType<typeof repo>, more: { ask?: () => Promis
   return make(remote, folder, c.commit, more);
 }
 
-function make(remote: Remote, folder: ReturnType<typeof deployFolder>, head: string, more: { ask?: () => Promise<{ head: string } | { error: string }> } = {}) {
+function make(remote: Remote, folder: ReturnType<typeof deployFolder>, head: string, more: More = {}) {
   const project = openProject(folder.checkout, ["M"], false);
   const seen = { starting: 0, toolchain: 0, log: [] as string[] };
   const d = new Deployment({
@@ -185,11 +199,56 @@ test("nothing that git or Lake starts waits on a prompt; git works on the clone 
   }
 });
 
+test("Mathlib's cache: the user's, as their builds find it, unless the deployment has its own", () => {
+  // as Mathlib's cache program reads it (Cache/IO.lean, CACHEDIR)
+  assert.equal(sharedMathlibCache({}, "/h"), "/h/.cache/mathlib");
+  assert.equal(sharedMathlibCache({ XDG_CACHE_HOME: "/x" }, "/h"), "/x/mathlib");
+  assert.equal(sharedMathlibCache({ XDG_CACHE_HOME: "/x", MATHLIB_CACHE_DIR: "/m" }, "/h"), "/m");
+  const was = { ...process.env };
+  try {
+    Object.assign(process.env, { MATHLIB_CACHE_DIR: "/users/cache", XDG_CACHE_HOME: "/xdg" });
+    // shared: Lake's environment is the server's
+    assert.equal(buildEnv().MATHLIB_CACHE_DIR, "/users/cache");
+    // its own: that folder, whatever the server's environment says; XDG_CACHE_HOME, which Lake's
+    // cache and git's credential cache are found by too, as it was
+    const own = buildEnv("/c/deploy/b-1/mathlib-cache");
+    assert.equal(own.MATHLIB_CACHE_DIR, "/c/deploy/b-1/mathlib-cache");
+    assert.equal(own.XDG_CACHE_HOME, "/xdg");
+    assert.equal(own.GIT_TERMINAL_PROMPT, "0");
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in was)) delete process.env[k];
+    Object.assign(process.env, was);
+  }
+});
+
+test("--build-timeout: hours, fractions too, within bounds; the limit said readably", () => {
+  for (const [v, h] of [["6", 6], ["1.5", 1.5], ["0.05", 0.05], ["168", 168], ["24", 24]] as const) assert.equal(parseBuildHours(v), h, v);
+  for (const v of ["0", "0.04", "168.5", "1000", "-1", "6h", "1e2", ".5", "", "Infinity", "NaN", " 6"]) {
+    const r = parseBuildHours(v);
+    assert.equal(typeof r, "object", v);
+    assert.match((r as { error: string }).error, /^--build-timeout .*: say after how many hours a build is stopped, from 0\.05 \(3 min\) to 168 \(a week\)/, v);
+  }
+  const h = 3600_000;
+  assert.equal(limitInWords(6 * h), "6 hours");
+  assert.equal(limitInWords(h), "1 hour");
+  assert.equal(limitInWords(1.5 * h), "1 h 30 min");
+  assert.equal(limitInWords(0.05 * h), "3 min");
+  assert.equal(limitInWords(0.07 * h), "4 min 12 s");
+  assert.equal(limitInWords(168 * h), "168 hours");
+  assert.equal(limitInWords(500), "0.5 s");
+  assert.equal(limitInWords(45_000), "45 s");
+});
+
 test("a deployment's folders: per address and branch, its site wherever the cache is", () => {
   const r = parseRemote("https://github.com/A/flt-regular") as Remote;
   const f = deployFolder("/c", r, "main");
   assert.match(f.dir, /^\/c\/deploy\/flt-regular-[0-9a-f]{8}$/);
-  assert.equal(f.checkout, join(f.dir, "flt-regular"));
+  // the clone apart from what the folder keeps of its own, whatever the repository is called
+  assert.equal(f.checkout, join(f.dir, "clone", "flt-regular"));
+  assert.equal(f.state, join(f.dir, "state.json"));
+  assert.equal(f.logs, join(f.dir, "logs"));
+  // Mathlib's cache, where it is the deployment's own: removed with its folder
+  assert.equal(f.mathlib, join(f.dir, "mathlib-cache"));
   assert.notEqual(deployFolder("/c", r, "dev").dir, f.dir);
   assert.equal(deploySite(r, "main", { platform: "linux", env: {}, home: "/h" }).split("/").pop(), f.dir.split("/").pop());
   assert.match(deploySite(r, "main", { platform: "linux", env: {}, home: "/h" }), /^\/h\/\.local\/share\/visualproof\/sites\/flt-regular-/);
@@ -229,6 +288,87 @@ test("the clone: made once, whole, at the branch's head; one server follows a br
   // another living process holds it
   writeFileSync(join(folder.dir, ".lock"), `${process.ppid}\n`);
   assert.throws(() => lockDeployment(folder, remote, "main"), DeployBusy);
+});
+
+test("every repository's name is safe: one called as the folder's own entries is cloned, built and followed", async () => {
+  for (const name of ["logs", "state.json", "mathlib-cache", "clone"]) {
+    const r = repo(name);
+    const a = r.commit({ ...PROJECT, "lake-manifest.json": JSON.stringify({ version: "1.1.0", packages: [{ name: "mathlib", type: "git" }] }) });
+    const { d, folder } = await deployment(r, { mathlibCache: "own" });
+    assert.equal(folder.checkout, join(folder.dir, "clone", name));
+    await d.poll();
+    await d.settled();
+    assert.equal(d.status(true).built, a, name);
+    // each in its place: the clone, the state, the log, Mathlib's own cache
+    assert.equal(git(folder.checkout, "rev-parse", "HEAD"), a);
+    assert.equal(JSON.parse(readFileSync(folder.state, "utf8")).outputs.commit, a);
+    assert.ok(existsSync(join(folder.logs, `${a}.log`)), name);
+    assert.ok(readFileSync(join(folder.logs, `${a}.log`), "utf8").includes(`cache: 3 files in ${folder.mathlib}\n`), name);
+  }
+});
+
+/** A deployment as 0.5.0 left it: the clone named after its repository beside the folder's own
+ *  entries, built, its state without `ran`. */
+async function made050(r: ReturnType<typeof repo>) {
+  const remote = parseRemote(r.url) as Remote;
+  const now = deployFolder(join(r.dir, "cache"), remote, "main");
+  const folder = { ...now, checkout: join(now.dir, remote.name) };
+  const c = await ensureClone(remote, "main", folder, () => {});
+  assert.ok("commit" in c);
+  const first = make(remote, folder, c.commit);
+  await first.d.poll();
+  await first.d.settled();
+  const state = JSON.parse(readFileSync(folder.state, "utf8"));
+  delete state.ran;
+  writeFileSync(folder.state, JSON.stringify(state));
+  return { remote, folder, head: c.commit, olean: readFileSync(join(folder.checkout, ".lake", "build", "lib", "lean", "M.olean"), "utf8") };
+}
+
+test("a deployment made by 0.5.0 keeps its clone where it is: not cloned again, its build read at once", async () => {
+  const r = repo("leanycrypt");
+  const a = r.commit(PROJECT);
+  const was = await made050(r);
+  const folder = deployFolder(join(r.dir, "cache"), was.remote, "main");
+  assert.equal(folder.checkout, join(folder.dir, "leanycrypt"));
+  assert.deepEqual(await ensureClone(was.remote, "main", folder, () => {}), { commit: a, made: false });
+  assert.equal(existsSync(join(folder.dir, "clone")), false);
+  const next = make(was.remote, folder, a);
+  assert.equal(next.d.holds(), false);
+  assert.equal(next.d.status(true).built, a);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+  // and goes on building there
+  const b = r.commit({ "M.lean": "def x := 2\n" });
+  await next.d.poll();
+  await next.d.settled();
+  assert.equal(next.d.status(true).built, b);
+  assert.equal(git(join(folder.dir, "leanycrypt"), "rev-parse", "HEAD"), b);
+});
+
+test("a clone of 0.5.0 named as the folder's own entries is moved into the clone's place, with what it built", async () => {
+  const r = repo("logs");
+  const a = r.commit(PROJECT);
+  const was = await made050(r);
+  const folder = deployFolder(join(r.dir, "cache"), was.remote, "main");
+  assert.equal(folder.checkout, join(folder.dir, "clone", "logs"));
+  const said: string[] = [];
+  assert.deepEqual(await ensureClone(was.remote, "main", folder, (l) => said.push(l)), { commit: a, made: false });
+  assert.match(said.join("\n"), /the clone moved to .*clone\/logs/);
+  // what it built came with it
+  assert.equal(readFileSync(join(folder.checkout, ".lake", "build", "lib", "lean", "M.olean"), "utf8"), was.olean);
+  const next = make(was.remote, folder, a);
+  assert.equal(next.d.holds(), false);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+  const b = r.commit({ "M.lean": "def x := 2\n" });
+  await next.d.poll();
+  await next.d.settled();
+  assert.equal(next.d.status(true).built, b);
+  // the logs in their own folder now
+  assert.ok(existsSync(join(folder.dir, "logs", `${b}.log`)));
+  assert.equal(existsSync(join(folder.dir, "logs", ".git")), false);
 });
 
 // ---------------------------------------------------------------- the deployment
@@ -315,6 +455,65 @@ test("a failing build: shown with its end of log, not tried again, the tree its 
   assert.equal(d.tried.filter((c) => c === bad).length, 1);
 });
 
+test("a failing build that wrote nothing: failed, not built — the board's build is the last that wrote outputs; a restart keeps it so", async () => {
+  const r = repo();
+  const a = r.commit(PROJECT);
+  const { d, folder, remote } = await deployment(r);
+  await d.poll();
+  await d.settled();
+  const bad = r.commit({ BUILD: "broken\n", "M.lean": "def x := 2\n" });
+  await d.poll();
+  await d.settled();
+  const s = d.status(true);
+  assert.equal(s.last?.commit, bad);
+  assert.equal(s.last?.ok, false);
+  assert.equal(s.last?.exit, 1);
+  // what is said built, and the commit of what the board reads: the build before
+  assert.equal(s.built, a);
+  assert.deepEqual(d.commit(), { hash: a, branch: "main" });
+  assert.equal(d.holds(), false);
+  // the tree is checked out at the failed commit, whose files show what failed
+  assert.equal(git(folder.checkout, "rev-parse", "HEAD"), bad);
+  assert.equal(readFileSync(join(folder.checkout, "M.lean"), "utf8"), "def x := 2\n");
+  const state = JSON.parse(readFileSync(folder.state, "utf8"));
+  assert.equal(state.outputs.commit, a);
+  assert.equal(state.ran, bad);
+  // the popover says it failed, the board showing the build before
+  assert.match(deployHtml(s), new RegExp(`failed .*The board shows the build of <span class="mono" title="${a}">${a.slice(0, 7)}</span>`));
+  // a restart: the tree is that try's, not cut short — read at once, the commit not built again
+  const next = make(remote, folder, bad);
+  assert.equal(next.d.holds(), false);
+  assert.equal(next.d.status(true).built, a);
+  assert.equal(next.d.toBuild(), null);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+  // the next commit that builds is built, and shown
+  const c = r.commit({ BUILD: "ok\n" });
+  await next.d.poll();
+  await next.d.settled();
+  assert.equal(next.d.status(true).built, c);
+  assert.deepEqual(next.d.commit(), { hash: c, branch: "main" });
+});
+
+test("a state kept by 0.5.0, which said built the commit whose build last ran, is read as it was", async () => {
+  const r = repo();
+  const a = r.commit(PROJECT);
+  const first = await deployment(r);
+  await first.d.poll();
+  await first.d.settled();
+  // as 0.5.0 wrote it: no `ran`
+  const state = JSON.parse(readFileSync(first.folder.state, "utf8"));
+  delete state.ran;
+  writeFileSync(first.folder.state, JSON.stringify(state));
+  const next = make(first.remote, first.folder, a);
+  assert.equal(next.d.holds(), false);
+  assert.equal(next.d.status(true).built, a);
+  await next.d.poll();
+  await next.d.settled();
+  assert.deepEqual(next.d.tried, []);
+});
+
 test("a commit that is no Lean project: the tree goes back to the last build", async () => {
   const r = repo();
   const a = r.commit(PROJECT);
@@ -388,6 +587,97 @@ test("a build cut short (a restart) is done again by the next server; Mathlib's 
   assert.deepEqual(third.d.tried, []);
 });
 
+test("a build past --build-timeout is stopped and failed, the limit said; its commit is not tried again", async () => {
+  rmSync(GO, { force: true });
+  const r = repo();
+  const a = r.commit({ ...PROJECT, SLOW: "" });
+  const { d, folder, remote } = await deployment(r, { buildMs: 1500 });
+  await d.poll();
+  await d.settled();
+  const s = d.status(true);
+  assert.equal(s.last?.commit, a);
+  assert.equal(s.last?.ok, false);
+  assert.equal(s.last?.retry, undefined);
+  // stopped by a signal: no status of Lake's own
+  assert.equal(s.last?.exit, null);
+  assert.equal(s.last?.error, "it took longer than 1.5 s (--build-timeout): stopped");
+  assert.match(readFileSync(join(folder.logs, `${a}.log`), "utf8"), /\nlake build took longer than 1\.5 s \(--build-timeout\): stopped\n$/);
+  // stopped before it wrote anything: failed, not built, and with no build before it nothing is
+  // read (DeploySpec decision 6)
+  assert.equal(s.built, null);
+  assert.equal(d.holds(), true);
+  await d.poll();
+  await d.settled();
+  assert.deepEqual(d.tried, [a]);
+  // the default: six hours
+  assert.equal(make(remote, folder, a).d.buildMs, 6 * 3600_000);
+});
+
+test("Mathlib's cache: the deployment's own in its folder with --mathlib-cache own, else the user's", async () => {
+  const manifest = JSON.stringify({ version: "1.1.0", packages: [{ name: "mathlib", type: "git" }] });
+  const r = repo();
+  const a = r.commit({ ...PROJECT, "lake-manifest.json": manifest });
+  const own = await deployment(r, { mathlibCache: "own" });
+  await own.d.poll();
+  await own.d.settled();
+  assert.equal(own.d.status(true).last?.ok, true);
+  const said = readFileSync(join(own.folder.logs, `${a}.log`), "utf8");
+  // the command as it was run, the folder beside the clone
+  assert.match(said, /^\$ MATHLIB_CACHE_DIR=\.\.\/\.\.\/mathlib-cache lake exe cache get$/m);
+  assert.ok(said.includes(`cache: 3 files in ${own.folder.mathlib}\n`), said);
+  assert.equal(join(own.folder.checkout, "..", "..", "mathlib-cache"), own.folder.mathlib);
+  // then cleaned, keeping the version checked out alone (the owner's decision of 2026-10-19)
+  assert.match(said, /^\$ MATHLIB_CACHE_DIR=\.\.\/\.\.\/mathlib-cache lake exe cache get\ncache: .*\n\$ MATHLIB_CACHE_DIR=\.\.\/\.\.\/mathlib-cache lake exe cache clean\ncache clean in /m);
+  assert.ok(said.includes(`cache clean in ${own.folder.mathlib}\n`), said);
+  // the default: the user's, as the server's environment says
+  const r2 = repo();
+  const b = r2.commit({ ...PROJECT, "lake-manifest.json": manifest });
+  const shared = await deployment(r2);
+  await shared.d.poll();
+  await shared.d.settled();
+  const log = readFileSync(join(shared.folder.logs, `${b}.log`), "utf8");
+  assert.match(log, /^\$ lake exe cache get$/m);
+  assert.ok(log.includes(`cache: 3 files in ${process.env.MATHLIB_CACHE_DIR || "the shared cache"}\n`), log);
+  // the user's is never cleaned
+  assert.doesNotMatch(log, /cache clean/);
+});
+
+test("the deployment's own Mathlib cache is cleaned only after a cache got, and only by a Mathlib that reads it", async () => {
+  const manifest = JSON.stringify({ version: "1.1.0", packages: [{ name: "mathlib", type: "git" }] });
+  // a Mathlib before February 2025 keeps its cache with the user's: cleaning it would clean theirs
+  const r = repo();
+  const a = r.commit({ ...PROJECT, "lake-manifest.json": manifest, OLD_MATHLIB: "" });
+  const old = await deployment(r, { mathlibCache: "own" });
+  await old.d.poll();
+  await old.d.settled();
+  assert.equal(old.d.status(true).built, a);
+  const said = readFileSync(join(old.folder.logs, `${a}.log`), "utf8");
+  assert.doesNotMatch(said, /\$ .*lake exe cache clean/);
+  assert.match(said, /not cleaned: this Mathlib does not read MATHLIB_CACHE_DIR/);
+  // a cache that could not be had is not cleaned
+  const b = r.commit({ OLD_MATHLIB: null, NO_CACHE: "" });
+  await old.d.poll();
+  await old.d.settled();
+  const failed = readFileSync(join(old.folder.logs, `${b}.log`), "utf8");
+  assert.equal(failed.match(/lake exe cache get/g)?.length, 2);
+  assert.doesNotMatch(failed, /cache clean/);
+  assert.equal(old.d.status(true).built, b);
+});
+
+test("whether the Mathlib checked out reads MATHLIB_CACHE_DIR: its cache program says so, where the manifest puts the packages", () => {
+  const dir = join(ROOT, "reads-cache-dir");
+  mkdirSync(join(dir, "deps", "mathlib", "Cache"), { recursive: true });
+  writeFileSync(join(dir, "lake-manifest.json"), JSON.stringify({ packagesDir: "deps", packages: [] }));
+  assert.equal(mathlibReadsCacheDir(dir), false);
+  writeFileSync(join(dir, "deps", "mathlib", "Cache", "IO.lean"), 'initialize CACHEDIR : FilePath ← do\n  match ← IO.getEnv "MATHLIB_CACHE_DIR" with');
+  assert.equal(mathlibReadsCacheDir(dir), true);
+  writeFileSync(join(dir, "deps", "mathlib", "Cache", "IO.lean"), 'match ← IO.getEnv "XDG_CACHE_HOME" with');
+  assert.equal(mathlibReadsCacheDir(dir), false);
+  // no manifest: Lake's own place
+  rmSync(join(dir, "lake-manifest.json"));
+  assert.equal(mathlibReadsCacheDir(dir), false);
+});
+
 test("a commit that changes the toolchain: the project and Lean follow it", async () => {
   const r = repo();
   r.commit(PROJECT);
@@ -430,6 +720,18 @@ test("the popover, the pill and the loading page say the branch's builds", () =>
   const nothing = deployWaiting({ ...failed, built: "c".repeat(40) }, { state: "error", error: "No part of this build can be read" });
   assert.match(nothing.title, /left nothing that can be read: lake build exited with 1\. The next commit pushed to main is built/);
   assert.equal(nothing.log, failed.last.tail);
+  // a failed build after the one said built, which wrote nothing but took away what that one wrote
+  // (Lake removes a failed file's .olean): it is what left nothing (DeploySpec decision 6)
+  const after = deployWaiting(failed, { state: "error", error: "No part of this build can be read" });
+  assert.match(after.title, /^The build of github.com\/A\/B \(main\) at ccccccc left nothing that can be read: lake build exited with 1\. The next commit/);
+  assert.equal(after.log, failed.last.tail);
+  // a try that did not run lake build (the tree went back to the build said built): that build
+  const noProject = deployWaiting({ ...failed, last: { commit: "c".repeat(40), ok: false, at: "", ms: 1, error: "it is no Lean project VisualProof can read" } }, { state: "error", error: "No part of this build can be read" });
+  assert.match(noProject.title, /^The build of github.com\/A\/B \(main\) at aaaaaaa left nothing that can be read\. The next commit/);
+  assert.equal(noProject.log, "No part of this build can be read");
+  // the first build failed, writing nothing: nothing is built, and the page says so
+  const firstFailed = deployWaiting({ ...failed, built: null }, { state: "extracting" });
+  assert.match(firstFailed.title, /^The first build of github.com\/A\/B \(main\) at ccccccc failed: lake build exited with 1\. The next commit pushed to main is built/);
   assert.equal(githubBlob("A/B", "c".repeat(40), "Fixture/Leaf Two.lean", 3, 7), `https://github.com/A/B/blob/${"c".repeat(40)}/Fixture/Leaf%20Two.lean#L3-L7`);
   assert.equal(githubBlob("A/B", "c", "M.lean", 3, 3), "https://github.com/A/B/blob/c/M.lean#L3");
 });
@@ -445,4 +747,60 @@ test("a build's log names the clone '.', by the path given and by the path resol
   log.text(`$ lake build M\nerror: ${realpathSync(real)}/M.lean:1:0: unknown identifier 'oops'\n${link}/N.lean: built\n`);
   log.close();
   assert.equal(log.tail(), "$ lake build M\nerror: ./M.lean:1:0: unknown identifier 'oops'\n./N.lean: built");
+});
+
+test("a build's log names a home reached through a symlink, and elan's and Lake's folders under it, by the home: no path of the machine reaches a page", () => {
+  // as here: the home a link (/home/ann → elsewhere), its .elan and .cache links to a disk of their
+  // own (~/.elan → /data/.elan), which elan and Lake print resolved
+  const T = join(ROOT, "linked-home");
+  const realHome = join(T, "users", "ann");
+  const home = join(T, "home-ann");
+  const disk = join(T, "data");
+  mkdirSync(realHome, { recursive: true });
+  mkdirSync(join(disk, ".elan", "toolchains"), { recursive: true });
+  mkdirSync(join(disk, ".cache", "mathlib"), { recursive: true });
+  mkdirSync(join(disk, "tools", "elan2"), { recursive: true });
+  symlinkSync(realHome, home);
+  symlinkSync(join(disk, ".elan"), join(realHome, ".elan"));
+  symlinkSync(join(disk, ".cache"), join(realHome, ".cache"));
+  // the deployment under the home's cache, as --cache's default puts it; the clone not made yet
+  const folder = join(home, ".cache", "visualproof", "deploy", "r-0123abcd");
+  mkdirSync(folder, { recursive: true });
+  const clone = join(folder, "clone", "r");
+  const log = new BuildLog(join(folder, "logs"), "c0ffee", clone, { folder, home, env: {} });
+  const real = (p: string) => join(realpathSync(disk), p);
+  const lean = "toolchains/leanprover--lean4---v4.34.0/bin/lean";
+  log.text(
+    [
+      `trace: .> LEAN_PATH=${real(".cache/visualproof/deploy/r-0123abcd/clone/r/.lake/build/lib/lean")} ${real(`.elan/${lean}`)} ${real(".cache/visualproof/deploy/r-0123abcd/clone/r/M.lean")} -o ${clone}/.lake/build/M.olean`,
+      `${home}/.elan/bin/lake build M`,
+      `Decompressing ${real(".cache/mathlib/abc.ltar")}; own: ${real(".cache/visualproof/deploy/r-0123abcd/mathlib-cache/def.ltar")}`,
+      `${realpathSync(realHome)}/notes.txt and ${home}`,
+      // a neighbour's path is not the home's
+      `${home}2/x, /mnt${home}/y`,
+    ].join("\n") + "\n",
+  );
+  log.close();
+  const tail = log.tail().split("\n");
+  assert.deepEqual(tail.slice(0, 4), [
+    `trace: .> LEAN_PATH=./.lake/build/lib/lean ~/.elan/${lean} ./M.lean -o ./.lake/build/M.olean`,
+    "~/.elan/bin/lake build M",
+    "Decompressing ~/.cache/mathlib/abc.ltar; own: ../../mathlib-cache/def.ltar",
+    "~/notes.txt and ~",
+  ]);
+  assert.equal(tail[4], `${home}2/x, /mnt${home}/y`);
+  for (const line of tail.slice(0, 4)) assert.ok(!line.includes(T) && !line.includes(realpathSync(T)), `no path of the machine: ${line}`);
+
+  // ELAN_HOME, a folder under the home reached through a link: by its path under the home
+  const elanHome = join(home, "tools", "elan");
+  mkdirSync(join(realHome, "tools"), { recursive: true });
+  symlinkSync(join(disk, "tools", "elan2"), elanHome);
+  const viaEnv = new BuildLog(join(folder, "logs"), "c0ffee2", clone, { folder, home, env: { ELAN_HOME: elanHome } });
+  viaEnv.text(`${realpathSync(join(disk, "tools", "elan2"))}/${lean}\n`);
+  viaEnv.close();
+  assert.equal(viaEnv.tail(), `~/tools/elan/${lean}`);
+
+  // whole paths only, longest first, each once
+  assert.equal(pathNamer([["/a/b/c", "."], ["/a/b", "~"]])("/a/b/c /a/bc /a/b /a/b/c/d"), ". /a/bc ~ ./d");
+  assert.equal(pathNamer([])("/a/b"), "/a/b");
 });

@@ -44,13 +44,13 @@ The terms the other topics use.
 - **Review order**: bottom-up (what a declaration uses before it; mutual users together), then
   what more targets rest on, then name. A review judges a declaration assuming what it uses means
   what it says.
-- **Status** (people's): `commented` if some reviewer's latest opinion on the present version is a
-  comment; else `approved` if one approves; else `stale` if it has opinions, none on the present
-  version; else `none`.
+- **Status** (people's): `commented` if some reviewer's latest opinion (none if withdrawn) on the
+  present version is a comment; else `approved` if one approves; else `stale` if it has opinions,
+  none on the present version; else `none`.
 - **Target**: a theorem whose TCB is reviewed; marked by people, or agents at level full
   (`markedByAgent`).
-- **Key declaration**: a review member that matters for reading the target (central definitions,
-  the structures under them, the main theorem), marked per target as targets are; the target always
-  is one. A non-key member is **supported by** a key declaration reaching it by statement and body
-  references through non-key members; the **key graph** links key declarations reached so. People
-  review key declarations first.
+- **Key declaration**: a TCB member, trusted or not, that matters for reading the target (central
+  definitions, the structures under them, the main theorem), marked per target as targets are; the
+  target always is one; a trusted one needs no review. A non-key member is **supported by** a key
+  declaration reaching it by statement and body references through non-key members; the **key
+  graph** links key declarations reached so. People read key declarations first.

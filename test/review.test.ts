@@ -375,15 +375,15 @@ test("a declaration of the project can be marked as target from its panel; one o
       queue: () => ({ order: [0], axioms: [] }),
       keyView: () => {},
     } as unknown as ReviewHooks);
-  assert.match(box(false).html(0, true), /data-rv-target>☆ Mark as target</);
+  assert.match(box(false).html(0), /data-rv-target>☆ Mark as target</);
   // the server refuses a target outside the project (server/reviewapi.ts): no button to be refused
-  assert.doesNotMatch(box(false).html(1, true), /data-rv-target|Target/);
+  assert.doesNotMatch(box(false).html(1), /data-rv-target|Target/);
   // a target, wherever it is: its mark, and the way to take it off
   record(d, { op: "target", name: "Nat.Prime", by: "Alice", on: true }, "tc", at(1));
-  assert.match(box(false).html(1, true), /data-rv-target>★ Target</);
-  assert.match(box(true).html(1, true), /<div class="rv-tag">★ Target<\/div>/);
+  assert.match(box(false).html(1), /data-rv-target>★ Target</);
+  assert.match(box(true).html(1), /<div class="rv-tag">★ Target<\/div>/);
   // a read-only reader opens no view (CollabSpec decision 11): no Key view to be refused
-  assert.match(box(true).html(1, true), /data-rv-keyview/);
+  assert.match(box(true).html(1), /data-rv-keyview/);
   const reader = new ReviewBox(g, {
     review: () => ({ data: d, error: null, blocked: null, readOnly: true, reviewer: null }),
     editedNow: () => false,
@@ -392,7 +392,7 @@ test("a declaration of the project can be marked as target from its panel; one o
     keyProgress: () => ({ total: 1, approved: 0, commented: 0, stale: 0, unreviewed: 1 }),
     queue: () => ({ order: [0], axioms: [] }),
   } as unknown as ReviewHooks);
-  assert.doesNotMatch(reader.html(1, true), /data-rv-keyview/);
+  assert.doesNotMatch(reader.html(1), /data-rv-keyview/);
 });
 
 test("a non-standard axiom is marked and counted as needing review whatever trusts it (ReviewSpec decision 3)", () => {

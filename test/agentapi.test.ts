@@ -21,10 +21,13 @@ const LEVELS = ["read", "advise", "full"] as const;
 /** what each level allows of what an endpoint needs */
 const ALLOWS: Record<string, (needs?: string) => boolean> = { read: (n) => !n, advise: (n) => !n || n.includes("advise"), full: () => true };
 
-/** The budgets: what an agent loads first stays within them. */
+/** The budgets: what an agent loads at once stays within them — the entry, a topic, the tools
+ *  list. The whole documentation, which an agent reads a topic at a time as it needs one, has a
+ *  larger one (the owner's decision of 2026-10-19), so that a topic grows without another being
+ *  squeezed to make room. */
 const ENTRY_MAX = 6000;
 const TOPIC_MAX = 15_000;
-const DOCS_MAX = 110_000;
+const DOCS_MAX = 150_000;
 const TOOLS_LIST_MAX = 28_000;
 
 test("the entry is small: who you are, how to begin, the rules, the topics, the most used endpoints — at every level, within its budget", async () => {

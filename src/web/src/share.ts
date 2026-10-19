@@ -8,7 +8,10 @@
 // page it let in that link's path, `/k/<key>`, and the page's place goes after it as a fragment,
 // which the browser keeps across the link's redirect. The link is copied at once; where the browser
 // will not (over plain HTTP the clipboard API is not offered, and the old way may be refused too) it
-// is shown selected, to be copied by hand.
+// is shown selected, to be copied by hand. It is made with the server's public address
+// (`--public-url`) where it has one, as every link Share makes is (the read-only and personal links,
+// the agent's prompt: the server's), so that it opens for whoever it is sent to whichever address the
+// page was opened at; else with the page's own.
 //
 // *Read-only link* (server/readonly.ts): a link that shows the project and lets its holder change
 // nothing that is shared, nor be seen. Anyone let in makes one; it lasts until revoked, and is
@@ -31,14 +34,16 @@
 // *Invite a person*: a personal link for one person, named by whoever invites them
 // (server/invites.ts). It lets them in and says who they are: their name carries a ✓, nobody else
 // can take it, and they can change it without what they did leaving them. The link is shown once,
-// here, to be sent to that person; the server keeps only a digest of it.
+// here, to be sent to that person; they find it again in the menu under their name, and nobody else
+// does (the owner's decision of 2026-10-19, web/src/mylink.ts).
 //
 // Below the tabs, the read-only links in force, each with who made it, when and when it was last
 // used, the link to be shown again, and a Revoke; the personal links in force, the same but for the
 // link; then the agents' tokens in force, each with when it was last used, its prompt to be shown
-// again (the token is in it), and a Revoke.
+// again to whoever made it (the token is in it, and whoever holds it reads the agent's private
+// channel: the owner's decision of 2026-10-19), and a Revoke, anyone's.
 
-import { defaultAgentName, uniqueName } from "../../shared/collab.ts";
+import { defaultAgentName, madeBy, uniqueName } from "../../shared/collab.ts";
 import type { AgentTokenInfo, PersonInvite } from "../../shared/collab.ts";
 import { withSnapshot } from "../../shared/sharesnap.ts";
 import { BOT } from "./agentmark.ts";
@@ -53,9 +58,15 @@ export interface ShareHooks {
   /** what this page may share: the link's path on this server (`/k/<key>`, or null where anyone who
    *  reaches it is let in; a read-only reader's own), and whether there are read-only links */
   info(): Promise<ShareInfo>;
+  /** the address the page's links are made with: the server's public one (`--public-url`) where it
+   *  has one, else the page's own origin (web/src/chatlinks.ts, siteOrigins) */
+  base(): string;
   data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly">;
   /** the reader's name as the page knows it, for the agent's default name; null when there is none */
   me(): string | null;
+  /** the personal link the reader came by (CollabSpec decision 9), or null: with the name, which
+   *  tokens are theirs, whose prompts they are shown again (AgentSpec decision 7) */
+  person?(): string | null;
   /** the reader's name, asked for when there is none; null when they decline */
   ensureName(): Promise<string | null>;
   /** what the reader sees, as a link's snapshot carries it after `snap=`; null where none is made */
@@ -186,10 +197,11 @@ export class Share {
     return (this.known ??= this.hooks.info().catch(() => ({ path: null })));
   }
 
-  /** The link to this page as it is now: for a read-only reader, the link they came by. */
+  /** The link to this page as it is now, at the server's public address where it has one: for a
+   *  read-only reader, the link they came by. */
   async link(): Promise<string> {
     const { path } = await this.shareInfo();
-    return `${location.origin}${path ?? "/"}${await this.fragment()}`;
+    return `${this.hooks.base()}${path ?? "/"}${await this.fragment()}`;
   }
 
   /** What a link carries after `#`: the address, and with Exactly what I see the snapshot of what the
@@ -264,7 +276,7 @@ export class Share {
       // shown again): shown and copied as the guest link is
       const listed = this.readOnly.kind === "link" && this.readOnly.id !== "";
       if (this.info.readOnly || (this.info.public && !listed)) {
-        const base = `${location.origin}${this.info.readOnly ? (this.info.path ?? "/") : "/"}`;
+        const base = `${this.hooks.base()}${this.info.readOnly ? (this.info.path ?? "/") : "/"}`;
         const link = base + (await this.fragment());
         this.readOnly = { kind: "link", id: "", base, link, made: false, copied: await copy(link) };
       }
@@ -439,7 +451,7 @@ export class Share {
         `<div class="sh-title">The personal link for ${who}${VERIFIED}</div>` +
         `<input class="sh-url sh-invite-url" readonly value="${escapeHtml(i.link)}" aria-label="The personal link" spellcheck="false">` +
         this.exactRow() +
-        `<div class="sh-note muted">${i.copied ? "Copied. " : ""}For ${who} alone: it signs them in as ${who}${VERIFIED}. Shown only now.</div>` +
+        `<div class="sh-note muted">${i.copied ? "Copied. " : ""}For ${who} alone: it signs them in as ${who}${VERIFIED}. Shown to you only now; ${who} finds it again under their name.</div>` +
         `<div class="modal-actions"><button class="rv-btn" data-invite-again>Another person</button><button class="rv-btn primary" data-copy-invite>${i.copied ? "Copy again" : "Copy"}</button></div>`
       );
     }
@@ -555,16 +567,18 @@ export class Share {
   }
 
   /** A token in force: who it is for and from whom, its prompt shown again on a click on it (or on
-   *  Show prompt), and Revoke. */
+   *  Show prompt) where the reader made it — whoever holds the token reads its agent's private
+   *  channel (AgentSpec decision 7, the owner's decision of 2026-10-19) —, and Revoke, anyone's. */
   private tokenRow(t: AgentTokenInfo): string {
     const armed = this.arming === t.id;
     const shown = this.agent.kind === "prompt" && this.agent.id === t.id && this.tab === "agent";
     const id = escapeHtml(t.id);
+    const mine = madeBy(t, { name: this.hooks.me(), person: this.hooks.person?.() ?? null });
     return (
       `<div class="sh-tok${shown ? " on" : ""}">` +
-      `<div class="sh-tok-text" data-show="${id}" title="Show its prompt again"><div>${BOT}<b>${escapeHtml(t.name)}</b> <span class="sh-lvl">${escapeHtml(t.level)}</span></div>` +
+      `<div class="sh-tok-text"${mine ? ` data-show="${id}" title="Show its prompt again"` : ` title="Its prompt is shown again to ${escapeHtml(t.by)} alone, who made it"`}><div>${BOT}<b>${escapeHtml(t.name)}</b> <span class="sh-lvl">${escapeHtml(t.level)}</span></div>` +
       `<div class="muted">by ${escapeHtml(t.by)}, ${escapeHtml(ago(t.created))} · expires ${escapeHtml(until(t.expires))} · ${t.lastUsed ? `last used ${escapeHtml(ago(t.lastUsed))}` : "not used yet"}</div></div>` +
-      `<button class="rv-btn sh-act" data-show="${id}" aria-pressed="${shown}" title="Its prompt, with the token, to give the agent again">Show prompt</button>` +
+      (mine ? `<button class="rv-btn sh-act" data-show="${id}" aria-pressed="${shown}" title="Its prompt, with the token, to give the agent again">Show prompt</button>` : "") +
       `<button class="rv-btn sh-act${armed ? " bad" : ""}" data-revoke="${id}" title="It lets the agent in no more, at once">${armed ? "Revoke it" : "Revoke"}</button>` +
       `</div>`
     );
@@ -682,7 +696,7 @@ function until(iso: string): string {
 }
 
 /** Put `text` on the clipboard; false when the browser will not. */
-async function copy(text: string): Promise<boolean> {
+export async function copy(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);

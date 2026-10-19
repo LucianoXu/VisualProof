@@ -40,14 +40,16 @@ The tool is in `src/`; paths of code in its comments and in `SPEC/` are relative
   - nothing is sent to it before its answer to `initialize` and the `initialized` notification
     (`start()`): a request sent earlier makes it exit.
 - A change to the extractor or to how the server runs Lean passes `npm run test:toolchains`
-  (`CONTRIBUTING.md`, Lean versions).
+  (`CONTRIBUTING.md`, Lean versions): the tests the toolchain can change, locally on the oldest
+  and the newest supported toolchain; CI runs them on every one before the pull request is merged.
 - A change to access, fetching by URL, uploads or how Lean is run keeps `SECURITY.md` true.
 - A change to how a branch is followed or built (`server/deploy.ts`) keeps `SECURITY.md` true and
-  passes `npm run test:toolchains`.
+  passes `npm run test:toolchains`, as above.
 - `docs/agent-api/` is served to agents (`GET /api/agent/docs`, each topic as
   `GET /api/agent/docs/<topic>`; the topics are listed in `server/agentdocs.ts`): a change to the
   agents' API or to the MCP server's tools updates it in the same change, within the budgets
-  `test/agentapi.test.ts` keeps (the entry, each topic, the tools list).
+  `test/agentapi.test.ts` keeps: the entry, each topic and the tools list, which an agent loads at
+  once, small; the whole documentation, read a topic at a time, a larger one.
 
 ## General Guidelines
 

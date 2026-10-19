@@ -8,11 +8,13 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { RawGraph } from "../src/shared/graph.ts";
 import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../src/shared/graph.ts";
-import { EXTRACTOR } from "../src/server/extract.ts";
 import { versionBase, versions } from "../src/server/versions.ts";
 import { History } from "../src/server/history.ts";
-import { copyFixture } from "./fixturecopy.ts";
+import { copyFixture, extractor } from "./fixturecopy.ts";
 import { findRenames } from "../src/server/renames.ts";
+
+/** the extractor, compiled as the server runs it (test/fixturecopy.ts) */
+const EXTRACT = await extractor();
 
 let haveLake = true;
 try {
@@ -24,7 +26,7 @@ try {
 let dir = "";
 let g: RawGraph;
 const extractInto = (out: string, cache?: string) =>
-  execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, out, join(dir, ".lake/build/lib/lean"), "Fixture", ...(cache ? ["--cache", cache] : [])], {
+  execFileSync("lake", ["env", ...EXTRACT, out, join(dir, ".lake/build/lib/lean"), "Fixture", ...(cache ? ["--cache", cache] : [])], {
     cwd: dir,
     stdio: "ignore",
   });
@@ -65,7 +67,7 @@ test("a project reached through a symbolic link is the project: its modules are 
     const linked = join(links, "project");
     symlinkSync(dir, linked, "dir");
     const out = join(links, "graph.json");
-    execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, out, join(linked, ".lake/build/lib/lean"), "Fixture"], { cwd: linked, stdio: "ignore" });
+    execFileSync("lake", ["env", ...EXTRACT, out, join(linked, ".lake/build/lib/lean"), "Fixture"], { cwd: linked, stdio: "ignore" });
     const via = JSON.parse(readFileSync(out, "utf8")) as RawGraph;
     assert.deepEqual(via.nodes.map((n) => n.name), g.nodes.map((n) => n.name));
     assert.equal(via.edges.length, g.edges.length);
@@ -172,7 +174,7 @@ test("a unit's hash covers what its command generated: a change there makes it a
     const f = join(other, "Fixture/Tagged.lean");
     writeFileSync(f, readFileSync(f, "utf8").replace("theorem $lemma : $left ≠ $right", "theorem $lemma : $right ≠ $left"));
     execFileSync("lake", ["build"], { cwd: other, stdio: "ignore" });
-    execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, join(other, "g.json"), join(other, ".lake/build/lib/lean"), "Fixture"], { cwd: other, stdio: "ignore" });
+    execFileSync("lake", ["env", ...EXTRACT, join(other, "g.json"), join(other, ".lake/build/lib/lean"), "Fixture"], { cwd: other, stdio: "ignore" });
     const h = JSON.parse(readFileSync(join(other, "g.json"), "utf8")) as RawGraph;
     const hashOf = (x: RawGraph, n: string) => x.nodes.find((v) => v.name === n)?.hash;
     assert.notEqual(hashOf(h, "Fixture.Pair"), hashOf(g, "Fixture.Pair"));
@@ -192,7 +194,7 @@ test("a version is the same across a pure rename, of the declaration or of what 
         writeFileSync(p, edit(readFileSync(p, "utf8")));
       }
       execFileSync("lake", ["build"], { cwd: other, stdio: "ignore" });
-      execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, join(other, "g.json"), join(other, ".lake/build/lib/lean"), "Fixture"], { cwd: other, stdio: "ignore" });
+      execFileSync("lake", ["env", ...EXTRACT, join(other, "g.json"), join(other, ".lake/build/lib/lean"), "Fixture"], { cwd: other, stdio: "ignore" });
       return JSON.parse(readFileSync(join(other, "g.json"), "utf8")) as RawGraph;
     } finally {
       rmSync(other, { recursive: true, force: true });
@@ -241,7 +243,7 @@ test("every unit has a name of its own: a declaration two files write, local not
   // Fixture/Twice/A.lean and B.lean do not import each other; each writes the same theorem, a
   // `local notation "Ψ"` and a private `helper`
   execFileSync("lake", ["build", "Fixture.Twice"], { cwd: dir, stdio: "ignore" });
-  const err = spawnSync("lake", ["env", "lean", "--run", EXTRACTOR, join(dir, "twice.json"), join(dir, ".lake/build/lib/lean"), "Fixture.Twice"], { cwd: dir, encoding: "utf8" }).stderr;
+  const err = spawnSync("lake", ["env", ...EXTRACT, join(dir, "twice.json"), join(dir, ".lake/build/lib/lean"), "Fixture.Twice"], { cwd: dir, encoding: "utf8" }).stderr;
   const t = JSON.parse(readFileSync(join(dir, "twice.json"), "utf8")) as RawGraph;
   const names = t.nodes.map((n) => n.name);
   assert.equal(new Set(names).size, names.length, `names shared: ${names.join(", ")}`);

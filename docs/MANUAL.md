@@ -78,11 +78,13 @@ The words used here are the next part's; the rest of the manual is the reference
   always means trusted without review: the panel lists the TCB itself as **Its TCB**.
 - **A target**: a theorem whose TCB is reviewed, marked ☆ by a reviewer (or by an agent at level
   `full`). It carries a gold star, and the Targets list says how far each review has come.
-- **Key declarations**: of a target's review set, the few that matter for reading it — the central
+- **Key declarations**: of a target's TCB, the few that matter for reading it — the central
   definitions, the structures they are built on, the main theorem — marked key for that target (a
-  gold diamond); the target always is one. They are read first, and progress counts them first:
-  ◆ approved of the key declarations, then approved of all. A declaration that is not key is
-  *supported by* the key declarations that reach it through members that are not key; the **key
+  gold diamond); the target always is one. A trusted declaration can be key too, in the project or
+  outside it: trusted says it needs no review, key that it is needed to read the target. They are
+  read first, and progress counts them first: ◆ approved of the key declarations that need review
+  (the trusted ones told apart, *+N trusted*), then approved of all. A declaration that is not key
+  is *supported by* the key declarations that reach it through members that are not key; the **key
   graph** joins key declarations reached so, dashed.
 - **The review's focus**: a view reviews one target at most, its focus, set when the view is made
   from the target. **Focus ▾**, at the top left, shows it: there each reader may focus otherwise for
@@ -136,7 +138,7 @@ The README says how to install the `visualproof` command. A checkout also runs a
   project, and nothing into this repository.
   - `--site <dir>` is the **site's folder**: the review's logs (`log/`) and what this running
     VisualProof site accumulates — the history of builds, the library's files, the views and their
-    layouts (with the notes they keep), the timeline, conversations with agents, agents' tokens and
+    layouts (with the notes they keep), the timeline, the conversations, agents' tokens and
     personal links. By default `~/.local/share/visualproof/sites/<project>-<hash>/` (macOS:
     `~/Library/Application Support/visualproof/sites/…`); `--site` is relative to the current directory,
     as `--cache` is, or absolute; `<site>` below. It is local: it cannot be derived again and holds secrets, so back it
@@ -207,8 +209,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
   to someone not given a link, so no reader can make a private project public. Not with
   `--identity-header`, where the sign-in decides who comes in.
 - `--public-url https://host` is the address people reach the server at, when it is not the one
-  their browser sends (a proxy in front): the prompt Share makes for an agent tells it this
-  address. Without it, the prompt carries the address the person's browser used.
+  their browser sends (a proxy in front): every link Share makes (the guest link, read-only and
+  personal links) and Copy link are made with it, and the prompt Share makes for an agent tells it
+  this address; a link of it is this site's in a conversation (a chip) whichever address the page
+  was opened at. Without it, the links and the prompt carry the address the person's browser used.
 - `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
   for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
   and the names given here; any other name is answered 403 (a browser is shown a page that says
@@ -230,7 +234,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
   bytes); JSON answers over 2 KB go gzipped. The review goes gzipped too, tagged with its revision:
   the event stream says only which revision the server holds and what changes, so a page reads the
   whole review as it loads, and again only where it missed a change (a reload of an unchanged
-  review is answered 304). Brotli would be smaller still, but browsers take it only over HTTPS.
+  review is answered 304). The build status of every file travels the same way (`GET /api/build`):
+  while a build runs, the stream carries only the files whose status changed (on
+  NavierStokesAndEuler's 2,657 files, a change is tens of KB where the whole is 362 KB, 42 KB
+  gzipped). Brotli would be smaller still, but browsers take it only over HTTPS.
 - `docs/deploy/visualproof.service.example` is an example systemd user unit that serves a project this
   way: copy it and fill in its placeholders (it says how).
 - `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data
@@ -261,7 +268,7 @@ The README says how to install the `visualproof` command. A checkout also runs a
 
 ```bash
 visualproof serve https://github.com/<owner>/<repo>               # its default branch
-visualproof serve git@github.com:<owner>/<repo>.git --branch main --poll 5
+visualproof serve git@github.com:<owner>/<repo>.git --branch main --poll 5 --build-timeout 2 --mathlib-cache own
 ```
 
 With a git URL where the project goes, the server follows that branch of the repository and builds
@@ -278,8 +285,9 @@ to a team. It needs git, besides elan.
 - **`--branch <name>`**: the branch followed, by default the remote's default branch (asked at each
   start, and remembered for a start without the network). Only that branch is ever fetched: never a
   pull request's or a fork's.
-- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/<repo>/`, one per URL and
-  branch, made at the first start; never your workspace. The site is the URL's and the branch's
+- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/clone/<repo>/`, one per URL
+  and branch, made at the first start; never your workspace. (A deployment made by 0.5.0 keeps its
+  clone where it was, `<repo>-<hash>/<repo>/`, and is not cloned again.) The site is the URL's and the branch's
   (`~/.local/share/visualproof/sites/<repo>-<hash>/`) unless `--site` says otherwise. One server
   follows a branch with a cache at a time. The other commands (`export`, `artwork`, `doctor`,
   `purge-file`) take the clone's folder, which the server names as it starts (`clone:`).
@@ -289,17 +297,37 @@ to a team. It needs git, besides elan.
   **one build at a time**; heads pushed meanwhile are not queued: **only the newest is built after
   it**. A commit is built once, whatever came of it; one that could not be fetched is tried again at
   the next look.
+- **`--build-timeout <hours>`** (default 6; from 0.05 to 168, fractions too: `1.5`): a `lake build`
+  that takes longer is stopped and the build failed, its commit not tried again, so that a commit
+  that never finishes does not hold back those pushed after it. The popover says why: `it took
+  longer than 6 hours (--build-timeout): stopped`. A build done again after a restart has the whole
+  time again.
+- **`--mathlib-cache shared|own`**: where `lake exe cache get` keeps Mathlib's files. `shared`, the
+  default: the user's, as their own builds (`~/.cache/mathlib`, or `MATHLIB_CACHE_DIR` in the
+  server's environment), so that a deployment fetches only what they have not. `own`: the
+  deployment's, in its folder of the cache, `<cache root>/deploy/<repo>-<hash>/mathlib-cache/`,
+  apart from the user's builds. It holds one version of Mathlib, about 0.45 GB (8,684 files for
+  Mathlib of August 2026: a small project's first build on it, Mathlib cloned and its cache
+  fetched whole, took 75 s on a fast connection): after each `lake exe cache get`, `lake exe cache
+  clean` deletes what the version checked out does not use, so that a bump of Mathlib, which
+  fetches nearly all of it again, leaves the version before deleted (the user's cache is never
+  cleaned). Removing `mathlib-cache/` frees it (the next build fetches what it needs again), the
+  deployment's whole folder the clone with it. Either way, Mathlib's build unpacked in the clone's
+  `.lake` takes about 8 GB.
 - **Meanwhile the board keeps answering**, showing the last build: the pill says the build's step
   (`Fetching a1b2c3d`, `Mathlib's cache · a1b2c3d`, `Building 12 / 40 · …`), and once it is read,
   the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
   its buttons, the branch and the remote, when it was last asked, the build going on and what it
   says now, the newest commit waiting, and the last build that ended: when, how long, and — where it
-  failed — why, with the end of its log (to those let in fully: never a read-only reader). A failed
+  failed — why, with the end of its log (to those let in fully: never a read-only reader), its
+  paths written from the clone's folder (`.`) and the home (`~`), however links lead there. A failed
   build shows its failed files as any failed build does, in the Status colours and the popover, the
   board reading what could be; `Build failed · a1b2c3d` where no file says it (a lakefile that does
   not elaborate). The history keeps each build's commit, on the branch, so that the Time Machine's
   ruler has a long tick per commit; a failing commit whose build compiled nothing new is no new
-  build. Each build's whole log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
+  build, and is never said built: the popover says it failed and that the board shows the build
+  before, which is what the history, the loading page and the agents call built. Each build's whole
+  log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
 - **The first start** clones the branch (the terminal says it), then builds its head; until a build
   can be read, the page says what is being done (`The first build of github.com/A/B (main) at
   a1b2c3d: lake build, 3 of 8 files…`), and where it failed, why and what comes next, with the end
@@ -384,9 +412,11 @@ toolchain, and Lean's internals change between releases, so every supported tool
 releases, and whatever the showcase project needs (v4.34.0-rc2, for NavierStokesAndEuler); v4.28.0,
 for the sphere packing formalization (the showcase before it), stays the floor.
 
-- `npm run test:toolchains` runs the whole suite once per toolchain, the fixture built by each
-  (`-- --jobs N` runs N at once, two by default; `-- v4.28.0` only that one); `VP_TOOLCHAIN=v4.30.0
-  npm test` runs it with one. elan installs a toolchain the first time it is asked for it.
+- `npm run test:toolchains` runs the tests whose answers can depend on the toolchain — those that
+  build the fixture with it — once per toolchain: the oldest and the newest, at once; `-- --all`
+  every one (`-- --jobs N` runs N at once, two by default; `-- v4.30.0` only that one). CI runs
+  every one before a change is merged. `VP_TOOLCHAIN=v4.30.0 npm test` runs the whole suite with
+  one. elan installs a toolchain the first time it is asked for it.
 - `test/compat.test.ts` compares the extraction of the whole fixture with a golden taken on the
   fixture's own toolchain ([test/golden/](../test/golden/)): what is the project's — its units, the
   edges between them, their axioms and TCBs — must be the same on every toolchain; what Lean's
@@ -493,11 +523,16 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   the middle button; the wheel zooms. A drag starts after 6 px, so a click never moves anything.
 - **The right click** opens a menu on what is under the pointer (`Shift F10`, or the ContextMenu
   key, on what is selected): on a declaration, its source (or in a pinned window), its TCB, what it
-  uses or what uses it selected, its full name copied, *Remove from this view* or *Add to view ▸*,
+  uses or what uses it selected, its full name copied, *Copy link*, *Remove from this view* or *Add to view ▸*,
   marking it key (where the review has a focus) or a target, approving or commenting, trusting its namespace;
-  on a cluster, fold, remove, add to a view, trust; on the empty canvas, fit and Re-layout; and
+  on a cluster, fold, *Copy link*, remove, add to a view, trust; on the empty canvas, *Copy link to
+  what I see*, fit and Re-layout; on a note, *Copy link* among its items; and
   everywhere *Add a note here* and *Add a note for this view*. What you cannot do there is not
-  offered. The Project holds a fixed scope: there, *New view without it…* makes a copy of the board
+  offered. **Copy link** (ViewSpec decision 21) copies a link to it on this board, and *Copy link to
+  what I see* a link to everything you see (as Share's *Exactly what I see* makes one, whatever its
+  switch); the page says what the link leads to. These links carry no key: whoever opens one must be
+  let in already — a conversation shows it as what it leads to (Together, below), and Share makes the
+  links that let people in. Read-only readers have it too. The Project holds a fixed scope: there, *New view without it…* makes a copy of the board
   that leaves it out, and opens it.
 - **Notes** (CanvasSpec, "Notes"; AttachmentSpec decisions 13–19): a note is the project's, and
   everyone sees it at once. It belongs to views as declarations do: the Project shows every note;
@@ -649,8 +684,9 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
   there; touch and hold opens the menu on what is under the finger. Nothing on the board is moved by
   a finger, so the lock is gone.
 - **⋯ at the top** holds the modes (each with what a tap selects), Share, the library, Export,
-  Activity, your name and help; **☰** opens the targets and the board's namespaces or folders as a
-  drawer.
+  Activity, the conversations, your name and help; what is new in Activity and in Everyone shows on
+  ⋯ as one count, with an @ where you were mentioned. **☰** opens the targets and the board's
+  namespaces or folders as a drawer.
 - **The panel** is a sheet from the bottom: a tap on its handle gives it the whole screen or half of
   it, ✕ closes it. A declaration's source, Activity and the lost-and-found take the whole screen.
 - No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of
@@ -668,7 +704,7 @@ keeping what you were doing.
 - **The panel** is a sheet from the bottom, across the screen, at half its height: drag its handle
   to make it taller or shorter, or tap it for the tallest and back. Activity, the lost-and-found and
   Export's window open in the same place.
-- **Source windows, the reference window and a conversation** dock there too, over the panel: side
+- **Source windows, the reference window and the conversation window** dock there too, over the panel: side
   by side on a wide enough screen, one over the other otherwise; the handle above them sets their
   height. They are not dragged: the dock places them.
 - The review strip and the selection bar go across the top, under the view bar; the legend and the
@@ -683,7 +719,7 @@ the screen while something is in it.
 
 - **The panel** is a pane at the work area's left; alone, it takes the whole width. Activity and the
   lost-and-found open in its place.
-- **Source windows, the reference window and a conversation** form one column at the panel's
+- **Source windows, the reference window and the conversation window** form one column at the panel's
   right, stacked from the top in that order — the reference the tallest, so that a page of a PDF
   reads well. One window alone takes the column's height; with no declaration selected the column
   takes the work area's width. They are not dragged: the column places them, and a collapsed one
@@ -759,7 +795,12 @@ lock, edges, the linear form, theme), the top holds your tabs and your mode.
 
 What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../SPEC/ReviewSpec.md)).
 
-- In the panel, **Approve** or **Comment** on the selected declaration (a comment needs text; an
+- **One review box**, in the panel and in every source window, following or pinned, each on its own
+  declaration: the same controls in the same order — the opinions and their history, the agents'
+  advice, the comment box, **Approve**, **Comment**, **Speaking for**, **Withdraw** beside your
+  opinion, the key mark, **☆ Mark as target**, and for a target its progress, its axioms outside the
+  graph and its view.
+- **Approve** or **Comment** on the declaration (a comment needs text; an
   approval may carry one too); a new opinion replaces your earlier one, and the box empties once
   it is recorded. The first time, a window asks for the name your opinions are recorded
   under; it stays at the top right of the page (see Together). Each
@@ -769,12 +810,20 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   version*, and **What changed** shows the lines removed and added since (the opinion
   records the text it was given on: the context it is written in, then its source), so a
   re-review reads only the change.
+- **Withdraw** takes your current opinion back: it stands beside it in every review box. An
+  approval goes at once; a comment asks first. Afterwards you have no opinion there — every
+  status, count and list is as if you had given none, and an earlier opinion of yours does not
+  come back — but nothing is erased: the panel's **All opinions** keeps the opinion, faded, and the
+  withdrawal at its time ("Alice withdrew their approval"), and Activity says it. Speaking for
+  someone, it withdraws theirs, recorded by you. A new opinion of yours stands as any. Agents
+  withdraw their own advice ([docs/agent-api](agent-api/advice.md)).
 - **Speaking for someone else**, when several of you review at one screen: type their name in
   **Speaking for**, beside Approve and Comment (the list offers the people invited and those who
   have recorded something). Until you clear it, every review box says *Recording for* them and its
   buttons say *Approve for* them: what you record is their opinion — it replaces theirs, counts as
   theirs, and shows under their name, *recorded by* you, without their ✓. Their own next opinion
-  replaces it. Only approvals and comments; nobody records for an agent, nor does an agent.
+  replaces it. Only approvals and comments, and withdrawing them; nobody records for an agent, nor
+  does an agent.
 - **Comments** read as light Markdown: `> quotes`, `` `code` ``, ```` ```lean ```` blocks (highlighted as in
   the source window), `**bold**`, `*italics*`; a declaration's full name in backticks links to it.
   Nothing else becomes HTML, and the logs and the agents' API keep the text as written.
@@ -783,9 +832,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   In the source window, select some code and press **❝ Quote in comment**: the lines it touches,
   whole, go into that window's box under their file and line numbers, and once posted that
   header opens the source at those lines ([ReviewSpec.md](../SPEC/ReviewSpec.md), "Comments").
-- **☆ Mark as target** a theorem whose TCB you review. The panel then counts how far that review
-  has come (approved, commented, stale, not yet reviewed; what is trusted is not counted:
-  [Concepts](#concepts)), and **Its view** opens its board, or a temporary view of its
+- **☆ Mark as target** a theorem whose TCB you review, from any review box. Its box then counts
+  how far that review has come (approved, commented, stale, not yet reviewed; what is trusted is
+  not counted: [Concepts](#concepts)), and **Its view** opens its board, or a temporary view of its
   TCB where it has none. The targets are listed
   at the top of the side panel, with their progress. What changes in a target's TCB shows by
   itself: an opinion on a declaration that changed goes stale, what newly enters it is not yet
@@ -805,16 +854,20 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
 - **Key declarations** ([ExportSpec.md](../SPEC/ExportSpec.md), decisions 1–4): a target's review set can
   run to hundreds of declarations; the few that matter for reading it are marked **key** for it
   ([Concepts](#concepts)). Where the review is
-  focused on T, a declaration's panel (and the source window) has **◇ Mark as key for T** (`k`), and the
-  selection bar **Mark selected as key** for the declarations clicked; only what the review holds
-  can be marked, and the target is always key. Key declarations carry a small gold diamond on the
-  canvas (where the review has a focus its target's, elsewhere every target's), a ◆ in the review
-  list, which can show them alone (**◆ Key**), and `key(T)` in the query language, `key(targets)`
-  for every target (the target's panel has **Key view**); the Keys step of Rests on selects them.
-  They are read first: the review list shows them alone, and agents list them first.
-  Progress has two levels, in the strip, the target's panel and the Targets list: *◆ approved of
-  the key declarations*, then *approved of all*. A target's key document is its Key view
-  exported (see Exported documents).
+  focused on T, every review box — the panel's, and each source window's, following or pinned, on
+  its own declaration — has **◇ Mark as key for T** (**◆ Key for T** once marked; `k`), and the
+  selection bar **Mark selected as key** for the declarations clicked; whatever T's TCB holds can be
+  marked, trusted or not, in the project or outside it, and the target is always key. A trusted key
+  declaration needs no review: it is listed and printed with the others, marked *trusted*, and
+  never counts as *not yet reviewed*; a key declaration trusted later stays key. Key declarations
+  carry a small gold diamond on the canvas (where the review has a focus its target's, elsewhere
+  every target's), a ◆ in the review list, which can show them alone (**◆ Key**, the trusted ones
+  first), and `key(T)` in the query language, `key(targets)` for every target (the target's review
+  box has **Key view**); the Keys step of Rests on selects them. They are read first: the review
+  list shows them alone, and agents list them first. Progress has two levels, in the strip, the
+  target's review box and the Targets list: *◆ approved of the key declarations that need review*
+  (*+N trusted* beside it), then *approved of all*. A target's key document is its Key view
+  exported (see Exported documents), a trusted key declaration printed as any.
 - **Trusted without review** ([Concepts](#concepts)): Mathlib, Lean core (`Init`, `Lean`, `Std`), Batteries and the standard axioms by default. Trust a part of
   the project too (a vendored library, a layer reviewed elsewhere) with the shield on its row in
   the side panel's cluster list; Trusted, over that list, shows what is trusted and stops
@@ -822,8 +875,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   trusted at once, from that list or the shield on the External row (recorded as `@external`).
   Trusted declarations are not counted and need no opinion; the timeline says who trusted what.
 - **Source** in the panel, or Space, opens the declaration's source in a window over the canvas,
-  with Approve and Comment below it. It is not modal: the canvas and the panels stay in use, and
-  the window follows the selection, so a click on another declaration shows its source at once.
+  with its review box below it, the panel's (One review box, above). It is not modal: the canvas
+  and the panels stay in use, and the window follows the selection, so a click on another
+  declaration shows its source at once.
   It opens in the middle of the screen, as large as the code needs (at most 92% × 88% of the
   screen), and is fitted again to each declaration it shows until you move or resize it; then it
   keeps your place and size until you close it, and the next one opens in the middle again
@@ -835,7 +889,7 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   windows can be compared side by side; Approve and Comment in a pinned window, and `a`, `m`, `k`
   with the focus in it, are about its declaration, whatever is selected. Pinned windows are this
   page's (a reload starts without them; the reload into a new version, Updates below, keeps them). The window pressed last
-  comes to the front, the conversation with an agent among them. Space closes the following
+  comes to the front; the conversation window stays in front of them all. Space closes the following
   window; Esc closes the window the focus is in, and from the page closes the following one. Above
   the code, muted, is the context it is written in, as Lean: the namespaces and
   sections around it, the `open`s, `variable`s, universes, options and local notation in force
@@ -914,7 +968,8 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
 - Everything is in the site's `log/` (`<site>/log/`): **one append-only log per writer**
   (`<name>-<hash>.jsonl`, an agent's `….agent.jsonl`, every line marked as its; someone invited by
   a personal link `<id>.person.jsonl`, every line carrying the id, a rename a `name` line), one
-  event per line — opinions, advice, targets, trust, key declarations marked and unmarked. The review is
+  event per line — opinions and their withdrawals, advice, targets, trust, key declarations marked
+  and unmarked. The review is
   what replaying them gives; each person appends only to their own file. The review is the site's,
   local like the rest of it, and not committed. The server takes a declaration's hash and the text
   judged itself, refuses names outside the graph and files edited since compiled. A log line that
@@ -1206,10 +1261,11 @@ what each one looks at stays their own.
   show it again from the list. A read-only reader's Share has this tab alone, with the link they
   came by. Started with `--public` too, the address alone is read-only: whoever comes without the
   key or a link of their own reads, and this tab gives the address. **Invite a person** (CollabSpec decision 9): type their
-  name, **Create link**, and send them the personal link, copied at once and shown only then. It
-  lets them in and says who they are: their name carries a ✓ wherever it shows, nobody else can
-  take it, and when they change it from the menu under it, what they did stays theirs and shows
-  under the new name. It lasts until revoked. **AI agent** (AgentSpec decision 7): give the agent a name (*your* AI by default,
+  name, **Create link**, and send them the personal link, copied at once and shown to you only
+  then (they find it again under their name: **My personal link**, below). It lets them in and says
+  who they are: their name carries a ✓ wherever it shows, nobody else can take it, and when they
+  change it from the menu under it, what they did stays theirs and shows under the new name. It
+  lasts until revoked. **AI agent** (AgentSpec decision 7): give the agent a name (*your* AI by default,
   `Alice's AI`), what it may do (read, advise — the default — or full, never more than `--agents`)
   and for how long (1, 7 or 30 days); **Create** makes a token of its own, under your name, and a
   prompt that carries it, copied at once: paste it into any agent that can make HTTP requests, and
@@ -1220,15 +1276,22 @@ what each one looks at stays their own.
   personal links in force — for whom, who made each and when, when it was last used, **Revoke**
   (pressed twice), which cuts it off at once (their page then says the link no longer opens the
   site, naming nobody; a browser that has the guest link too stays, as a guest) — then the agents' tokens in force: who made each and when, when it expires,
-  when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy,
-  and **Revoke** (pressed twice).
+  when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy —
+  to whoever made the token alone, as whoever holds the token reads its agent's private channel —,
+  and **Revoke** (pressed twice), which anyone with a name may, to stop an agent at once.
 - **Your name**, at the top right: opinions, pins and re-layouts are recorded under it. A click
   opens its menu (the arrows, Enter and Esc work in it too): **Change name**, at any time — but not
   to the name of someone invited by a personal link, which the window says; behind a sign-in proxy
   (`--identity-header`) the name is the proxy's and the menu only shows it; come by a personal link,
-  it is yours, with its ✓, and a new one keeps what you did — and **Visibility** (CollabSpec
-  decision 8). *Visible*, the default: the others see you
-  and where you look, and can follow you. *Private*: your page tells nobody where you are; you are
+  it is yours, with its ✓, and a new one keeps what you did — then, come by a personal link, **My
+  personal link** (CollabSpec decision 9): the link you came by, to open the site as you in another
+  browser or on another device, with **Copy**. Whoever has it comes in as you, so it is shown to you
+  alone — not to whoever made it, nor to anyone else. **Make it anew** gives you a new link and
+  keeps you who you are (your name, its ✓, what you recorded): the old link, and every browser it
+  let you in, are cut off at once (asked first), while this browser stays in; do it if you think
+  someone else has your link. A link made before 0.6.0, when the server kept only a digest of it,
+  cannot be shown: make it anew to have it here. Then **Visibility** (CollabSpec decision 8).
+  *Visible*, the default: the others see you and where you look, and can follow you. *Private*: your page tells nobody where you are; you are
   not in the bar nor in "Also here", and nobody can follow you (you may still follow others). The
   others see only how many private readers there are ("+2 private", beside the initials). What you
   change of the layout — pins, folds, re-layouts, scopes, the views you make, rename or delete — is
@@ -1237,7 +1300,8 @@ what each one looks at stays their own.
   eye is struck through. The browser keeps the choice for all its tabs; it changes at once.
 - **Who else is here**: their initials beside your name, faded when they are away. Rest on one to
   see where they are; click for their menu, **Follow** them or **Ask … to follow me** (an agent's
-  initials follow it at once). What they see is followed; how you look at it is yours
+  menu: **Follow**, and **Talk** with it, in its private channel if it is yours, else by mentioning
+  it in Everyone). What they see is followed; how you look at it is yours
   (CollabSpec decision 4): you take their view (in a tab opened for it if need be), their build in
   the Time Machine, camera, tool, selection and focus, what their panel tells of, their source
   windows and reference window (each opened, collapsed and closed with theirs, placed as your
@@ -1275,30 +1339,52 @@ what each one looks at stays their own.
   robot — and can be undone or reversed as anyone's. Two things stay as they are at full too: its
   opinions are advice, and tokens are made, shown and revoked by people only. An agent is never
   private: it is always listed, and its companion tells it how many private readers are here.
-- **Talking with an agent** (AgentSpec decision 8): an agent given a token by Share is listed beside
+- **Conversations** (CollabSpec decision 13): the conversation button at the top right opens your
+  own conversation window, and closes it. It counts the messages of Everyone you have not seen, and
+  carries an **@** where you were mentioned or one of your agents answered. At the window's head,
+  its channels: **Everyone**, the public channel — everyone with a name on the page writes there,
+  and every agent with a token (a private reader too, under their name, which tells that they are
+  there), kept 90 days — then each of **your agents**, those whose token you made in Share, with
+  its state: a private channel between you and it, which nobody else sees, kept 30 days. A
+  read-only reader has no window. Write in the box: Enter sends, Shift+Enter makes a new line (the
+  Enter that commits an input method's composition, Chinese pinyin say, only commits it); `@` and
+  the start of a name offers the people online and the agents listed. A person's message mentioning
+  an agent is handed to it; an agent's mention of another agent is shown, never handed, so that no
+  two agents talk on without a person. A mention of you marks the message and the button, and a
+  notice under the button opens the window on it. Messages are plain text with simple Markdown
+  (`**bold**`, `*italics*`, `` `code` ``, fenced code), declarations' names as links, and links: a
+  link of this site never shows as its address, but as a chip naming what it leads to — a
+  declaration, a cluster, a note, or for what someone saw, the view, the tool and the selection
+  ("Case II · Rests on · `Foo.bar` +2"), pasted into the box as in a message — and a click goes
+  there in the page, as a share link opens; any other link opens in a new tab, its host beside it.
+  **What I see**, under the box, inserts a link to what you see; a link that lets in (Share's), put
+  in the box, is sent without its key. Where a message was written from is
+  told to agents, never shown: a link says where, when you want to.
+- **The window is yours** (CollabSpec decision 13): drag its head to move it, any edge or corner to
+  resize it; its – button, or a double-click on the head, collapses it to a pill (the channel and
+  the start of its last message), which lights up when something comes; ✕ closes it. Where you put
+  it, its size, whether it is collapsed or open and the channel on show are kept in your browser. It
+  stays in front of the source and reference windows, and following never opens, closes or changes
+  it: nothing in it ends following but a link followed from it (a declaration's name, a chip) and
+  Esc (in its box, Esc first leaves the box). Following an agent shows what it looks at, never its
+  conversations.
+- **Talking with your agent** (AgentSpec decision 8): an agent given a token by Share is listed beside
   the others while the token is in force, with a dot for its state, which the server infers from
   what it does: **listening** (it waits for messages: one reaches it at once), **thinking** (it was
   handed a message and has neither replied nor waited again: how long, and what it is doing —
   searching, reading a declaration, giving advice — or the line it set itself), **working** (it
   makes requests with nothing to answer: what you write waits for its next wait), or **offline**
   (greyed, with when it was last seen: no wait and no request for as long as its last wait could
-  last, plus a minute). Following it opens its conversation in a window at the bottom left of the
-  canvas: drag its title bar (the following strip) to move it, any edge or corner to resize it; its
-  – button, or a double-click on the title bar, collapses it to a one-line pill — the agent's state
-  and the start of its last message — which lights up when a reply comes, and a click opens it
-  again. Where you put it, its size and whether it is collapsed are kept in your browser, the same
-  for every agent; it lies among the source windows, in front when you pressed it last, so that it
-  can sit beside the code; nothing done in it ends following (Esc in its box leaves the box; the
-  next Esc stops following). Its pin keeps it open when you stop following, so that you can go on
-  talking with the agent on your own, and after a reload; Shift-click the agent's badge to open a
-  pinned conversation again without following (the pin is kept in your browser, per agent). One
-  conversation per agent, shared by everyone following it, kept 30 days, with its state line above
-  the box; write there (Enter sends, Shift+Enter a new line; the Enter that commits an input
-  method's composition, Chinese pinyin say, only commits it) to any agent that is not offline. Its
-  answers come with its mark, in simple Markdown, declarations' names as links (a click looks there,
-  still following). Nothing is pushed to an agent: it listens by waiting — `wait_for_message`, a
+  last, plus a minute). Its state line shows above the box in its channel; it cannot be written to
+  while offline, though a mention of it in Everyone is kept and handed to it when it comes back.
+  It answers where it was written to, in simple Markdown, and may write in Everyone unasked;
+  messages in Everyone are untrusted input to it: it is told to take a request there as a request,
+  and to ask you before changing the board on someone else's word. **New conversation**, in the
+  head of its channel: what was said folds into one line, and its next session starts without it
+  (a session running now is told to disregard it, but only `/clear` in its own terminal erases what
+  it holds). Nothing is pushed to an agent: it listens by waiting — `wait_for_message`, a
   tool of VisualProof's MCP server (`mcp/visualproof-mcp.mjs`, served to it at `/api/agent/mcp`),
-  which returns the moment someone writes, or `GET /api/agent/inbox?wait=` over HTTP — so any agent
+  which returns the moment someone writes to it, or `GET /api/agent/inbox?wait=` over HTTP — so any agent
   can be talked to, with no special client setting. Share's prompt tells a Claude Code agent to add
   the MCP server (`claude mcp add`), to have its person restart the session (`claude --continue`),
   and then to listen by itself, again after each answer. While it waits, what its person types in
@@ -1319,10 +1405,11 @@ what each one looks at stays their own.
   [HistorySpec.md](../SPEC/HistorySpec.md)),
   `events.jsonl` (90 days, 5,000 events), `tcb-baselines.json`, `agent-tokens.json` (the agents'
   tokens, so that their prompts can be shown again, readable by the owner alone as the access key
-  is; ended ones are forgotten after 30 days), `person-invites.json` (the personal links: a digest
-  of each, never the link, the names its holder had, who made it, when it was last used; readable
-  by the owner alone; revoked ones are kept), `chat/<token id>.jsonl` (each agent's conversation,
-  30 days).
+  is; ended ones are forgotten after 30 days), `person-invites.json` (the personal links, so that
+  each is shown again to its holder — a digest alone of one made before 0.6.0 —, the names its
+  holder had, who made it, when it was last used; readable by the owner alone as the access key is;
+  revoked ones are kept), `chat/public.jsonl` (the public channel, 90 days),
+  `chat/<token id>.jsonl` (each agent's private channel, 30 days).
 
 ## How the TCB is computed
 
@@ -1445,17 +1532,17 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `extractor/Usage.lean`, `server/usage.ts` | the usage pass: one module elaborated → the notation each command is written in and its exact context; the runner, its cache and the merge into the graph |
 | `server/main.ts`, `server/project.ts`, `server/extract.ts`, `server/pipeline.ts`, `server/view.ts`, `server/live.ts`, `server/status.ts` | the command line and HTTP; project discovery, extraction, what the page loads, the live loop and build status |
 | `server/review.ts`, `server/reviewapi.ts`, `server/hover.ts` | the review's logs, what the page records in them, Lean's language server for hovers, `describe` and `print` |
-| `server/access.ts`, `server/invites.ts`, `server/identity.ts`, `server/presence.ts`, `server/events.ts`, `server/snapshot.ts`, `web/src/people.ts`, `web/src/whomenu.ts`, `web/src/verified.ts` | the access link, personal links, names and who records what (a private reader's layout without a name, a link holder's under their link), presence, the timeline, the exported snapshot; on the page, the others and following, the menu under the name, and a link holder's ✓ |
-| `web/` | the page: scene graph, motion, bundles, WebGL renderer (`web/src/gl/`), panels, tabs and boards, history, the source windows (`web/src/sourcewin.ts`, the following and pinned ones `web/src/sources.ts`), the conversation with an agent (`web/src/talk.ts`, its window `web/src/chatwin.ts`), the floating windows they all are (`web/src/floatwin.ts`) |
+| `server/access.ts`, `server/invites.ts`, `server/identity.ts`, `server/presence.ts`, `server/events.ts`, `server/snapshot.ts`, `web/src/people.ts`, `web/src/whomenu.ts`, `web/src/mylink.ts`, `web/src/verified.ts` | the access link, personal links, names and who records what (a private reader's layout without a name, a link holder's under their link), presence, the timeline, the exported snapshot; on the page, the others and following, the menu under the name, a link holder's own link, and their ✓ |
+| `web/` | the page: scene graph, motion, bundles, WebGL renderer (`web/src/gl/`), panels, tabs and boards, history, the source windows (`web/src/sourcewin.ts`, the following and pinned ones `web/src/sources.ts`), the conversations (`web/src/talk.ts`, their window `web/src/chatwin.ts`, its box `web/src/chatinput.ts`, links as chips `web/src/chatlinks.ts`), the floating windows they all are (`web/src/floatwin.ts`) |
 | `web/src/timemachine.ts`, `web/src/past.ts`, `shared/pastgraph.ts`, `web/src/layoutworker.ts`, `web/src/layoutqueue.ts` | the Time Machine (HistorySpec): its bar, the past graph and its marks against now (shared with the server, which prints a view of a past build from it), the build aimed at and the one shown (latest wins), its layouts off the page's thread, in turn |
 | `web/src/phone.ts` | a phone's page (PhoneSpec): ⋯ of the bar, the side panel's drawer, the panel's sheet; its styles are the last block of `web/style.css`, the fingers' gestures in `web/src/canvas.ts` |
 | `shared/graph.ts`, `shared/edgecodec.ts`, `shared/build.ts` | the data crossing the boundaries, the edges packed for pages, build status |
 | `shared/review.ts`, `shared/reviewqueue.ts`, `web/src/trust.ts`, `web/src/linediff.ts` | the review's events and replay, review order and why-chains, trusting from the page, what changed in a stale opinion (ReviewSpec) |
-| `shared/collab.ts`, `shared/places.ts`, `shared/timeline.ts` | names and presence, shared pins, the timeline (CollabSpec) |
+| `shared/collab.ts`, `shared/mentions.ts`, `shared/places.ts`, `shared/timeline.ts` | names and presence, mentions in the conversations, shared pins, the timeline (CollabSpec) |
 | `shared/search.ts`, `shared/editor.ts`, `shared/viewgraph.ts`, `shared/excerpt.ts`, `shared/scope.ts`, `shared/context.ts` | the search, the editor link's templates, the graph, a declaration's source, and the context it is written in (the text an opinion judges) as page and server both read them |
 | `shared/query.ts`, `shared/board.ts`, `shared/views.ts`, `server/views.ts` | the query language of scopes and the selection, what a scope makes of the graph, the views and their store (ViewSpec) |
 | `server/agent.ts`, `server/agentviews.ts`, `server/agentdocs.ts`, `docs/agent-api/` | the JSON API for agents (AgentSpec), its endpoints about views, and its documentation in topics |
-| `server/tokens.ts`, `server/prompt.ts`, `server/talk.ts`, `server/mcptools.ts`, `mcp/visualproof-mcp.mjs` | agents' tokens and the prompt Share makes; conversations with agents, their inboxes and states; VisualProof's MCP server and the tools it offers |
+| `server/tokens.ts`, `server/prompt.ts`, `server/talk.ts`, `server/mcptools.ts`, `mcp/visualproof-mcp.mjs` | agents' tokens and the prompt Share makes; the conversations' channels, agents' inboxes and states; VisualProof's MCP server and the tools it offers |
 | `shared/layout.ts`, `shared/separate.ts`, `shared/libm.ts` | the layout, on the server for the project and on the page for a board's own scope; the separation of a cluster's children, found through grids; the transcendental functions the layout computes alike on every engine |
 | `shared/keys.ts` | key declarations: what each supports, the key graph, the key-first order (ExportSpec) |
 | `shared/doc/`, `shared/lexer.ts`, `shared/palette.ts` | the exported document: its model, settings, plan of a view's sections (`sections.ts`), author line from the traces left on a view (`authors.ts`), builder (with proofs left out, `proof.ts`), docstrings read as Markdown (`markdown.ts`) and LaTeX renderer; the Lean tokenizer the page and the document highlight with; the colours they share |
@@ -1464,4 +1551,4 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `docs/` | the roadmap, the agents' manual, what Lake leaves behind |
 | `test/` | `npm test` (Lake-backed tests need `lake`); `test/live-scenario.sh` drives a live session |
 | `test/fixture/` | a small Lean project whose TCBs are known; `Fixture.Kinds` and `FixtureModule` (the module system) are built and read on their own |
-| `test/fixturecopy.ts`, `test/toolchains.json`, `test/compat.test.ts`, `test/golden/`, `scripts/test-toolchains.mjs` | the supported Lean toolchains: the fixture copied for each (`VP_TOOLCHAIN`), the golden extraction and its known differences, the suite run once per toolchain |
+| `test/fixturecopy.ts`, `test/toolchains.json`, `test/compat.test.ts`, `test/golden/`, `scripts/test-toolchains.mjs`, `test/matrix.test.ts` | the supported Lean toolchains: the fixture copied for each (`VP_TOOLCHAIN`), the golden extraction and its known differences, the tests that build the fixture, run once per toolchain, and the check that they are every test the toolchain can change |

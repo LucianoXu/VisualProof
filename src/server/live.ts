@@ -15,8 +15,8 @@
 
 import { randomBytes } from "node:crypto";
 import type { ServerResponse } from "node:http";
-import type { Invited, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
-import { sameName } from "../shared/collab.ts";
+import type { ChatEvent, ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
+import { madeBy, nameKey, sameName } from "../shared/collab.ts";
 import type { ViewMeta } from "../shared/graph.ts";
 import { prepare } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
@@ -33,15 +33,18 @@ import { fileOf, filesOf } from "../shared/library.ts";
 import { Timeline } from "./events.ts";
 import { agentKey, Presence } from "./presence.ts";
 import { AgentTokens } from "./tokens.ts";
+import type { TokenRecord } from "./tokens.ts";
 import { Invites } from "./invites.ts";
 import { ReadOnlyLinks } from "./readonly.ts";
-import { Talk } from "./talk.ts";
+import { forPages, PUBLIC, Talk } from "./talk.ts";
 import { Asks } from "./askfollow.ts";
 import type { ReviewChange, ReviewStore } from "./review.ts";
 import type { ReviewData, ReviewRev } from "../shared/review.ts";
 import { BuildTracker, compiling, importable, outputsOf, probeAll, scanModules, stampOf } from "./status.ts";
 import { BuildWatch, moduleDirs, shouldLook } from "./buildwatch.ts";
 import type { BuildStatus, ModuleInfo } from "./status.ts";
+import { buildChanges } from "../shared/build.ts";
+import type { BuildDelta, BuildRev } from "../shared/build.ts";
 import { Views } from "./views.ts";
 import type { ViewPlaces } from "./views.ts";
 import { graphOf, memoryProblem, titleContext } from "./agentviews.ts";
@@ -88,6 +91,13 @@ export const MAX_STREAMS_PER_SESSION = 4;
 export const MAX_BUFFERED = 4 << 20;
 /** the list of who is here goes out at most this often: a burst of heartbeats is one event */
 const PRESENCE_EVERY = 500;
+/** A change of the build status larger than this, and than this part of the whole (about what the
+ *  whole takes compressed: 42 KB of NavierStokesAndEuler's 362), goes out as its revision alone
+ *  (`build-rev`), which every page reads compressed (GET /api/build) rather than take it uncompressed
+ *  on its stream: the first look, an edit or a build that starts or fails under much of a large
+ *  project. A smaller one is no saving worth a request. */
+export const BUILD_DELTA_MAX = 64 << 10;
+export const BUILD_DELTA_PART = 1 / 8;
 
 /** The graph's modules and their files (meta.modules), per graph read (agentviews.ts, graphOf). */
 const moduleFiles = new WeakMap<ViewMeta, Map<string, string | null>>();
@@ -107,15 +117,23 @@ interface Stream {
   /** a read-only reader's (CollabSpec decision 11): the read-only link it came by, whose revoking
    *  ends the stream, or "public" (--public); null for anyone else */
   readOnly: string | null;
+  /** the name its page goes by, a private page's too: its personal link's or the proxy's from the
+   *  start, a guest's from its heartbeats (an event stream carries no header of the page's); null
+   *  for none. Which messages of the channels it is sent depends on it (CollabSpec decision 13) */
+  name: string | null;
   /** told all of the server's own releases (UpdateSpec decision 11): someone let in fully, not a
    *  read-only reader nor an agent */
   toldAll: boolean;
   /** what may wait to be sent before it is closed (push): MAX_BUFFERED beyond its hello, which a
-   *  page reads first however large it is (the views, every file's build status: 0.4 MB on
-   *  NavierStokesAndEuler); MAX_BUFFERED once the hello is read */
+   *  page reads first however large it is (the views; to a page from before 0.6.0, every file's
+   *  build status: 0.4 MB on NavierStokesAndEuler); MAX_BUFFERED once the hello is read */
   room: number;
   /** what was written to it since its hello, while that is not all read */
   after: number;
+  /** its page takes the build status as changes (`build-rev`, `build-delta`: the owner's decision of
+   *  2026-10-19), as it says when it opens the stream; a page from before 0.6.0, left open across the
+   *  server's update (UpdateSpec decision 8), is sent it whole at every change (`build`) */
+  buildDeltas: boolean;
 }
 
 export interface GraphInfo {
@@ -168,6 +186,12 @@ export class Live {
   private lastLook = 0;
   private lastRunning = "";
   private buildText = "";
+  /** the build status's revision (`build-rev`, `build-delta`), counted from 0, before the first look,
+   *  in this server's process; each file's status as last sent, as JSON, by module; and the whole as
+   *  GET /api/build answers it, made when first asked */
+  private buildRev = 0;
+  private buildFiles = new Map<string, string>();
+  private buildWholeText: string | null = null;
 
   build: BuildStatus | null = null;
   graph: (GraphInfo & { prep: Prepared }) | null = null;
@@ -260,10 +284,12 @@ export class Live {
     this.invites = new Invites(dirs.site);
     // every page knows the names the people invited by a link go by, so that what each did shows
     // under the name they go by now; a link revoked cuts its pages off at once, as it does its
-    // requests: their streams end, and come back only if the key lets them in
+    // requests: their streams end, and come back only if the key lets them in. A link made anew
+    // does the same, but to the page that made it anew (`keep`): the other pages of its browser,
+    // given the new cookie, come back as they were
     this.invites.onChanged = () => this.send("people", this.invites.people());
-    this.invites.onEnded = (r) => {
-      for (const st of [...this.streams.values()]) if (st.person === r.id) this.close(st);
+    this.invites.onEnded = (r, keep) => {
+      for (const st of [...this.streams.values()]) if (st.person === r.id && (keep === undefined || st.token !== keep)) this.close(st);
     };
     this.readOnly = new ReadOnlyLinks(dirs.site);
     this.readOnly.onEnded = (l) => {
@@ -328,11 +354,8 @@ export class Live {
     this.tokens.onEnded = (r) => this.talk.close(r.id, r.revoked ? "revoked" : "expired");
     this.talk.inForce = (id) => this.tokens.inForce().some((r) => r.id === id);
     this.talk.onState = (id, talk) => this.presence.setTalk(id, talk);
-    // a new message goes to every page, named by the agent's entry in presence
-    this.talk.onMessage = (id, message) => {
-      const r = this.tokens.get(id);
-      if (r) this.send("chat", { agent: agentKey({ name: r.name, token: r.id }), message });
-    };
+    // a new message goes to the pages that may read its channel (CollabSpec decision 13)
+    this.talk.onMessage = (channel, message) => this.sendChat(channel, message);
     this.views.pageOf = (token) => (typeof token === "string" ? this.byToken.get(token)?.id ?? null : null);
     // the views a private page holds live while a page of its session is open
     this.views.sessionOpen = (session) => [...this.streams.values()].some((st) => st.session === session);
@@ -385,9 +408,12 @@ export class Live {
    *  stream that closed, a guess), and nothing changes. A private page's (`priv`, CollabSpec
    *  decision 8) is counted and nothing more is kept of it: not its name, not where it is.
    *  `verified`: the page of someone invited by a personal link (decision 9). */
-  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false): boolean {
+  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false, who: string | null = name): boolean {
     const s = typeof token === "string" ? this.byToken.get(token) : undefined;
     if (!s) return false;
+    // the name the page goes by, said by its heartbeat's request, a private page's too (`who`): what
+    // of the channels its stream is sent (CollabSpec decision 13)
+    if (s.readOnly === null) s.name = who;
     if (s.private !== priv) this.rename(s, priv, name, view, idle, verified);
     else if (priv) this.presence.beatPrivate(s.id);
     else this.presence.beat(s.id, name, view, idle, false, verified);
@@ -467,6 +493,42 @@ export class Live {
     this.views.followTitles(d, SERVER_WRITER.name);
     this.reversion();
     this.lostChanged();
+  }
+
+  /** The build status a look found (the live loop's tick): where it changed, every page is told the
+   *  files whose status changed, with the new revision (`build-delta`), which it applies to the
+   *  status it holds; a large change (BUILD_DELTA_MAX) goes out as the revision alone (`build-rev`),
+   *  at which each page reads the whole (GET /api/build). A page from before 0.6.0 is sent the
+   *  whole (`build`), as it was. */
+  buildFound(build: BuildStatus): void {
+    const text = JSON.stringify(build);
+    this.build = build;
+    if (text === this.buildText) return;
+    this.buildText = text;
+    this.buildWholeText = null;
+    const base = this.buildRev++;
+    const { files, gone, texts } = buildChanges(this.buildFiles, build);
+    this.buildFiles = texts;
+    if (this.streams.size) {
+      const delta: BuildDelta = { epoch: this.instance, base, rev: this.buildRev, active: build.active, progress: build.progress, counts: build.counts, files, gone };
+      const d = JSON.stringify(delta);
+      const news = d.length > Math.max(BUILD_DELTA_MAX, text.length * BUILD_DELTA_PART) ? `event: build-rev\ndata: ${JSON.stringify(this.buildRevNow())}\n\n` : `event: build-delta\ndata: ${d}\n\n`;
+      let whole: string | null = null;
+      for (const st of [...this.streams.values()]) this.push(st, st.buildDeltas ? news : (whole ??= `event: build\ndata: ${text}\n\n`));
+    }
+    this.timeline.buildStatus(build);
+  }
+
+  /** Which build status the server holds (`build-rev`): its process and its revision. */
+  private buildRevNow(): BuildRev {
+    return { epoch: this.instance, rev: this.buildRev };
+  }
+
+  /** The whole build status as GET /api/build answers it, with its revision, and the tag of that
+   *  revision: written once a revision, whoever asks. */
+  buildWhole(): { tag: string; text: string } {
+    this.buildWholeText ??= `{"epoch":${JSON.stringify(this.instance)},"rev":${this.buildRev},"status":${this.buildText || "null"}}`;
+    return { tag: `"b${this.instance}.${this.buildRev}"`, text: this.buildWholeText };
   }
 
   say(line: string): void {
@@ -581,13 +643,7 @@ export class Live {
     // (DeploySpec decision 6)
     const d = this.deploy;
     if (d && d.busy && !build.active) build = { ...build, active: true };
-    const text = JSON.stringify(build);
-    this.build = build;
-    if (text !== this.buildText) {
-      this.buildText = text;
-      this.send("build", build);
-      this.timeline.buildStatus(build);
-    }
+    this.buildFound(build);
     // and its builds, beside the files: the one going on, the newest commit waiting, the last
     if (d) {
       const now = JSON.stringify(d.status(true));
@@ -1212,8 +1268,10 @@ export class Live {
     }
   }
 
-  /** What /api/status says: enough for the loader and for a page that just connected. */
-  status(): object {
+  /** What /api/status says: enough for the loader and for a page that just connected. `brief`: the
+   *  build status without its files (the page's loader, which reads them by GET /api/build). */
+  status(brief = false): object {
+    const b = this.build;
     return {
       state: this.graph ? "ready" : this.extractError ? "error" : "extracting",
       error: this.graph ? undefined : this.extractError ?? undefined,
@@ -1223,7 +1281,7 @@ export class Live {
       graph: this.graphInfo(),
       // the usage pass: how far it is, and the modules it could not elaborate
       usage: this.usage.status,
-      build: this.build,
+      build: brief && b ? { active: b.active, progress: b.progress, counts: b.counts } : b,
       // the branch followed, where the server builds what it shows (DeploySpec)
       ...(this.deploy ? { deploy: this.deploy.status(true) } : {}),
       live: !this.saved,
@@ -1235,10 +1293,11 @@ export class Live {
   }
 
   /** A page's event stream; `session` is what the page calls itself (its streams are kept few by
-   *  it), `person` the personal link it came by. The stream is named by the server: the page is
-   *  told its id, which everyone sees, and a secret for its heartbeats (`hello`); it is gone from
-   *  presence when its stream closes. */
-  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null): void {
+   *  it), `person` the personal link it came by, `buildDeltas` whether it takes the build status as
+   *  changes (a page of 0.6.0 or later), `name` the name it gives (the conversations it is sent).
+   *  The stream is named by the server: the page is told its id, which everyone sees, and a secret
+   *  for its heartbeats (`hello`); it is gone from presence when its stream closes. */
+  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null, buildDeltas = false, name: string | null = null): void {
     if (session) {
       // a page that opens one more than a page needs (a reload whose old stream lingers) loses
       // its oldest
@@ -1257,7 +1316,7 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll, room: Infinity, after: 0 };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, name: readOnly === null ? name : null, toldAll, room: Infinity, after: 0, buildDeltas };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
@@ -1270,7 +1329,10 @@ export class Live {
     // the views as they are: a page that was away (a restart, a lost connection) catches up, and
     // reads again the boards it has open
     this.write(res, "views", { views: this.views.list(), changes: [], all: true });
-    if (this.build) this.write(res, "build", this.build);
+    // the build status's revision: a page that holds another reads the whole (GET /api/build); what
+    // changes after comes as deltas. A page from before 0.6.0 is sent it whole.
+    if (buildDeltas) this.write(res, "build-rev", this.buildRevNow());
+    else if (this.build) this.write(res, "build", this.build);
     if (this.deploy) this.write(res, "deploy", this.deploy.status(readOnly === null));
     // the review's revision: a page that holds another reads the whole review (GET /api/review);
     // what changes after comes as deltas
@@ -1302,6 +1364,34 @@ export class Live {
     if (!this.streams.size) return;
     const text = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const st of [...this.streams.values()]) this.push(st, text);
+  }
+
+  /** A message of a channel, sent to the pages that read it (CollabSpec decision 13): a public one to
+   *  every page with a name, private readers' too; a private one only to the pages of the person
+   *  who made its agent's token (shared/collab.ts, madeBy), named by the agent's entry in presence;
+   *  nothing to a read-only reader's page, nor to a page without a name. */
+  private sendChat(channel: string, message: ChatMessage): void {
+    if (!this.streams.size) return;
+    const t = channel === PUBLIC ? null : (this.tokens.get(channel) ?? null);
+    if (channel !== PUBLIC && !t) return;
+    const text = `event: chat\ndata: ${JSON.stringify({ channel: t ? agentKey({ name: t.name, token: t.id }) : PUBLIC, message: forPages(message) } satisfies ChatEvent)}\n\n`;
+    for (const st of [...this.streams.values()]) if (mayRead(st, t)) this.push(st, text);
+  }
+
+  /** Who a message may mention (CollabSpec decision 13): the agents listed with a token in force, by
+   *  their tokens, and the people — with a page open, invited by a link, or who wrote in the public
+   *  channel lately — by the names they go by. */
+  mentionable(): { names: string[]; agents: Map<string, string> } {
+    const agents = new Map<string, string>();
+    const names: string[] = [];
+    for (const r of this.tokens.inForce()) {
+      agents.set(nameKey(r.name), r.id);
+      names.push(r.name);
+    }
+    for (const p of this.presence.list()) if (!p.agent && p.name) names.push(p.name);
+    for (const r of this.invites.inForce()) names.push(r.name);
+    for (const m of this.talk.thread(PUBLIC)) if (m.kind === "person") names.push(m.from);
+    return { names, agents };
   }
 
   /** Write to a stream, unless what it has not read yet passed MAX_BUFFERED beyond its hello (`room`):
@@ -1371,4 +1461,13 @@ function viewsCarried(views: { ops: { op: string; id?: string }[]; scope?: unkno
     if (v.scope) scopes++;
   }
   return { notes, pins, scopes, reviewViews: 0 };
+}
+
+/** Whether a page's stream is sent a channel's messages (CollabSpec decision 13): the public channel
+ *  (`t` null) where it has a name, a private one where its reader made the agent's token; never a
+ *  read-only reader's. */
+function mayRead(st: Pick<Stream, "readOnly" | "name" | "person">, t: TokenRecord | null): boolean {
+  if (st.readOnly !== null) return false;
+  if (!t) return st.name !== null || st.person !== null;
+  return madeBy(t, { name: st.name, person: st.person });
 }

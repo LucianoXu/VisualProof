@@ -205,7 +205,9 @@ test("a private reader's review keeps their name, and needs one; a message to an
     const id = S.live.presence.list().find((p) => p.agent)!.id;
     const sent = await S.ask("POST", "/api/chat", { agent: id, text: "Look at N.a", place: VIEW }, PRIVATE);
     assert.equal(sent.status, 200, JSON.stringify(sent.json));
-    assert.deepEqual([sent.json!.message.from, sent.json!.message.where], ["Alice", null]);
+    // where a writer was is handed to agents alone (CollabSpec decision 13): a private reader's, nowhere
+    const handed = (await S.ask("GET", "/api/agent/inbox?wait=0", undefined, { authorization: `Bearer ${token}` })).json!.messages[0];
+    assert.deepEqual([sent.json!.message.from, handed.from, handed.where], ["Alice", "Alice", null]);
   } finally {
     await S.close();
   }

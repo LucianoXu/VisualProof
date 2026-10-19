@@ -23,8 +23,10 @@ is, and the page is bundled when the server starts, into the cache directory.
 npm install
 npm run typecheck
 npm test                    # the whole suite, on the fixture's own toolchain
-npm run test:toolchains     # the whole suite once per toolchain of test/toolchains.json
+npm run test:toolchains     # the tests the toolchain can change, on the oldest and the newest
+                            # toolchain of test/toolchains.json (-- --all: on every one)
 npm run test:updates        # the update path end to end, against a registry of its own
+npm run test:e2e -- --showcase <flt-regular checkout>   # a smoke run in a real browser
 node src/server/main.ts serve <a built Lean project>     # then open http://127.0.0.1:4173/
 ```
 
@@ -46,6 +48,20 @@ it is packed. Pack it, then install the file.
   folders or your cache.
 - To try a change on a real project, point `--site` and `--cache` at scratch folders, so that
   nothing is written into a real site's review and history.
+- `scripts/e2e/harness.mjs` is a small library for trying a change in a real browser, as a
+  scenario does: a server of this checkout on a built project — the flt-regular showcase with its
+  site copied in, or another on a new site — on a free port, with or without a key, `--public`,
+  `--public-url` (`serve`); the people it lets in, each in a browser context of its own (`guest`
+  with a name, `invited` by a personal link, `reader` by a read-only link, `visitor` of a public
+  site); agents' tokens at a level and the agents' API asked with them (`server.agent`); pages in
+  light or dark, on a desktop or a phone, the board waited for; screenshots numbered in the order
+  they are taken (`camera`). Each server's site, key, log and PID are in a new folder under the
+  system's temporary folder, its cache in one kept there between runs (or a folder you give, which
+  it writes: never in the repository or VisualProof's homes), and it is stopped by that PID.
+  `npm run test:e2e -- --showcase <flt-regular checkout> [--cache dir] [--port n] [--headed]` runs
+  `scripts/e2e/smoke.mjs`: two people, an agent, a message, a screenshot of each page in each
+  theme, a read-only reader, a phone, a public site; copy it to start a scenario of your own. It
+  needs Playwright (as below, "Real projects"), and is not part of `npm test`.
 
 ## Real projects
 
@@ -119,14 +135,24 @@ without a browser, and the tour's chapters, captions and stills.
 The supported toolchains are those of `test/toolchains.json`: the last six or so stable releases,
 and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor.
 
+- `npm run test:toolchains` runs the tests whose answers can depend on the toolchain once per
+  toolchain: the test files that import `test/fixturecopy.ts`, which build the fixture with the
+  toolchain under test (`VP_TOOLCHAIN`): the extraction and its golden, the usage pass, the build
+  status, Lean's hovers, a branch followed and built, among others. The rest of the suite runs no
+  Lean and answers the same on every toolchain; `npm test` runs it once, and `test/matrix.test.ts`
+  keeps both true. Locally it runs the oldest and the newest toolchain, at once: every difference
+  Lean has made so far (`known-differences.json`, the tests that ask `leanAtLeast`) shows on one
+  of them. `-- --all` runs every one, two at a time (`-- --jobs N`: N), and `-- v4.31.0` that one
+  alone.
 - A change to the extractor (`src/extractor/`), or to how the server runs Lean
   (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`,
   `server/children.ts`, and `server/deploy.ts`, which builds a branch the server follows), passes
-  `npm run test:toolchains` on all of them. CI runs the toolchains on
-  a pull request that touches those files, the fixture or its golden (`toolchains.yml` lists them),
-  and every week; the suite (`test.yml`) runs once per pull request and once on `main` as a merge
-  lands, which is what a release then checks. The newest Lean release and release candidate run
-  every week only: news of the next release, not a pull request's failure.
+  `npm run test:toolchains` locally, and CI runs those tests on every toolchain before it is
+  merged: on a pull request that touches those files, the fixture, its golden or those tests
+  (`toolchains.yml` lists them), and every week. The suite (`test.yml`) runs once per pull request
+  and once on `main` as a merge lands, which is what a release then checks. The newest Lean
+  release and release candidate run every week only: news of the next release, not a pull
+  request's failure.
 - A change to how the server follows its releases (`server/updates.ts`, `server/supervise.ts`,
   `web/src/reload.ts`, the stopping in `server/main.ts`) passes `npm run test:updates`: the package
   built as 8.0.0, its patch 8.0.1 and a broken 8.0.2, published to a registry the script serves on

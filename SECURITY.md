@@ -13,8 +13,9 @@ into the latest release only.
   the usage pass elaborates each module again, which runs the project's macros and elaborators.
   Serve only a project you would build yourself.
 - **Whoever can push to a branch it follows.** `visualproof serve <git URL>` builds each new commit
-  of that branch itself (SPEC/DeploySpec.md): `lake exe cache get` where the project is on Mathlib,
-  then `lake build`. **Whoever can push to that branch runs code on this machine**, with the
+  of that branch itself (SPEC/DeploySpec.md): `lake exe cache get` where the project is on Mathlib
+  (with `--mathlib-cache own`, then `lake exe cache clean` in the deployment's own cache, never the
+  user's), then `lake build`. **Whoever can push to that branch runs code on this machine**, with the
   server's user's rights: the lakefile, the dependencies' lakefiles, Mathlib's cache program, and
   whatever elaboration runs (macros, elaborators, `#eval`, `initialize`). That code can read and
   write what the server's user can — the site's folder with its tokens and links, the access key's
@@ -43,10 +44,19 @@ into the latest release only.
   (`/k/<key>`) or a personal link made in Share (`/i/vpp_…`, revoked on its own), and answers
   everything else 404; or put an authenticating proxy in front. Agents send the key, or a token
   made in Share (`vpa_…`), which reaches the agents' API alone and lasts a few days.
+- **Personal links.** Whoever holds one is that person on the server. It is shown to its maker as
+  it is made, and again to its holder alone (`POST /api/share/people/mine`), in a browser it let
+  in: never to anyone else, never to an agent, a read-only reader or a guest. So whatever reads a
+  page of the holder's — someone at their unlocked screen, a script running in it — can read their
+  link, as it can already make an agent's token under their name. The holder may make it anew
+  (`POST /api/share/people/mine/renew`): the same person under a new secret, the old link and every
+  browser it let in cut off at once — and so may whoever holds the link, which is the holder as far
+  as the server knows: someone who took it can lock its holder out, and then only revoking it,
+  which anyone with a name may, stops them.
 - **Who is not let in.** A browser asking for a page (GET or HEAD, accepting HTML, not the API nor a
   file, no `Authorization: Bearer`) is shown, rather than the 404, a page saying the site is private
   — or that its link no longer opens it, alike for a key replaced and for a personal or read-only
-  link revoked or never made, naming nobody — 403. It is the same page on every server, made of
+  link revoked, made anew or never made, naming nobody — 403. It is the same page on every server, made of
   nothing the site holds: whoever comes learns that a VisualProof server is there, and nothing else —
   not the project, the version, the people or how many there are. No script, nothing fetched, a CSP
   of `default-src 'none'`, never cached. A browser the key lets in is still told who revoked a link
@@ -61,6 +71,16 @@ into the latest release only.
   name. A page reaches an address only as that address, and browsers resolve `localhost`
   themselves, so neither can be a name the page chose. With a key, the key keeps out whoever was
   not given it, by any name.
+- **Pages of other sites, and of other ports here.** A browser sends this server's cookies — the
+  key's, a personal link's, a read-only link's — with a request another page makes of it: from
+  another site only on a navigation (they are `SameSite=Lax`), but from a page of another port of
+  this host always, for a browser counts that the same site. Such a page could not read the
+  answers, but could write as the person a personal link names. So a request that may change
+  something (anything but GET and HEAD) is answered 403 unless the browser says it comes from a
+  page of this server's own: `Sec-Fetch-Site: same-origin` (or `none`), or, from a browser that
+  does not send it, an `Origin` of this Host or of `--public-url`. A request saying neither is no
+  browser's (an agent, the MCP server, a script) and gets in by what it carries. Behind a proxy that
+  changes the Host, give `--public-url`.
 - **Read-only readers.** Anyone let in can make a read-only link in Share (`/r/vpr_…`): it lets
   whoever holds it read what a guest reads — the graph, the sources, the review, the history, the
   library's files — and nothing else. The server refuses every other request from them (403)
@@ -89,12 +109,21 @@ into the latest release only.
   server's `VISUALPROOF_*` variables or anything that points git at another repository; nothing
   they start waits on a prompt (`GIT_TERMINAL_PROMPT=0`, no askpass, ssh in batch mode: an unknown
   host key fails, so add it to `known_hosts` first). The remote is asked every `--poll` minutes
-  (`git ls-remote` of the branch's ref alone). What the build writes is in the deployment's folder
-  of the cache, and where the build tools write for any build: elan's toolchains (`~/.elan`) and
-  Mathlib's cache (`~/.cache/mathlib`). The pages are told the branch, the remote (host and path),
+  (`git ls-remote` of the branch's ref alone); a `lake build` past `--build-timeout` hours (6 by
+  default) is stopped. What the build writes is in the deployment's folder of the cache, and where
+  the build tools write for any build: elan's toolchains (`~/.elan`) and Mathlib's cache
+  (`~/.cache/mathlib`, the user's builds' too; with `--mathlib-cache own`, the deployment's own, in
+  its folder). An own cache keeps the deployment's downloads apart from the user's builds; it is no
+  boundary against the branch's code, which runs as the server's user and writes wherever that
+  user can. The pages are told the branch, the remote (host and path),
   the build going on, the commit waiting and why a build failed; the end of a build's log, its paths
-  written from the clone's folder (`.`) and the home (`~`), goes to those let in fully and to
-  agents, never to a read-only reader.
+  written from the clone's folder (`.`; the deployment's folder that holds it, `../..`) and the home
+  (`~`), goes to those let in fully and to agents, never to a read-only reader. They are named so
+  whether the log writes them as given or resolved: a home reached through a symlink, and the
+  folders elan and Lake use under it (`~/.elan`, `~/.cache`, or `$ELAN_HOME`, `$XDG_CACHE_HOME` and
+  `$MATHLIB_CACHE_DIR` where they are set) where a symlink leads elsewhere (`~/.elan` →
+  `/data/.elan`), read `~/…` too, so that the log tells no path of the machine; a folder those
+  variables name outside the home is written as given.
 - **Links that save a picture.** A link to an artwork (ExportSpec decision 20) carries its recipe
   after `#`, unsigned: anyone who can send a reader a link — not only an agent the server answered —
   can make it, and make the reader's browser save the picture the page draws of the board, PNG or
@@ -146,11 +175,28 @@ into the latest release only.
 - **Agents.** A token has a level: `read`, `advise` or `full` (and `--agents` caps it for the whole
   server). At `full` an agent can do whatever a person can through the page; its opinions stay
   advice and are never counted.
+- **The conversations.** The public channel is read and written by everyone with a name and every
+  agent with a token: what is written there is untrusted input to every agent. A person's message
+  there is handed to the agents it mentions; the agents' ground rules (the prompt, the entry, the
+  MCP server's instructions) say that a request there is a request, not their maker's, and to ask
+  their maker before changing the board on someone else's word; and no agent can do more than its
+  token allows, whoever asks. An agent's mention of an agent is never handed to it, so agents do
+  not talk on among themselves. An agent's private channel is read and written by the person who
+  made its token alone — their personal link where they came by one, else their name — so it is as
+  private as names are: a guest's is open to whoever gives that guest's name, while an invited
+  person's and a proxy's names are protected. The token's prompt, which holds the token (and so the
+  private channel), is shown again to its maker alone; revoking a token is anyone's with a name.
+  Read-only readers have no channel, and their streams carry no message. Where a writer was is
+  handed to agents, never sent to pages. A link copied from the page (Copy link, the conversation's
+  box) carries no key, and a link that lets in (the key's, a personal or read-only link's) written
+  or pasted in the box is sent without its secret: only Share's links let anyone in.
 
 ## Secrets at rest
 
-The site folder (`--site`) holds the agents' tokens and the read-only links in full (Share shows
-them again), and the personal links' digests; the access key is
+The site folder (`--site`) holds the agents' tokens, the read-only links and the personal links in
+full (Share shows the first two again, and a personal link is shown again to its holder; of a
+personal link made before 0.6.0, its digest alone, until its holder makes it anew), and the
+conversations (`chat/`: the public channel 90 days, the private ones 30); the access key is
 wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
 folder up as you would any secret, and never commit it.
 
@@ -163,7 +209,8 @@ where another may write the folder). `versions/`
 is made `0700`; a folder in it that another user owns, or that its group or others may write, is
 refused and its patch never run. Keep the caches' root the server's user's alone, as the site. A branch the server follows is
 cloned and built in `deploy/` of the caches' root: the clone, its build's outputs and its
-dependencies, which the server's Lean programs import; and each build's log.
+dependencies, which the server's Lean programs import; each build's log; and with
+`--mathlib-cache own`, Mathlib's cache, whose files the build unpacks into its dependencies.
 
 ## Deploying
 

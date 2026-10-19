@@ -78,6 +78,12 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      one line says so.
    - **In the fragment**, which no server sees: `/k/<key>#<the address>&snap=<the snapshot>`.
      Agents make such links too (AgentSpec decision 5).
+   - **At the server's public address** (the owner's decision of 2026-10-19): the guest link is made
+     with `--public-url` where the server is given one, as every other link Share makes is — a
+     read-only link, and the address that is one with `--public` (decision 11), a personal link
+     (decision 9), the agent's prompt (AgentSpec decision 7) — and Copy link's ("Copied links"), so
+     that it opens for whoever it is sent to whichever address the page was opened at; without it,
+     the page's own address.
 8. **Visibility: Visible or Private**, per browser, effective at once. A private page tells nothing
    of where its reader is; they are not listed, cannot be followed or ask to be, but may follow
    others; the others see only a count ("+2 private"). Their layout changes are shared and recorded
@@ -93,11 +99,25 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      log says who is who by itself. Logs named by a guest's name are read as before.
    - **Names are protected**: a holder's name carries ✓ wherever names show, and while the link is in
      force no guest (in any case or Unicode form) and no other link may take it.
-   - **The link** is shown once to its maker; the server keeps only its digest. **It lasts until
+   - **The link** is shown once to its maker, as it is made, and again to its holder alone (the
+     owner's decision of 2026-10-19): **everyone can show their own personal link**, to open the
+     site as themselves in another browser, on another device. The server keeps it in full, as it
+     keeps the read-only links and the agents' tokens. The reader a personal link let in finds
+     *My personal link* in their name's menu, shown in the name's window: the link, Copy, and one
+     line, that whoever has it is them. Only the holder sees it — not its maker, not anyone else
+     (others may revoke it, as before); guests, read-only readers, agents and servers behind
+     `--identity-header` have no such item, and the server refuses them. **It lasts until
      revoked**: a person's link is who they are in the review, and an expiry would make them someone
      else with a new log (an agent's token, a credential for a piece of work, lasts days). Revoking
      cuts it off at once, its pages too; a browser that also holds the key goes on as a guest.
      People with a name make and revoke links; agents never.
+   - **Made anew** (the owner's decision of 2026-10-19): *Make my link anew*, beside the link, gives
+     it a new secret under the same id — the same person, log and names. The old link and every
+     browser it let in are cut off at once, which the window says before it is done; this browser
+     stays in, given the new cookie. A link made before 0.6.0, of which the server kept only a
+     digest, cannot be shown: its holder is offered this instead; any holder who thinks their link
+     leaked is offered it too. The timeline and Share's list record nothing of it; revoking is
+     unchanged.
    - A private invited person is as decision 8 says, their review keeping its ✓.
 10. **Asking others to follow.** *Ask everyone to follow me* (the name's menu) asks everyone online,
     private readers included (counted, never named), except those already following; *Ask … to
@@ -135,8 +155,8 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       nothing (the owner's decision of 2026-10-16), and the reader's own choice holds over the
       shared state until then. Pins, notes (written, edited, moved or deleted), the review
       (opinions, targets, key marks, trust), views (made, renamed or changed), re-layout, undo,
-      uploads, fetching by URL and talking to agents are not offered, and the server refuses them
-      (403) whatever the page sends.
+      uploads, fetching by URL and the conversations (decision 13) are not offered, and the server
+      refuses them (403) whatever the page sends. Copy link is (decision 13).
     - **What costs the server is bounded.** Lean's hovers are answered from a cache per build where
       they can be, and within bounds per address and in all (429 beyond). The printed document is of
       the view as it is shared, never of a reader's folds, so the export's cache answers most
@@ -165,6 +185,47 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
     an address only as that address, and browsers resolve `localhost` themselves: neither can be a
     name a page chose. With a key nothing changes: the key keeps out whoever was not given it, by
     any name. SECURITY.md.
+13. **Conversations: the public channel and one's own agents** (the owner's decisions of
+    2026-10-19). Agents' side: AgentSpec decision 8.
+    - **One conversation window, the reader's own.** The reader opens and closes it — the top bar's
+      conversation button, *Talk* in an agent's menu, a click on a mention's notice — and nothing
+      else does: following never opens, closes or changes it, and nothing in it ends following but
+      a link followed from it (a tool of the reader's own changing followed parts, decision 4) and
+      Esc (in its box, Esc first leaves the box). It moves, resizes and collapses to a pill; its
+      place, size, whether it is collapsed and the channel on show are kept per browser. **It is in
+      front of the source and reference windows**, always (ReviewSpec, "In front").
+    - **Its channels**, at its head: *Everyone*, then each of the reader's own agents with its state
+      (AgentSpec decision 8). The button counts the public messages the reader has not seen, and is
+      marked where they are mentioned or one of their agents answered.
+    - **The public channel, *Everyone***: everyone with a name writes in it, every agent with a
+      token too; a private reader (decision 8) reads it, and what they write is under their name,
+      which tells that they are there. Read-only readers (decision 11) neither see it nor are told
+      it exists. A person's message is at most 4,000 characters, an agent's 10,000, at the rate of
+      messages to agents; the channel is kept 90 days, as the timeline is. No dividers.
+    - **Mentions**: `@` and a name, completed from the people online and the agents listed. A
+      mention of the reader marks the button and the message. A person's mention of an agent is
+      handed to the agent; an agent's mention of an agent is shown, never handed (AgentSpec
+      decision 8).
+    - **Private channels are between a person and their own agent**: the agent whose token they made
+      (AgentSpec decision 7). There are none between people, and nobody sees another's. They are as
+      private as names are: a guest's name is anyone's to give (decision 3), so whoever gives the
+      maker's name sees what they said to their agent; an invited person's name (decision 9) and a
+      proxy's (`--identity-header`) are protected. SECURITY.md says so.
+    - **Messages** are text, escaped, with bold, italics, code, fenced code, declarations' names as
+      links, and links. The place each was written from is handed to agents, not shown on the page:
+      a link says where, when its writer wants to.
+    - **Links of this site show as what they lead to, never as their address**: a chip naming the
+      declaration, cluster or note, or, for what someone sees, the view, the tool and the selection
+      ("Case II · Rests on · `Foo.bar` +2"). A click goes there in the page, without a reload,
+      applied as a share link is (decision 7). A link of this site pasted into the box shows as its
+      chip there too. Other `http(s)` links open in a new tab, their host shown beside them.
+    - **Copy link**: the canvas's menu (ViewSpec decision 21) copies a link to what it was opened on —
+      a declaration, a cluster, a note — and on the empty canvas to what the reader sees (decision
+      7's snapshot, whatever Share's switch). In the conversation's box, a button inserts a link to
+      what the reader sees. **These links carry no key** (`https://<the server>/#<the address>`,
+      without `/k/<key>`): everyone in the channel is let in already, and a link copied elsewhere
+      opens nothing for whoever is not (they see decision 7's page). Share makes the links that let
+      people in.
 
 ## What the page shows
 
@@ -210,8 +271,8 @@ outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme; t
 zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
-others' initials and a person's menu; the request banner; the follower's own conversation window and
-its pin, and the following strip; hover cards; the pointer's highlight; the frame meter (`p`). A
+others' initials and a person's menu; the request banner; the conversation window (decision 13) and
+the following strip; hover cards; the pointer's highlight; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.
 
 **No surface**: the frames (bars, footer, windows' layer), whose blank parts count as the canvas;
@@ -225,10 +286,10 @@ words, tooltips and hints, the notes of others' changes, the loader.
   control, not on text or a scrollbar; outside every surface (the canvas), always. A double-click
   on a source or reference window's title bar ends it; the wheel, on the canvas only; Back and
   Forward too.
-- The presence bar, a person's menu, the following strip and its conversation, the name's menu and
-  window and the request banner are wholly the reader's own: only their own way out ends following
-  (the strip's ✕, the followed initials clicked again, a Shift-click on a pinned agent's badge),
-  and Esc.
+- The presence bar, a person's menu, the following strip, the conversation window, the name's menu
+  and window and the request banner are wholly the reader's own: only their own way out ends
+  following (the strip's ✕, the followed initials clicked again, a link followed from the
+  conversation), and Esc.
 - **Keys**: a followed part's key (table above), yes, wherever the focus is; typing in a field of a
   surface of the reader's own, no, but Enter choosing a search result does; typing anywhere else,
   yes; Enter or Space on a control, as a press; a modifier alone, Ctrl or ⌘ with a letter outside a
@@ -293,7 +354,7 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   without one (401). Pins need no name. A private page sends `X-VisualProof-Private: <its session>`;
   an agent's is ignored. What arranges a board (pins, folds, re-layouts, scopes, views, notes on a
   board, an undo from Activity) is recorded under the caller's name, or none for a private reader;
-  the review and messages to agents always take the caller's name.
+  the review and messages always take the caller's name.
 - **Presence**: one entry per open event stream. The stream's first event, `hello`, gives the page a
   public id and a secret token; a heartbeat counts only with that token, so no page speaks for
   another. Heartbeats every 10 s, and at once when a followed part changes; an entry goes when its
@@ -341,17 +402,34 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   snapshot once, its windows becoming its own, and drops `snap=` from the address; a snapshot it
   cannot read leaves the address alone, and it says so.
 - **Personal links**: `/i/vpp_<10 hex id>_<32 random bytes, base64url>`. The site's
-  `person-invites.json` (mode 600) keeps per link the id, a digest of the token (never the token),
-  the current and earlier names, maker, revoked (by whom), lastUsed (written at most once a minute);
-  revoked links stay, so their holders' work keeps its name. Opening a link answers 303 to `/` with
-  the cookie `visualproof_person_<12 hex of this server's own>`, valued the id and a digest of the
-  kept digest (HttpOnly, SameSite=Lax, 400 days, renewed at each load), compared in constant time; it
-  lets the browser in whatever the access key. A revoked link answers 410 (who, when) — to a browser
-  asking for a page that the key or a personal link of its own does not let in, the page of a link
-  that does not open the site (decision 7), as to a link never made; its cookie admits nobody
-  and is cleared. A guest's request giving a holder's name counts as nameless. Making, listing and
+  `person-invites.json` (mode 600) keeps per link the id, the token (since 0.6.0; before, a digest
+  of it alone) and its digest, the current and earlier names, maker, revoked (by whom), lastUsed
+  (written at most once a minute), and, for a link made anew, its last 16 old digests with when each
+  was replaced; revoked links stay, so their holders' work keeps its name. A token in the file that
+  is not its link's own (of another id, or not of its digest) is dropped as it is read, the link then
+  as one made before 0.6.0. Opening a link answers 303 to `/` with the cookie
+  `visualproof_person_<12 hex of this server's own>`, valued the id and a digest of the digest
+  (HttpOnly, SameSite=Lax, 400 days, renewed at each load), compared in constant time; it lets the
+  browser in whatever the access key. A revoked link answers 410 (who, when) — to a browser asking
+  for a page that the key or a personal link of its own does not let in, the page of a link that
+  does not open the site (decision 7), as to a link never made; its cookie admits nobody and is
+  cleared as a page loads (or is shown that page), not by the requests before, so that a browser
+  the key lets in too, a guest from then on, is told by `/api/identity` (`revoked`: who, when) —
+  and a request of a browser that made its link anew, on its way with the old cookie, never clears
+  the new one. An old link or cookie of a link made anew answers as a revoked one's, saying when it
+  was made anew (`replaced`: `{at, name}`). A guest's request giving a holder's name counts as nameless. Making, listing and
   revoking links: 403 to agents, 404 behind `--identity-header`; making and revoking need a name.
   The holder's id travels with what they record (`person`), never with a private reader's layout.
+- **The holder's own link** (decision 9, the owner's decision of 2026-10-19): `POST
+  /api/share/people/mine` answers `{invite, link}`, `link` null for a link made before 0.6.0; `POST
+  /api/share/people/mine/renew` (`{stream}`, the asking page's event stream by its hello secret,
+  optional) gives the link a new token under the same id and answers `{invite, link}` with the new
+  cookie; every event stream of the link ends but `stream`, the other pages of its browser coming
+  back with the new cookie. By POST, so that the browser sends its Origin and the link names the
+  server as the page reached it (`--public-url` first). To the holder alone, by the link's cookie:
+  403 to anyone else — its maker, a guest, an agent (a token of its own: 404), a read-only reader
+  (the gate); 404 behind `--identity-header`; 405 to GET. The timeline and Share's list record
+  nothing of either.
 - **Read-only links** (server/readonly.ts): `/r/vpr_<10 hex id>_<32 random bytes, base64url>`. The
   site's `readonly-links.json` (mode 600) keeps per link the id, the token, its maker (or null),
   revoked (by whom), lastUsed (written at most once a minute); revoked links stay. Opening a link
@@ -368,7 +446,7 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   (server/readonlygate.ts): reads, the posts that only read (`/api/hover/open`, `/api/hover/names`)
   and `POST /api/export`; anything else is 403 `{readOnly: true}`. `/api/identity` tells the page
   `{readOnly: {by: "link" | "public"}}`, and the page offers nothing that writes, sends no
-  heartbeat, gives no name and talks to no agent.
+  heartbeat, gives no name and has no conversation window; its stream carries no message.
 - **Requests to follow** (`POST /api/ask`, server/askfollow.ts): 401 without a name, 409 from a
   private page or for an agent, 404 for someone gone, 429 with `retryAfter` within 30 s, counted per
   person (link, else name) and per page. Nobody to ask makes no request and does not count. Answers:
@@ -376,6 +454,44 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   following the asker; the server does not know who follows whom). A replaced request, or one on a
   page that closes, is answered `timeout`. A request ends when all answered or after 33 s (30 + 3 of
   grace); the asker closing or going private withdraws it. Held in memory only.
+- **The conversations** (decision 13, server/talk.ts): the public channel is
+  `<site>/chat/public.jsonl`, kept 90 days; a private channel is its agent's file (AgentSpec,
+  "Talking with agents"). `GET /api/chat?channel=public|<agent id>&before=<id>` reads a channel: its
+  newest 200 (before message `before`), oldest first; `POST /api/chat {channel, text, place}` writes:
+  401 without a name, 403 to a read-only reader, to an agent and, for a private channel, to anyone
+  but its maker (shared/collab.ts, `madeBy`); 404 for no such channel; 409 to an offline agent's
+  private channel; 429 beyond the rate, a person's messages in every channel together. A message is
+  `{id, at, from, kind, channel, text, mentions, where}`, each channel counting its ids, `where` the
+  writer's place as presence carries it, given to agents and never sent to pages. The stream sends a
+  public message to every page with a name, private readers' included, and a private channel's only
+  to its maker's pages; nothing to a read-only page. A page's name is its personal link's or the
+  proxy's, else the one its heartbeats give (an event stream carries no header of the page's), so
+  the page reads its channels again once a heartbeat named its stream. What the reader has seen of
+  each channel (its last id) is kept per browser, the furthest of its tabs'. The window's layer is
+  above the source and reference windows' order (web/src/floatwin.ts, `onTop`; style.css), the
+  following strip over it.
+- **Copied links** (decision 13, web/src/chatlinks.ts): the site's address and the page's path, the
+  key's `/k/<key>`, a personal link's and a read-only link's left out, then `#` and the state's
+  address (web/src/state.ts), with `snap=` for what the reader sees; a note's, the board's address
+  and `note=<id>` (`nv=1` for a view's own note), which the page shows once it opened the board. The
+  chip is drawn from the link alone: the names it holds, and the view's title from the views the
+  page knows (else "a view"), a note's first words from the notes it knows (else "a note"); a link
+  the page cannot read stays a plain link. A link of this site is one of the page's own origin or
+  of the server's public address, at `/`, or at a path that lets in; one that lets in, of either,
+  goes without its secret, keeping its address.
+  - **The server's public address** (`--public-url`; the conversations' proposal, accepted by the
+    owner on 2026-10-19): the page is told it (`GET /api/status`, `publicUrl`), so that an agent's
+    links, made with it, are chips where the page was reached at another address (a proxy's inside
+    name, the machine's own). Copy link and the box's link to what the reader sees are made with it
+    too, not with the address the page was reached at — as the agents' prompt, their links and
+    every link Share makes are (decision 7) — so that a link copied opens for the others it is
+    given to, whichever address its copier came by. Without `--public-url`, the page's own address.
+- **Writes from the server's own pages** (the owner's decision of 2026-10-19, SECURITY.md; server/access.ts
+  `fromOwnPage`): a request other than GET and HEAD whose browser says it comes from another site or
+  another port of this host (`Sec-Fetch-Site` other than `same-origin` or `none`; without it, an
+  `Origin` that is neither the Host's nor `--public-url`'s, `null` included) is answered 403 before
+  anything else is looked at, the cookies a browser sends with it notwithstanding. Requests without
+  either header (agents, the MCP server, scripts) are as before.
 - **Bounds**: at most 200 event streams (then 503), and 400 more for read-only readers, counted
   apart; 4 per page (the oldest goes); a stream with more than 4 MB unread is closed. Read-only
   readers' hovers: 60 a minute per address and 300 in all (429 with `Retry-After`), answers kept per
@@ -383,6 +499,23 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   (429), the export's cache answering the rest. Request bodies are bounded (413); a failing handler answers 500 with a
   JSON reason, never hangs. Only the graph's modules are served or hovered.
 - **Far pages**: pages are often far away, over lossy links. The page's files and the graph carry a
-  content tag, and the review a tag of its revision (304 when the browser has them; the review's, the
-  owner's decision of 2026-10-19); edges travel packed; JSON over 2 KB is gzipped; the
-  page asks for the graph's two parts and the review at once.
+  content tag, and the review and the build status a tag of their revision (304 when the browser has
+  them; the review's and the build status's, the owner's decisions of 2026-10-19); edges travel
+  packed; JSON over 2 KB is gzipped; the page asks for the graph's two parts, the review and the
+  build status at once.
+- **The build status on the stream** (the owner's decision of 2026-10-19): the event stream never
+  carries it whole, as it does not the review. It says which revision the server holds (`build-rev`:
+  `{epoch, rev}`, the epoch the server's process, the revision counted from 0 before the first
+  look), as it opens and at a change sent as no delta; each change after goes as the files whose
+  status changed (`build-delta`: `{epoch, base, rev, active, progress, counts, files, gone}`, `files`
+  the files changed or new, `gone` the modules no longer listed), which the page applies to the
+  revision it holds. A page that holds another revision — a change it missed or cannot apply,
+  another run of the server's — reads the whole (`GET /api/build`: `{epoch, rev, status}`, gzipped,
+  tagged with the process and the revision, 304 to a page that has it), one reading at a time, the
+  changes that come meanwhile applied to what it brings. A change larger than 64 KB and than an
+  eighth of the whole (about what the whole takes compressed) goes as the revision alone (proposed).
+  A page asks for changes as it opens its stream (`build=delta`); a page from before 0.6.0, left
+  open across an update, is sent the whole status at every change (`build`), and a page meeting a
+  server from before takes the whole it sends. `GET /api/status` keeps the whole status for agents
+  and scripts; `?brief` leaves out the files (the page's loader). NavierStokesAndEuler (2,657
+  files): the hello 362 → 1 KB, the whole read 42 KB, a change during a build 373 → 26 KB.

@@ -254,7 +254,7 @@ test("Share's switch, Exactly what I see: on by default, the links carry the sna
   const kept: { shareExact?: false } = {};
   const snap = await writeSnapshot(heavy(), WIDE);
   let asked = 0;
-  const share = new Share(page.btn as never, page.pop as never, {
+  const share = new Share(page.btn as never, page.pop as never, { base: () => "http://example.org:4173",
     info: async () => ({ path: "/k/KEY" }),
     data: { agentShares: async () => null, invites: async () => [], invite: async (name: string) => ({ invite: { id: "abc", name }, invites: [], link: "http://example.org:4173/i/vpp_0123456789_SECRET" }) } as never,
     me: () => "Alice",
@@ -317,7 +317,7 @@ test("Share's read-only link (CollabSpec decision 11): made, listed, shown again
     makeReadOnly: async () => ((links = [made, ...links]), { made, links }),
     revokeReadOnly: async (id: string) => (revoked.push(id), (links = links.filter((l) => l.id !== id)), { links }),
   };
-  let share = new Share(page.btn as never, page.pop as never, { info: async () => ({ path: "/k/KEY", readOnlyLinks: true }), data: data as never, me: () => null, ensureName: async () => "Alice", snapshot: async () => snap, exact });
+  let share = new Share(page.btn as never, page.pop as never, { base: () => "http://example.org:4173", info: async () => ({ path: "/k/KEY", readOnlyLinks: true }), data: data as never, me: () => null, ensureName: async () => "Alice", snapshot: async () => snap, exact });
   await share.open();
   await new Promise((ok) => setTimeout(ok, 20));
   assert.deepEqual(tabs(page.pop.innerHTML), ["person", "readonly", "invite", "agent"]);
@@ -346,7 +346,7 @@ test("Share's read-only link (CollabSpec decision 11): made, listed, shown again
 
   // with --public: the address alone is the read-only link
   page = sharePage(hash);
-  share = new Share(page.btn as never, page.pop as never, { info: async () => ({ path: "/k/KEY", readOnlyLinks: true, public: true }), data: data as never, me: () => null, ensureName: async () => "Alice", snapshot: async () => snap, exact });
+  share = new Share(page.btn as never, page.pop as never, { base: () => "http://example.org:4173", info: async () => ({ path: "/k/KEY", readOnlyLinks: true, public: true }), data: data as never, me: () => null, ensureName: async () => "Alice", snapshot: async () => snap, exact });
   await share.open();
   await page.press("[data-tab]", { tab: "readonly" });
   assert.equal(page.shown("sh-url sh-ro-url"), at(`/${hash}&snap=${snap}`));
@@ -354,14 +354,14 @@ test("Share's read-only link (CollabSpec decision 11): made, listed, shown again
 
   // a server that lets in whoever reaches it: no such tab
   page = sharePage(hash);
-  share = new Share(page.btn as never, page.pop as never, { info: async () => ({ path: null, readOnlyLinks: false }), data: data as never, me: () => null, ensureName: async () => "Alice", snapshot: async () => snap, exact });
+  share = new Share(page.btn as never, page.pop as never, { base: () => "http://example.org:4173", info: async () => ({ path: null, readOnlyLinks: false }), data: data as never, me: () => null, ensureName: async () => "Alice", snapshot: async () => snap, exact });
   await share.open();
   assert.deepEqual(tabs(page.pop.innerHTML), ["person", "invite", "agent"]);
 
   // a read-only reader: the link they came by, alone, and the server is asked nothing more
   page = sharePage(hash);
   const never = new Proxy({}, { get: (_, k) => () => assert.fail(`a read-only reader's Share asked ${String(k)}`) });
-  share = new Share(page.btn as never, page.pop as never, { info: async () => ({ path: "/r/vpr_0123456789_S", readOnly: true }), data: never as never, me: () => null, ensureName: async () => null, snapshot: async () => snap, exact });
+  share = new Share(page.btn as never, page.pop as never, { base: () => "http://example.org:4173", info: async () => ({ path: "/r/vpr_0123456789_S", readOnly: true }), data: never as never, me: () => null, ensureName: async () => null, snapshot: async () => snap, exact });
   await share.open();
   await new Promise((ok) => setTimeout(ok, 20));
   assert.deepEqual(tabs(page.pop.innerHTML), ["readonly"]);
@@ -370,10 +370,42 @@ test("Share's read-only link (CollabSpec decision 11): made, listed, shown again
   assert.doesNotMatch(page.pop.innerHTML, /data-ro-create|data-revoke|Guest link/);
   // let in by --public: the address
   page = sharePage(hash);
-  share = new Share(page.btn as never, page.pop as never, { info: async () => ({ path: "/", readOnly: true }), data: never as never, me: () => null, ensureName: async () => null, snapshot: async () => snap, exact });
+  share = new Share(page.btn as never, page.pop as never, { base: () => "http://example.org:4173", info: async () => ({ path: "/", readOnly: true }), data: never as never, me: () => null, ensureName: async () => null, snapshot: async () => snap, exact });
   await share.open();
   assert.equal(page.shown("sh-url sh-ro-url"), at(`/${hash}&snap=${snap}`));
   assert.match(page.pop.innerHTML, /the address is the read-only link/);
+});
+
+test("Share's links are made with the server's public address (--public-url) where it has one, whatever address the page was opened at", async () => {
+  const { Share } = await import("../src/web/src/share.ts");
+  const { siteOrigins } = await import("../src/web/src/chatlinks.ts");
+  const hash = "#v=project&mode=tcb";
+  const exact = { get: () => false, set() {} };
+  // the page opened at the machine's own address, behind a proxy that people reach at another
+  const site = siteOrigins("http://127.0.0.1:4173", "https://vp.example.org");
+  assert.equal(site.base, "https://vp.example.org");
+  const never = new Proxy({}, { get: (_, k) => () => assert.fail(`asked ${String(k)}`) });
+  const nothing = { agentShares: async () => null, invites: async () => [] };
+  const opened = async (info: object, data: object) => {
+    const page = sharePage(hash);
+    (globalThis as { location: object }).location = { origin: "http://127.0.0.1:4173", hash, href: `http://127.0.0.1:4173/${hash}` };
+    const share = new Share(page.btn as never, page.pop as never, { base: () => site.base, info: async () => info as never, data: data as never, me: () => "Alice", ensureName: async () => "Alice", snapshot: async () => null, exact });
+    await share.open();
+    return page;
+  };
+  // the guest link: the key's path at the public address, the place after it
+  let page = await opened({ path: "/k/KEY" }, nothing);
+  assert.equal(page.shown(), `https://vp.example.org/k/KEY${hash}`);
+  // a server open to whoever reaches it: its public address
+  page = await opened({ path: null }, nothing);
+  assert.equal(page.shown(), `https://vp.example.org/${hash}`);
+  // a read-only reader's own link, and the address that is one with --public
+  page = await opened({ path: "/r/vpr_0123456789_S", readOnly: true }, never);
+  assert.equal(page.shown("sh-url sh-ro-url"), `https://vp.example.org/r/vpr_0123456789_S${hash}`);
+  page = await opened({ path: "/", readOnly: true }, never);
+  assert.equal(page.shown("sh-url sh-ro-url"), `https://vp.example.org/${hash}`);
+  // without --public-url, the page's own address, as before
+  assert.equal(siteOrigins("http://127.0.0.1:4173", null).base, "http://127.0.0.1:4173");
 });
 
 // ------------------------------------------------------------------ access, invites, agents

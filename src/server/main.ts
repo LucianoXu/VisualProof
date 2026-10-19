@@ -24,20 +24,22 @@ import { Identities, layoutAuthor } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import type { GitSource } from "../shared/graph.ts";
 import { MAX_MEMORY_BYTES, readProjectView, Views } from "./views.ts";
-import { cleanView, defaultAgentName, nameKey, validSession, withoutArtwork } from "../shared/collab.ts";
+import { cleanView, defaultAgentName, madeBy, nameKey, validSession, withoutArtwork } from "../shared/collab.ts";
 import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
 import { packEdges } from "../shared/edgecodec.ts";
-import { Access, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
+import { Access, fromOwnPage, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
+import type { InviteCheck } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
 import { AgentTokens, bearerOf, DEFAULT_DAYS, invalidAgentName, looksLikeToken, TOKEN_DAYS } from "./tokens.ts";
 import type { TokenRecord } from "./tokens.ts";
 import { agentPrompt } from "./prompt.ts";
-import { MAX_PERSON } from "./talk.ts";
+import { forPages, MAX_PERSON, PUBLIC, THREAD } from "./talk.ts";
+import { mentioned } from "../shared/mentions.ts";
 import { DEFAULT_JOBS, inGB, jobsAdvice, memoryFloor, onMathlib, UsagePass, mergeUsage, saveMerged, WORKER_PEAK } from "./usage.ts";
 import { extract } from "./extract.ts";
 import type { AgentLevel, Answer } from "./agent.ts";
@@ -57,8 +59,8 @@ import { RESTART_STATUS, supervise } from "./supervise.ts";
 import { stopChildren } from "./children.ts";
 import { filmStatus, serveFilm, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
-import { branchProblem, branchToFollow, DEFAULT_POLL_MINUTES, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, lockDeployment, MIN_POLL_MINUTES, parseRemote, recordedDefault } from "./deploy.ts";
-import type { DeployFolder, Remote } from "./deploy.ts";
+import { branchProblem, branchToFollow, DEFAULT_BUILD_HOURS, DEFAULT_POLL_MINUTES, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, limitInWords, lockDeployment, MATHLIB_CACHES, MAX_BUILD_HOURS, MIN_BUILD_HOURS, MIN_POLL_MINUTES, parseBuildHours, parseRemote, recordedDefault, sharedMathlibCache } from "./deploy.ts";
+import type { DeployFolder, MathlibCache, Remote } from "./deploy.ts";
 import { shortCommit, slimDeploy } from "../shared/deploy.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
 
@@ -115,12 +117,19 @@ interface Options {
   branch: string | null;
   /** --poll: how often the remote is asked, in minutes; null: DEFAULT_POLL_MINUTES */
   poll: number | null;
+  /** --build-timeout: the hours of `lake build` past which a build is stopped (DeploySpec decision
+   *  14); null: DEFAULT_BUILD_HOURS */
+  buildHours: number | null;
+  /** --mathlib-cache: the user's Mathlib cache, or the deployment's own (DeploySpec decision 2);
+   *  null: shared */
+  mathlibCache: MathlibCache | null;
 }
 
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
  *  to stdout with status 0. */
 function usage(code = 2): never {
-  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project | git URL> [--branch name] [--poll ${DEFAULT_POLL_MINUTES}] [--root Name]... [--port 4173] [--host 127.0.0.1]
+  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project | git URL> [--branch name] [--poll ${DEFAULT_POLL_MINUTES}] [--build-timeout ${DEFAULT_BUILD_HOURS}]
+                                         [--mathlib-cache shared|own] [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
@@ -148,6 +157,13 @@ function usage(code = 2): never {
   --branch the branch followed (default: the remote's default branch); never a pull request's or
            a fork's
   --poll   how often the remote is asked for the branch's head, in minutes (default ${DEFAULT_POLL_MINUTES})
+  --build-timeout  the hours past which \`lake build\` is stopped and the build failed, its commit
+           not tried again (default ${DEFAULT_BUILD_HOURS}; ${MIN_BUILD_HOURS} to ${MAX_BUILD_HOURS}, fractions too: 1.5)
+  --mathlib-cache  where \`lake exe cache get\` keeps Mathlib's files: shared (the default) — the
+           user's, as their own builds' (~/.cache/mathlib, or MATHLIB_CACHE_DIR), so that a build
+           fetches only what they have not; own — the deployment's, in its folder of the cache
+           (deploy/<repo>-<hash>/mathlib-cache/): about 0.45 GB, the version of Mathlib checked
+           out alone (\`lake exe cache clean\` after each fetch), removed with that folder
 
   --root   what to read: a library of the lakefile (the modules Lake builds of it) or a module;
            repeatable. By default the lakefile's default targets.
@@ -222,7 +238,8 @@ function usage(code = 2): never {
            may read (a showcase); never for a private one.
 
   --public-url  the address people reach this server at, when it is not the one their browser
-           sends (a proxy in front): the prompt Share makes for an agent tells it this address.
+           sends (a proxy in front): the links Share and Copy link make, and the prompt Share
+           makes for an agent, carry it.
 
   --allowed-host  without --access-key-file, a name this server is reached by; repeatable. A
            server without a key answers only requests for an IP address, localhost (and the names
@@ -267,7 +284,7 @@ function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -329,6 +346,22 @@ function parseArgs(argv: string[]): Options {
       }
       o.poll = m;
     }
+    else if (a === "--build-timeout" && cmd === "serve") {
+      const h = parseBuildHours(val());
+      if (typeof h !== "number") {
+        console.error(`visualproof: ${h.error}`);
+        process.exit(2);
+      }
+      o.buildHours = h;
+    }
+    else if (a === "--mathlib-cache" && cmd === "serve") {
+      const v = val();
+      if (!MATHLIB_CACHES.includes(v as MathlibCache)) {
+        console.error(`visualproof: --mathlib-cache ${v.slice(0, 40)}: say shared (the user's Mathlib cache, as their builds': the default) or own (the deployment's, in its folder of the cache)`);
+        process.exit(2);
+      }
+      o.mathlibCache = v as MathlibCache;
+    }
     else if (a === "--updates" && cmd === "serve") {
       const mode = val();
       if (!UPDATE_MODES.includes(mode as UpdateMode)) usage();
@@ -372,9 +405,14 @@ function parseArgs(argv: string[]): Options {
       process.exit(2);
     }
     o.remote = r;
-  } else if (o.branch !== null || o.poll !== null) {
-    console.error("visualproof: --branch and --poll go with a git address (serve https://github.com/owner/repo): a folder is read as its owner's builds leave it");
-    process.exit(2);
+  } else {
+    // what is about following a branch and building it: a folder is never built (DeploySpec
+    // decision 15)
+    const given = [["--branch", o.branch], ["--poll", o.poll], ["--build-timeout", o.buildHours], ["--mathlib-cache", o.mathlibCache]].filter(([, v]) => v !== null).map(([n]) => n);
+    if (given.length) {
+      console.error(`visualproof: ${given.length > 1 ? `${given.slice(0, -1).join(", ")} and ${given[given.length - 1]} go` : `${given[0]} goes`} with a git address (serve https://github.com/owner/repo): a folder is read as its owner's builds leave it, never built`);
+      process.exit(2);
+    }
   }
   // read-only for whoever comes, beside those the key or a link lets in: without a key, everyone is in
   // already; behind a sign-in, there is nobody else
@@ -541,33 +579,51 @@ export class App {
     sendJson(res, a.body, a.status, a.headers);
   }
 
-  /** Talking with an agent (AgentSpec decision 8), for pages: an agent's conversation (GET), and a
-   *  message to it (POST) — from a person with a name, to an agent that is not offline (409
-   *  otherwise: one listening has it at once, one thinking or working at its next wait), at most so
-   *  many a minute. The agent is named as presence names it. */
+  /** The conversations (CollabSpec decision 13, AgentSpec decision 8), for pages: a channel read
+   *  (GET ?channel=public|<agent id>&before=<id>, the newest 200 first) and a message written in it
+   *  (POST {channel, text, place}). Everyone with a name reads and writes the public channel; an
+   *  agent's private channel is its maker's alone (shared/collab.ts, madeBy: 403 to anyone else).
+   *  A read-only reader neither sees nor writes any (403), whatever the page sends; agents talk
+   *  through their API. A private channel cannot be written to while its agent is offline (409); a
+   *  mention of it in the public channel can, and is handed to it when it comes back. At most so
+   *  many messages a minute, a person's in every channel together. */
   private async chat(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
     const live = this.live;
-    if (req.method === "GET") {
-      const id = url.searchParams.get("agent") ?? "";
-      const tok = live.presence.tokenOf(id);
-      if (!tok) return sendJson(res, { error: "There is no such agent: only an agent with a token of its own can be talked to." }, 404);
-      return sendJson(res, { agent: { id, name: live.tokens.get(tok)?.name ?? null, talk: live.talk.talk(tok) }, messages: live.talk.thread(tok) });
-    }
-    if (req.method !== "POST") return sendJson(res, { error: "/api/chat answers GET and POST." }, 405);
-    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Agents answer through their API.", hint: "POST /api/agent/reply." }, 403);
+    if (req.method !== "GET" && req.method !== "POST") return sendJson(res, { error: "/api/chat answers GET and POST." }, 405);
+    if (this.readOnlyOf.has(req)) return sendJson(res, { error: "This page is read-only.", readOnly: true }, 403);
+    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Agents talk through their API.", hint: "GET /api/agent/channel, POST /api/agent/reply." }, 403);
     const me = this.ids.who(req);
-    if (!me) return sendJson(res, { error: "Say who you are first: a message is sent under your name.", who: true }, 401);
+    if (!me) return sendJson(res, { error: "Say who you are first: the conversations are for people with a name, and a message is sent under yours.", who: true }, 401);
+    const who = { name: me, person: this.ids.person(req)?.id ?? null };
+    /** the channel a request names: the public one, or an agent's private one that is this
+     *  reader's — 404 where there is no such agent, 403 where it is someone else's */
+    const channelOf = (raw: unknown): { key: string; agent: { id: string; record: TokenRecord } | null } | Answer => {
+      if (raw === "public" || raw === undefined || raw === null || raw === "") return { key: PUBLIC, agent: null };
+      const tok = typeof raw === "string" ? live.presence.tokenOf(raw) : null;
+      const record = tok ? live.tokens.get(tok) : undefined;
+      if (!tok || !record) return { status: 404, body: { error: "There is no such channel: public, or the id of an agent with a token of its own." } };
+      if (!madeBy(record, who)) return { status: 403, body: { error: `${record.name}'s private channel is ${record.by}'s, who made its token: nobody else reads or writes it.`, private: true } };
+      return { key: tok, agent: { id: raw as string, record } };
+    };
+    if (req.method === "GET") {
+      const c = channelOf(url.searchParams.get("channel") ?? url.searchParams.get("agent"));
+      if ("status" in c) return sendJson(res, c.body, c.status);
+      const raw = url.searchParams.get("before");
+      const before = raw && /^\d{1,9}$/.test(raw) ? Number(raw) : null;
+      const messages = live.talk.thread(c.key, THREAD, before).map(forPages);
+      if (!c.agent) return sendJson(res, { channel: PUBLIC, messages });
+      return sendJson(res, { channel: c.agent.id, agent: { id: c.agent.id, name: c.agent.record.name, talk: live.talk.talk(c.key) }, messages });
+    }
     const r = await this.json(req, 1 << 16);
     if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-    const b = (r.body ?? {}) as { agent?: unknown; text?: unknown; place?: unknown };
-    const tok = typeof b.agent === "string" ? live.presence.tokenOf(b.agent) : null;
-    if (!tok) return sendJson(res, { error: "There is no such agent: only an agent with a token of its own can be talked to." }, 404);
-    const name = live.tokens.get(tok)?.name ?? "The agent";
-    if (live.talk.state(tok) === "offline") return sendJson(res, { error: "offline", message: `${name} is offline: it can be written to once it listens again.` }, 409);
+    const b = (r.body ?? {}) as { channel?: unknown; agent?: unknown; text?: unknown; place?: unknown };
+    const c = channelOf(b.channel ?? b.agent);
+    if ("status" in c) return sendJson(res, c.body, c.status);
+    if (c.agent && live.talk.state(c.key) === "offline") return sendJson(res, { error: "offline", message: `${c.agent.record.name} is offline: it can be written to once it listens again.` }, 409);
     const text = typeof b.text === "string" ? b.text.trim() : "";
     if (!text) return sendJson(res, { error: "The message is empty." }, 400);
     if (text.length > MAX_PERSON) return sendJson(res, { error: `A message is at most ${MAX_PERSON.toLocaleString("en")} characters.` }, 400);
-    const wait = live.talk.allow("person", me);
+    const wait = live.talk.allow("person", who.person ? `p:${who.person}` : `n:${nameKey(me)}`);
     if (wait) return sendJson(res, { error: `Too many messages at once: wait ${wait} s.`, retryAfter: wait }, 429, { "retry-after": String(wait) });
     // where the writer was, as the page says it, bounded: a selection can be a long query; a private
     // reader's message says nothing of where they are (CollabSpec decision 8), only who wrote it
@@ -575,17 +631,22 @@ export class App {
     const at = view ? this.agents.placeOf(view) : null;
     const clip = (x: string | null, n: number) => (x !== null && x.length > n ? x.slice(0, n - 1) + "…" : x);
     const where = at ? { inWords: clip(at.inWords, 600)!, view: at.view, declaration: clip(at.declaration, 300), selection: clip(at.selection, 300) } : null;
-    const message = live.talk.post(tok, { from: me, kind: "person", text, where });
-    return sendJson(res, { ok: true, message });
+    // the names it mentions; in the public channel, the agents among them are handed it
+    const can = live.mentionable();
+    const mentions = mentioned(text, can.names);
+    const to = c.agent ? [] : [...new Set(mentions.flatMap((n) => can.agents.get(nameKey(n)) ?? []))];
+    const message = live.talk.post(c.key, { from: me, kind: "person", text, ...(mentions.length ? { mentions } : {}), where, to });
+    return sendJson(res, { ok: true, channel: c.agent?.id ?? PUBLIC, message: forPages(message) });
   }
 
-  /** A new conversation with an agent (AgentSpec decision 8, the owner's decision of 2026-10-11):
-   *  a divider, from anyone who may write to it — a person with a name — and held to the rate of
-   *  their messages; an offline agent's too, so that its next session starts clean. One right after
+  /** A new conversation in an agent's private channel (AgentSpec decision 8, the owner's decisions
+   *  of 2026-10-11 and 2026-10-19): a divider, from its maker alone, held to the rate of their
+   *  messages; an offline agent's too, so that its next session starts clean. One right after
    *  another divides nothing: it is answered `unchanged`, and neither written nor counted. */
   private async chatNew(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const live = this.live;
     if (req.method !== "POST") return sendJson(res, { error: "/api/chat/new answers POST." }, 405);
+    if (this.readOnlyOf.has(req)) return sendJson(res, { error: "This page is read-only.", readOnly: true }, 403);
     if (this.ids.kind(req) === "agent") return sendJson(res, { error: "A new conversation is for people to start." }, 403);
     const me = this.ids.who(req);
     if (!me) return sendJson(res, { error: "Say who you are first: a new conversation is started under your name.", who: true }, 401);
@@ -593,11 +654,15 @@ export class App {
     if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
     const b = (r.body ?? {}) as { agent?: unknown };
     const tok = typeof b.agent === "string" ? live.presence.tokenOf(b.agent) : null;
-    if (!tok) return sendJson(res, { error: "There is no such agent: only an agent with a token of its own can be talked to." }, 404);
+    const record = tok ? live.tokens.get(tok) : undefined;
+    if (!tok || !record) return sendJson(res, { error: "There is no such agent: only an agent with a token of its own has a private channel." }, 404);
+    const person = this.ids.person(req)?.id ?? null;
+    if (!madeBy(record, { name: me, person })) return sendJson(res, { error: `Only ${record.by}, who made ${record.name}'s token, starts a new conversation with it.`, private: true }, 403);
     if (live.talk.fresh(tok)) return sendJson(res, { ok: true, unchanged: true, divider: null, message: "Nothing was said since the conversation began: it is new already." });
-    const wait = live.talk.allow("person", me);
+    const wait = live.talk.allow("person", person ? `p:${person}` : `n:${nameKey(me)}`);
     if (wait) return sendJson(res, { error: `Too many at once: wait ${wait} s.`, retryAfter: wait }, 429, { "retry-after": String(wait) });
-    return sendJson(res, { ok: true, divider: live.talk.restart(tok, me) });
+    const divider = live.talk.restart(tok, me);
+    return sendJson(res, { ok: true, divider: divider && forPages(divider) });
   }
 
   /** Asking others to follow (CollabSpec decision 10, the owner's decision of 2026-10-12), for pages:
@@ -664,9 +729,11 @@ export class App {
     // the server as the prompt names it
     const address = this.publicUrl ?? reachedAt(req);
     if (path === "/api/share/agents/prompt") {
-      // a token that ended has no prompt: it lets nothing in
+      // a token that ended has no prompt: it lets nothing in. Its maker alone is shown it again (the
+      // owner's decision of 2026-10-19): whoever holds the token reads its private channel
       const t = typeof b.id === "string" ? tokens.token(b.id) : null;
       if (!t) return sendJson(res, { error: "There is no such token in force." }, 404);
+      if (!madeBy(t.record, { name: me, person: this.ids.person(req)?.id ?? null })) return sendJson(res, { error: `Only ${t.record.by}, who made it, is shown this token's prompt again: whoever holds a token reads its agent's private channel.`, maker: false }, 403);
       return sendJson(res, { token: AgentTokens.info(t.record), prompt: agentPrompt({ url: address, token: t.token, record: t.record }) });
     }
     if (path !== "/api/share/agents") return sendJson(res, { error: "not found" }, 404);
@@ -679,7 +746,7 @@ export class App {
     if (AGENT_LEVELS.indexOf(level) > AGENT_LEVELS.indexOf(top)) return sendJson(res, { error: `This server lets agents do at most ${top} (--agents ${top}): a token cannot give more.` }, 400);
     const days = b.days ?? DEFAULT_DAYS;
     if (!TOKEN_DAYS.includes(days as (typeof TOKEN_DAYS)[number])) return sendJson(res, { error: `days is one of ${TOKEN_DAYS.join(", ")}.` }, 400);
-    const made = tokens.create({ name: (name as string).trim(), by: me, level, days: days as number });
+    const made = tokens.create({ name: (name as string).trim(), by: me, person: this.ids.person(req)?.id ?? null, level, days: days as number });
     const prompt = agentPrompt({ url: address, token: made.token, record: made.record });
     return sendJson(res, { token: AgentTokens.info(made.record), prompt, tokens: tokens.inForce().map(AgentTokens.info) });
   }
@@ -687,12 +754,13 @@ export class App {
   /** Inviting a person (CollabSpec decision 9), for people: the personal links in force (GET), a new
    *  one for a person named in the body (POST), and revoking one (POST …/revoke). Making and
    *  revoking need a name: who made a link, and who revoked it, is said in Share. The link itself
-   *  is answered once, to whoever made it: the server keeps only its digest (server/invites.ts). */
+   *  is answered once to whoever made it, and again to its holder alone (`mine`). */
   private async sharePeople(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Personal links are for people: an agent cannot make, list or revoke them." }, 403);
+    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Personal links are for people: an agent cannot make, list, show or revoke them." }, 403);
     if (this.ids.header) return sendJson(res, { error: "Names come from the sign-in in front of this server: it has no personal links." }, 404);
     const invites = this.live.invites;
     const path = url.pathname.replace(/\/+$/, "");
+    if (path === "/api/share/people/mine" || path === "/api/share/people/mine/renew") return this.myLink(req, res, path);
     const list = () => invites.inForce().map(Invites.info);
     if (path === "/api/share/people" && req.method === "GET") return sendJson(res, { invites: list() });
     if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);
@@ -713,6 +781,35 @@ export class App {
     // the link as the person will open it: the server's address as this page reached it
     const link = `${this.publicUrl ?? reachedAt(req)}${INVITE_PATH}${made.token}`;
     return sendJson(res, { invite: Invites.info(made.record), link, invites: list() });
+  }
+
+  /** The personal link a page came by, for its holder alone (CollabSpec decision 9, the owner's
+   *  decision of 2026-10-19): shown again (POST /api/share/people/mine; `link` null for a link made
+   *  before 0.6.0, of which the server kept only the digest), or made anew (POST …/mine/renew,
+   *  `{stream}` the event stream of the page asking, which stays open) — the same id under a new
+   *  secret, the old link and the browsers it let in cut off, this browser given the new cookie.
+   *  Whoever else asks is refused: its maker, a guest, an agent; a read-only reader's page posts
+   *  nothing here (server/readonlygate.ts). Asked for by POST, as an agent's prompt is, so that the
+   *  browser sends its Origin and the link names the server as the page reached it. */
+  private async myLink(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+    const p = this.ids.person(req);
+    if (!p) return sendJson(res, { error: "A personal link is shown to its holder alone, in a browser it let in: this page came by none.", holder: false }, 403);
+    if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);
+    const invites = this.live.invites;
+    const address = this.publicUrl ?? reachedAt(req);
+    if (path === "/api/share/people/mine") {
+      const token = invites.tokenOf(p.id);
+      return sendJson(res, { invite: Invites.info(p), link: token ? `${address}${INVITE_PATH}${token}` : null });
+    }
+    const r = await this.json(req, 4096);
+    if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
+    const keep = (r.body as { stream?: unknown } | null)?.stream;
+    const made = invites.renew(p.id, { keep: typeof keep === "string" ? keep : undefined });
+    if (!made) return sendJson(res, { error: "There is no such personal link in force." }, 404);
+    // this browser stays in: the cookie of the new link, beside what the request was given already
+    const set = res.getHeader("set-cookie");
+    res.setHeader("set-cookie", [...(Array.isArray(set) ? set : set === undefined ? [] : [String(set)]), invites.cookie(made.record)]);
+    return sendJson(res, { invite: Invites.info(made.record), link: `${address}${INVITE_PATH}${made.token}` });
   }
 
   /** Read-only links (CollabSpec decision 11), for people: every link (GET), a new one (POST), and
@@ -754,7 +851,7 @@ export class App {
       return void res.end();
     }
     if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
-    if (c) return sendText(req, res, revokedWords(c.record, "personal") + "\n", "text/plain; charset=utf-8", 410);
+    if (c) return sendText(req, res, endedWords(c) + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
 
@@ -912,6 +1009,9 @@ export class App {
     // rebinding) is refused whatever it asks — the page, its data, the event stream, the agents'
     // API, the MCP server's file
     if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res, path);
+    // what may write, only from a page of this server's own (server/access.ts, fromOwnPage): a page
+    // of another site, or of another port of this host, would send this server's cookies with it
+    if (!fromOwnPage(req.method, req.headers, this.publicUrl)) return sendJson(res, { error: "A page of another site cannot change anything here." }, 403);
     // every route; whatever one throws, handle() answers
     {
       // an agent's own token (server/tokens.ts) lets it into its API alone: the page and the page's
@@ -936,7 +1036,13 @@ export class App {
       // read, where nothing else lets them in
       if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length), path);
       const link = this.ids.link(req);
-      const cookies: string[] = link && "ended" in link ? [live.invites.forget()] : [];
+      // a link that ended: its cookie is forgotten as a page loads, once the page has said so. Not
+      // before: the page's requests meanwhile are told (a browser the key lets in too, as a guest,
+      // by /api/identity: web/src/people.ts); and the browser that made a link anew has the new
+      // cookie under the same name, which a request of its pages still on its way with the old one
+      // would answer with the forgetting after it
+      const forget = link && "ended" in link && (path === "/" || path === "/index.html" || asksForPage(req, path));
+      const cookies: string[] = forget ? [live.invites.forget()] : [];
       const ro = this.access && !this.ids.header ? live.readOnly.ofCookie(req.headers.cookie) : null;
       if (ro && "ended" in ro) cookies.push(live.readOnly.forget());
       if (this.access) {
@@ -949,7 +1055,7 @@ export class App {
           // page, reloaded, says the link no longer opens the site (decision 7: to a browser, the
           // page of a link that does not, which names nobody); the cookie is forgotten there, once
           // it has been said
-          const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? revokedWords(link.record, "personal") : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
+          const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? endedWords(link) : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
           if (revoked) {
             if (asksForPage(req, path)) {
               res.setHeader("set-cookie", cookies);
@@ -1022,8 +1128,12 @@ export class App {
       if (path.startsWith("/pdfjs/")) return pdfjsAsset(res, path);
       // with Lean's language server as it is (server/hover.ts): what is open, what crashed
       // a read-only reader is told how the server is, not its log nor where its review is kept
+      // `?brief`: the build status without its files, which the page reads by GET /api/build
       if (path === "/api/status") {
-        const st: Record<string, unknown> = { ...(live.status() as Record<string, unknown>), lean: this.hover.state() };
+        const st: Record<string, unknown> = { ...(live.status(url.searchParams.has("brief")) as Record<string, unknown>), lean: this.hover.state() };
+        // the address people reach the server at (--public-url): links of it are this site's, and the
+        // page makes its own with it (CollabSpec, "Copied links")
+        if (this.publicUrl) st.publicUrl = this.publicUrl;
         if (this.readOnlyOf.get(req) !== undefined) {
           delete st.log;
           st.review = { ...(st.review as object), folder: undefined };
@@ -1090,7 +1200,13 @@ export class App {
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
       // logs that cannot be read; tagged with its revision, compressed once a revision
-      if (path === "/api/review" && req.method === "GET") return sendReview(req, res, live.review);
+      if (path === "/api/review" && req.method === "GET") return sendRevision(req, res, live.review, live.review.tag(), () => live.review.wholeText());
+      // the whole build status, tagged with its revision (the owner's decision of 2026-10-19): what
+      // changes after comes by the event stream
+      if (path === "/api/build" && req.method === "GET") {
+        const b = live.buildWhole();
+        return sendRevision(req, res, live, b.tag, () => b.text);
+      }
       if (path === "/api/review" && req.method === "POST") {
         // an opinion, a target, a trusted prefix or a key declaration is recorded under the
         // reader's name (CollabSpec decision 3), not one in the body; what it is about is
@@ -1112,18 +1228,19 @@ export class App {
       if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent, reader !== undefined);
       // who the reader is (CollabSpec decisions 3 and 9): the name their page gives, the proxy's, or
       // their personal link's — with the link, and whether the page's own name is a link holder's
-      // and not theirs; a link revoked says by whom
+      // and not theirs; a link revoked says by whom, one made anew since this browser had it, when
       if (path === "/api/identity" && req.method === "GET") {
         const person = this.ids.person(req);
         const holder = this.ids.taken(req);
-        const ended = link && "ended" in link ? link.record : null;
+        const ended = link && "ended" in link ? link : null;
         if (reader !== undefined) return sendJson(res, { mode: this.ids.mode, name: null, readOnly: { by: reader === "public" ? "public" : "link" } });
         return sendJson(res, {
           mode: this.ids.mode,
           name: this.ids.who(req),
           ...(person ? { person: Invites.info(person) } : {}),
           ...(holder ? { taken: taken(holder) } : {}),
-          ...(ended ? { revoked: { by: ended.revokedBy, at: ended.revoked, name: ended.name } } : {}),
+          ...(ended?.ended === "revoked" ? { revoked: { by: ended.record.revokedBy, at: ended.record.revoked, name: ended.record.name } } : {}),
+          ...(ended?.ended === "replaced" ? { replaced: { at: ended.at, name: ended.record.name } } : {}),
         });
       }
       if (path === "/api/identity" && req.method === "POST") return this.identity(req, res);
@@ -1139,13 +1256,14 @@ export class App {
         const priv = !agent && b.private === true;
         // agents have no artwork (ExportSpec decision 19): the page draws it
         if (agent && name) live.presence.agentBeat(name, withoutArtwork(cleanView(b.view)));
-        else if (!live.beat(b.token, priv ? null : name, priv ? null : cleanView(b.view), !priv && b.idle === true, priv, !!this.ids.person(req)))
+        else if (!live.beat(b.token, priv ? null : name, priv ? null : cleanView(b.view), !priv && b.idle === true, priv, !!this.ids.person(req), name))
           return sendJson(res, { error: "This heartbeat is not from an open event stream of this page's: it is sent with the token the stream says hello with.", stream: false }, 403);
         return sendJson(res, { ok: true });
       }
       if (path === "/api/events") {
         const session = url.searchParams.get("session");
-        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null, this.toldAll(req));
+        // `build=delta`: the page takes the build status as changes (a page of 0.6.0 or later)
+        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null, this.toldAll(req), url.searchParams.get("build") === "delta", this.ids.who(req));
       }
       // what happened (CollabSpec decision 5): what the server stored; the review's own history the
       // page reads from the review
@@ -1278,6 +1396,13 @@ export class App {
 /** What a revoked link's holder is told, opening it or on a page it had opened. */
 function revokedWords(r: { revokedBy?: string | null; revoked?: string | null }, kind: "personal" | "read-only"): string {
   return `This ${kind} link was revoked by ${r.revokedBy} on ${(r.revoked ?? "").slice(0, 10)}. Ask whoever ${kind === "personal" ? "invited you" : "gave it to you"} for a new one.`;
+}
+
+/** What a personal link that lets nobody in any more is told (410): revoked, by whom and when, or
+ *  made anew by its holder, and when (CollabSpec decision 9). */
+function endedWords(c: Extract<InviteCheck, { ended: unknown }>): string {
+  if (c.ended === "revoked") return revokedWords(c.record, "personal");
+  return `This personal link was made anew on ${c.at.slice(0, 10)}: it lets nobody in any more. Open the new one instead (My personal link, in the menu under your name where it was made anew).`;
 }
 
 /** an artwork's font file (assets/webfonts/) */
@@ -1414,32 +1539,35 @@ function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Re
   res.end(text);
 }
 
-/** the whole review compressed, under the tag of the revision it is of, per review */
-const reviewGz = new WeakMap<ReviewStore, { tag: string; gz: Promise<Buffer> }>();
+/** what is sent whole under the tag of its revision, compressed, per what it is of (the review, the
+ *  build status) */
+const revisionGz = new WeakMap<object, { tag: string; gz: Promise<Buffer> }>();
 
-/** The whole review (GET /api/review), tagged with its run and its revision (server/review.ts): a
- *  page that has it is answered 304, which a reload is, and one whose review fell behind is sent it
- *  compressed — once a revision, off the server's thread when it is large, the same bytes for every
- *  page (a review of 5,000 opinions on Sphere-Packing-Lean: 8.5 MB of JSON, 1.1 MB sent). */
-function sendReview(req: IncomingMessage, res: ServerResponse, review: ReviewStore): void {
+/** A whole sent under the tag of its revision: the review (GET /api/review), tagged with its run and
+ *  its revision (server/review.ts), and the build status (GET /api/build, server/live.ts). A page that
+ *  has it is answered 304, which a reload is, and one that fell behind is sent it compressed — once a
+ *  revision, off the server's thread when it is large, the same bytes for every page (a review of
+ *  5,000 opinions on Sphere-Packing-Lean: 8.5 MB of JSON, 1.1 MB sent; the build status of
+ *  NavierStokesAndEuler's 2,657 files: 362 KB, 42 KB sent). `of` is what it is of; `whole` writes it,
+ *  asked only where it is sent. */
+function sendRevision(req: IncomingMessage, res: ServerResponse, of: object, tag: string, whole: () => string): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
-  const tag = review.tag();
   const head = { "content-type": "application/json", "cache-control": "private, no-cache", etag: tag, vary: "accept-encoding" };
   if (fresh(req, tag)) {
     res.writeHead(304, head);
     return void res.end();
   }
-  const text = review.wholeText();
+  const text = whole();
   if (text.length <= JSON_GZIP_FROM || !acceptsGzip(req)) {
     res.writeHead(200, head);
     return void res.end(text);
   }
-  let c = reviewGz.get(review);
+  let c = revisionGz.get(of);
   if (c?.tag !== tag) {
     const gz = text.length < JSON_GZIP_AWAY_FROM ? Promise.resolve(gzipSync(text)) : new Promise<Buffer>((ok, fail) => gzip(text, (e, b) => (e ? fail(e) : ok(b))));
-    reviewGz.set(review, (c = { tag, gz }));
+    revisionGz.set(of, (c = { tag, gz }));
     // a compression that failed is tried again by the next page that asks
-    gz.catch(() => reviewGz.get(review)?.gz === gz && reviewGz.delete(review));
+    gz.catch(() => revisionGz.get(of)?.gz === gz && revisionGz.delete(of));
   }
   c.gz.then(
     (gz) => {
@@ -1660,6 +1788,8 @@ async function main(): Promise<void> {
         project,
         roots: o.roots,
         everyMs: (o.poll ?? DEFAULT_POLL_MINUTES) * 60_000,
+        buildMs: (o.buildHours ?? DEFAULT_BUILD_HOURS) * 3600_000,
+        mathlibCache: o.mathlibCache ?? "shared",
         head: deploy.head,
         hooks: {
           reading: () => live.reading,
@@ -1767,9 +1897,19 @@ async function main(): Promise<void> {
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
     if (deployment) {
       const d = deployment.status(true);
-      console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min`);
+      console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min; a build stopped past ${limitInWords(deployment.buildMs)}`);
       console.log(`  clone: ${deployment.folder.checkout}`);
-      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : `none yet: the first, of ${shortCommit(deploy!.head)}, starts now, and the page says so until it is done`}; their logs in ${deployment.folder.logs}`);
+      // a failed build that wrote nothing is not built (DeploySpec decision 6): before any that did,
+      // none is, and the next is the next commit pushed
+      const next = deployment.toBuild();
+      const l = d.last;
+      const why = l ? (l.error ?? (l.exit === null ? "lake build was stopped" : l.exit !== undefined ? `lake build exited with ${l.exit}` : null)) : null;
+      const none = next
+        ? `none yet: the first, of ${shortCommit(next)}, starts now, and the page says so until it is done`
+        : `none yet: that of ${shortCommit(l?.commit ?? deploy!.head)} failed${why ? ` (${why})` : ""}, and the next commit pushed is built`;
+      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : none}; their logs in ${deployment.folder.logs}`);
+      // where the project is on Mathlib, its cache: the user's, or the deployment's own (DeploySpec decision 2)
+      console.log(`  Mathlib's cache: ${o.mathlibCache === "own" ? `${deployment.folder.mathlib}, the deployment's own` : `${sharedMathlibCache()}, the user's, shared by their builds`}`);
     }
     recordVersion(live, version, supervised);
     process.send?.({ vp: "listening", version });

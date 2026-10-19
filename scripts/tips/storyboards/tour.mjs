@@ -129,12 +129,15 @@ export default {
     {
       id: "source",
       steps: [
-        { caption: "Space opens the source of what is selected." },
+        { caption: "Space opens its source, and its review box with it." },
         { move: ROW },
         { click: true, ms: 900 },
         { key: " ", cap: "Space", ms: 700 },
-        NEAR(".sw-win", { dy: 80 }),
-        { wait: 1300 },
+        // the window whole, its title (the declaration it shows) to its review box
+        NEAR(".sw-win"),
+        // its names as Lean reads them, once its language server has the file: the page links each
+        // name at once as it reads it, `Dim24.LeechPacking.density` whole, and part by part only then
+        { waitFor: `.sw-win .tk-ref[data-ref='${LEECH}']`, ms: 1300 },
         { caption: "Rest on a name: Lean says what it is." },
         { move: `.sw-win .tk-ref[data-ref='${LEECH}']` },
         { wait: 2300 },
@@ -147,11 +150,12 @@ export default {
     {
       id: "keys",
       steps: [
+        // the source window, following the selection, has the panel's review box (ReviewSpec: one
+        // review box): the first key marked there, the source window closed, the others in the panel
         { caption: "Keys: the definitions that carry what it says." },
-        NEAR("#panel [data-rv-key]", { dx: -200, dy: -140 }),
         { wait: 400 },
-        { caption: "Mark each as a key with the mouse, in its panel." },
-        { move: "#panel [data-rv-key]" },
+        { caption: "Mark each as a key, in its source or its panel." },
+        { move: ".sw-win [data-rv-key]" },
         { click: true, ms: 1000 },
         { key: "Escape", cap: "Esc", ms: 400 },
         ...SEARCH("SpherePackingConstant"),
@@ -212,8 +216,12 @@ export default {
         { caption: "Approve it, with why: the comment stays with it." },
         { type: "The supremum of the densities of all sphere packings in ℝ^d: the constant the statement is about.", ms: 500 },
         { move: "#panel [data-rv=approve]" },
-        { click: true, ms: 1300 },
+        { click: true, ms: 1000 },
+        // Withdraw beside one's own opinion (ReviewSpec decision 9), shown, not pressed
+        { caption: "Changed your mind? Withdraw takes it back." },
+        { move: "#panel [data-rv-withdraw]" },
         { poster: true },
+        { wait: 1200 },
         { caption: "The target's progress counts your approval." },
         NEAR(ROW, { dx: 460, dy: 280 }),
         { move: ROW, dx: 90 },
@@ -263,37 +271,48 @@ export default {
         { agent: "join" },
         { key: "Escape", cap: "Esc", ms: 500 },
         WHOLE,
-        { caption: "Click the agent to follow it, and ask." },
+        // the conversation window is the reader's own (CollabSpec decision 13): opened by Talk in the
+        // agent's menu, on the private channel between Alice and the agent she made, beside Everyone
+        { caption: "Its menu → Talk: your private channel with it." },
         { move: "#peers button.peer.agent" },
-        { click: true, ms: 900 },
-        { move: ".tk-form textarea" },
+        { click: true, ms: 600 },
+        { move: "#peer-menu [data-act=talk]" },
+        { click: true, ms: 700 },
+        NEAR("#convo .cv-thread", { dx: 260, dy: -60 }),
+        { wait: 300 },
+        { move: "#convo .cv-input" },
         { click: true, ms: 300 },
         { type: "Where is the upper bound proved?" },
         { key: "Enter", cap: "↵", ms: 500 },
         { agent: "await" },
-        { caption: "It reads the code, and takes your view along." },
+        { caption: "It reads the code; its state says what it does." },
         { agent: "status", text: "searching “upper bound”", ms: 1000 },
         { agent: "status", text: `reading \`${UPPER}\``, ms: 1000 },
-        { agent: "view", body: { sel: UPPER, mode: "plain" }, ms: 1500 },
+        // its own view moved to what it explains (AgentSpec decision 8), never Alice's: her board shows
+        // its ring there; its answer holds a link to it
+        { agent: "view", body: { sel: UPPER, mode: "plain" }, ms: 600 },
+        { agent: "view/link", body: {} },
         { agent: "status", text: "writing", ms: 1000 },
         {
           agent: "reply",
-          text: "In SpherePackingConstant_le_leech_density (SpherePacking/Dim24/MagicFunction/F/UpperBound.lean). It applies the Cohn–Elkies linear programming bound to the auxiliary function scaledF: the bound comes to π¹²/12!, the density of the Leech packing. MainTheorem uses it only in its proof, through SpherePackingConstant_eq_leech_density, so it is not in its TCB: Lean checks it. I've taken your view there.",
+          text: "In `SpherePackingConstant_le_leech_density` (SpherePacking/Dim24/MagicFunction/F/UpperBound.lean). It applies the Cohn–Elkies linear programming bound to the auxiliary function `scaledF`: the bound comes to π¹²/12!, the density of the Leech packing. MainTheorem uses it only in its proof, so it is not in its TCB: Lean checks it. Here it is: {link}",
           expect: ["chat"],
         },
-        { caption: "Its answer names what it explains." },
-        NEAR(".tk-thread", { dx: 260, dy: -60 }),
+        { caption: "Its answer links to what it explains." },
         { poster: true },
-        { wait: 5000 },
+        { wait: 1500 },
+        { caption: "Click the link: your board goes there." },
+        { move: "#convo .cv-chip" },
+        { click: true, ms: 2600 },
       ],
     },
     {
       id: "library",
       steps: [
-        // out of the conversation's box, then no longer following
-        { key: "Escape", cap: "Esc", ms: 300 },
-        { key: "Escape", cap: "Esc", ms: 500 },
+        // the conversation window closed, by its ✕: nothing else closes it
         WHOLE,
+        { move: "#convo .cv-head [data-cv-close]" },
+        { click: true, ms: 500 },
         { caption: "Library: add a paper about the code." },
         { move: "#library-btn" },
         { click: true, ms: 500 },

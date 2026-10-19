@@ -30,8 +30,15 @@ test("the command line: what is refused before anything runs", () => {
     [["git://github.com/A/B"], /not followed/],
     [["https://github.com/A/B", "--branch", "a..b"], /not a branch name/],
     [["https://github.com/A/B", "--poll", "0"], /--poll 0: say how often/],
+    [["https://github.com/A/B", "--build-timeout", "0"], /--build-timeout 0: say after how many hours a build is stopped, from 0\.05 \(3 min\) to 168 \(a week\)/],
+    [["https://github.com/A/B", "--build-timeout", "360"], /--build-timeout 360: say after how many hours/],
+    [["https://github.com/A/B", "--build-timeout", "6h"], /--build-timeout 6h: say after how many hours/],
+    [["https://github.com/A/B", "--mathlib-cache", "mine"], /--mathlib-cache mine: say shared .* or own/],
     [["https://github.com/A/B", "--graph", "g.json"], /--graph does not go with a git address/],
-    [[ROOT, "--branch", "main"], /--branch and --poll go with a git address/],
+    // a folder is never built: what is about following a branch is refused, naming what was given
+    [[ROOT, "--branch", "main"], /: --branch goes with a git address .*never built/],
+    [[ROOT, "--poll", "5", "--build-timeout", "1"], /: --poll and --build-timeout go with a git address/],
+    [[ROOT, "--mathlib-cache", "own"], /: --mathlib-cache goes with a git address/],
   ] as [string[], RegExp][]) {
     const r = serve(...args);
     assert.equal(r.status, 2, `${args.join(" ")}: ${r.stderr}`);
@@ -75,7 +82,7 @@ test("a server that follows a branch: it clones, builds, says so, and keeps its 
   chmodSync(join(bin, "lake"), 0o755);
   const port = await freePort();
   const cache = join(ROOT, "cache");
-  const p = spawn(process.execPath, [MAIN, "serve", `file://${bare}`, "--site", join(ROOT, "site"), "--cache", cache, "--port", String(port), "--jobs", "0"], { env: { ...process.env, VISUALPROOF_UPDATES: "off", PATH: `${bin}:${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn(process.execPath, [MAIN, "serve", `file://${bare}`, "--site", join(ROOT, "site"), "--cache", cache, "--port", String(port), "--jobs", "0", "--build-timeout", "1.5", "--mathlib-cache", "own"], { env: { ...process.env, VISUALPROOF_UPDATES: "off", PATH: `${bin}:${process.env.PATH}` }, stdio: ["ignore", "pipe", "pipe"] });
   let out = "";
   p.stdout.on("data", (b: Buffer) => (out += b));
   p.stderr.on("data", (b: Buffer) => (out += b));
@@ -92,7 +99,8 @@ test("a server that follows a branch: it clones, builds, says so, and keeps its 
   };
   await until(async () => (await status())?.deploy?.built === head);
   assert.match(out, /cloning file:\/\/.* \(main\) into /);
-  assert.match(out, /following: main of file:\/\//);
+  assert.match(out, /following: main of file:\/\/.*, asked every 2 min; a build stopped past 1 h 30 min\n/);
+  assert.match(out, /Mathlib's cache: .*\/deploy\/remote-[0-9a-f]{8}\/mathlib-cache, the deployment's own\n/);
   assert.match(out, /builds: none yet: the first, of [0-9a-f]{7}, starts now/);
   assert.match(out, new RegExp(`build: ${head.slice(0, 7)} built in`));
   assert.equal((await status())?.deploy?.last?.ok, true);

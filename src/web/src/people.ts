@@ -3,12 +3,11 @@
 // Agents working through the API are among them (AgentSpec decision 1), each with its own mark: a
 // rounded square with a robot on it, and "(agent)" wherever it is named; they are followed alike.
 // An agent with a token of its own is listed while its token is in force (decision 8), with a dot for
-// its state — listening, thinking, working, offline — and the state in words in its tooltip;
-// following it opens a conversation with it (web/src/talk.ts) in a window the strip is the title bar
-// of (web/src/chatwin.ts). Offline, it is greyed, with when it was last seen. The reader may pin that
-// conversation from its title bar (web/src/talkpins.ts, the owner's decision of 2026-10-12): pinned,
-// it stays open when following ends, its title bar then saying whom the reader talks with, and a
-// Shift-click on the agent's badge opens it again without following.
+// its state — listening, thinking, working, offline — and the state in words in its tooltip; its
+// menu follows it or talks with it (web/src/peermenu.ts), in the reader's own conversation window
+// (web/src/talk.ts), which following never opens, closes or changes (CollabSpec decision 13, the
+// owner's decisions of 2026-10-19). Offline, it is greyed, with when it was last seen. Following
+// someone shows the following strip, which says whom and stops it.
 //
 // A reader may be private (CollabSpec decision 8), from the menu under their name (web/src/whomenu.ts):
 // the page then says nothing of where they are — its heartbeat says only that it is here — and they
@@ -23,10 +22,10 @@ import { colorOf, initials, validName } from "../../shared/collab.ts";
 import type { Peer, PersonInvite, PresenceView, StreamHello } from "../../shared/collab.ts";
 import { agentName, BOT } from "./agentmark.ts";
 import { stateWords } from "./talk.ts";
-import { closed, isPinned, opened, pin, readPins, shownTalk, unpin, writePins } from "./talkpins.ts";
-import type { TalkPins } from "./talkpins.ts";
 import type { DataSource } from "./data.ts";
 import { escapeHtml } from "./highlight.ts";
+import { MyLink } from "./mylink.ts";
+import { isPhone, PHONE } from "./phone.ts";
 import type { Store } from "./store.ts";
 import { doubleClickActs, inYours, keyActs, pressActs, WHEEL } from "./surfaces.ts";
 import { typing } from "./typing.ts";
@@ -38,17 +37,25 @@ const BEAT_MS = 10_000;
 const IDLE_MS = 5 * 60_000;
 /** initials shown before the rest are counted as "+N" */
 const SHOWN = 5;
+/** On a phone (PhoneSpec decision 6) the people take at most this many places of the bar, "+N" and
+ *  the private readers' count among them, so that the build status and the project's name keep
+ *  theirs: four initials, or three and "+N". */
+const PHONE_PLACES = 4;
+
+/** How many of `people` show by their initials, the rest counted as "+N": on a larger screen five; on
+ *  a phone as many as PHONE_PLACES holds beside the private readers' count (`counted`), one of them
+ *  "+N" where they do not all fit. */
+export function initialsShown(people: number, counted: boolean, phone: boolean): number {
+  if (!phone) return Math.min(people, SHOWN);
+  const places = PHONE_PLACES - (counted ? 1 : 0);
+  return people <= places ? people : places - 1;
+}
 
 /** Where this reader's own name and visibility are changed, and a person's menu opened from their
  *  initials (web/src/peermenu.ts): nothing done there moves them, and Esc closes the menu first */
 const MINE = "#who, #who-menu, #peer-menu";
 /** the mark of a private reader beside their name */
 const HIDDEN = `<svg class="who-hidden" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true"><path d="M2.5 8s2-3.8 5.5-3.8S13.5 8 13.5 8 11.5 11.8 8 11.8 2.5 8 2.5 8z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="1.7" fill="currentColor"/><path d="M3 13 13 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
-const COLLAPSE = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 8.5h8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
-/** a pushpin, as a source window's: the conversation pinned */
-const PIN = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 2.5h4l-.6 4 2.1 2.2v.8H4.5v-.8L6.6 6.5 6 2.5zM8 9.5v4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-/** a speech bubble with a plus: a new conversation */
-const NEW_TALK = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.2 2.8h9.6c.7 0 1.2.5 1.2 1.2v6.2c0 .7-.5 1.2-1.2 1.2H7.4L4.5 13.8v-2.4H3.2c-.7 0-1.2-.5-1.2-1.2V4c0-.7.5-1.2 1.2-1.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 4.9v4.2M5.9 7h4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
 
 /** Whether the reader's own input ends following (CollabSpec decision 4, the owner's decision of
  *  2026-10-11): a change to what is followed, or acting on what a followed surface shows — read from
@@ -75,22 +82,13 @@ export interface PeopleHooks {
   changed(): void;
   /** this reader's own name changed */
   renamed(): void;
-  /** the agent whose conversation the window shows changed, or how it is (online, offline): the
-   *  agent followed, where it has a token of its own, or, following nobody, the pinned one left
-   *  open (web/src/talkpins.ts); null for none */
-  talkTo(agent: Peer | null): void;
   /** following ended */
   unfollowed(): void;
-  /** the conversation was asked for from its agent's badge: its window in front, expanded */
-  reveal(): void;
-  /** the title bar was drawn again: its state's dot and its new conversation's button are to be
-   *  dressed (web/src/talk.ts) */
-  stripDrawn(): void;
   // Asking others to follow (CollabSpec decision 10, web/src/askfollow.ts):
   /** Esc, while a request to follow this reader shows: whether it took it, as Not now */
   escape?(e: KeyboardEvent): boolean;
-  /** a click on a person's initials: their menu opened (web/src/peermenu.ts); false for one that
-   *  has none — an agent's, which a click follows */
+  /** a click on someone's initials: their menu opened (web/src/peermenu.ts) — a person's, or an
+   *  agent's; false where there is none, and a click follows */
   menu?(key: string, at: HTMLElement): boolean;
   /** what a person's initials show of this reader's request to follow: a mark, and what it says */
   asked?(p: { name: string | null; sessions: Peer[] }): { cls: string; glyph: string; tip: string } | null;
@@ -121,17 +119,10 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
  *  a name on its own. An agent is its presence entry, which the server keeps one per token, or one
  *  per name for an agent without a token (server/presence.ts): an agent that gives the name of one
  *  with a token is another, so that nobody can speak for an agent with a token by giving its name
- *  (AgentSpec, "Presence") — lead the people following it, or take its conversation's place. What
+ *  (AgentSpec, "Presence") — lead the people following it, or speak in its channels. What
  *  following follows, and a request to follow asks to follow (web/src/askfollow.ts). */
 export function personKey(p: { id: string; name: string | null; agent?: boolean; verified?: boolean }): string {
   return p.agent ? `a:${p.id}` : p.name ? `${p.verified ? "v" : "n"}:${p.name}` : `s:${p.id}`;
-}
-
-/** The entry of a person who is an agent with a token of its own (it can be talked to unless it is
- *  offline), or null. */
-function talkable(p: Person): Peer | null {
-  const s = p.sessions[0];
-  return p.agent && s.talk ? s : null;
 }
 
 /** A session id that needs no secure context (crypto.randomUUID does): what this page calls itself
@@ -166,11 +157,8 @@ export class People {
   private store: Store;
   private hooks: PeopleHooks;
   private followed: { key: string; name: string } | null = null;
-  /** the agent whose conversation the window shows: the one followed, or the pinned one left open */
-  private talking: Peer | null = null;
   /** the followed reader's place as last gone to: their place again (a presence list that changed
-   *  elsewhere) is not gone to again, so that this reader may look aside — a link in a conversation
-   *  — until they move */
+   *  elsewhere) is not gone to again */
   private applied = "";
   private lastInput = Date.now();
   /** finding out who this page is: what needs the name waits for it */
@@ -181,19 +169,30 @@ export class People {
   /** how many private readers the server counts: this page among them once its hello says so */
   private privateAll = 0;
   private menu: WhoMenu;
+  /** the personal link this reader came by, shown to them in the name's window */
+  private myLink: MyLink;
 
   constructor(data: DataSource, store: Store, hooks: PeopleHooks) {
     this.data = data;
     this.store = store;
     this.hooks = hooks;
     this.hidden = store.data.private === true;
+    // a phone's bar holds fewer of the others' initials: drawn again across its line
+    if (typeof matchMedia === "function") matchMedia(PHONE).addEventListener("change", () => this.renderPeers());
     // said from the first request on: nothing this page opens or arranges goes under its name
     data.privateSession = this.hidden ? this.session : null;
+    this.myLink = new MyLink({
+      data,
+      stream: () => this.stream?.token ?? null,
+      renewed: (invite) => (this.person = invite),
+    });
     this.menu = new WhoMenu($("#who"), $("#who-menu"), {
       mode: () => this.mode,
       name: () => this.name,
       visibility: () => (this.hidden ? "private" : "visible"),
       rename: () => void this.whoClicked(),
+      // offered where the reader came by a personal link alone (the menu asks the mode)
+      myLink: () => void this.myLink.open(),
       setVisibility: (v) => this.setPrivate(v === "private"),
       ...(hooks.askAll ? { askAll: () => hooks.askAll!(), askWhy: () => hooks.askWhy?.() ?? null } : {}),
     });
@@ -222,8 +221,10 @@ export class People {
         return this.setName(this.person.name);
       }
       this.mode = id.mode;
-      // a link revoked under this page, which the key still lets in: a guest from now on
+      // a link revoked under this page, or made anew in another browser, which the key still lets
+      // in: a guest from now on
       if (id.revoked) this.why = `Your personal link was revoked${id.revoked.by ? ` by ${id.revoked.by}` : ""}: you are here as a guest, under a name you give.`;
+      else if (id.replaced) this.why = "Your personal link was made anew in another browser: open the new one here to be you again. Meanwhile you are here as a guest, under a name you give.";
       else if (id.taken) this.why = id.taken;
       const kept = S.reviewer && validName(S.reviewer) && !id.taken ? S.reviewer : null;
       this.setName(id.mode === "declared" ? kept : id.name);
@@ -239,8 +240,9 @@ export class People {
       this.store.save();
     }
     this.renderMe();
-    this.hooks.renamed();
-    this.beat();
+    // told once the heartbeat named this page's stream with it: what of the conversations it is
+    // sent follows the name (CollabSpec decision 13)
+    void this.beat().then(() => this.hooks.renamed());
   }
 
   /** The server took no name from this page: it is asked for again on the next try. A page that
@@ -321,6 +323,8 @@ export class People {
       const field = $<HTMLInputElement>("#who-input");
       const err = $("#who-err");
       const linked = this.mode === "person";
+      // the name's form, in the window's place of the personal link (web/src/mylink.ts)
+      if (this.myLink.isOpen) this.myLink.close();
       $("#who-title").textContent = linked ? "Your name" : "Who is reviewing?";
       $("#who-text").textContent = linked
         ? "You came by a personal link: your name is yours (✓), and nobody else can take it while your link is in force. What you did stays yours, under the name you give."
@@ -386,14 +390,10 @@ export class People {
       if (was) this.beat();
     };
     for (const ev of ["pointerdown", "keydown", "wheel"]) window.addEventListener(ev, input, { capture: true, passive: true });
-    // another tab of this browser went private or visible: so does this one (store.ts, adopt); it
-    // pinned or unpinned a conversation: the title bar here says so, and a conversation open here
-    // without following closes once it is no longer pinned
+    // another tab of this browser went private or visible: so does this one (store.ts, adopt)
     window.addEventListener("storage", (e) => {
       if (e.key !== this.store.key) return;
-      const pins = JSON.stringify(this.store.data.talkPins);
       if (this.store.adopt(e.newValue)) this.setPrivate(this.store.data.private === true, false);
-      if (JSON.stringify(this.store.data.talkPins) !== pins) this.showTalk();
     });
     let moved = 0;
     window.addEventListener("pointermove", () => {
@@ -406,10 +406,10 @@ export class People {
     document.addEventListener("visibilitychange", () => this.beat());
     setInterval(() => this.beat(), BEAT_MS);
     // the reader's own moves end following, and Esc does; reading does not (acts, above), and
-    // nothing done in the strip or the conversation's window does: moving it, resizing it,
-    // collapsing it, typing, sending, a link to a declaration; nor does anything done with the
-    // reader's own name and visibility — a private reader may go on following (CollabSpec
-    // decision 8)
+    // nothing done in the strip or the conversation window does — moving it, resizing it,
+    // collapsing it, typing, sending — but a link followed from it (web/src/talk.ts says so); nor
+    // does anything done with the reader's own name and visibility — a private reader may go on
+    // following (CollabSpec decision 8)
     const stop = (e: Event) => {
       if (!this.followed || !e.isTrusted) return;
       const t = e.target as Element | null;
@@ -445,22 +445,15 @@ export class People {
     $("#peers").addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>("[data-person]");
       if (!b) return;
-      // a Shift-click on a pinned agent's badge talks with it without following (talkpins.ts)
-      if (e.shiftKey && this.talkWith(b.dataset.person!)) return;
-      // a person's initials open their menu: following them, asking them to follow (CollabSpec
-      // decision 10); an agent's follow it
+      // someone's initials open their menu: following them, asking them to follow (CollabSpec
+      // decision 10), talking with an agent (decision 13)
       if (!this.hooks.menu?.(b.dataset.person!, b)) this.follow(b.dataset.person!);
     });
-    // the window's ✕ stops following, or, following nobody, closes the pinned conversation; its pin
-    // pins or unpins it
+    // the strip's ✕ stops following
     $("#following").addEventListener("click", (e) => {
-      const t = e.target as HTMLElement;
-      if (t.closest("[data-unfollow]")) {
-        if (this.followed) this.unfollow();
-        else this.closeTalk();
-      } else if (t.closest("[data-pin]")) this.togglePin();
+      if ((e.target as HTMLElement).closest("[data-unfollow]")) this.unfollow();
     });
-    this.beat();
+    void this.beat();
   }
 
   private get idle(): boolean {
@@ -474,23 +467,26 @@ export class People {
     this.wait = setTimeout(() => this.beat(), 300);
   }
 
-  private beat(): void {
-    if (this.mode === "none" || this.readOnly) return;
+  /** Tell the others where this page is; done once the server took it. */
+  private beat(): Promise<void> {
+    if (this.mode === "none" || this.readOnly) return Promise.resolve();
     if (this.wait) clearTimeout(this.wait);
     this.wait = null;
     // a heartbeat speaks for this page's stream, by its secret: none before the stream said hello;
     // a private page's says that it is here, and nothing else (CollabSpec decision 8)
-    if (this.stream) this.data.presence(this.stream.token, this.hidden ? { private: true } : { view: this.hooks.view(), idle: this.idle });
+    if (!this.stream) return Promise.resolve();
+    return this.data.presence(this.stream.token, this.hidden ? { private: true } : { view: this.hooks.view(), idle: this.idle });
   }
 
   /** The event stream (re)connected and was named, or was named afresh as this page went private or
    *  visible: the others are told where this page is at once, under its new id, without waiting for
-   *  the next heartbeat. */
-  connected(hello: StreamHello): void {
+   *  the next heartbeat. Done once the server took that heartbeat: the stream knows the page's name
+   *  from then on. */
+  connected(hello: StreamHello): Promise<void> {
     const again = this.stream !== null;
     this.stream = hello;
     this.renderPeers();
-    this.beat();
+    const told = this.beat();
     // a page that came by a personal link asks who it is when its stream comes back: a link
     // revoked ends its streams, and the key may still let it in, as a guest; or, on a server open to
     // all (--public), let it read only — the page is reloaded then, a read-only reader's (CollabSpec
@@ -499,6 +495,7 @@ export class People {
       void this.init().then(() => {
         if (this.readOnly) location.reload();
       });
+    return told;
   }
 
   /** How many private readers the server counts (CollabSpec decision 8). */
@@ -517,16 +514,12 @@ export class People {
     this.peers = all.filter((p) => p.id !== this.stream?.id);
     this.renderPeers();
     this.hooks.changed();
-    // following nobody, a pinned conversation left open shows while its agent is listed: after a
-    // reload, once the server says it is
-    if (!this.followed) return this.showTalk();
+    if (!this.followed) return;
     const p = this.people().find((x) => x.key === this.followed!.key);
     if (!p) {
       this.unfollow(`${this.followed.name} left`);
       return;
     }
-    this.talking = talkable(p);
-    this.hooks.talkTo(this.talking);
     this.go(p);
   }
 
@@ -581,35 +574,35 @@ export class People {
     const all = this.people();
     const hidden = this.privateOthers;
     box.hidden = all.length === 0 && hidden === 0;
-    const shown = all.slice(0, SHOWN);
+    const shown = all.slice(0, initialsShown(all.length, hidden > 0, isPhone()));
     box.innerHTML =
       shown
         .map((p) => {
           const s = p.sessions[0];
           const where = s.view ? this.hooks.describe(s.view) : "";
           const who = p.name ? this.nameOf(p) : "A reader without a name";
-          // an agent with a token: its state, as the server infers it, in words and as a dot; its
-          // conversation pinned, how to open it without following
-          const talk = s.talk ? ` · ${stateWords(s.talk)}${s.talk.state === "offline" ? "" : " · follow it to talk with it"}` : "";
-          const pinned = s.talk && isPinned(this.pins, s.id) ? " · Shift-click to talk with it without following (its conversation is pinned)" : "";
+          // an agent with a token: its state, as the server infers it, in words and as a dot
+          const talk = s.talk ? ` · ${stateWords(s.talk)}` : "";
           // what they made of this reader's request to follow, for a little while after
           const ask = p.agent ? null : (this.hooks.asked?.(p) ?? null);
-          const tip = `${who}${where ? ` — ${where}` : ""}${s.idle && !s.talk ? " · away" : ""}${talk}${ask ? ` · ${ask.tip}` : ""} · click to follow${p.agent || !this.hooks.menu ? "" : ", or to ask them to follow you"}${pinned}`;
+          const does = !this.hooks.menu ? "click to follow" : p.agent ? `click to follow${s.talk ? " or talk with it" : " it"}` : "click to follow, or to ask them to follow you";
+          const tip = `${who}${where ? ` — ${where}` : ""}${s.idle && !s.talk ? " · away" : ""}${talk}${ask ? ` · ${ask.tip}` : ""} · ${does}`;
           const on = this.followed?.key === p.key ? " on" : "";
           const bot = p.agent ? `<span class="peer-bot">${BOT}</span>` : p.verified ? `<span class="peer-vf" aria-hidden="true">✓</span>` : "";
           const dot = s.talk ? `<span class="peer-dot st-${s.talk.state}"></span>` : "";
           const mark = ask ? `<span class="peer-ask ${ask.cls}" aria-hidden="true">${ask.glyph}</span>` : "";
           const state = s.talk?.state === "offline" ? " offline" : s.idle ? " idle" : "";
-          const menu = p.agent || !this.hooks.menu ? "" : ` aria-haspopup="menu"`;
+          const menu = !this.hooks.menu ? "" : ` aria-haspopup="menu"`;
           return `<button class="peer${p.agent ? " agent" : p.verified ? " verified" : ""}${state}${on}${ask ? " asked" : ""}" data-person="${escapeHtml(p.key)}" style="--c:${this.colorOf(p)}" title="${escapeHtml(tip)}"${menu}>${escapeHtml(this.label(p))}${bot}${dot}${mark}</button>`;
         })
         .join("") +
-      (all.length > SHOWN
-        ? `<span class="peer more" title="${escapeHtml(all.slice(SHOWN).map((p) => this.nameOf(p)).join(", "))}">+${all.length - SHOWN}</span>`
+      (all.length > shown.length
+        ? `<span class="peer more" title="${escapeHtml(all.slice(shown.length).map((p) => this.nameOf(p)).join(", "))}">+${all.length - shown.length}</span>`
         : "") +
-      // the private readers, counted: nothing else is known of them (CollabSpec decision 8)
+      // the private readers, counted: nothing else is known of them (CollabSpec decision 8); on a
+      // phone the count alone, dashed
       (hidden
-        ? `<span class="peer-private" title="${hidden === 1 ? "1 reader is" : `${hidden} readers are`} here privately: not listed, and cannot be followed">+${hidden} private</span>`
+        ? `<span class="peer-private" title="${hidden === 1 ? "1 reader is" : `${hidden} readers are`} here privately: not listed, and cannot be followed">+${hidden}<span class="pv-word"> private</span></span>`
         : "");
   }
 
@@ -623,9 +616,6 @@ export class People {
     if (this.followed) this.hooks.unfollowed();
     this.followed = { key, name: this.nameOf(p) };
     this.applied = "";
-    this.talking = talkable(p);
-    // a pinned agent followed: its conversation is the one open when following ends
-    if (this.talking && isPinned(this.pins, this.talking.id)) this.setPins(opened(this.pins, this.talking.id));
     const box = $("#following");
     box.style.setProperty("--c", this.colorOf(p));
     this.renderStrip(p.agent);
@@ -633,7 +623,6 @@ export class People {
     document.body.classList.add("following");
     document.body.style.setProperty("--follow", this.colorOf(p));
     this.renderPeers();
-    this.hooks.talkTo(this.talking);
     this.go(p);
   }
 
@@ -643,128 +632,23 @@ export class People {
     document.body.classList.remove("following");
     this.hooks.unfollowed();
     this.renderPeers();
-    // a pinned conversation stays, or comes back: the window is its, following nobody
-    this.talking = shownTalk(this.pins, false, null, this.peers);
-    if (this.talking) return this.openTalk();
-    this.hooks.talkTo(null);
     const box = $("#following");
     // the keys go back to the page: none stays with a button that is no longer shown
     if (box.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     if (why) {
       const strip = $(".fl-strip");
       strip.textContent = why;
-      delete strip.dataset.html;
       setTimeout(() => {
-        if (!this.followed && !this.talking) box.hidden = true;
+        if (!this.followed) box.hidden = true;
       }, 2500);
     } else box.hidden = true;
   }
 
-  // ---------------------------------------------------------------- a conversation pinned
-
-  /** The pins as this browser keeps them (web/src/talkpins.ts). */
-  private get pins(): TalkPins {
-    return readPins(this.store.data);
-  }
-
-  private setPins(p: TalkPins): void {
-    writePins(this.store.data, p);
-    this.store.save();
-  }
-
-  /** Following nobody, the window as the pins say: the pinned conversation left open, while its
-   *  agent is listed; else none, and one that showed closes, the keys going back to the page.
-   *  Following someone, the title bar alone, for the pin's state. */
-  private showTalk(): void {
-    if (this.followed) return this.renderStrip(this.talking !== null);
-    const was = this.talking;
-    this.talking = shownTalk(this.pins, false, null, this.peers);
-    if (this.talking) return this.openTalk();
-    // nothing showed: nothing closes (the strip may be saying why following ended, for a moment)
-    if (!was) return;
-    const box = $("#following");
-    if (box.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-    box.hidden = true;
-    this.hooks.talkTo(null);
-  }
-
-  /** The pinned conversation shown following nobody: in the agent's colour, its title bar saying
-   *  whom the reader talks with. */
-  private openTalk(): void {
-    const box = $("#following");
-    box.style.setProperty("--c", this.colorOf(this.talking!));
-    this.renderStrip(true);
-    box.hidden = false;
-    this.hooks.talkTo(this.talking);
-  }
-
-  /** The title bar: following someone, the strip — "Following X · Esc to stop" and its ✕; talking
-   *  with an agent (`agent`), the title bar of its window (web/src/chatwin.ts), where the agent's state
-   *  takes the colour dot's place, a button starts a new conversation (web/src/talk.ts, which says when
-   *  it may), the pin pins it, another collapses it, and the ✕ stops following or, following nobody,
-   *  closes it. */
+  /** The strip: "Following X · Esc to stop", and its ✕. */
   private renderStrip(agent: boolean): void {
-    const t = this.talking;
-    const on = t !== null && isPinned(this.pins, t.id);
-    const name = this.followed?.name ?? (t ? this.nameOf(t) : "");
-    const who = this.followed ? `Following <b>${escapeHtml(name)}</b> · Esc to stop` : `Talking with <b>${escapeHtml(name)}</b>`;
-    const pinTip = !on
-      ? "Pin: keep this conversation open when you stop following, and after a reload; a Shift-click on the agent's badge opens it again"
-      : this.followed
-        ? "Pinned: it stays open when you stop following — click to unpin"
-        : "Unpin: the conversation closes, as you do not follow the agent";
-    const x = this.followed ? "Stop following" : "Close the conversation: it stays pinned, and a Shift-click on the agent's badge opens it again";
-    const html =
-      `<span class="dot"></span><span class="fl-st st-dot"></span>${agent ? BOT : ""}<span class="fl-who">${who}</span>` +
-      `<button data-restart type="button" aria-label="New conversation">${NEW_TALK}</button>` +
-      `<button data-pin type="button" aria-pressed="${on}" title="${escapeHtml(pinTip)}" aria-label="Pin the conversation">${PIN}</button>` +
-      `<button data-collapse type="button" title="Collapse to one line (or double-click the title bar)" aria-label="Collapse">${COLLAPSE}</button>` +
-      `<button data-unfollow type="button" title="${escapeHtml(x)}" aria-label="${this.followed ? "Stop following" : "Close"}">✕</button>`;
-    // drawn again only where it changed, so that a button keeps the focus and the pointer while the
-    // others move (a presence change shows the same conversation again); talk.ts dresses the state's
-    // dot and the new conversation's button after each drawing
-    const strip = $(".fl-strip");
-    if (strip.dataset.html !== html) {
-      strip.innerHTML = html;
-      strip.dataset.html = html;
-      this.hooks.stripDrawn();
-    }
-    // the pill's ✕ does the same
-    const px = document.querySelector<HTMLElement>(".fl-pill > [data-unfollow]");
-    if (px) {
-      px.title = x;
-      px.setAttribute("aria-label", this.followed ? "Stop following" : "Close");
-    }
-  }
-
-  /** The pin pressed: the conversation shown pinned, or unpinned — following nobody, it then closes,
-   *  as an unpinned one does when following ends. */
-  private togglePin(): void {
-    const t = this.talking;
-    if (!t) return;
-    this.setPins(isPinned(this.pins, t.id) ? unpin(this.pins, t.id) : pin(this.pins, t.id));
-    this.showTalk();
-    this.renderPeers();
-  }
-
-  /** The ✕ of a pinned conversation, following nobody: it closes, and stays pinned. */
-  private closeTalk(): void {
-    this.setPins(closed(this.pins));
-    this.showTalk();
-  }
-
-  /** A Shift-click on badge `key`: where it is an agent whose conversation is pinned, that
-   *  conversation opens without following — following ends first — and in front, expanded. False
-   *  where it is not, for a click to follow. */
-  private talkWith(key: string): boolean {
-    const p = this.people().find((x) => x.key === key);
-    const a = p ? talkable(p) : null;
-    if (!a || !isPinned(this.pins, a.id)) return false;
-    this.setPins(opened(this.pins, a.id));
-    if (this.followed) this.unfollow();
-    else this.showTalk();
-    this.hooks.reveal();
-    return true;
+    $(".fl-strip").innerHTML =
+      `<span class="dot"></span>${agent ? BOT : ""}<span class="fl-who">Following <b>${escapeHtml(this.followed?.name ?? "")}</b> · Esc to stop</span>` +
+      `<button data-unfollow type="button" title="Stop following" aria-label="Stop following">✕</button>`;
   }
 
   get following(): boolean {

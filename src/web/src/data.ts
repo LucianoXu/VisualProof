@@ -1,7 +1,7 @@
 // Where the page gets its data: the live server, or a snapshot carried inside the page itself
 // (`visualproof export`), which opens from disk with no server at all.
 
-import type { BuildStatus } from "../../shared/build.ts";
+import type { BuildStatus, BuildWhole } from "../../shared/build.ts";
 import type { DeployStatus } from "../../shared/deploy.ts";
 import type { UpdateStatus } from "./guide.ts";
 import type { Outline } from "../../shared/doc/outline.ts";
@@ -49,8 +49,12 @@ export interface Status {
   error?: string;
   /** the server's "Open in editor" template (`--editor`, shared/editor.ts); a snapshot has none */
   editor?: string | null;
-  /** the build status of the project's files, and how far a build going on is */
-  build?: BuildStatus | null;
+  /** the address people reach the server at (`--public-url`), where it was given one: a link of it
+   *  is this site's, and Copy link makes links with it (CollabSpec, "Copied links") */
+  publicUrl?: string;
+  /** how far a build going on is, and how many files are in each state (`?brief`: the files' own
+   *  status the page reads by GET /api/build; a server from before 0.6.0 sends them too) */
+  build?: Pick<BuildStatus, "active" | "progress" | "counts"> | null;
   /** the branch the server follows and builds itself (DeploySpec): the loading page says what it does */
   deploy?: DeployStatus;
 }
@@ -140,6 +144,9 @@ export interface DataSource {
   /** the review (ReviewSpec.md), whole: tagged with its revision, which the browser keeps, so that
    *  a page that has it (a reload) is answered 304 */
   review(): Promise<ReviewState>;
+  /** the build status of the project's files, whole, with its revision (web/src/buildread.ts):
+   *  tagged as the review is; a snapshot has none */
+  build(): Promise<BuildWhole>;
   /** record an opinion, a target, a trusted prefix, a key declaration; resolves to what changed
    *  (null: nothing did, it was so already), rejects with the reason it was refused */
   postReview(op: ReviewRequest): Promise<ReviewChange | null>;
@@ -168,7 +175,7 @@ export interface DataSource {
   setIdentity(name: string): Promise<{ ok?: true; name?: string; person?: PersonInvite; error?: string; taken?: boolean }>;
   /** tell the others where this page is (CollabSpec decision 4), or only that it is here (a private
    *  page, decision 8), by the secret this page's event stream was given (`hello`) */
-  presence(token: string, beat: Heartbeat): void;
+  presence(token: string, beat: Heartbeat): Promise<void>;
   /** what the server's timeline holds (CollabSpec decision 5); a snapshot has none */
   activity(): Promise<StoredEvent[]>;
   /** what this page may share (web/src/share.ts): the link that lets someone in, and whether
@@ -200,6 +207,14 @@ export interface DataSource {
   invite(name: string): Promise<{ invite: PersonInvite; link: string; invites: PersonInvite[] } | { error: string; who?: boolean; taken?: boolean }>;
   /** revoke a personal link: the links in force after, or why not */
   revokeInvite(id: string): Promise<{ invites?: PersonInvite[]; error?: string; who?: boolean }>;
+  /** the personal link this reader came by, shown to them alone (CollabSpec decision 9, the owner's
+   *  decision of 2026-10-19): the link, or null for one made before 0.6.0, which can only be made
+   *  anew; or why not */
+  myLink(): Promise<{ invite: PersonInvite; link: string | null } | { error: string }>;
+  /** this reader's personal link made anew: the same person under a new secret, the old link and the
+   *  browsers it let in cut off, this browser given the new cookie and this page's event stream
+   *  (`stream`, its secret) kept open. The new link, or why not */
+  renewMyLink(stream: string | null): Promise<{ invite: PersonInvite; link: string } | { error: string }>;
   /** the read-only links (CollabSpec decision 11), in force first, each with its address; null
    *  where there are none to have (a snapshot, a server that lets in anyone or is behind a
    *  sign-in, a read-only reader) or the server cannot be reached */
@@ -208,14 +223,15 @@ export interface DataSource {
   makeReadOnly(): Promise<{ made: ReadOnlyLinkShown; links: ReadOnlyLinkShown[] } | { error: string }>;
   /** revoke a read-only link: the links after, or why not (`who`: a name is needed) */
   revokeReadOnly(id: string): Promise<{ links?: ReadOnlyLinkShown[]; error?: string; who?: boolean }>;
-  /** an agent's conversation (AgentSpec decision 8), by the agent's id in presence; null where it
-   *  cannot be read */
-  chat(agent: string): Promise<{ agent: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
-  /** write to an agent, from where this page is; the message, or why not ("offline": it neither
-   *  listens nor works) */
-  sendChat(agent: string, text: string, place: PresenceView): Promise<{ message: ChatMessage } | { error: string; who?: boolean }>;
-  /** start a new conversation with an agent (the owner's decision of 2026-10-11): the divider, null
-   *  where nothing was said since the last one, or why not */
+  /** a channel of the conversations (CollabSpec decision 13): `public`, or an agent's private one by
+   *  the agent's id in presence; its newest messages (before message `before`), oldest first; null
+   *  where it cannot be read (no name, not the reader's, no server) */
+  chat(channel: string, before?: number): Promise<{ channel: string; agent?: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
+  /** write in a channel, from where this page is; the message, or why not ("offline": an agent's
+   *  private channel while it neither listens nor works) */
+  sendChat(channel: string, text: string, place: PresenceView): Promise<{ message: ChatMessage } | { error: string; who?: boolean }>;
+  /** start a new conversation in an agent's private channel (the owner's decision of 2026-10-11):
+   *  the divider, null where nothing was said since the last one, or why not */
   newChat(agent: string): Promise<{ divider: ChatMessage | null } | { error: string; who?: boolean }>;
   /** ask everyone on the server to follow this reader, or the person whose page is `to` (CollabSpec
    *  decision 10), from this page's event stream (its secret, `hello`): whom it went to, or why not
@@ -272,6 +288,8 @@ export interface Identity {
   taken?: string;
   /** the personal link this page came by, revoked: by whom, and when */
   revoked?: { by: string | null; at: string | null; name: string };
+  /** the personal link this page came by, made anew since in another browser: when */
+  replaced?: { at: string; name: string };
   /** a read-only reader (CollabSpec decision 11): let in by a read-only link, or by --public */
   readOnly?: { by: "link" | "public" };
 }
@@ -435,10 +453,11 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     // a snapshot shows the review as it was when taken
     review: () => json<ReviewData>("vp-review").then((data) => ({ epoch: "snapshot", rev: 0, data: reviewFromJson(data), problems: [], error: null })),
     postReview: () => Promise.reject(new Error("a snapshot shows the review as it was; it cannot be changed")),
+    build: async () => ({ epoch: "snapshot", rev: 0, status: null }),
     name: null,
     privateSession: null,
     identity: async () => ({ mode: "none", name: null }),
-    presence: () => {},
+    presence: async () => {},
     undoLayout: async () => ({ error: "a snapshot shows the layout as it was" }),
     exportHead: async () => "a snapshot cannot typeset documents: export from the server",
     exportOutline: async () => "a snapshot of the page has no linear form: its document is the server's",
@@ -456,6 +475,8 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     invites: async () => null,
     invite: async () => ({ error: "a snapshot has no server to invite anyone to" }),
     revokeInvite: async () => ({ error: "a snapshot has no server" }),
+    myLink: async () => ({ error: "a snapshot has no server" }),
+    renewMyLink: async () => ({ error: "a snapshot has no server" }),
     readOnlyLinks: async () => null,
     makeReadOnly: async () => ({ error: "a snapshot has no server to share" }),
     revokeReadOnly: async () => ({ error: "a snapshot has no server" }),
@@ -526,7 +547,8 @@ function serverSource(): DataSource {
       move: (from, to) => lostPost("move", { from, to }),
       unmove: (id) => lostPost("unmove", { id }),
     },
-    status: () => fetch("/api/status").then((r) => r.json()),
+    // the files' build status is read once, by build()
+    status: () => fetch("/api/status?brief").then((r) => r.json()),
     forget: () => cache.clear(),
     meta: (v, i) => fetch(`/api/meta${graphQuery(v, i, "?")}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`)))),
     git: () =>
@@ -543,6 +565,7 @@ function serverSource(): DataSource {
       fetch("/api/review")
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`review ${r.status}`))))
         .then(reviewState),
+    build: () => fetch("/api/build").then((r) => (r.ok ? r.json() : Promise.reject(new Error(`build ${r.status}`)))),
     hover: (module, line, character, hash) =>
       fetch(`/api/hover?module=${encodeURIComponent(module)}&line=${line}&character=${character}&hash=${hash}`)
         .then((r) => r.json())
@@ -585,6 +608,14 @@ function serverSource(): DataSource {
         .catch(() => ({ error: "the server could not be reached" })),
     revokeInvite: (id) =>
       fetch("/api/share/people/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
+    myLink: () =>
+      fetch("/api/share/people/mine", { method: "POST", headers: headers(), body: "{}" })
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
+    renewMyLink: (stream) =>
+      fetch("/api/share/people/mine/renew", { method: "POST", headers: headers(), body: JSON.stringify(stream ? { stream } : {}) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
     readOnlyLinks: () =>
@@ -639,13 +670,13 @@ function serverSource(): DataSource {
       fetch("/api/share/agents/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
-    chat: (agent) =>
-      fetch(`/api/chat?agent=${encodeURIComponent(agent)}`)
+    chat: (channel, before) =>
+      fetch(`/api/chat?channel=${encodeURIComponent(channel)}${before ? `&before=${before}` : ""}`, { headers: headers() })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
     // a private reader's message says who wrote it, not where they are (CollabSpec decision 8)
-    sendChat: (agent, text, place) =>
-      fetch("/api/chat", { method: "POST", headers: headers(), body: JSON.stringify({ agent, text, place: src.privateSession ? null : place }) })
+    sendChat: (channel, text, place) =>
+      fetch("/api/chat", { method: "POST", headers: headers(), body: JSON.stringify({ channel, text, place: src.privateSession ? null : place }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
     newChat: (agent) =>
@@ -687,9 +718,11 @@ function serverSource(): DataSource {
     presence: (token, beat) => {
       const r = heartbeatRequest(token, beat, headers());
       // its answer let go: the browser holds the requests kept alive, 64 KB between them, until their
-      // answers are read, and a heartbeat carrying an artwork's names chosen is some kilobytes
-      void fetch("/api/presence", { method: "POST", headers: r.headers, body: r.body, keepalive: true })
-        .then((res) => res.body?.cancel())
+      // answers are read, and a heartbeat carrying an artwork's names chosen is some kilobytes. Done
+      // once it was answered: the stream it names knows the page's name from then on (CollabSpec
+      // decision 13: which messages it is sent)
+      return fetch("/api/presence", { method: "POST", headers: r.headers, body: r.body, keepalive: true })
+        .then((res) => void res.body?.cancel())
         .catch(() => {});
     },
     source: (module) => {

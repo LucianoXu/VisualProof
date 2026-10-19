@@ -35,7 +35,7 @@ MCP: `companion`.
 
 `wait=<s>` (≤ 60) waits until someone comes, goes, goes idle or moves (view, selection,
 declaration, tool, a source window pinned, collapsed or closed, Activity, lost-and-found,
-colouring, edges; not a camera pan), then answers at once. `since=<rev>`, your last `rev`: a
+colouring, edges; no camera pan), then answers. `since=<rev>`, your last `rev`: a
 change you have not seen answers at once; `changed`: whether `rev` moved. To follow someone: wait,
 then `POST view` with their view and declaration.
 
@@ -88,8 +88,7 @@ Fields go over your own place (none: your place): every `POST view` field but `l
   "link": "http://127.0.0.1:4199/#q=tcb%28flt_regular%29&mode=tcb&snap=zTcw…" }
 ```
 
-It holds no key: it opens only for people already let in (Share's guest link lets someone new
-in). Nothing after `#` reaches a server: `snap=` is all of it compressed (a few hundred
+It holds no key: it opens only for people let in already (Share's guest link lets in someone new). Nothing after `#` reaches a server: `snap=` is all of it compressed (a few hundred
 characters); the address before it gives view, tool and selection for a browser that cannot read
 the snapshot. 404: a name that is no declaration (`didYouMean`), or a bad snapshot;
 400: a bad region.
@@ -104,8 +103,8 @@ before you show them something. MCP: `view` (action `ask_follow`).
   request's 30 s.
 
 Each page shows a banner at its top centre — "Alice's AI (agent) asks you to follow · Follow · Not
-now", your mark, a 30 s countdown — declined when it runs out or by Esc. Following opens your
-conversation. Those already following are neither asked nor counted. A newer request on a page from
+now", your mark, a 30 s countdown — declined when it runs out or by Esc. Following shows what you
+look at, never your conversations. Those already following are neither asked nor counted. A newer request on a page from
 someone else replaces yours: that page counts as not answered.
 
 ```json
@@ -131,10 +130,10 @@ One request per 30 s (sooner: 429, `retryAfter`). 404: a name nobody on the page
   panel's review list marks advised rows with a robot.
 - **Notes** ([notes](notes.md)): beside what they point at, with your name, robot and what they
   carry; people handle them as anyone's.
-- **Activity**, with your mark: advice ("comments on", "suggests approving"), notes written, edited,
-  deleted, files added, links made, layouts (with Undo), undos; at full, targets, keys and trusted
-  prefixes marked, views made, renamed, deleted or laid out afresh. Filters: all, agents, people.
-- **Talking** ([talking](talking.md)): followers see your conversation in a window titled by the
-  following strip, your state line above the box, and write there unless you are offline; replies
-  show with your mark. A title-bar button starts a new conversation: a rule "New conversation —
-  started by Bob, <date>", earlier messages folded into "Earlier conversation · N messages" (opens on a click).
+- **Activity**, with your mark: advice ("comments on", "suggests approving", withdrawn), notes
+  written, edited, deleted, files added, links made, layouts (with Undo), undos; at full, targets,
+  keys and trusted prefixes marked, views made, renamed, deleted or laid out afresh. Filters: all,
+  agents, people.
+- **Talking** ([talking](talking.md)): each reader's own conversation window: *Everyone* (the
+  public channel) and their own agents' private channels with their states; your replies with your
+  mark, links of the site as what they lead to. A new conversation folds what came before.

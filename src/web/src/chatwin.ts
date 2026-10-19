@@ -1,28 +1,32 @@
-// The conversation's window (AgentSpec decision 8, the window decided 2026-10-08): following an
-// agent that can be talked to, its conversation (web/src/talk.ts) is a floating window
-// (web/src/floatwin.ts); pinned, it stays when following ends (web/src/talkpins.ts, the owner's
-// decision of 2026-10-12). The reader moves it by its title bar, resizes it from any edge or corner,
-// and collapses it — its button, or a double-click on the title bar — to a one-line pill: the
-// agent's state and the start of its last message. A reply that comes while it is collapsed lights
-// the pill a moment and leaves a mark on it; a click on the pill opens the window again.
+// The conversation window (CollabSpec decision 13, the owner's decisions of 2026-10-19): one window,
+// the reader's own, holding the conversations (web/src/talk.ts). The reader opens and closes it —
+// the top bar's conversation button, Talk in an agent's menu, a click on a mention's notice — and
+// nothing else does: following never opens, closes or changes it. It is a floating window
+// (web/src/floatwin.ts): the reader moves it by its title bar, resizes it from any edge or corner,
+// and collapses it — its button, or a double-click on the title bar — to a one-line pill: the channel
+// on show and the start of its last message. A message that comes while it is collapsed lights the
+// pill a moment and leaves a mark on it; a click on the pill opens the window again.
+//
+// It is in front of the source and reference windows, always (ReviewSpec, "In front"): a layer of its
+// own above theirs (style.css), never in their order; hover cards, popovers, modal windows and
+// transient messages lie above it. So opening a source window, or following someone whose windows
+// open, never hides it, and nothing there needs closing to find it.
 //
 // It starts at the bottom left of the canvas, beside the side panel (the canvas's insets), level
-// with the panel's foot; below 900 px, collapsed. Where the reader puts it, its size and whether it
-// is collapsed are a reading preference kept in this browser (web/src/store.ts): one place for every
-// agent, apart from the source windows'. It lies among the source windows, in front when it was
-// pressed or focused last (decided 2026-10-09), and nothing in it moves when one of them opens.
-//
-// All of it is inside `#following`, from which the reader's own input never ends following
-// (web/src/people.ts): moving, resizing, collapsing, pinning it leaves the reader following.
+// with the panel's foot; below 900 px, collapsed. Where the reader puts it, its size, whether it is
+// collapsed, and whether it is open are a reading preference kept in this browser
+// (web/src/store.ts). On a phone and a tall screen it docks in the sheet's place, on an upright
+// monitor in the work area's column (PhoneSpec decisions 21 and 34), as the source windows do. The
+// following strip, over it, steps aside rather than cover its box (`keepStripClear`).
 
 import { clampRect, EDGE, FloatWindow, readKept, readPlace, rectOf } from "./floatwin.ts";
 import type { Kept, Rect, Size } from "./floatwin.ts";
 import type { Store } from "./store.ts";
 
 /** the smallest the reader can make the window, viewport permitting */
-export const MIN: Size = { w: 300, h: 200 };
+export const MIN: Size = { w: 300, h: 220 };
 /** its size at first */
-export const DEFAULT: Size = { w: 440, h: 380 };
+export const DEFAULT: Size = { w: 440, h: 420 };
 /** the side panel's foot, from the viewport's bottom (#side in web/style.css): the window starts
  *  level with it */
 export const FOOT = 56;
@@ -52,23 +56,64 @@ export function restore(kept: unknown, vp: Size, insets: { left: number; top: nu
   };
 }
 
+/** the room kept between the following strip and the window it steps aside from */
+export const STRIP_GAP = 8;
+
+/** Where the following strip goes so as not to cover the window (`win`, null: not shown): beside it,
+ *  at the strip's height, to its right, else to its left; else above it, as centred as the strip is;
+ *  null where it covers nothing, or nowhere is clear and it stays where it is. `strip` is where the
+ *  strip stands by itself (style.css: low in the middle). */
+export function stripAside(strip: Rect, win: Rect | null, vp: Size): { x: number; y: number } | null {
+  if (!win) return null;
+  const g = STRIP_GAP;
+  const covers = strip.x < win.x + win.w + g && win.x < strip.x + strip.w + g && strip.y < win.y + win.h + g && win.y < strip.y + strip.h + g;
+  if (!covers) return null;
+  if (win.x + win.w + g + strip.w <= vp.w - EDGE) return { x: win.x + win.w + g, y: strip.y };
+  if (win.x - g - strip.w >= EDGE) return { x: win.x - g - strip.w, y: strip.y };
+  if (win.y - g - strip.h >= EDGE) return { x: strip.x, y: win.y - g - strip.h };
+  return null;
+}
+
+/** Keep the following strip (`#following`, over the windows so that whom and its ✕ stay in sight)
+ *  clear of the conversation window, whose foot — the box and Send — it would cover: wherever the
+ *  window is, opens, collapses or docks, and as the strip's words change. The strip moves, never the
+ *  window, whose place is the reader's. */
+export function keepStripClear(strip: HTMLElement, win: HTMLElement): void {
+  const place = () => {
+    if (strip.hidden) return;
+    strip.style.left = strip.style.top = strip.style.bottom = strip.style.transform = "";
+    const r = strip.getBoundingClientRect();
+    const w = win.hidden ? null : win.getBoundingClientRect();
+    const to = stripAside({ x: r.left, y: r.top, w: r.width, h: r.height }, w && w.width > 0 ? { x: w.left, y: w.top, w: w.width, h: w.height } : null, viewport());
+    if (!to) return;
+    strip.style.left = `${Math.round(to.x)}px`;
+    strip.style.top = `${Math.round(to.y)}px`;
+    strip.style.bottom = "auto";
+    strip.style.transform = "none";
+  };
+  new MutationObserver(place).observe(win, { attributes: true, attributeFilter: ["style", "hidden", "class"] });
+  new MutationObserver(place).observe(strip, { attributes: true, attributeFilter: ["hidden"], childList: true, subtree: true, characterData: true });
+  window.addEventListener("resize", place);
+}
+
 export interface ChatWindowHooks {
   /** the canvas's insets (web/src/main.ts): the side panel's right, the bars' foot */
   insets(): { left: number; top: number };
-  /** the window was opened from its pill: the thread shows again */
+  /** the window opened, or was opened again from its pill: the thread shows */
   expanded(): void;
+  /** the reader closed it, or opened it */
+  toggled(open: boolean): void;
 }
 
 const viewport = (): Size => ({ w: document.documentElement.clientWidth || innerWidth, h: document.documentElement.clientHeight || innerHeight });
 
-/** The window around a conversation: `#following` while it has one (the `talking` class). */
+/** The conversation window: `#convo`. */
 export class ChatWindow {
   private el: HTMLElement;
   private store: Store;
   private hooks: ChatWindowHooks;
-  /** the agent talked to, or null: no window, the strip alone */
-  private agent: string | null = null;
   private win: FloatWindow;
+  private shown = false;
 
   constructor(el: HTMLElement, store: Store, hooks: ChatWindowHooks) {
     this.el = el;
@@ -76,7 +121,7 @@ export class ChatWindow {
     this.hooks = hooks;
     this.win = new FloatWindow(el, {
       min: MIN,
-      handle: ".fl-strip",
+      handle: ".cv-head",
       collapser: "[data-collapse]",
       opener: ".fl-pill-open",
       keeper: {
@@ -87,8 +132,10 @@ export class ChatWindow {
         },
       },
       keepsCollapsed: true,
+      // its own layer, above the source and reference windows' order (ReviewSpec, "In front")
+      onTop: true,
       start: (vp) => defaultRect(vp, this.hooks.insets()),
-      live: () => !!this.agent,
+      live: () => this.shown,
       collapsed: (on) => {
         if (on) return;
         el.classList.remove("unseen", "flash");
@@ -98,39 +145,50 @@ export class ChatWindow {
     el.addEventListener("animationend", (e) => {
       if (e.target === el && e.animationName === "fl-flash") el.classList.remove("flash");
     });
+    el.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest("[data-cv-close]")) this.close();
+    });
+  }
+
+  /** Whether it is open, collapsed or not. */
+  get open(): boolean {
+    return this.shown;
   }
 
   get collapsed(): boolean {
     return this.win.collapsed;
   }
 
-  /** Where the window is on the screen, while it is one (expanded or its pill); else null. */
-  get rect(): Rect | null {
-    if (!this.agent) return null;
-    const r = this.el.getBoundingClientRect();
-    return r.width && r.height ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+  /** Whether the reader sees its thread now: open, not collapsed, the page in front. */
+  get reading(): boolean {
+    return this.shown && !this.win.collapsed && !document.hidden;
   }
 
-  /** The agent this reader talks with now, or null: the window opens, as kept, or closes. Another
-   *  agent takes the same window, as it is. */
-  show(agent: string | null): void {
-    if (agent === this.agent) return;
-    const was = this.agent;
-    this.agent = agent;
-    this.el.classList.toggle("talking", !!agent);
-    this.el.classList.remove("unseen", "flash");
-    if (!agent) {
-      // the pill and the window's buttons go: the keys go back to the page
-      if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-      this.win.reset();
-      return;
-    }
-    if (!was) {
+  /** Open it, as kept (collapsed or not, where the reader put it); `expand`: expanded whatever was
+   *  kept, as asked for from a menu or a notice. */
+  show(expand = false): void {
+    if (!this.shown) {
+      this.shown = true;
+      this.el.hidden = false;
       this.win.setCollapsed(restore(this.store.data.chat, viewport(), this.hooks.insets()).collapsed);
-      // a window that opens comes to the front
-      this.win.front();
+      this.keepOpen(true);
+      this.hooks.toggled(true);
     }
+    if (expand && this.win.collapsed) this.win.collapse(false);
     this.win.layout();
+    if (!this.win.collapsed) this.hooks.expanded();
+  }
+
+  /** The reader closed it: its ✕, or the conversation button again. */
+  close(): void {
+    if (!this.shown) return;
+    if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    this.shown = false;
+    this.el.hidden = true;
+    this.el.classList.remove("unseen", "flash");
+    this.win.reset();
+    this.keepOpen(false);
+    this.hooks.toggled(false);
   }
 
   /** Put the window where it is kept, in the viewport as it is now (it changed, or the insets did). */
@@ -138,25 +196,28 @@ export class ChatWindow {
     this.win.layout();
   }
 
-  /** The conversation was asked for (a pinned agent's badge, web/src/talkpins.ts): the window
-   *  expanded, as the reader's choice, and in front. */
-  reveal(): void {
-    if (!this.agent) return;
-    if (this.collapsed) this.win.collapse(false);
-    this.win.front();
-  }
-
   /** Collapse the window to its pill, or open it again; the reader's choice is kept. */
   collapse(on: boolean): void {
     this.win.collapse(on);
   }
 
-  /** The agent replied: collapsed, the pill lights a moment and keeps a mark until it is opened. */
+  /** Something new came while it is collapsed: the pill lights a moment and keeps a mark until it
+   *  is opened. */
   replied(): void {
-    if (!this.agent || !this.collapsed) return;
+    if (!this.shown || !this.collapsed) return;
     this.el.classList.add("unseen");
     this.el.classList.remove("flash");
     void this.el.offsetWidth;
     this.el.classList.add("flash");
+  }
+
+  /** What came is seen: the pill's mark goes. */
+  markSeen(): void {
+    this.el.classList.remove("unseen");
+  }
+
+  private keepOpen(on: boolean): void {
+    this.store.data.chatOpen = on || undefined;
+    this.store.save();
   }
 }

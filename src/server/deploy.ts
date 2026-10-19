@@ -8,10 +8,11 @@
 // changes the tree, nothing is read from it, and the board on show stays the last build's.
 //
 // What is kept, in the deployment's folder of the cache (`<cache>/deploy/<repo>-<hash>/`): the
-// clone, `state.json` (the commit the tree's outputs are of, the build going on, the last one
-// that ended, the newest head seen), each build's log (`logs/`), and `.lock`: one server follows a
-// branch with a cache at a time. A build cut short (a restart into a patch, a stop) is done again
-// by the next server, Lake keeping what it finished.
+// clone (`clone/<repo>/`, whatever the repository is called), `state.json` (the commit the tree's
+// outputs are of, the one checked out, the build going on, the last one that ended, the newest head
+// seen), each build's log (`logs/`), and `.lock`: one server follows a branch with a cache at a
+// time. A build cut short (a restart into a patch, a stop) is done again by the next server, Lake
+// keeping what it finished.
 //
 // Git and Lake are run with argument arrays, never a shell; the address is checked against the
 // schemes followed, the branch by git (`check-ref-format --branch`); nothing that git or Lake starts
@@ -23,13 +24,13 @@ import type { ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import type { DeployBuild, DeployStatus, DeployStep } from "../shared/deploy.ts";
 import { shortCommit, slimDeploy } from "../shared/deploy.ts";
 import { childEnv, DETACH, end, grouped } from "./children.ts";
 import { dataHome, lockSite, SiteBusy } from "./dirs.ts";
 import type { HomeEnv } from "./dirs.ts";
-import { sourceAddress } from "./history.ts";
+import { buildTime, sourceAddress } from "./history.ts";
 import { openProject, ProjectError } from "./project.ts";
 import type { Project } from "./project.ts";
 
@@ -43,8 +44,11 @@ const ASK_MS = 60_000;
 const GIT_MS = 10 * 60_000;
 /** Mathlib's cache (`lake exe cache get`): it compiles the cache program first */
 const CACHE_MS = 30 * 60_000;
-/** `lake build`, past which the build is stopped and failed (proposed: DeploySpec decision 14) */
-export const BUILD_MS = 6 * 3600_000;
+/** `--build-timeout`: the hours of `lake build` past which the build is stopped and failed
+ *  (DeploySpec decision 14), by default and the least and most it takes: fractions of an hour too */
+export const DEFAULT_BUILD_HOURS = 6;
+export const MIN_BUILD_HOURS = 0.05;
+export const MAX_BUILD_HOURS = 168;
 /** the most of a build's log kept for the pages, in lines and characters */
 const TAIL_LINES = 60;
 const TAIL_CHARS = 8000;
@@ -145,6 +149,24 @@ export function branchProblem(name: string): string | null {
   return r.status === 0 && r.stdout.trim() === name ? null : no;
 }
 
+// ---------------------------------------------------------------- how long a build may take
+
+/** `--build-timeout <hours>` read (DeploySpec decision 14): the hours, or why they are refused. */
+export function parseBuildHours(v: string): number | { error: string } {
+  const h = Number(v);
+  if (/^\d+(\.\d+)?$/.test(v) && h >= MIN_BUILD_HOURS && h <= MAX_BUILD_HOURS) return h;
+  return { error: `--build-timeout ${v.slice(0, 40)}: say after how many hours a build is stopped, from ${MIN_BUILD_HOURS} (3 min) to ${MAX_BUILD_HOURS} (a week); 1.5 is an hour and a half` };
+}
+
+/** A build's limit as it is said: `6 hours`, `1 hour`, `1 h 30 min`, `3 min`, `4 min 12 s`. */
+export function limitInWords(ms: number): string {
+  if (ms < 60_000) return `${Number((ms / 1000).toFixed(1))} s`;
+  const s = Math.round(ms / 1000);
+  if (s % 3600 === 0) return s === 3600 ? "1 hour" : `${s / 3600} hours`;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return [h ? `${h} h` : "", m ? `${m} min` : "", r ? `${r} s` : ""].filter(Boolean).join(" ");
+}
+
 // ---------------------------------------------------------------- where it is kept
 
 /** A deployment's name among the others: the repository's name and a hash of the address and the
@@ -154,17 +176,28 @@ export function deployKey(remote: Remote, branch: string): string {
 }
 
 /** A deployment's folder in the caches' root: the clone (the project the server shows), what is
- *  known of its builds, their logs. */
+ *  known of its builds, their logs, and Mathlib's cache where it is the deployment's own. */
 export interface DeployFolder {
   dir: string;
   checkout: string;
   state: string;
   logs: string;
+  mathlib: string;
 }
 
+/** What the deployment's folder keeps of its own beside the clone of 0.5.0, which was named after
+ *  its repository there (DeploySpec decision 2): a repository named so is moved out of their way. */
+const OWN = /^(?:logs|mathlib-cache|state\.json(?:\.tmp-\d+)?)$/;
+
+/** The deployment's folder: the clone in `clone/<repo>/`, apart from what the folder keeps of its
+ *  own, whatever the repository is called (DeploySpec decision 2); a clone made by 0.5.0, named
+ *  after its repository beside them, is kept where it is — never cloned again — unless its name is
+ *  one of theirs (ensureClone moves it). */
 export function deployFolder(cacheRoot: string, remote: Remote, branch: string): DeployFolder {
   const dir = join(cacheRoot, "deploy", deployKey(remote, branch));
-  return { dir, checkout: join(dir, remote.name), state: join(dir, "state.json"), logs: join(dir, "logs") };
+  const was = join(dir, remote.name);
+  const checkout = !OWN.test(remote.name) && existsSync(join(was, ".git")) ? was : join(dir, "clone", remote.name);
+  return { dir, checkout, state: join(dir, "state.json"), logs: join(dir, "logs"), mathlib: join(dir, "mathlib-cache") };
 }
 
 /** The site of a deployment, without `--site`: under the data home by the address and the branch,
@@ -249,10 +282,27 @@ export function gitEnv(remote: Remote): NodeJS.ProcessEnv {
   return { ...noPrompts(gitBase()), GIT_ALLOW_PROTOCOL: remote.kind };
 }
 
+/** Where a deployment's `lake exe cache get` keeps Mathlib's files (DeploySpec decision 2): the
+ *  user's cache, shared by their builds (the default), or the deployment's own, in its folder. */
+export type MathlibCache = "shared" | "own";
+export const MATHLIB_CACHES: readonly MathlibCache[] = ["shared", "own"];
+
+/** Mathlib's cache as the user's builds find it, as Mathlib's cache program reads it
+ *  (`Cache/IO.lean`, `CACHEDIR`): `MATHLIB_CACHE_DIR`, else `$XDG_CACHE_HOME/mathlib`, else
+ *  `~/.cache/mathlib`. */
+export function sharedMathlibCache(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+  return env.MATHLIB_CACHE_DIR || join(env.XDG_CACHE_HOME || join(home, ".cache"), "mathlib");
+}
+
 /** Lake's environment for a build: the server's without what is its own — no access key or token
- *  of VisualProof's is in it — and no prompts for the git it runs for the dependencies. */
-export function buildEnv(): NodeJS.ProcessEnv {
-  return noPrompts(gitBase());
+ *  of VisualProof's is in it — and no prompts for the git it runs for the dependencies. With
+ *  `mathlib`, Mathlib's cache is that folder (`MATHLIB_CACHE_DIR`, which every Mathlib since
+ *  February 2025, Lean v4.17, reads: every supported toolchain's); `XDG_CACHE_HOME`, which an older
+ *  one read, is left as it is, since Lake's cache and git's credential cache are found by it too. */
+export function buildEnv(mathlib: string | null = null): NodeJS.ProcessEnv {
+  const env = noPrompts(gitBase());
+  if (mathlib) env.MATHLIB_CACHE_DIR = mathlib;
+  return env;
 }
 
 // ---------------------------------------------------------------- running a program
@@ -354,17 +404,26 @@ export async function branchToFollow(remote: Remote, given: string | null, cache
  *  nothing half made. The commit checked out, or why there is none. */
 export async function ensureClone(remote: Remote, branch: string, folder: DeployFolder, log: (l: string) => void): Promise<{ commit: string; made: boolean } | { error: string }> {
   const env = gitEnv(remote);
+  // a clone of 0.5.0 named as what its folder keeps of its own (a repository called logs): moved
+  // into the clone's place, what it built with it
+  const was = join(folder.dir, remote.name);
+  if (was !== folder.checkout && OWN.test(remote.name) && existsSync(join(was, ".git")) && !existsSync(folder.checkout)) {
+    mkdirSync(dirname(folder.checkout), { recursive: true });
+    renameSync(was, folder.checkout);
+    log(`the clone moved to ${folder.checkout}: its folder keeps a ${remote.name} of its own`);
+  }
   if (existsSync(join(folder.checkout, ".git"))) {
     const r = await git(["-C", folder.checkout, "rev-parse", "--verify", "HEAD^{commit}"], env);
     const c = r.stdout.trim();
     if (r.code === 0 && SHA.test(c)) return { commit: c, made: false };
     return { error: `the clone ${folder.checkout} cannot be read (${gitWhy(r)}): remove it, and it is made again` };
   }
-  mkdirSync(folder.dir, { recursive: true });
+  const place = dirname(folder.checkout);
+  mkdirSync(place, { recursive: true });
   // what a start that died midway left
-  for (const f of readdirSync(folder.dir)) {
-    const m = new RegExp(`^${remote.name.replace(/[.]/g, "\\.")}\\.tmp-(\\d+)$`).exec(f);
-    if (m && !alive(Number(m[1]))) rmSync(join(folder.dir, f), { recursive: true, force: true });
+  for (const f of readdirSync(place)) {
+    const m = new RegExp(`^${basename(folder.checkout).replace(/[.]/g, "\\.")}\\.tmp-(\\d+)$`).exec(f);
+    if (m && !alive(Number(m[1]))) rmSync(join(place, f), { recursive: true, force: true });
   }
   const tmp = `${folder.checkout}.tmp-${process.pid}`;
   rmSync(tmp, { recursive: true, force: true });
@@ -427,30 +486,86 @@ export function onMathlib(root: string): boolean {
   }
 }
 
+/** Whether the Mathlib checked out in the project reads `MATHLIB_CACHE_DIR` (since February 2025,
+ *  #21480; every supported toolchain's does): its cache program's source says so (`Cache/IO.lean`,
+ *  `CACHEDIR`). One before keeps its cache by `XDG_CACHE_HOME` alone: the user's. */
+export function mathlibReadsCacheDir(root: string): boolean {
+  let packages = join(".lake", "packages");
+  try {
+    const m = JSON.parse(readFileSync(join(root, "lake-manifest.json"), "utf8")) as { packagesDir?: unknown };
+    if (typeof m.packagesDir === "string" && m.packagesDir) packages = m.packagesDir;
+  } catch {
+    // Lake's default
+  }
+  try {
+    return readFileSync(join(root, packages, "mathlib", "Cache", "IO.lean"), "utf8").includes('"MATHLIB_CACHE_DIR"');
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------- a build's log
 
+/** What a build's log names more briefly for the pages (DeploySpec decision 11, SECURITY.md), the
+ *  longest path first: the clone's folder `.`, the deployment's folder that holds it (its logs, its
+ *  own Mathlib cache) from it (`../..`), and the home `~` — each as given and as resolved, since Lean
+ *  prints paths resolved (macOS's /var is /private/var), git and Lake the ones given. A home reached
+ *  through a symlink, or a folder under it that is one, prints resolved too: the folders elan and
+ *  Lake use under it — `~/.elan` (or `$ELAN_HOME`), `~/.cache` (or `$XDG_CACHE_HOME`; Lake's cache,
+ *  Mathlib's), `$MATHLIB_CACHE_DIR` where it is set — read by the path given, under `~`, whatever
+ *  they resolve to (here `~/.elan` → `/data/.elan`: `/data/.elan/toolchains/…/bin/lean` reads
+ *  `~/.elan/toolchains/…/bin/lean`). A folder outside the home keeps the path given. */
+export function logNames(root: string, o: { folder?: string; home?: string; env?: NodeJS.ProcessEnv } = {}): [from: string, to: string][] {
+  const home = o.home ?? homedir();
+  const env = o.env ?? process.env;
+  // a folder not there yet (the clone before the first build's) as its nearest folder resolves
+  const resolved = (p: string): string => {
+    try {
+      return realpathSync(p);
+    } catch {
+      const up = dirname(p);
+      return up === p ? p : join(resolved(up), basename(p));
+    }
+  };
+  const names = new Map<string, string>();
+  const name = (path: string, as: string) => {
+    for (const from of [path, resolved(path)]) if (from.length > 1 && !names.has(from)) names.set(from, as);
+  };
+  name(root, ".");
+  if (o.folder) name(o.folder, relative(root, o.folder) || ".");
+  if (home && home.length > 1) {
+    const brief = (p: string) => (p === home ? "~" : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p);
+    for (const d of [env.ELAN_HOME || join(home, ".elan"), env.XDG_CACHE_HOME || join(home, ".cache"), env.MATHLIB_CACHE_DIR]) if (d) name(d, brief(d));
+    name(home, "~");
+  }
+  return [...names].sort((a, b) => b[0].length - a[0].length);
+}
+
+/** What names a text's paths as `names` (the longest first) says, each where it is a whole path or
+ *  begins one (not `/home/ann` in `/home/anne`, nor in `/mnt/home/ann`), once: what is put in stays. */
+export function pathNamer(names: readonly [string, string][]): (text: string) => string {
+  if (!names.length) return (text) => text;
+  const to = new Map(names);
+  const any = names.map(([from]) => from.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&")).join("|");
+  const re = new RegExp(`(?<![\\w.~+@-])(?:${any})(?![\\w.~+@-])`, "g");
+  return (text) => text.replace(re, (m) => to.get(m) ?? m);
+}
+
 /** A build's log: everything its programs wrote, in `logs/<commit>.log` of the deployment (a build
- *  done again writes it again), and its end for the pages, where the clone's folder reads `.` and the
- *  home `~`, colours and redrawn lines taken out. */
+ *  done again writes it again), and its end for the pages, its paths named briefly (`logNames`: the
+ *  clone's folder `.`, the home `~`), colours and redrawn lines taken out. */
 export class BuildLog {
   readonly file: string;
   private fd: number | null = null;
   private lines: string[] = [];
   private partial = "";
-  /** the clone's path as the log may write it, the longest first: Lean prints the path resolved
-   *  (macOS's /var is /private/var), git and Lake the one given */
-  private roots: string[];
+  /** the paths the pages are given by another name (logNames) */
+  private named: (text: string) => string;
 
-  constructor(dir: string, commit: string, root: string) {
+  constructor(dir: string, commit: string, root: string, o: { folder?: string; home?: string; env?: NodeJS.ProcessEnv } = {}) {
     mkdirSync(dir, { recursive: true });
     this.file = join(dir, `${commit}.log`);
-    let real = root;
-    try {
-      real = realpathSync(root);
-    } catch {
-      // not there yet: the path as given
-    }
-    this.roots = [...new Set([real, root])].sort((a, b) => b.length - a.length);
+    this.named = pathNamer(logNames(root, o));
     try {
       this.fd = openSync(this.file, "w", 0o600);
     } catch {
@@ -488,10 +603,7 @@ export class BuildLog {
   /** its end, as the pages are given it: its last `n` lines, the one being written included */
   tail(n = TAIL_LINES): string {
     const last = this.partial.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "").split("\r").pop()!.trimEnd();
-    const home = homedir();
-    let t = [...this.lines, ...(last ? [last] : [])].slice(-n).join("\n");
-    for (const r of this.roots) t = t.split(r).join(".");
-    if (home && home.length > 1) t = t.split(home).join("~");
+    const t = this.named([...this.lines, ...(last ? [last] : [])].slice(-n).join("\n"));
     return t.length > TAIL_CHARS ? `…${t.slice(-TAIL_CHARS)}` : t;
   }
 
@@ -521,8 +633,13 @@ interface DeployState {
   version: 1;
   url: string;
   branch: string;
-  /** the commit whose `lake build` last ran in the tree: what the tree's outputs are of */
+  /** the commit whose build last wrote outputs in the tree, or built it whole: what the tree's
+   *  outputs are of, which the board reads — a failed build that wrote none is not built (the
+   *  owner's decision of 2026-10-19) */
   outputs: { commit: string; at: string } | null;
+  /** the commit whose `lake build` last ran in the tree, whatever came of it: what the tree is
+   *  checked out at between builds (0.5.0 kept none: its `outputs` were this) */
+  ran: string | null;
   /** a build that changed the tree and has not ended: one found here at a start was cut short */
   building: { commit: string; since: string } | null;
   /** the last commit tried, whatever came of it but a try that could not be made */
@@ -560,6 +677,11 @@ export interface DeploymentOptions {
   roots: string[];
   /** how often the remote is asked */
   everyMs: number;
+  /** `lake build` past which a build is stopped and failed (`--build-timeout`); by default
+   *  DEFAULT_BUILD_HOURS */
+  buildMs?: number;
+  /** Mathlib's cache: the user's (the default) or the deployment's own (`--mathlib-cache`) */
+  mathlibCache?: MathlibCache;
   hooks: DeployHooks;
   /** the commit the clone was made at, at the first start */
   head?: string | null;
@@ -595,6 +717,8 @@ export class Deployment {
   running: Promise<void> | null = null;
   private env: NodeJS.ProcessEnv;
   private lakeEnv: NodeJS.ProcessEnv;
+  /** `lake build` past which a build is stopped (DeploySpec decision 14) */
+  readonly buildMs: number;
   /** every build tried since the start, in order: what the tests read */
   readonly tried: string[] = [];
   /** the log of the build going on */
@@ -606,22 +730,24 @@ export class Deployment {
     this.branch = o.branch;
     this.folder = o.folder;
     this.env = gitEnv(o.remote);
-    this.lakeEnv = buildEnv();
+    this.lakeEnv = buildEnv(o.mathlibCache === "own" ? o.folder.mathlib : null);
+    this.buildMs = o.buildMs ?? DEFAULT_BUILD_HOURS * 3600_000;
     this.state = this.read();
     const head = this.headNow();
-    // the tree is one build's only where the outputs are of the commit checked out and no build
-    // was going on
-    this.interrupted = this.state.building !== null || (this.state.outputs !== null && head !== null && head !== this.state.outputs.commit);
+    // the tree is one build's only where the commit checked out is the one whose build last ran in
+    // it and no build was going on
+    this.interrupted = this.state.building !== null || (this.state.ran !== null && head !== null && head !== this.state.ran);
     this.want = this.state.head?.commit ?? this.state.building?.commit ?? o.head ?? head;
     this.done = this.interrupted ? null : this.state.done;
     if (this.state.building) o.hooks.log(`build: the build of ${shortCommit(this.state.building.commit)} was cut short (a restart, a stop): it is done again`);
   }
 
   private read(): DeployState {
-    const fresh: DeployState = { version: 1, url: this.remote.url, branch: this.branch, outputs: null, building: null, done: null, last: null, head: null };
+    const fresh: DeployState = { version: 1, url: this.remote.url, branch: this.branch, outputs: null, ran: null, building: null, done: null, last: null, head: null };
     try {
       const s = JSON.parse(readFileSync(this.folder.state, "utf8")) as Partial<DeployState>;
-      return { ...fresh, ...s, version: 1, url: this.remote.url, branch: this.branch };
+      // 0.5.0's: the commit whose build last ran is the one its outputs were said to be of
+      return { ...fresh, ...s, ran: s.ran ?? s.outputs?.commit ?? null, version: 1, url: this.remote.url, branch: this.branch };
     } catch {
       return fresh;
     }
@@ -671,8 +797,9 @@ export class Deployment {
     return this.running !== null;
   }
 
-  /** The commit what the tree holds was built from, and the branch: the history's for each build it
-   *  reads (HistorySpec decision 4). */
+  /** The commit what the tree's outputs were built from, and the branch: the history's for each
+   *  build it reads (HistorySpec decision 4) — the last whose build wrote outputs, not a failed one
+   *  that wrote none (DeploySpec decision 6). */
   commit(): { hash: string; branch: string } | null {
     return this.state.outputs ? { hash: this.state.outputs.commit, branch: this.branch } : null;
   }
@@ -750,6 +877,12 @@ export class Deployment {
       });
   }
 
+  /** The commit built next where none is going on: the newest head seen, where it was not tried
+   *  (the server's first lines say it). */
+  toBuild(): string | null {
+    return this.want && this.want !== this.done && this.want !== this.later ? this.want : null;
+  }
+
   /** Until the build going on and those waiting are done: what the tests wait for. */
   async settled(): Promise<void> {
     while (this.running || this.asking || this.retry) await (this.running ?? this.asking ?? new Promise((ok) => setTimeout(ok, 50)));
@@ -772,7 +905,7 @@ export class Deployment {
     this.o.hooks.changed();
     const short = shortCommit(commit);
     const say = this.o.hooks.log;
-    const log = (this.log = new BuildLog(this.folder.logs, commit, this.folder.checkout));
+    const log = (this.log = new BuildLog(this.folder.logs, commit, this.folder.checkout, { folder: this.folder.dir }));
     const g = (args: string[], ms = GIT_MS) => {
       log.say(`$ git ${args.join(" ")}`);
       return git(["-C", this.folder.checkout, ...args], this.env, ms, (t) => log.text(t));
@@ -815,9 +948,13 @@ export class Deployment {
         this.step("cache");
         say(`build: ${short}: getting Mathlib's cache`);
         for (let n = 1; n <= 2 && !this.stopped; n++) {
-          log.say(`$ lake exe cache get`);
+          // the deployment's own cache, beside the clone in its folder (DeploySpec decision 2)
+          log.say(`$ ${this.o.mathlibCache === "own" ? `MATHLIB_CACHE_DIR=${relative(this.folder.checkout, this.folder.mathlib)} ` : ""}lake exe cache get`);
           const c = await run(lake, ["exe", "cache", "get"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
-          if (c.code === 0) break;
+          if (c.code === 0) {
+            await this.cleanMathlibCache(lake, log);
+            break;
+          }
           // Lake builds what the cache did not give
           log.say(`Mathlib's cache could not be had (${c.error ?? (c.timedOut ? "it took too long" : `exit ${c.code}`)})${n === 1 ? ": trying again" : ": lake build builds what it lacks"}`);
         }
@@ -826,15 +963,23 @@ export class Deployment {
       this.step("build");
       say(`build: ${short}: lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
       log.say(`$ lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
-      const b = await run(lake, ["build", ...this.o.roots], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: BUILD_MS, onText: (t) => log.text(t) });
+      // the project's newest `.olean` before the build: whether it wrote any (as the history tells a
+      // new build: HistorySpec decision 4)
+      const before = buildTime(this.o.project);
+      const b = await run(lake, ["build", ...this.o.roots], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: this.buildMs, onText: (t) => log.text(t) });
       // cut short by the server's stop: done again at the next start
       if (this.stopped) return;
       if (b.error) {
         await this.restore(log);
         return ended({ ok: false, retry: true, error: `lake could not be run: ${b.error}` });
       }
-      // the tree is this build's, whatever came of it
-      this.state.outputs = { commit, at: new Date().toISOString() };
+      const ok = b.code === 0 && !b.timedOut;
+      // the tree is this build's, whatever came of it: checked out at its commit, its failed files
+      // shown as such; its outputs are, where it built the commit or wrote any. A failed build that
+      // wrote none leaves the board on the last build that did, which is what is said built (the
+      // owner's decision of 2026-10-19)
+      this.state.ran = commit;
+      if (ok || buildTime(this.o.project) > before) this.state.outputs = { commit, at: new Date().toISOString() };
       this.state.building = null;
       this.interrupted = false;
       // the modules a library's globs give, now that they are built
@@ -843,8 +988,9 @@ export class Deployment {
       } catch {
         // read as it was after the checkout
       }
-      const ok = b.code === 0 && !b.timedOut;
-      return ended({ ok, exit: b.code, ...(b.timedOut ? { error: `it took longer than ${BUILD_MS / 3600_000} hours: stopped` } : {}) });
+      // stopped past the limit: failed, and not tried again (DeploySpec decision 14)
+      if (b.timedOut) log.say(`lake build took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped`);
+      return ended({ ok, exit: b.code, ...(b.timedOut ? { error: `it took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped` } : {}) });
     } catch (e) {
       if (this.stopped) return;
       if (this.state.building) await this.restore(log);
@@ -853,6 +999,22 @@ export class Deployment {
       log.close();
       this.log = null;
     }
+  }
+
+  /** The deployment's own Mathlib cache keeps the version checked out alone (DeploySpec decision 2,
+   *  the owner's decision of 2026-10-19): after each `lake exe cache get` that succeeded, `lake exe
+   *  cache clean` deletes the files (`<hash>.ltar`) the Mathlib checked out does not link, which
+   *  are what `get` fetches. Never the user's cache: only where the deployment has its own, and the
+   *  Mathlib checked out reads it (one before February 2025 would clean the user's). */
+  private async cleanMathlibCache(lake: string, log: BuildLog): Promise<void> {
+    if (this.o.mathlibCache !== "own" || this.lakeEnv.MATHLIB_CACHE_DIR !== this.folder.mathlib) return;
+    if (!mathlibReadsCacheDir(this.folder.checkout)) {
+      log.say("Mathlib's cache is not cleaned: this Mathlib does not read MATHLIB_CACHE_DIR (it is older than February 2025), and keeps its cache with the user's");
+      return;
+    }
+    log.say(`$ MATHLIB_CACHE_DIR=${relative(this.folder.checkout, this.folder.mathlib)} lake exe cache clean`);
+    const k = await run(lake, ["exe", "cache", "clean"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
+    if (k.code !== 0) log.say(`Mathlib's cache could not be cleaned (${k.error ?? (k.timedOut ? "it took too long" : `exit ${k.code}`)}): what it holds of other versions stays until the next build`);
   }
 
   /** Whether the clone has `commit`. */
@@ -865,7 +1027,7 @@ export class Deployment {
    *  out at that build's commit again, so that what is read of it, and a restart, are that build's.
    *  Where that cannot be done, the tree stays held until a build ends. */
   private async restore(log: BuildLog): Promise<void> {
-    const was = this.state.outputs?.commit;
+    const was = this.state.ran;
     if (was) {
       log.say(`back to ${shortCommit(was)}, the last build's commit`);
       const co = await git(["-C", this.folder.checkout, "-c", "advice.detachedHead=false", "checkout", "--quiet", "--force", "--detach", was], this.env);

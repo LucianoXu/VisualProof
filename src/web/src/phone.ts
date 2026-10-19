@@ -2,9 +2,10 @@
 // wide (style.css draws it), the page keeps what reading and reviewing need in reach of a thumb,
 // and the rest one tap away:
 //
-// - the bar's buttons — Share, the library, Export, Activity, the reader's name, help — are in one
-//   menu, ⋯, each item pressing the button it stands for, so that everything they do is as ever;
-//   the modes head it, each with a few words on what a tap selects, as its button would;
+// - the bar's buttons — Share, the library, Export, Activity, the conversations, the reader's name,
+//   help — are in one menu, ⋯, each item pressing the button it stands for, so that everything they
+//   do is as ever; the modes head it, each with a few words on what a tap selects, as its button
+//   would; what is new under it (Activity's count, the conversations' and their mark) shows on ⋯;
 // - the side panel (the targets, the board's clusters) is a drawer from ☰, which closes when the
 //   reader goes somewhere from it;
 // - the panel is a sheet from the bottom, the board above it, with a handle at its top:
@@ -90,15 +91,29 @@ export interface PhoneHooks {
   modeHint(mode: string): string;
 }
 
-/** The ⋯ menu's items: the button each stands for, and its label. */
-const ITEMS: readonly { id: string; label: string }[] = [
+/** The ⋯ menu's items, in the bar's order (decision 7): the button each stands for, and its label.
+ *  The conversation button is among them (the owner's decision of 2026-10-19): beside the people's
+ *  initials it left the build status and the project's name a few pixels of the bar. */
+export const ITEMS: readonly { id: string; label: string }[] = [
   { id: "share-btn", label: "Share" },
   { id: "library-btn", label: "Library" },
   { id: "export-btn", label: "Export" },
   { id: "activity-btn", label: "Activity" },
+  { id: "talk-btn", label: "Conversations" },
   { id: "who", label: "" },
   { id: "help-btn", label: "Help" },
 ];
+
+/** What a badge says (`"7"`, `"99+"`, `null` while it is hidden), as a number. */
+const counted = (text: string | null): number => (text ? (text.endsWith("+") ? 100 : Number(text) || 0) : 0);
+
+/** What ⋯ carries of what is new under it (decision 7): Activity's count and the conversations'
+ *  together, as one count (`null`: nothing new), and the conversations' mark, where the reader was
+ *  mentioned or an agent of theirs answered. */
+export function moreMark(activity: string | null, talk: string | null, mentioned: boolean): { count: string | null; at: boolean } {
+  const n = counted(activity) + counted(talk);
+  return { count: n === 0 ? null : n > 99 ? "99+" : String(n), at: mentioned };
+}
 
 /** The icons of the items whose buttons have none drawn the same way: the name, help. */
 const OWN_ICON: Record<string, string> = {
@@ -129,7 +144,7 @@ const EDGE_PX = 12;
 /** Where the sheets are on a tall screen: the panel, or Activity or the lost-and-found in its place;
  *  then the floating windows docked there (style.css), and Export's window. */
 const SHEETS = ["panel", "activity", "lostfound"];
-const DOCKED = "#windows > :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])";
+const DOCKED = "#windows > :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden])";
 
 /** A tall screen's board room, in px from the screen's edges (web/src/main.ts, the canvas's insets):
  *  the whole width; under the view bar, the review strip and the selection bar; above the sheet or the
@@ -187,14 +202,28 @@ export class Phone {
       if (!this.pop.hidden) this.close();
       if (document.body.classList.contains("side-open")) this.drawer(false);
     });
-    // Activity's count of what is new shows on ⋯ too
-    const badge = document.getElementById("activity-badge");
+    // Activity's count of what is new shows on ⋯ too, and the conversations' with it, their mark
+    // where the reader was mentioned as the conversation button has it (bottom right)
+    const shown = (id: string) => {
+      const el = document.getElementById(id);
+      return el && !el.hidden ? (el.textContent ?? "") : null;
+    };
     const more = document.getElementById("more-badge");
-    if (badge && more)
-      new MutationObserver(() => {
-        more.textContent = badge.textContent;
-        more.hidden = badge.hidden;
-      }).observe(badge, { attributes: true, childList: true, characterData: true, subtree: true });
+    const moreAt = document.getElementById("more-at");
+    const mark = () => {
+      const m = moreMark(shown("activity-badge"), shown("talk-badge"), shown("talk-at") !== null);
+      if (more) {
+        more.textContent = m.count ?? "";
+        more.hidden = m.count === null;
+      }
+      if (moreAt) moreAt.hidden = !m.at;
+    };
+    const marks = new MutationObserver(mark);
+    for (const id of ["activity-badge", "talk-badge", "talk-at"]) {
+      const el = document.getElementById(id);
+      if (el) marks.observe(el, { attributes: true, childList: true, characterData: true, subtree: true });
+    }
+    mark();
 
     // the drawer
     document.getElementById("side-btn")!.addEventListener("click", () => this.drawer(!document.body.classList.contains("side-open")));
@@ -262,17 +291,22 @@ export class Phone {
   }
 
   private open(): void {
-    const label = (id: string, fallback: string) => {
-      if (id !== "who") return fallback;
-      const who = document.getElementById("who")!;
-      return who.hidden ? "" : `Your name: ${who.textContent?.trim() || "set it"}`;
-    };
+    const label = (id: string, fallback: string) => (id === "who" ? `Your name: ${document.getElementById("who")!.textContent?.trim() || "set it"}` : fallback);
     const icon = (id: string) => OWN_ICON[id] ?? document.getElementById(id)?.querySelector("svg")?.outerHTML ?? `<svg viewBox="0 0 16 16"></svg>`;
+    /** a badge of the button's, shown on its item too: its count, the conversations' mark */
+    const shown = (badge: string, cls: string) => {
+      const b = document.getElementById(badge);
+      return b && !b.hidden ? `<span class="${cls}">${b.textContent}</span>` : "";
+    };
+    const badges: Record<string, () => string> = {
+      "activity-btn": () => shown("activity-badge", "act-badge"),
+      "talk-btn": () => shown("talk-badge", "act-badge") + shown("talk-at", "talk-at"),
+    };
     this.pop.innerHTML = this.modes() + ITEMS.map(({ id, label: l }) => {
-      const text = label(id, l);
-      if (!text) return "";
-      const badge = id === "activity-btn" ? document.getElementById("activity-badge") : null;
-      return `<button class="more-item" role="menuitem" data-for="${id}">${icon(id)}<span>${text}</span>${badge && !badge.hidden ? `<span class="act-badge">${badge.textContent}</span>` : ""}</button>`;
+      // a button the page does not offer is no item: the reader's name before the page knows it,
+      // the conversations for a read-only reader and in a snapshot
+      if (document.getElementById(id)?.hidden) return "";
+      return `<button class="more-item" role="menuitem" data-for="${id}">${icon(id)}<span>${label(id, l)}</span>${badges[id]?.() ?? ""}</button>`;
     }).join("");
     this.pop.hidden = false;
     this.btn.setAttribute("aria-expanded", "true");

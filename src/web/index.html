@@ -64,6 +64,17 @@
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 8h2.5l1.5-4 3 8 1.5-4H14"/></svg>
         <span id="activity-badge" class="act-badge" hidden></span>
       </button>
+      <!-- the conversations (CollabSpec decision 13, web/src/talk.ts): opens and closes the reader's
+           own conversation window; counts what they have not seen of Everyone, marked where they are
+           mentioned or one of their agents answered; a mention's notice under it -->
+      <div class="talk-wrap">
+        <button id="talk-btn" class="act-btn act-icon" title="Conversations: everyone on this page, and your agents" aria-label="Conversations" aria-pressed="false" hidden>
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3.2 3h9.6c.7 0 1.2.5 1.2 1.2v5.6c0 .7-.5 1.2-1.2 1.2H7.6L4.6 13.4V11H3.2C2.5 11 2 10.5 2 9.8V4.2C2 3.5 2.5 3 3.2 3z"/></svg>
+          <span id="talk-badge" class="act-badge" hidden></span>
+          <span id="talk-at" class="talk-at" aria-hidden="true" hidden>@</span>
+        </button>
+        <button id="talk-notice" class="glass" type="button" hidden></button>
+      </div>
       <!-- the others' initials: a person's opens their menu, to follow them or ask them to follow
            you; under them, what your request to follow came to (web/src/peermenu.ts,
            web/src/askfollow.ts) -->
@@ -83,9 +94,10 @@
         <button id="help-btn" class="help-btn" title="Help: tips, keys, the tour (?)" aria-label="Help" aria-haspopup="menu" aria-expanded="false">?</button>
         <div id="help-menu" class="glass" role="menu" aria-label="Help" hidden></div>
       </div>
-      <!-- on a phone the bar's buttons are in one menu (web/src/phone.ts) -->
+      <!-- on a phone the bar's buttons are in one menu, what is new under it on it: Activity's count
+           and the conversations', their mark (web/src/phone.ts) -->
       <div class="more-wrap">
-        <button id="more-btn" class="act-btn act-icon" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="Share, the library, export, activity, your name, help"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg><span id="more-badge" class="act-badge" hidden></span></button>
+        <button id="more-btn" class="act-btn act-icon" aria-label="More" aria-haspopup="menu" aria-expanded="false" title="Share, the library, export, activity, the conversations, your name, help"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg><span id="more-badge" class="act-badge" hidden></span><span id="more-at" class="talk-at" aria-hidden="true" hidden>@</span></button>
         <div id="more-pop" class="glass" role="menu" aria-label="More" hidden></div>
       </div>
     </div>
@@ -216,14 +228,36 @@
   <!-- the canvas's menu: a right click, the ContextMenu key or Shift+F10 (web/src/ctxmenu.ts) -->
   <div id="ctxmenu" role="menu" aria-label="Actions" tabindex="-1" hidden></div>
   <!-- the floating windows, the one pressed or focused last in front (web/src/floatwin.ts): the
-       source windows (web/src/sourcewin.ts adds each) and the following strip -->
+       source windows (web/src/sourcewin.ts adds each); the conversation window in front of them all,
+       always (ReviewSpec, "In front"); the following strip -->
   <div id="windows">
-    <!-- following someone: the strip; following an agent that can be talked to, a window with the
-         strip as its title bar, the conversation, and the pill it collapses to (web/src/people.ts,
-         web/src/talk.ts, web/src/chatwin.ts, which adds the edges that resize it) -->
-    <div id="following" class="glass" hidden>
-      <div class="fl-strip"></div><div id="talk" hidden></div>
-      <div class="fl-pill"><button class="fl-pill-open" type="button"><span class="fl-pill-text"></span><span class="fl-new" title="A new reply"></span></button><button data-unfollow type="button" title="Stop following" aria-label="Stop following">✕</button></div>
+    <!-- following someone: the strip, whom and its ✕ (web/src/people.ts) -->
+    <div id="following" class="glass" hidden><div class="fl-strip"></div></div>
+    <!-- the conversation window, the reader's own (CollabSpec decision 13): its channels at its head,
+         the thread, the agent's state, the box, and the pill it collapses to (web/src/chatwin.ts,
+         which adds the edges that resize it; web/src/talk.ts; web/src/chatinput.ts) -->
+    <div id="convo" class="glass" role="region" aria-label="Conversations" hidden>
+      <div class="cv-head">
+        <div class="cv-tabs" role="tablist" aria-label="Channels"></div>
+        <button data-cv-new type="button" aria-label="New conversation" hidden><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3.2 2.8h9.6c.7 0 1.2.5 1.2 1.2v6.2c0 .7-.5 1.2-1.2 1.2H7.4L4.5 13.8v-2.4H3.2c-.7 0-1.2-.5-1.2-1.2V4c0-.7.5-1.2 1.2-1.2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 4.9v4.2M5.9 7h4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+        <button data-collapse type="button" title="Collapse to one line (or double-click the title bar)" aria-label="Collapse"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 8.5h8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+        <button data-cv-close type="button" title="Close the conversations (the button at the top opens them again)" aria-label="Close">✕</button>
+      </div>
+      <div class="cv-body">
+        <div class="cv-thread tk-thread" aria-live="polite"></div>
+        <div class="cv-state" hidden></div>
+        <form class="cv-form" autocomplete="off">
+          <div class="cv-mentions glass" role="listbox" aria-label="Mention" hidden></div>
+          <div class="cv-input" role="textbox" aria-multiline="true" aria-label="Your message" contenteditable="true" spellcheck="true"></div>
+          <div class="cv-tools">
+            <button type="button" class="cv-tool" data-cv-link title="Insert a link to what you see: it shows as what it leads to, and carries no key"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2M9 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>What I see</span></button>
+            <span class="cv-hint muted">Enter sends · Shift+Enter, a new line · @ mentions</span>
+            <button type="submit" class="rv-btn primary">Send</button>
+          </div>
+          <div class="cv-err" hidden></div>
+        </form>
+      </div>
+      <div class="fl-pill"><button class="fl-pill-open" type="button"><span class="fl-pill-text"></span><span class="fl-new" title="Something new"></span></button><button data-cv-close type="button" title="Close the conversations" aria-label="Close">✕</button></div>
     </div>
   </div>
   <!-- someone asks you to follow them (CollabSpec decision 10, web/src/askfollow.ts): at the top
@@ -252,6 +286,8 @@
         <button type="submit" id="who-ok" class="rv-btn primary">Continue</button>
       </div>
     </form>
+    <!-- the personal link the reader came by, shown to them alone, in the form's place (web/src/mylink.ts) -->
+    <div id="mylink" class="modal-box glass" role="dialog" aria-modal="true" aria-labelledby="mylink-title" hidden></div>
   </div>
   <div id="export-modal" hidden></div>
   <div id="tip" class="tip" hidden></div>

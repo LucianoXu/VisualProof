@@ -96,7 +96,7 @@ test("the registry declares every surface of the page: each element of its skele
   assert.equal(new Set(ids).size, ids.length);
   // the parts the owner named followed, and the surfaces named the reader's own
   assert.deepEqual(FOLLOWED.map((p) => p.part), ["view", "history", "camera", "tool", "selection", "focus", "visitors", "panel", "sources", "paper", "activity", "lostFound", "colouring", "edges", "linear", "artwork"]);
-  for (const y of ["windowPlaces", "scroll", "sections", "tcbOrder", "outline", "whatChanged", "theme", "lock", "share", "export", "help", "library", "board", "trusted", "viewsMenu", "search", "name", "conversation", "talkPin", "hoverCards", "pointer"]) assert.ok(ids.includes(y), y);
+  for (const y of ["windowPlaces", "scroll", "sections", "tcbOrder", "outline", "whatChanged", "theme", "lock", "share", "export", "help", "library", "board", "trusted", "viewsMenu", "search", "name", "conversation", "followingStrip", "hoverCards", "pointer"]) assert.ok(ids.includes(y), y);
 });
 
 /** A page whose every part reads as given: the place's parts with what a page says of them. */

@@ -77,7 +77,7 @@ companion shows who is in the Time Machine ([following](following.md)).
 ## `GET /api/agent/place?name=|cluster=&mode=&near=&limit=` (any level)
 
 `place`, `pins` and `undo` are about the **Project view** (other views: `views/view`,
-`views/arrange`). MCP: `pins` (actions `place`, `pin`, `undo`).
+`views/arrange`). MCP: `pins` (`place`, `pin`, `undo`).
 
 Where a declaration or cluster is (`mode`: `namespace`, default, or `module`), and what else is in
 its parent. Coordinates are in the **parent cluster's frame**, origin at its centre.
@@ -103,9 +103,8 @@ overlap). `limit` 0–2000, default 100; `more`: the rest.
 ```
 
 To avoid overlaps, ask with `near=` your spot and move until the first sibling's `gap` is positive:
-on the page a pin pushes aside what is not pinned (a declaration, or a cluster with its contents),
-and the later of two overlapping pins pushes the earlier, so an overlap moves things you did not
-mean to, others' pins included.
+a pin pushes aside what is not pinned (a declaration, a cluster with its contents), and the later of
+two overlapping pins the earlier, so an overlap moves what you did not mean to, others' pins too.
 
 ## `POST /api/agent/pins` (needs full)
 

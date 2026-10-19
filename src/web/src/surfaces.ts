@@ -58,9 +58,8 @@ interface Yours {
   where?: string;
   /** the page's keys for it, which change nothing followed */
   keys?: readonly string[];
-  /** nothing in it ends following, whatever it does — a name in a conversation goes there and the
-   *  reader looks aside until the followed reader moves; following ends there only by what is there
-   *  to end it (the strip's ✕, the initials clicked again, web/src/people.ts) */
+  /** nothing in it ends following, whatever it does, but what is there to end it (the strip's ✕, the
+   *  initials clicked again, web/src/people.ts; a link followed from a message, web/src/talk.ts) */
   whole?: true;
   /** keys that act inside it alone, while it has the focus, and are kept from the page: there they
    *  change nothing followed, whatever they do elsewhere */
@@ -235,14 +234,16 @@ export const YOURS = [
   // is ticked
   { id: "artFilter", what: "the filter over the artwork's list of names", where: "#art-panel [data-art-filter]" },
   { id: "name", what: "the name, its menu and its window", where: "#who, #who-menu, #modal", whole: true },
-  { id: "people", what: "the others' initials and the menu a person's opens — following them, or no longer, and asking them to follow you —, a Shift-click on a pinned agent's that opens its conversation without following, and what your request to follow came to", where: "#peers, #peer-menu, #ask-line", whole: true },
+  { id: "people", what: "the others' initials and the menu someone's opens — following them, or no longer, asking a person to follow you, talking with an agent —, and what your request to follow came to", where: "#peers, #peer-menu, #ask-line", whole: true },
   // a request to follow (CollabSpec decision 10, the owner's decision of 2026-10-12): answering it ends
   // no following, but Follow starts following the asker, as their initials' Follow does
   { id: "askBanner", what: "a request to follow you: its banner, Follow and Not now", where: "#ask-banner", whole: true },
-  { id: "conversation", what: "the follower's own conversation window and the following strip (following an agent still opens its conversation)", where: "#following", whole: true },
-  // inside the conversation's window, which is the reader's own whole: declared on its own all the
-  // same, since it decides what following ending leaves on the screen (web/src/talkpins.ts)
-  { id: "talkPin", what: "the conversation's pin: kept per agent in this browser, a pinned conversation stays open when following ends and after a reload", where: "#following [data-pin]" },
+  // the reader's own conversation window (CollabSpec decision 13, the owner's decisions of
+  // 2026-10-19): following never opens, closes or changes it, and nothing in it ends following but a
+  // link followed from a message — the reader's own tool changing a followed part, which says so
+  // itself (web/src/talk.ts) — and Esc; its button and a mention's notice open it
+  { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
+  { id: "followingStrip", what: "the following strip: whom you follow, and its ✕", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
   { id: "pointer", what: "the pointer's highlight" },
   { id: "meter", what: "the frame meter", keys: ["p"] },

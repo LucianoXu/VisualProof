@@ -6,11 +6,11 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { App } from "../src/server/main.ts";
@@ -169,6 +169,12 @@ test("a failing commit: its files failed, the build's end of log, what could be 
   assert.equal(st.deploy.last.ok, false);
   assert.equal(st.deploy.last.exit, 1);
   assert.match(st.deploy.last.tail, /Fixture\/Leaf\.lean:\d+:\d+: .*\n/);
+  // its paths named from the clone's folder and the home, whatever links lead there (DeploySpec
+  // decision 11): no path of the machine — the home's, elan's toolchains' (~/.elan → /data/.elan on
+  // a machine whose home has its tools on another disk), the temporary folder the clone is in
+  const elan = join(homedir(), ".elan");
+  for (const p of new Set([homedir(), realpathSync(homedir()), ...(existsSync(elan) ? [realpathSync(elan)] : []), realpathSync(tmpdir())]))
+    assert.ok(!st.deploy.last.tail.includes(`${p}/`), `the end of the log names ${p}: ${st.deploy.last.tail.slice(0, 2000)}`);
   const h = await get("/api/history");
   assert.equal(h.snapshots.at(-1).commit.hash, bad);
   // before v4.29 Lake keeps a failed file's .olean: it shows as out of date, read as last built
@@ -202,4 +208,29 @@ test("two quick pushes: the newest alone is built, and is the next build of the 
   const leaf = await get(`/api/history/source?id=${h.snapshots.at(-1).id}&module=Fixture.Leaf`);
   assert.match(leaf.text, /\(1 : Nat\) = 1 := rfl/);
   assert.equal(leaf.from, "tree");
+});
+
+test("a failing commit that compiled nothing: failed, not built — the board, the history and the agents keep the build before", { skip: !haveLake }, async () => {
+  const was = d.status(true).built!;
+  const shown = live.graph!.version;
+  const snapshots = (await get("/api/history")).snapshots.length;
+  // Leaf alone changed, and fails: nothing is compiled
+  const broken = push("break Leaf alone", () => append("Fixture/Leaf.lean", "\ntheorem broken_again : (1 : Nat) = 2 := rfl\n"));
+  await d.poll();
+  await d.settled();
+  // the tree is read again once it settles: a new graph where what can be read of it changed (Lake
+  // since v4.29 removes a failed file's .olean), else the same one kept
+  const t0 = Date.now();
+  await until(() => ((live.graph?.version ?? 0) > shown || Date.now() - t0 > 8000) && !live.reading);
+  const st = await get("/api/status");
+  assert.equal(st.deploy.last.commit, broken);
+  assert.equal(st.deploy.last.ok, false);
+  // what is said built is the commit whose build the board reads (DeploySpec decision 6)
+  assert.equal(st.deploy.built, was);
+  assert.equal(st.graph.commit, was);
+  const h = await get("/api/history");
+  assert.equal(h.snapshots.length, snapshots);
+  assert.equal(h.snapshots.at(-1).commit.hash, was);
+  assert.equal((await get("/api/agent/history")).following.built, was);
+  assert.equal((await get("/api/git")).git.commit, was);
 });

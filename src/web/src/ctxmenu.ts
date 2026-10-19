@@ -24,8 +24,8 @@ export type MenuTarget =
       name: string;
       /** outside the project */
       ext: boolean;
-      /** where the review has a focus: whether it is marked key for that target; null where that
-       *  review does not hold it, or it is the target */
+      /** where the review has a focus: whether it is marked key for that target; null where its TCB
+       *  does not hold it (ExportSpec decision 1), or it is the target */
       key: boolean | null;
       /** it is a target */
       target: boolean;
@@ -81,6 +81,10 @@ export interface MenuContext {
   write: boolean;
   /** pinned source windows are not offered (a phone: a source takes the whole screen) */
   noPin?: boolean;
+  /** Copy link is offered: a link to what the menu is on, without the key (CollabSpec decision 13,
+   *  ViewSpec decision 21); every reader has it, read-only readers too, but a snapshot, which has no
+   *  server to open it */
+  link?: boolean;
   /** the board is of a past graph (HistorySpec decision 17): the review is given on the latest
    *  build, which the menu says where its items would be (the owner's decision of 2026-10-10); its
    *  source is that build's (decision 23) */
@@ -143,10 +147,12 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
   /** a note at the spot the menu was opened on, last, as what is added there: the project's, shown on
    *  the Project and the views it belongs to, or this view's own (AttachmentSpec decisions 13–17) */
   const note: MenuItem[] = ctx.arrange ? [{ act: "note", label: "Add a note here", sep: true }, { act: "note-view", label: "Add a note for this view" }] : [];
+  const link: MenuItem[] = ctx.link ? [{ act: "link", label: "Copy link" }] : [];
   if (t.kind === "note") {
     const toggle: MenuItem = { act: "note-toggle", label: t.open ? "Collapse" : "Expand", key: "click" };
-    // where nothing is arranged, a read-only reader still opens and collapses it, for them alone
-    if (!ctx.arrange) return t.own ? [toggle] : [];
+    // where nothing is arranged, a read-only reader still opens and collapses it, for them alone,
+    // and copies a link to it
+    if (!ctx.arrange) return [...(t.own ? [toggle] : []), ...link];
     // what it carries (AttachmentSpec decision 12): a file of the library or a clip of one attached,
     // and each it carries taken off by itself
     const carries = t.carries ?? [];
@@ -160,6 +166,7 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
     return [
       { act: "note-edit", label: "Edit", key: "double-click" },
       toggle,
+      ...link,
       ...attach,
       // the other kind, keeping its text, its author, what it carries and where it is on this board
       { act: "note-kind", label: t.view ? "In every view" : "Only in this view", sep: true },
@@ -174,7 +181,7 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
   const first = out.length;
   if (t.kind === "decl") {
     out.push({ act: "source", label: "Open source" }, ...(ctx.noPin ? [] : [{ act: "pin", label: "Open in a pinned window" }]));
-    out.push({ act: "tcb", label: "Select its TCB", sep: true }, { act: "deps", label: "Select what it uses" }, { act: "apps", label: "Select what uses it" }, { act: "copy", label: "Copy full name" });
+    out.push({ act: "tcb", label: "Select its TCB", sep: true }, { act: "deps", label: "Select what it uses" }, { act: "apps", label: "Select what uses it" }, { act: "copy", label: "Copy full name" }, ...link);
     // a visitor is no member: it is added to this view, or another, and not removed (decision 27)
     if (ctx.arrange && t.visitor) out.push(...(ctx.here ? [{ act: `add:${ctx.here}`, label: "Add to this view", sep: true }] : []), addTo(ctx, short(t.name)));
     else if (ctx.arrange) out.push(removeFrom(ctx, title, short(t.name)), addTo(ctx, short(t.name)));
@@ -189,14 +196,18 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
     out.push({ act: "fold", label: t.folded ? "Unfold" : "Fold", key: "double-click" });
     // hiding a level changes the view, which needs *arrange*: a reader who cannot sees no item (decision 21)
     if (ctx.arrange && !ctx.preview) out.push({ act: "hide", label: "Hide this level" });
+    out.push(...link);
     if (ctx.arrange) out.push(removeFrom(ctx, title, short(t.key)), addTo(ctx, short(t.key)));
     const trust = trustItem(t.trust, t.folder ? "this folder" : "this namespace");
     if (ctx.past && t.trust) trust.push({ ...PAST_REVIEW });
     if (trust.length) trust[0].sep = true;
     out.push(...trust, ...note);
   } else {
-    if (ctx.arrange) out.push({ act: "note", label: "Add a note here" }, { act: "note-view", label: "Add a note for this view" });
-    out.push({ act: "fit", label: "Fit to screen", key: "f", sep: ctx.arrange });
+    // what the reader sees, whatever Share's switch: the board, the camera, the windows (CollabSpec
+    // decision 7's snapshot)
+    if (ctx.link) out.push({ act: "link", label: "Copy link to what I see" });
+    if (ctx.arrange) out.push({ act: "note", label: "Add a note here", sep: !!ctx.link }, { act: "note-view", label: "Add a note for this view" });
+    out.push({ act: "fit", label: "Fit to screen", key: "f", sep: ctx.arrange || !!ctx.link });
     if (ctx.arrange) out.push({ act: "relayout", label: "Re-layout…" });
   }
   if (first && out[first]) out[first].sep = true;

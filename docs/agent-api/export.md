@@ -122,7 +122,7 @@ kept). 503: no XeLaTeX.
 ## Artwork
 
 `POST /api/agent/artwork {recipe, save?}`: a link that opens the board as a picture in the artwork mode, as a **recipe** says, in words that
-hold on any project: one recipe makes the same kind of picture of every codebase. The page that
+hold on any project (one recipe, the same kind of picture of every codebase). The page that
 opens it draws the picture and, with `save` (`png`, `svg`, `png,svg`), saves the files there once
 the board is still; nothing comes back to the server. The link holds no key (a script enters with
 it: `scripts/artwork-batch.mjs` in VisualProof's repository).

@@ -245,7 +245,7 @@ export class Panel {
       queue === null
         ? `<span class="muted">— reached from the statement, proofs skipped</span>`
         : `<span class="seg mini"><button data-tcb-order="review" class="${inOrder && !keyOnly ? "on" : ""}" title="Bottom-up: what a declaration uses before it">Review order</button>` +
-          `<button data-tcb-order="key" class="${keyOnly ? "on" : ""}" title="The key declarations alone, in review order">◆ Key</button>` +
+          `<button data-tcb-order="key" class="${keyOnly ? "on" : ""}" title="The key declarations alone: the trusted ones first, then in review order">◆ Key</button>` +
           `<button data-tcb-order="kind" class="${inOrder ? "" : "on"}" title="Grouped by kind, by name">By kind</button></span>`;
 
     // a part that folds: its heading, saying what is in it, and its body while open; beside the
@@ -301,7 +301,7 @@ export class Panel {
       ${v.type ? `<pre class="code sig">${highlightLean(v.type, (w) => w !== v.name && g.byName.has(w))}</pre>` : ""}
       ${v.doc ? `<div class="doc">${renderDoc(v.doc)}</div>` : ""}
       ${this.hooks.links?.(i) ?? ""}
-      ${this.box.html(i, true, tcb)}
+      ${this.box.html(i, tcb)}
       ${why ? part(PANEL_SECTIONS.why, "Why in the TCB", "", () => why) : ""}
       ${part(PANEL_SECTIONS.stats, "Counts", `${n(inTcb.counted)} in TCB · ${n(used.counted)} uses · ${n(appP)} used by`, () => `
       <div class="stats">

@@ -29,16 +29,21 @@ Group=visualproof-<name>
 Environment=PATH=/var/lib/visualproof-<name>/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
 # the user's home: the clone and its builds go in its cache (~/.cache/visualproof/deploy/), the site
 # in ~/.local/share/visualproof/sites/ unless --site says otherwise; Mathlib's cache in
-# ~/.cache/mathlib, elan's toolchains in ~/.elan
+# ~/.cache/mathlib (with --mathlib-cache own, in the deployment's folder of the cache), elan's
+# toolchains in ~/.elan
 Environment=HOME=/var/lib/visualproof-<name>
 WorkingDirectory=/var/lib/visualproof-<name>
 # the address: https://github.com/<owner>/<repo> (public), git@github.com:<owner>/<repo>.git (a
 # deploy key); --branch, else the remote's default branch; --poll, how often the remote is asked, in
-# minutes. --access-key-file lets in only those given the link; put a proxy with TLS in front of it
-# (and give --public-url) when the server is reached over the internet. --updates auto (the
+# minutes; --build-timeout, the hours past which a build is stopped and failed (6 by default);
+# --mathlib-cache own, Mathlib's cache the deployment's own, in its folder of the cache (about
+# 0.45 GB, the version of Mathlib checked out alone, removed with that folder) rather than the
+# user's.
+# --access-key-file lets in only those given the link; put a proxy with TLS in front of it (and give
+# --public-url) when the server is reached over the internet. --updates auto (the
 # default): the server takes VisualProof's patches by itself at a quiet moment — never during a
 # build — and a build cut short anyway is done again.
-ExecStart=<directory of node>/visualproof serve git@github.com:<owner>/<repo>.git --branch <branch> --poll 2 --port 4173 --host 0.0.0.0 --access-key-file /var/lib/visualproof-<name>/key --jobs 8 --public-url https://<host>
+ExecStart=<directory of node>/visualproof serve git@github.com:<owner>/<repo>.git --branch <branch> --poll 2 --build-timeout 6 --port 4173 --host 0.0.0.0 --access-key-file /var/lib/visualproof-<name>/key --jobs 8 --public-url https://<host>
 Restart=on-failure
 RestartSec=30
 # what the user may not touch: nothing outside its home and /tmp is written by it

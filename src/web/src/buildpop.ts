@@ -137,10 +137,14 @@ export function deployWaiting(d: DeployStatus, st: { state: string; error?: stri
     if (d.asked?.error) return { title: `The remote could not be asked: ${d.asked.error}. It is asked again every ${every}.`, log: null };
     return { title: `Waiting for the first build of ${where}…`, log: null };
   }
+  // what left nothing that can be read: the last build where its `lake build` failed — one that
+  // wrote nothing (so not built: DeploySpec decision 6) may have taken away what the build before
+  // wrote, Lake removing a failed file's `.olean` — else the build said built
+  const failed = l && !l.ok && l.exit !== undefined ? l : null;
   if (st.state === "error")
     return {
-      title: `The build of ${where} at ${shortCommit(d.built)} left nothing that can be read${l && !l.ok ? `: ${failedWhy(l)}` : ""}. The next commit pushed to ${d.branch} is built: the remote is asked every ${every}.`,
-      log: l?.tail ?? st.error ?? null,
+      title: `The build of ${where} at ${shortCommit(failed?.commit ?? d.built)} left nothing that can be read${failed ? `: ${failedWhy(failed)}` : ""}. The next commit pushed to ${d.branch} is built: the remote is asked every ${every}.`,
+      log: failed?.tail ?? st.error ?? null,
     };
   return { title: `Reading the build of ${where} at ${shortCommit(d.built)}…`, log: null };
 }

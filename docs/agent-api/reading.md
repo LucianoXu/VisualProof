@@ -3,8 +3,8 @@
 Search, a declaration's record, source, context, module, and what Lean says; any level.
 `declaration?include=source,context,uses,users,describe,print` gets all six parts in one request.
 `uses`, `users`: [Targets and their TCB](tcb.md); terms: [Words](words.md). MCP: `search`;
-`declaration` (`names` for several); `source` (actions `source`, `context`, `module`); `lean`
-(actions `describe`, `print`).
+`declaration` (`names` for several); `source` (`source`, `context`, `module`); `lean` (`describe`,
+`print`).
 
 ## `GET /api/agent/search?q=&limit=`
 

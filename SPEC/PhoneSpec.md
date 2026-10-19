@@ -43,14 +43,28 @@ there is decisions 3–5's.
 6. **The bar**: Back, the project's name, the build status, the people on the board, search and ⋯.
    The search field is narrow and takes the whole bar while it is used; fields are 16 px, which keeps
    iOS from zooming into them.
+   - **Every popover of the bar stays on the screen** (the owner's decision of 2026-10-19): every
+     popover of the bar (the build status's, ⋯, Share, the library, the name's and help's menus, the
+     people's menu, the search's results) and what shows under it by itself (a mention's notice, a
+     request's answer) opens under the bar, the screen's width less its margin (⋯ and help's menu at
+     its right), never past the screen's edge.
 7. **⋯ holds the rest of the bar** (the owner's choice of 2026-10-14: one menu), each item pressing
    the button it stands for, in this order:
    - **the modes** (the owner's choice of 2026-10-14), under "Mode · what a tap selects": Selection,
      Rests on's three steps under its name, Used by; each with a few words on what a tap selects,
      as a phone has no hover to say it, and the one in use ticked;
-   - Share, the library, Export, Activity, the reader's name, help.
+   - Share, the library, Export, Activity, the conversations, the reader's name, help.
 
    Activity's count of what is new shows on ⋯ too.
+   - **The conversation button is in ⋯** (the owner's decision of 2026-10-19): in the bar, beside
+     the people's initials, it left the build status 33 px ("Bı") and the project's name "«f…" of a
+     390 px screen. Its item, Conversations, opens the conversation window as the button does
+     (CollabSpec decision 13) — open and in front, it closes it. Its count of what is new in Everyone
+     shows on the item and on ⋯, added to Activity's into ⋯'s one count, and its mark (the reader
+     mentioned, or an agent of theirs answered) on the item and at ⋯'s corner, as on the button. A
+     mention's notice shows under the bar by itself (decision 6). A page with no conversation button
+     has no such item: a read-only reader's (CollabSpec decision 11), a snapshot's. ⋯'s popover lies
+     above the floating windows, as the bar's other popovers do.
 8. **The bottom of the screen**: the legend at the left, the zoom's box at the right with fit and
    its ⋯ (edges, the linear form, the theme), which opens upwards. No zoom buttons: fingers zoom.
 9. **The side panel is a drawer from ☰**, from the left, over a shade. It closes on a press outside
@@ -107,7 +121,7 @@ there is decisions 3–5's.
     What takes the panel's place on a larger screen takes the sheet's, at its height: Activity, the
     lost-and-found, and Export's window, the outline it arranges above it.
 21. **The floating windows dock in the sheet's place** — the source windows, the reference window,
-    the conversation with an agent: over the panel, at the sheet's height, side by side where the
+    the conversation window: over the panel, at the sheet's height, side by side where the
     screen is 960 px wide or more and one over the other below that, the declaration's source first.
     The dock places them: no edge resizes one and no drag moves one; its handle, above them, sets its
     height as the sheet's does (the same height). A collapsed window is its pill, at the dock's foot.
@@ -154,7 +168,7 @@ there is decisions 3–5's.
     the screen's width (380 to 640 px) beside the windows, the work area's whole width alone;
     Activity and the lost-and-found take the panel's place.
 34. **The windows are one column at the panel's right, stacked from the top**: the source windows,
-    then the reference window, then the conversation with an agent. One alone takes the column's
+    then the reference window, then the conversation window. One alone takes the column's
     height; several share it, the reference the largest share (3 to the source's and the
     conversation's 2 each), as a page of a PDF is read best tall. With no declaration selected the
     column takes the work area's width. A collapsed window is its pill at the column's foot, or at

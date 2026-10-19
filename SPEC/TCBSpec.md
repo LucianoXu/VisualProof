@@ -53,7 +53,8 @@ assumed — what is trusted (ReviewSpec decision 3) is in a TCB, but never count
    axiom — the project's and any untrusted one outside it. The trusted declarations stay in the
    TCB: they are lit on a board that holds them and told apart beside the number as "+N trusted",
    never added into it; the panel's Its TCB lists what is counted, and its Counts give what a
-   declaration uses the same way, so that the two compare. A theorem stated with many of Mathlib's
+   declaration uses the same way, so that the two compare. A trusted declaration can still be key
+   for a target (ExportSpec decision 1): its key progress tells it apart the same way. A theorem stated with many of Mathlib's
    definitions does not show hundreds of declarations to read.
 
 ## Implementation notes
