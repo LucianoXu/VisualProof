@@ -24,6 +24,7 @@ import { agentName, BOT } from "./agentmark.ts";
 import { stateWords } from "./talk.ts";
 import type { DataSource } from "./data.ts";
 import { escapeHtml } from "./highlight.ts";
+import { MyLink } from "./mylink.ts";
 import type { Store } from "./store.ts";
 import { doubleClickActs, inYours, keyActs, pressActs, WHEEL } from "./surfaces.ts";
 import { typing } from "./typing.ts";
@@ -154,6 +155,8 @@ export class People {
   /** how many private readers the server counts: this page among them once its hello says so */
   private privateAll = 0;
   private menu: WhoMenu;
+  /** the personal link this reader came by, shown to them in the name's window */
+  private myLink: MyLink;
 
   constructor(data: DataSource, store: Store, hooks: PeopleHooks) {
     this.data = data;
@@ -162,11 +165,18 @@ export class People {
     this.hidden = store.data.private === true;
     // said from the first request on: nothing this page opens or arranges goes under its name
     data.privateSession = this.hidden ? this.session : null;
+    this.myLink = new MyLink({
+      data,
+      stream: () => this.stream?.token ?? null,
+      renewed: (invite) => (this.person = invite),
+    });
     this.menu = new WhoMenu($("#who"), $("#who-menu"), {
       mode: () => this.mode,
       name: () => this.name,
       visibility: () => (this.hidden ? "private" : "visible"),
       rename: () => void this.whoClicked(),
+      // offered where the reader came by a personal link alone (the menu asks the mode)
+      myLink: () => void this.myLink.open(),
       setVisibility: (v) => this.setPrivate(v === "private"),
       ...(hooks.askAll ? { askAll: () => hooks.askAll!(), askWhy: () => hooks.askWhy?.() ?? null } : {}),
     });
@@ -195,8 +205,10 @@ export class People {
         return this.setName(this.person.name);
       }
       this.mode = id.mode;
-      // a link revoked under this page, which the key still lets in: a guest from now on
+      // a link revoked under this page, or made anew in another browser, which the key still lets
+      // in: a guest from now on
       if (id.revoked) this.why = `Your personal link was revoked${id.revoked.by ? ` by ${id.revoked.by}` : ""}: you are here as a guest, under a name you give.`;
+      else if (id.replaced) this.why = "Your personal link was made anew in another browser: open the new one here to be you again. Meanwhile you are here as a guest, under a name you give.";
       else if (id.taken) this.why = id.taken;
       const kept = S.reviewer && validName(S.reviewer) && !id.taken ? S.reviewer : null;
       this.setName(id.mode === "declared" ? kept : id.name);
@@ -295,6 +307,8 @@ export class People {
       const field = $<HTMLInputElement>("#who-input");
       const err = $("#who-err");
       const linked = this.mode === "person";
+      // the name's form, in the window's place of the personal link (web/src/mylink.ts)
+      if (this.myLink.isOpen) this.myLink.close();
       $("#who-title").textContent = linked ? "Your name" : "Who is reviewing?";
       $("#who-text").textContent = linked
         ? "You came by a personal link: your name is yours (✓), and nobody else can take it while your link is in force. What you did stays yours, under the name you give."

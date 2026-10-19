@@ -4,7 +4,7 @@
 // 0.6.0, of which only a digest was kept, is not shown: its holder makes it anew, and so may any
 // holder — the same id, names and log; the old link and every browser it let in cut off at once and
 // told so, this browser given the new cookie, this page's stream kept. The file stays its owner's
-// alone.
+// alone. And the page: the item in the name's menu, the window's states.
 
 import assert from "node:assert/strict";
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -14,6 +14,9 @@ import { test } from "node:test";
 import { accessPageHtml } from "../src/server/accesspage.ts";
 import { Invites } from "../src/server/invites.ts";
 import type { PersonInvite } from "../src/shared/collab.ts";
+import { ANEW, myLinkHtml } from "../src/web/src/mylink.ts";
+import { menuHtml } from "../src/web/src/whomenu.ts";
+import type { NameMode } from "../src/web/src/whomenu.ts";
 import { site, stream } from "./site.ts";
 import type { Json } from "./site.ts";
 
@@ -249,4 +252,29 @@ test("the file: the token kept beside its digest, the last old digests, mode 600
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the page: My personal link in the name's menu of whoever came by one alone; the window says what making it anew does", () => {
+  const menu = (mode: NameMode, myLink = true) =>
+    menuHtml({ mode: () => mode, name: () => "Bob", visibility: () => "visible", rename: () => {}, setVisibility: () => {}, ...(myLink ? { myLink: () => {} } : {}) });
+  assert.match(menu("person"), /data-act="mylink"><span class="wm-t">My personal link…<\/span>/);
+  for (const mode of ["declared", "header", "none"] as const) assert.doesNotMatch(menu(mode), /mylink/, mode);
+  assert.doesNotMatch(menu("person", false), /mylink/);
+  // the link, escaped; Copy; whoever has it is them; making it anew offered below
+  const shown = myLinkHtml({ kind: "link", link: 'http://h/i/vpp_0123456789_"<x>', made: false, copied: null });
+  assert.match(shown, /value="http:\/\/h\/i\/vpp_0123456789_&quot;&lt;x&gt;"/);
+  assert.match(shown, /Whoever has this link comes in as you: keep it to yourself\./);
+  assert.match(shown, /data-ml-copy>Copy</);
+  assert.match(shown, /data-ml-anew>Make it anew…</);
+  assert.match(myLinkHtml({ kind: "link", link: "l", made: true, copied: true }), /Made anew: the old link lets nobody in any more.*data-ml-copy>Copied</s);
+  // a link made before 0.6.0: not shown, made anew
+  const old = myLinkHtml({ kind: "old" });
+  assert.match(old, /made before VisualProof 0\.6\.0/);
+  assert.doesNotMatch(old, /<input/);
+  assert.match(old, /data-ml-anew>Make my link anew…</);
+  // asked before: what it cuts off, and that this browser stays in
+  const ask = myLinkHtml({ kind: "confirm", busy: false, error: null });
+  assert.ok(ask.includes(ANEW));
+  assert.match(ANEW, /every browser it let you in .* is cut off; this browser stays in/);
+  assert.match(myLinkHtml({ kind: "confirm", busy: true, error: null }), /data-ml-confirm disabled/);
 });
