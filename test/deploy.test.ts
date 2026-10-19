@@ -67,7 +67,7 @@ writeFileSync(
   LAKE,
   `#!/bin/sh
 echo "lake $*" >> "${LAKE_LOG}"
-if [ "$1" = "exe" ]; then echo "cache: 3 files in \${MATHLIB_CACHE_DIR:-the user's cache}"; exit 0; fi
+if [ "$1" = "exe" ]; then echo "cache: 3 files in \${MATHLIB_CACHE_DIR:-the shared cache}"; exit 0; fi
 n=0
 if [ -f SLOW ]; then while [ ! -f "${GO}" ] && [ $n -lt 1200 ]; do sleep 0.05; n=$((n+1)); done; fi
 mkdir -p .lake/build/lib/lean
@@ -480,7 +480,7 @@ test("Mathlib's cache: the deployment's own in its folder with --mathlib-cache o
   await shared.d.settled();
   const log = readFileSync(join(shared.folder.logs, `${b}.log`), "utf8");
   assert.match(log, /^\$ lake exe cache get$/m);
-  assert.ok(log.includes(`cache: 3 files in ${process.env.MATHLIB_CACHE_DIR || "the user's cache"}\n`), log);
+  assert.ok(log.includes(`cache: 3 files in ${process.env.MATHLIB_CACHE_DIR || "the shared cache"}\n`), log);
 });
 
 test("a commit that changes the toolchain: the project and Lean follow it", async () => {
