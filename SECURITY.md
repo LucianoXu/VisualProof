@@ -159,7 +159,8 @@ into the latest release only.
   private channel), is shown again to its maker alone; revoking a token is anyone's with a name.
   Read-only readers have no channel, and their streams carry no message. Where a writer was is
   handed to agents, never sent to pages. A link copied from the page (Copy link, the conversation's
-  box) carries no key: only Share's links let anyone in.
+  box) carries no key, and a link that lets in (the key's, a personal or read-only link's) written
+  or pasted in the box is sent without its secret: only Share's links let anyone in.
 
 ## Secrets at rest
 

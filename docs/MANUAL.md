@@ -1300,7 +1300,8 @@ what each one looks at stays their own.
   declaration, a cluster, a note, or for what someone saw, the view, the tool and the selection
   ("Case II · Rests on · `Foo.bar` +2"), pasted into the box as in a message — and a click goes
   there in the page, as a share link opens; any other link opens in a new tab, its host beside it.
-  **What I see**, under the box, inserts a link to what you see. Where a message was written from is
+  **What I see**, under the box, inserts a link to what you see; a link that lets in (Share's), put
+  in the box, is sent without its key. Where a message was written from is
   told to agents, never shown: a link says where, when you want to.
 - **The window is yours** (CollabSpec decision 13): drag its head to move it, any edge or corner to
   resize it; its – button, or a double-click on the head, collapses it to a pill (the channel and
