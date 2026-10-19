@@ -70,10 +70,11 @@ test("a personal link is made by a named person for a name, listed with who made
     const list = await S.ask("GET", "/api/share/people");
     assert.deepEqual(list.json!.invites.map((p: Json) => [p.name, p.by]), [["Bob", "Olivia"]]);
     assert.equal((await S.ask("GET", "/api/share/people", undefined, { ...OWNER, "x-visualproof-kind": "agent" })).status, 403);
-    // the site directory keeps a digest, readable by its owner alone; never the token
+    // the site directory keeps the link, to show its holder again (the owner's decision of
+    // 2026-10-19, test/mylink.test.ts), readable by its owner alone
     const file = join(S.dir, "state", "person-invites.json");
     const kept = readFileSync(file, "utf8");
-    assert.ok(!kept.includes(secretOf(r.json!.link)), "the secret is not kept");
+    assert.ok(kept.includes(secretOf(r.json!.link)), "the link is kept");
     assert.equal(statSync(file).mode & 0o777, 0o600);
     // revoked: off the list at once, its name free again, for a new link of a new id
     assert.equal((await S.ask("POST", "/api/share/people/revoke", { id: "0123456789" }, OWNER)).status, 404);
