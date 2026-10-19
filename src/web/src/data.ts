@@ -204,6 +204,14 @@ export interface DataSource {
   invite(name: string): Promise<{ invite: PersonInvite; link: string; invites: PersonInvite[] } | { error: string; who?: boolean; taken?: boolean }>;
   /** revoke a personal link: the links in force after, or why not */
   revokeInvite(id: string): Promise<{ invites?: PersonInvite[]; error?: string; who?: boolean }>;
+  /** the personal link this reader came by, shown to them alone (CollabSpec decision 9, the owner's
+   *  decision of 2026-10-19): the link, or null for one made before 0.6.0, which can only be made
+   *  anew; or why not */
+  myLink(): Promise<{ invite: PersonInvite; link: string | null } | { error: string }>;
+  /** this reader's personal link made anew: the same person under a new secret, the old link and the
+   *  browsers it let in cut off, this browser given the new cookie and this page's event stream
+   *  (`stream`, its secret) kept open. The new link, or why not */
+  renewMyLink(stream: string | null): Promise<{ invite: PersonInvite; link: string } | { error: string }>;
   /** the read-only links (CollabSpec decision 11), in force first, each with its address; null
    *  where there are none to have (a snapshot, a server that lets in anyone or is behind a
    *  sign-in, a read-only reader) or the server cannot be reached */
@@ -277,6 +285,8 @@ export interface Identity {
   taken?: string;
   /** the personal link this page came by, revoked: by whom, and when */
   revoked?: { by: string | null; at: string | null; name: string };
+  /** the personal link this page came by, made anew since in another browser: when */
+  replaced?: { at: string; name: string };
   /** a read-only reader (CollabSpec decision 11): let in by a read-only link, or by --public */
   readOnly?: { by: "link" | "public" };
 }
@@ -462,6 +472,8 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     invites: async () => null,
     invite: async () => ({ error: "a snapshot has no server to invite anyone to" }),
     revokeInvite: async () => ({ error: "a snapshot has no server" }),
+    myLink: async () => ({ error: "a snapshot has no server" }),
+    renewMyLink: async () => ({ error: "a snapshot has no server" }),
     readOnlyLinks: async () => null,
     makeReadOnly: async () => ({ error: "a snapshot has no server to share" }),
     revokeReadOnly: async () => ({ error: "a snapshot has no server" }),
@@ -593,6 +605,14 @@ function serverSource(): DataSource {
         .catch(() => ({ error: "the server could not be reached" })),
     revokeInvite: (id) =>
       fetch("/api/share/people/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
+    myLink: () =>
+      fetch("/api/share/people/mine", { method: "POST", headers: headers(), body: "{}" })
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
+    renewMyLink: (stream) =>
+      fetch("/api/share/people/mine/renew", { method: "POST", headers: headers(), body: JSON.stringify(stream ? { stream } : {}) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
     readOnlyLinks: () =>

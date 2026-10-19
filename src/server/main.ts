@@ -32,6 +32,7 @@ import { packEdges } from "../shared/edgecodec.ts";
 import { Access, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
+import type { InviteCheck } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
 import { AgentTokens, bearerOf, DEFAULT_DAYS, invalidAgentName, looksLikeToken, TOKEN_DAYS } from "./tokens.ts";
@@ -752,12 +753,13 @@ export class App {
   /** Inviting a person (CollabSpec decision 9), for people: the personal links in force (GET), a new
    *  one for a person named in the body (POST), and revoking one (POST …/revoke). Making and
    *  revoking need a name: who made a link, and who revoked it, is said in Share. The link itself
-   *  is answered once, to whoever made it: the server keeps only its digest (server/invites.ts). */
+   *  is answered once to whoever made it, and again to its holder alone (`mine`). */
   private async sharePeople(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Personal links are for people: an agent cannot make, list or revoke them." }, 403);
+    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Personal links are for people: an agent cannot make, list, show or revoke them." }, 403);
     if (this.ids.header) return sendJson(res, { error: "Names come from the sign-in in front of this server: it has no personal links." }, 404);
     const invites = this.live.invites;
     const path = url.pathname.replace(/\/+$/, "");
+    if (path === "/api/share/people/mine" || path === "/api/share/people/mine/renew") return this.myLink(req, res, path);
     const list = () => invites.inForce().map(Invites.info);
     if (path === "/api/share/people" && req.method === "GET") return sendJson(res, { invites: list() });
     if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);
@@ -778,6 +780,35 @@ export class App {
     // the link as the person will open it: the server's address as this page reached it
     const link = `${this.publicUrl ?? reachedAt(req)}${INVITE_PATH}${made.token}`;
     return sendJson(res, { invite: Invites.info(made.record), link, invites: list() });
+  }
+
+  /** The personal link a page came by, for its holder alone (CollabSpec decision 9, the owner's
+   *  decision of 2026-10-19): shown again (POST /api/share/people/mine; `link` null for a link made
+   *  before 0.6.0, of which the server kept only the digest), or made anew (POST …/mine/renew,
+   *  `{stream}` the event stream of the page asking, which stays open) — the same id under a new
+   *  secret, the old link and the browsers it let in cut off, this browser given the new cookie.
+   *  Whoever else asks is refused: its maker, a guest, an agent; a read-only reader's page posts
+   *  nothing here (server/readonlygate.ts). Asked for by POST, as an agent's prompt is, so that the
+   *  browser sends its Origin and the link names the server as the page reached it. */
+  private async myLink(req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+    const p = this.ids.person(req);
+    if (!p) return sendJson(res, { error: "A personal link is shown to its holder alone, in a browser it let in: this page came by none.", holder: false }, 403);
+    if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);
+    const invites = this.live.invites;
+    const address = this.publicUrl ?? reachedAt(req);
+    if (path === "/api/share/people/mine") {
+      const token = invites.tokenOf(p.id);
+      return sendJson(res, { invite: Invites.info(p), link: token ? `${address}${INVITE_PATH}${token}` : null });
+    }
+    const r = await this.json(req, 4096);
+    if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
+    const keep = (r.body as { stream?: unknown } | null)?.stream;
+    const made = invites.renew(p.id, { keep: typeof keep === "string" ? keep : undefined });
+    if (!made) return sendJson(res, { error: "There is no such personal link in force." }, 404);
+    // this browser stays in: the cookie of the new link, beside what the request was given already
+    const set = res.getHeader("set-cookie");
+    res.setHeader("set-cookie", [...(Array.isArray(set) ? set : set === undefined ? [] : [String(set)]), invites.cookie(made.record)]);
+    return sendJson(res, { invite: Invites.info(made.record), link: `${address}${INVITE_PATH}${made.token}` });
   }
 
   /** Read-only links (CollabSpec decision 11), for people: every link (GET), a new one (POST), and
@@ -819,7 +850,7 @@ export class App {
       return void res.end();
     }
     if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
-    if (c) return sendText(req, res, revokedWords(c.record, "personal") + "\n", "text/plain; charset=utf-8", 410);
+    if (c) return sendText(req, res, endedWords(c) + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
 
@@ -1001,7 +1032,13 @@ export class App {
       // read, where nothing else lets them in
       if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length), path);
       const link = this.ids.link(req);
-      const cookies: string[] = link && "ended" in link ? [live.invites.forget()] : [];
+      // a link that ended: its cookie is forgotten as a page loads, once the page has said so. Not
+      // before: the page's requests meanwhile are told (a browser the key lets in too, as a guest,
+      // by /api/identity: web/src/people.ts); and the browser that made a link anew has the new
+      // cookie under the same name, which a request of its pages still on its way with the old one
+      // would answer with the forgetting after it
+      const forget = link && "ended" in link && (path === "/" || path === "/index.html" || asksForPage(req, path));
+      const cookies: string[] = forget ? [live.invites.forget()] : [];
       const ro = this.access && !this.ids.header ? live.readOnly.ofCookie(req.headers.cookie) : null;
       if (ro && "ended" in ro) cookies.push(live.readOnly.forget());
       if (this.access) {
@@ -1014,7 +1051,7 @@ export class App {
           // page, reloaded, says the link no longer opens the site (decision 7: to a browser, the
           // page of a link that does not, which names nobody); the cookie is forgotten there, once
           // it has been said
-          const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? revokedWords(link.record, "personal") : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
+          const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? endedWords(link) : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
           if (revoked) {
             if (asksForPage(req, path)) {
               res.setHeader("set-cookie", cookies);
@@ -1184,18 +1221,19 @@ export class App {
       if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent, reader !== undefined);
       // who the reader is (CollabSpec decisions 3 and 9): the name their page gives, the proxy's, or
       // their personal link's — with the link, and whether the page's own name is a link holder's
-      // and not theirs; a link revoked says by whom
+      // and not theirs; a link revoked says by whom, one made anew since this browser had it, when
       if (path === "/api/identity" && req.method === "GET") {
         const person = this.ids.person(req);
         const holder = this.ids.taken(req);
-        const ended = link && "ended" in link ? link.record : null;
+        const ended = link && "ended" in link ? link : null;
         if (reader !== undefined) return sendJson(res, { mode: this.ids.mode, name: null, readOnly: { by: reader === "public" ? "public" : "link" } });
         return sendJson(res, {
           mode: this.ids.mode,
           name: this.ids.who(req),
           ...(person ? { person: Invites.info(person) } : {}),
           ...(holder ? { taken: taken(holder) } : {}),
-          ...(ended ? { revoked: { by: ended.revokedBy, at: ended.revoked, name: ended.name } } : {}),
+          ...(ended?.ended === "revoked" ? { revoked: { by: ended.record.revokedBy, at: ended.record.revoked, name: ended.record.name } } : {}),
+          ...(ended?.ended === "replaced" ? { replaced: { at: ended.at, name: ended.record.name } } : {}),
         });
       }
       if (path === "/api/identity" && req.method === "POST") return this.identity(req, res);
@@ -1351,6 +1389,13 @@ export class App {
 /** What a revoked link's holder is told, opening it or on a page it had opened. */
 function revokedWords(r: { revokedBy?: string | null; revoked?: string | null }, kind: "personal" | "read-only"): string {
   return `This ${kind} link was revoked by ${r.revokedBy} on ${(r.revoked ?? "").slice(0, 10)}. Ask whoever ${kind === "personal" ? "invited you" : "gave it to you"} for a new one.`;
+}
+
+/** What a personal link that lets nobody in any more is told (410): revoked, by whom and when, or
+ *  made anew by its holder, and when (CollabSpec decision 9). */
+function endedWords(c: Extract<InviteCheck, { ended: unknown }>): string {
+  if (c.ended === "revoked") return revokedWords(c.record, "personal");
+  return `This personal link was made anew on ${c.at.slice(0, 10)}: it lets nobody in any more. Open the new one instead (My personal link, in the menu under your name where it was made anew).`;
 }
 
 /** an artwork's font file (assets/webfonts/) */

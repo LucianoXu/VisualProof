@@ -284,10 +284,12 @@ export class Live {
     this.invites = new Invites(dirs.site);
     // every page knows the names the people invited by a link go by, so that what each did shows
     // under the name they go by now; a link revoked cuts its pages off at once, as it does its
-    // requests: their streams end, and come back only if the key lets them in
+    // requests: their streams end, and come back only if the key lets them in. A link made anew
+    // does the same, but to the page that made it anew (`keep`): the other pages of its browser,
+    // given the new cookie, come back as they were
     this.invites.onChanged = () => this.send("people", this.invites.people());
-    this.invites.onEnded = (r) => {
-      for (const st of [...this.streams.values()]) if (st.person === r.id) this.close(st);
+    this.invites.onEnded = (r, keep) => {
+      for (const st of [...this.streams.values()]) if (st.person === r.id && (keep === undefined || st.token !== keep)) this.close(st);
     };
     this.readOnly = new ReadOnlyLinks(dirs.site);
     this.readOnly.onEnded = (l) => {

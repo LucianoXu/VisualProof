@@ -980,6 +980,12 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .modal-box { width: min(380px, calc(100vw - 32px)); padding: 18px 18px 14px; border-radius: 14px; display: flex; flex-direction: column; gap: 10px; }
 .modal-title { font-weight: 600; font-size: 15px; }
 .modal-text { color: var(--text-2); font-size: 12.5px; line-height: 1.45; }
+/* My personal link (web/src/mylink.ts): making it anew, below the link, apart from Copy */
+.ml-anew {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 10px;
+  border-top: 1px solid var(--line); color: var(--text-2); font-size: 12px;
+}
+.ml-anew .rv-btn { flex: none; }
 /* Export (web/src/exportmodal.ts): which view, what its document holds, its title and author line,
    the common settings, then the job. At the right, over nothing but the panel: the board is drawn
    in the linear form beside it while it is open (ExportSpec decision 18) */

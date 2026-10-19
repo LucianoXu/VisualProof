@@ -93,11 +93,25 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      log says who is who by itself. Logs named by a guest's name are read as before.
    - **Names are protected**: a holder's name carries ✓ wherever names show, and while the link is in
      force no guest (in any case or Unicode form) and no other link may take it.
-   - **The link** is shown once to its maker; the server keeps only its digest. **It lasts until
+   - **The link** is shown once to its maker, as it is made, and again to its holder alone (the
+     owner's decision of 2026-10-19): **everyone can show their own personal link**, to open the
+     site as themselves in another browser, on another device. The server keeps it in full, as it
+     keeps the read-only links and the agents' tokens. The reader a personal link let in finds
+     *My personal link* in their name's menu, shown in the name's window: the link, Copy, and one
+     line, that whoever has it is them. Only the holder sees it — not its maker, not anyone else
+     (others may revoke it, as before); guests, read-only readers, agents and servers behind
+     `--identity-header` have no such item, and the server refuses them. **It lasts until
      revoked**: a person's link is who they are in the review, and an expiry would make them someone
      else with a new log (an agent's token, a credential for a piece of work, lasts days). Revoking
      cuts it off at once, its pages too; a browser that also holds the key goes on as a guest.
      People with a name make and revoke links; agents never.
+   - **Made anew** (the owner's decision of 2026-10-19): *Make my link anew*, beside the link, gives
+     it a new secret under the same id — the same person, log and names. The old link and every
+     browser it let in are cut off at once, which the window says before it is done; this browser
+     stays in, given the new cookie. A link made before 0.6.0, of which the server kept only a
+     digest, cannot be shown: its holder is offered this instead; any holder who thinks their link
+     leaked is offered it too. The timeline and Share's list record nothing of it; revoking is
+     unchanged.
    - A private invited person is as decision 8 says, their review keeping its ✓.
 10. **Asking others to follow.** *Ask everyone to follow me* (the name's menu) asks everyone online,
     private readers included (counted, never named), except those already following; *Ask … to
@@ -382,17 +396,34 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   snapshot once, its windows becoming its own, and drops `snap=` from the address; a snapshot it
   cannot read leaves the address alone, and it says so.
 - **Personal links**: `/i/vpp_<10 hex id>_<32 random bytes, base64url>`. The site's
-  `person-invites.json` (mode 600) keeps per link the id, a digest of the token (never the token),
-  the current and earlier names, maker, revoked (by whom), lastUsed (written at most once a minute);
-  revoked links stay, so their holders' work keeps its name. Opening a link answers 303 to `/` with
-  the cookie `visualproof_person_<12 hex of this server's own>`, valued the id and a digest of the
-  kept digest (HttpOnly, SameSite=Lax, 400 days, renewed at each load), compared in constant time; it
-  lets the browser in whatever the access key. A revoked link answers 410 (who, when) — to a browser
-  asking for a page that the key or a personal link of its own does not let in, the page of a link
-  that does not open the site (decision 7), as to a link never made; its cookie admits nobody
-  and is cleared. A guest's request giving a holder's name counts as nameless. Making, listing and
+  `person-invites.json` (mode 600) keeps per link the id, the token (since 0.6.0; before, a digest
+  of it alone) and its digest, the current and earlier names, maker, revoked (by whom), lastUsed
+  (written at most once a minute), and, for a link made anew, its last 16 old digests with when each
+  was replaced; revoked links stay, so their holders' work keeps its name. A token in the file that
+  is not its link's own (of another id, or not of its digest) is dropped as it is read, the link then
+  as one made before 0.6.0. Opening a link answers 303 to `/` with the cookie
+  `visualproof_person_<12 hex of this server's own>`, valued the id and a digest of the digest
+  (HttpOnly, SameSite=Lax, 400 days, renewed at each load), compared in constant time; it lets the
+  browser in whatever the access key. A revoked link answers 410 (who, when) — to a browser asking
+  for a page that the key or a personal link of its own does not let in, the page of a link that
+  does not open the site (decision 7), as to a link never made; its cookie admits nobody and is
+  cleared as a page loads (or is shown that page), not by the requests before, so that a browser
+  the key lets in too, a guest from then on, is told by `/api/identity` (`revoked`: who, when) —
+  and a request of a browser that made its link anew, on its way with the old cookie, never clears
+  the new one. An old link or cookie of a link made anew answers as a revoked one's, saying when it
+  was made anew (`replaced`: `{at, name}`). A guest's request giving a holder's name counts as nameless. Making, listing and
   revoking links: 403 to agents, 404 behind `--identity-header`; making and revoking need a name.
   The holder's id travels with what they record (`person`), never with a private reader's layout.
+- **The holder's own link** (decision 9, the owner's decision of 2026-10-19): `POST
+  /api/share/people/mine` answers `{invite, link}`, `link` null for a link made before 0.6.0; `POST
+  /api/share/people/mine/renew` (`{stream}`, the asking page's event stream by its hello secret,
+  optional) gives the link a new token under the same id and answers `{invite, link}` with the new
+  cookie; every event stream of the link ends but `stream`, the other pages of its browser coming
+  back with the new cookie. By POST, so that the browser sends its Origin and the link names the
+  server as the page reached it (`--public-url` first). To the holder alone, by the link's cookie:
+  403 to anyone else — its maker, a guest, an agent (a token of its own: 404), a read-only reader
+  (the gate); 404 behind `--identity-header`; 405 to GET. The timeline and Share's list record
+  nothing of either.
 - **Read-only links** (server/readonly.ts): `/r/vpr_<10 hex id>_<32 random bytes, base64url>`. The
   site's `readonly-links.json` (mode 600) keeps per link the id, the token, its maker (or null),
   revoked (by whom), lastUsed (written at most once a minute); revoked links stay. Opening a link

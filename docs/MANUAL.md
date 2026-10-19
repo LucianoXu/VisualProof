@@ -1229,10 +1229,11 @@ what each one looks at stays their own.
   show it again from the list. A read-only reader's Share has this tab alone, with the link they
   came by. Started with `--public` too, the address alone is read-only: whoever comes without the
   key or a link of their own reads, and this tab gives the address. **Invite a person** (CollabSpec decision 9): type their
-  name, **Create link**, and send them the personal link, copied at once and shown only then. It
-  lets them in and says who they are: their name carries a ✓ wherever it shows, nobody else can
-  take it, and when they change it from the menu under it, what they did stays theirs and shows
-  under the new name. It lasts until revoked. **AI agent** (AgentSpec decision 7): give the agent a name (*your* AI by default,
+  name, **Create link**, and send them the personal link, copied at once and shown to you only
+  then (they find it again under their name: **My personal link**, below). It lets them in and says
+  who they are: their name carries a ✓ wherever it shows, nobody else can take it, and when they
+  change it from the menu under it, what they did stays theirs and shows under the new name. It
+  lasts until revoked. **AI agent** (AgentSpec decision 7): give the agent a name (*your* AI by default,
   `Alice's AI`), what it may do (read, advise — the default — or full, never more than `--agents`)
   and for how long (1, 7 or 30 days); **Create** makes a token of its own, under your name, and a
   prompt that carries it, copied at once: paste it into any agent that can make HTTP requests, and
@@ -1250,9 +1251,15 @@ what each one looks at stays their own.
   opens its menu (the arrows, Enter and Esc work in it too): **Change name**, at any time — but not
   to the name of someone invited by a personal link, which the window says; behind a sign-in proxy
   (`--identity-header`) the name is the proxy's and the menu only shows it; come by a personal link,
-  it is yours, with its ✓, and a new one keeps what you did — and **Visibility** (CollabSpec
-  decision 8). *Visible*, the default: the others see you
-  and where you look, and can follow you. *Private*: your page tells nobody where you are; you are
+  it is yours, with its ✓, and a new one keeps what you did — then, come by a personal link, **My
+  personal link** (CollabSpec decision 9): the link you came by, to open the site as you in another
+  browser or on another device, with **Copy**. Whoever has it comes in as you, so it is shown to you
+  alone — not to whoever made it, nor to anyone else. **Make it anew** gives you a new link and
+  keeps you who you are (your name, its ✓, what you recorded): the old link, and every browser it
+  let you in, are cut off at once (asked first), while this browser stays in; do it if you think
+  someone else has your link. A link made before 0.6.0, when the server kept only a digest of it,
+  cannot be shown: make it anew to have it here. Then **Visibility** (CollabSpec decision 8).
+  *Visible*, the default: the others see you and where you look, and can follow you. *Private*: your page tells nobody where you are; you are
   not in the bar nor in "Also here", and nobody can follow you (you may still follow others). The
   others see only how many private readers there are ("+2 private", beside the initials). What you
   change of the layout — pins, folds, re-layouts, scopes, the views you make, rename or delete — is
@@ -1366,9 +1373,10 @@ what each one looks at stays their own.
   [HistorySpec.md](../SPEC/HistorySpec.md)),
   `events.jsonl` (90 days, 5,000 events), `tcb-baselines.json`, `agent-tokens.json` (the agents'
   tokens, so that their prompts can be shown again, readable by the owner alone as the access key
-  is; ended ones are forgotten after 30 days), `person-invites.json` (the personal links: a digest
-  of each, never the link, the names its holder had, who made it, when it was last used; readable
-  by the owner alone; revoked ones are kept), `chat/public.jsonl` (the public channel, 90 days),
+  is; ended ones are forgotten after 30 days), `person-invites.json` (the personal links, so that
+  each is shown again to its holder — a digest alone of one made before 0.6.0 —, the names its
+  holder had, who made it, when it was last used; readable by the owner alone as the access key is;
+  revoked ones are kept), `chat/public.jsonl` (the public channel, 90 days),
   `chat/<token id>.jsonl` (each agent's private channel, 30 days).
 
 ## How the TCB is computed
@@ -1492,7 +1500,7 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `extractor/Usage.lean`, `server/usage.ts` | the usage pass: one module elaborated → the notation each command is written in and its exact context; the runner, its cache and the merge into the graph |
 | `server/main.ts`, `server/project.ts`, `server/extract.ts`, `server/pipeline.ts`, `server/view.ts`, `server/live.ts`, `server/status.ts` | the command line and HTTP; project discovery, extraction, what the page loads, the live loop and build status |
 | `server/review.ts`, `server/reviewapi.ts`, `server/hover.ts` | the review's logs, what the page records in them, Lean's language server for hovers, `describe` and `print` |
-| `server/access.ts`, `server/invites.ts`, `server/identity.ts`, `server/presence.ts`, `server/events.ts`, `server/snapshot.ts`, `web/src/people.ts`, `web/src/whomenu.ts`, `web/src/verified.ts` | the access link, personal links, names and who records what (a private reader's layout without a name, a link holder's under their link), presence, the timeline, the exported snapshot; on the page, the others and following, the menu under the name, and a link holder's ✓ |
+| `server/access.ts`, `server/invites.ts`, `server/identity.ts`, `server/presence.ts`, `server/events.ts`, `server/snapshot.ts`, `web/src/people.ts`, `web/src/whomenu.ts`, `web/src/mylink.ts`, `web/src/verified.ts` | the access link, personal links, names and who records what (a private reader's layout without a name, a link holder's under their link), presence, the timeline, the exported snapshot; on the page, the others and following, the menu under the name, a link holder's own link, and their ✓ |
 | `web/` | the page: scene graph, motion, bundles, WebGL renderer (`web/src/gl/`), panels, tabs and boards, history, the source windows (`web/src/sourcewin.ts`, the following and pinned ones `web/src/sources.ts`), the conversations (`web/src/talk.ts`, their window `web/src/chatwin.ts`, its box `web/src/chatinput.ts`, links as chips `web/src/chatlinks.ts`), the floating windows they all are (`web/src/floatwin.ts`) |
 | `web/src/timemachine.ts`, `web/src/past.ts`, `shared/pastgraph.ts`, `web/src/layoutworker.ts`, `web/src/layoutqueue.ts` | the Time Machine (HistorySpec): its bar, the past graph and its marks against now (shared with the server, which prints a view of a past build from it), the build aimed at and the one shown (latest wins), its layouts off the page's thread, in turn |
 | `web/src/phone.ts` | a phone's page (PhoneSpec): ⋯ of the bar, the side panel's drawer, the panel's sheet; its styles are the last block of `web/style.css`, the fingers' gestures in `web/src/canvas.ts` |

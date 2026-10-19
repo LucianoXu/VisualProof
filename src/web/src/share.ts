@@ -31,7 +31,8 @@
 // *Invite a person*: a personal link for one person, named by whoever invites them
 // (server/invites.ts). It lets them in and says who they are: their name carries a ✓, nobody else
 // can take it, and they can change it without what they did leaving them. The link is shown once,
-// here, to be sent to that person; the server keeps only a digest of it.
+// here, to be sent to that person; they find it again in the menu under their name, and nobody else
+// does (the owner's decision of 2026-10-19, web/src/mylink.ts).
 //
 // Below the tabs, the read-only links in force, each with who made it, when and when it was last
 // used, the link to be shown again, and a Revoke; the personal links in force, the same but for the
@@ -443,7 +444,7 @@ export class Share {
         `<div class="sh-title">The personal link for ${who}${VERIFIED}</div>` +
         `<input class="sh-url sh-invite-url" readonly value="${escapeHtml(i.link)}" aria-label="The personal link" spellcheck="false">` +
         this.exactRow() +
-        `<div class="sh-note muted">${i.copied ? "Copied. " : ""}For ${who} alone: it signs them in as ${who}${VERIFIED}. Shown only now.</div>` +
+        `<div class="sh-note muted">${i.copied ? "Copied. " : ""}For ${who} alone: it signs them in as ${who}${VERIFIED}. Shown to you only now; ${who} finds it again under their name.</div>` +
         `<div class="modal-actions"><button class="rv-btn" data-invite-again>Another person</button><button class="rv-btn primary" data-copy-invite>${i.copied ? "Copy again" : "Copy"}</button></div>`
       );
     }
@@ -688,7 +689,7 @@ function until(iso: string): string {
 }
 
 /** Put `text` on the clipboard; false when the browser will not. */
-async function copy(text: string): Promise<boolean> {
+export async function copy(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(text);
