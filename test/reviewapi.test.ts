@@ -147,7 +147,7 @@ test("targets are the project's declarations; a checkpoint is no longer recorded
     const before = readFileSync(join(W.dir, "review", "log", logFileName("Alice", false)), "utf8");
     const c = W.post({ op: "checkpoint", name: "N.t" });
     assert.equal(c.status, 400);
-    assert.match(c.body.error, /op is opinion, target, trust or key/);
+    assert.match(c.body.error, /op is opinion, withdraw, target, trust or key/);
     assert.equal(readFileSync(join(W.dir, "review", "log", logFileName("Alice", false)), "utf8"), before);
     assert.deepEqual(Object.keys(W.review.data.targets["N.t"]).sort(), ["at", "by"]);
     // trust: a dotted prefix, the timeline told when it changes something

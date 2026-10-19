@@ -24,7 +24,7 @@
 import { opinionRef } from "./comment.ts";
 import type { ClusterMode } from "./graph.ts";
 import { CLUSTER_MODES } from "./places.ts";
-import type { ReviewData, Verdict } from "./review.ts";
+import type { ReviewData, Verdict, Withdrawal } from "./review.ts";
 import type { ViewData } from "./views.ts";
 import { viewTitle } from "./views.ts";
 import type { ProjectNote } from "./projectnotes.ts";
@@ -47,6 +47,8 @@ export interface LostEntry {
   at: string;
   /** an opinion recorded for `by` by someone else at one screen (ReviewSpec decision 8): who typed it */
   recordedBy?: { by: string; person?: string };
+  /** an opinion withdrawn since (ReviewSpec decision 9): when, and who typed it for `by` */
+  withdrawn?: Withdrawal;
   /** an opinion's verdict and comment */
   verdict?: Verdict;
   comment?: string;
@@ -130,6 +132,7 @@ export function lostEntries(
         name,
         ...who(o),
         ...(o.recordedBy ? { recordedBy: o.recordedBy } : {}),
+        ...(o.withdrawn ? { withdrawn: o.withdrawn } : {}),
         verdict: o.verdict,
         ...(o.comment ? { comment: o.comment } : {}),
         ...(was.length ? { aliases: was.map((n) => lostKey.opinion(name, n, o.at)) } : {}),

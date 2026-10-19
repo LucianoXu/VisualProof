@@ -5,9 +5,9 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
 ## Decisions
 
 1. **Opinions, not consensus.** An opinion is *approve* or *comment* (which needs text). A
-   reviewer's new opinion replaces their earlier one; there is no withdraw. Every opinion is kept
-   with who, when, the toolchain, the version and the text judged. Nothing defines "the team
-   approved": the page shows each reviewer's opinion and a summary.
+   reviewer's new opinion replaces their earlier one; their current one can be withdrawn (decision
+   9). Every opinion is kept with who, when, the toolchain, the version and the text judged. Nothing
+   defines "the team approved": the page shows each reviewer's opinion and a summary.
 2. **An opinion is about one version of one declaration** (TCBSpec decisions 1 and 3); on another
    version it is *stale*. Reviewing a declaration means "it says what it should, given that what it
    uses means what it says", so a change underneath stales only what changed. An opinion records the
@@ -50,14 +50,29 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
    - **It says who recorded it**: shown under their name, "recorded by" the one who typed it, and
      without their ✓ where they are invited (CollabSpec decision 9): they did not record it
      themselves. An invited person may be recorded for like anyone.
-   - **Opinions only**: targets, trust, key marks, moves and the library stay each writer's own.
+   - **Opinions only**, and their withdrawal (decision 9): targets, trust, key marks, moves and the
+     library stay each writer's own.
    - **People only**: a person records for another person; an agent never records for anyone, a
      read-only reader records nothing (CollabSpec decision 11), and nobody records for an agent.
    - **One person each time**: several people approve separately; there is no joint opinion.
+9. **Withdrawing an opinion** (the owner's decision of 2026-10-19). A reviewer may withdraw their
+   current opinion on a declaration, approve or comment, stale or not.
+   - **Afterwards they have no opinion there**: every status, count and queue is as if they had
+     given none; their earlier opinions are not restored. A later opinion of theirs stands as any.
+   - **An event, never an erasure**: a line of their log ("The logs"). The opinion and its
+     withdrawal stay in the declaration's history, which the panel's list of opinions shows ("Alice
+     withdrew their approval"); the timeline (Activity) records it, leading to the declaration.
+   - **Speaking for** (decision 8): whoever is at the keyboard may withdraw the current opinion of
+     the person they speak for, recorded as by them, as recording one is.
+   - **Agents**: an agent at level advise or full (AgentSpec decision 9) withdraws its own advice,
+     never anyone else's opinion or advice; nobody withdraws an agent's advice for it.
+   - A read-only reader withdraws nothing (CollabSpec decision 11); a private reader as a person
+     (CollabSpec decision 8).
 
 ## What the page shows
 
-- **Status**, from people's latest opinions: *commented* if one on the present version comments,
+- **Status**, from people's current opinions (none where withdrawn, decision 9): *commented* if one
+  on the present version comments,
   else *approved* if one approves, else *stale* if any exist, else *not yet reviewed*. Comment
   before approve is one order, `VERDICT_ORDER` (shared/review.ts), read by every status, count,
   colour and query.
@@ -65,13 +80,26 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   empties when the opinion is taken and keeps its text when refused. Each reviewer's latest opinion
   (stale ones marked, with What changed) and the history; ☆ Mark as target; for a target, progress
   (key declarations, then all) and its view (ViewSpec decision 29).
+- **A review box** stands in the panel and in each source window, following or pinned, each on its
+  own declaration, with the same controls but the target's (☆ Mark as target, progress, its view).
+- **Withdraw** (decision 9) stands beside the current opinion of whoever the box records for — the
+  reader, or the person they speak for — in every review box. An approval goes at once; a comment is
+  asked about first; the page says what it did. The history lists an opinion withdrawn, faded, and
+  its withdrawal at its time ("Alice withdrew their approval"; "recorded by" the typist where they
+  spoke for its author).
+- **The key mark** (ExportSpec decision 1): where the reader's focus is a target whose review set
+  holds the declaration, *◇ Mark as key for T* / *◆ Key for T* (`k`), in every review box alike —
+  the panel's, and each source window's on its own declaration; in a following window, a control of
+  a followed surface (CollabSpec, "Following ends"). Who may not mark sees *◆ Key for T* where it
+  is marked. The target is key without a mark, and offered none.
 - **Speaking for** (decision 8), beside Approve and Comment wherever a review box stands: yourself to
   start with; the people the site knows — invited people, and the names in the logs, agents left
   out; or someone else, by a name typed. The choice stays, on every review box of the page, until
   it is changed back; while it is someone else's, the box carries a coloured line, "Recording for
   <name>", and its buttons say so ("Approve for <name>"). An opinion recorded for someone shows
   under their name, "recorded by <typist>", without ✓; Activity says "<typist> recorded <name>'s
-  approval of X" (or comment); the agents' API gives `recordedBy` beside such an opinion.
+  approval of X" (or comment), and of a withdrawal "<typist> withdrew <name>'s approval of X"; the
+  agents' API gives `recordedBy` beside such an opinion and such a withdrawal.
 - **Comments** are plain text in the logs, given to agents as written, read by the page as light
   Markdown: `>` quotes, `code`, fenced code (```` ```lean ```` highlighted), **bold**, *italics*;
   all else, HTML included, is text. A full declaration name in backticks links (a generated name to
@@ -169,9 +197,17 @@ agent's ends `.agent.jsonl`; an invited person's is the link's id, `3f2a9c1b07.p
 {"op":"trust","prefix":"@external","on":true,"by":"Alice","at":"…"}
 ```
 
-- **Events** (each with `op`, `at`, `by`): `opinion`, `target`, `trust`, `key` (ExportSpec decision
-  1), `move` (HistorySpec decisions 7–10), `name`, and the library's `file`, `file-edit`,
-  `file-archive`, `file-restore`, `link`, `link-edit`, `unlink` (AttachmentSpec.md).
+- **Events** (each with `op`, `at`, `by`): `opinion`, `withdraw` (decision 9), `target`, `trust`,
+  `key` (ExportSpec decision 1), `move` (HistorySpec decisions 7–10), `name`, and the library's
+  `file`, `file-edit`, `file-archive`, `file-restore`, `link`, `link-edit`, `unlink`
+  (AttachmentSpec.md).
+- **`withdraw`** `{"op":"withdraw","name","by","at"}` (decision 9) takes back the current opinion of
+  its writer on `name` — of the person it is for, with `for` and `forPerson` as on an opinion
+  recorded for someone else; an agent's line, its advice. The replay marks their latest opinion
+  there withdrawn, unless it is already; a line with nothing standing to take back does nothing.
+  What summarises the review never reads a withdrawn opinion; the history keeps it, and a move
+  carries it as it is. A version before 0.6.0 reads the line as one it cannot read (its writer's
+  next write refused), the opinion standing there again.
 - **`move`** `{"op":"move","from","to","on","rename"?}` carries what was said of one declaration
   (opinions, target mark, key marks) to another, or takes it back (`on: false`); a thing carried
   keeps the names it was on (`was`). `rename` says `to` is `from` renamed: what refers to it keeps
@@ -199,7 +235,8 @@ agent's ends `.agent.jsonl`; an invited person's is the link's id, `3f2a9c1b07.p
   `person`) are the typist's, as on every line; `for` is the name it is recorded for, and
   `forPerson` that person's link id where they are invited, so that it follows their renames. The
   replay gives the opinion to `forPerson`, else to `for`; it is refused where `for` names the typist
-  or `forPerson` is the typist's own id, on an agent's line, and on any event but an opinion. `for`
+  or `forPerson` is the typist's own id, on an agent's line, and on any event but an opinion or a
+  withdrawal (decision 9), which takes back the opinion of the person it is for. `for`
   is a name as any (`validName`: 1–60 characters, no line breaks). A name typed for someone that is
   an invited person's protected name is that person (the server fills in `forPerson`); one that is
   a guest's already in the logs, in another case, is that guest as the logs write them; no one
@@ -231,5 +268,8 @@ agent's ends `.agent.jsonl`; an invited person's is the link's id, `3f2a9c1b07.p
   come as `review-delta`; a replay whole that comes to the same review is a delta of no events (the
   owner's decision of 2026-10-19).
 - `POST /api/review` records the page's events and answers with the change; a request that changes
-  nothing (a target marked again, a prefix trusted again, a standing key mark) writes nothing.
+  nothing (a target marked again, a prefix trusted again, a standing key mark) writes nothing. A
+  withdrawal (`{op: "withdraw", name, for?}`) is refused (409) where no opinion of whose it would
+  take back stands; it binds nothing, so what was said of a declaration gone from the graph, or of
+  a file changed since compiled, can be withdrawn.
 - An opinion recorded without its text has no What changed: the page says the text was not recorded.

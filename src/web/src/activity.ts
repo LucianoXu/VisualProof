@@ -346,6 +346,26 @@ export class Activity {
           targets: [],
           modules: [],
         });
+        // its withdrawal, leading to the declaration (ReviewSpec decision 9): the doing of whoever
+        // typed it, where they spoke for its author
+        const w = o.withdrawn;
+        if (!w) continue;
+        const what = o.verdict === "approve" ? `<span class="ok">approval</span> of` : `<span class="commented">comment</span> on`;
+        out.push({
+          key: `w:${o.agent ? "a" : "p"}:${name}:${o.by}:${o.at}`,
+          at: w.at,
+          by: w.recordedBy ? now(w.recordedBy.by, w.recordedBy.person) : now(o.by, o.person),
+          agent: !!o.agent,
+          cat: "review",
+          html: o.agent
+            ? `${who(o.by, true)} withdrew its advice on ${decl(name)}`
+            : w.recordedBy
+              ? `${who(w.recordedBy.by, false, w.recordedBy.person)} withdrew <b>${escapeHtml(o.by)}</b>'s ${what} ${decl(name)}`
+              : `${who(o.by, false, o.person)} withdrew their ${what} ${decl(name)}`,
+          names: [name],
+          targets: [],
+          modules: [],
+        });
       }
     }
     for (const [name, t] of Object.entries(r.targets))

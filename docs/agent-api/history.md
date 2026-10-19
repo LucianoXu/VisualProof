@@ -20,7 +20,8 @@ name bare).
 Every event with a `by` has `agent`. `by` is null on a `view`, `note` or `undo` event done without a
 name (a private reader's; their opinions, targets, key marks and trust keep their name).
 
-- Review's logs (no `id`): `opinion` (`recordedBy`: who typed it for `by`, at one screen), `target`,
+- Review's logs (no `id`): `opinion` (`recordedBy`: who typed it for `by`, at one screen;
+  `withdrawn: true`), `withdrawal` (`verdict`; `of`: when given; `recordedBy`), `target`,
   `key` (as marked now: `target`, `name`), `file`
   (`what` added, edited, archived or restored; `sha`, `title` then, `wasTitle` before an edit),
   `link` (`what` made, edited or removed; `id`, `subject`, `label`, `file`; an edit's `changed`
@@ -126,7 +127,7 @@ everyone; nothing is deleted. Attach it (`history/move`) or archive it (only hid
 
 - `last`: the newest build that had it (null if none kept did); `suggestions`: medium-confidence
   renames, likeliest first.
-- Entry `kind`: `opinion` (`verdict`, `comment`), `target`, `key` (`target`, `member`: lost where
+- Entry `kind`: `opinion` (`verdict`, `comment`, `withdrawn`), `target`, `key` (`target`, `member`: lost where
   either is gone), `pin` (`view`, `title`, `mode`), `note` (`view`, `note`, `text`: a note naming it
   in full in backticks; `view` "" for a project note).
 - Entry `key`, the same for everyone: `opinion:<name>#<by>@<at>` (as a comment quotes an opinion),

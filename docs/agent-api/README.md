@@ -23,9 +23,9 @@ parameters and answer.
    ("Claude (agent) comments — …"), **never counted** — no declaration becomes approved, commented or
    stale for people, no target's progress moves, nobody's own part of a review is done. People start with what you comment on: a comment
    says what is wrong, unclear or worth checking, and where; give reasons with approvals too.
-   **Advice judges what a declaration says**, never a proof (Lean checked it): where a theorem's
-   statement is one definition (`theorem main : Claim n`), advise on the definition, and on the
-   theorem whether it states the claim as it should ([advice](advice.md)).
+   **Advice judges what a declaration says**, never a proof (Lean checked it): for
+   `theorem main : Claim n`, advise on `Claim`, and on the theorem whether it states the claim as it
+   should ([advice](advice.md)).
 3. **Advice is about one version**: the server binds it to the declaration's `hash` (its content,
    the names it refers to followed through renames, so a rename changes no version; `kernel` is the
    kernel's own) and records the compiled text you judged with its context (you send neither;
@@ -58,8 +58,8 @@ parameters and answer.
    reverse it as anyone's. A target, a trusted prefix, a deleted view or a re-layout changes what
    everyone sees: do it when the people you help ask, and say what you did.
 8. **You are visible while you work**, listed with a robot mark: with a token, while it is in force,
-   with your state (listening, thinking, working; offline once neither a wait nor a request came for
-   your last wait's length and a minute); without one, kept by your requests (away after a minute
+   with your state (listening, thinking, working; offline after your last wait's length and a minute
+   with neither a wait nor a request); without one, kept by your requests (away after a minute
    without one, gone after three). `POST /api/agent/view` says what you look at, and people following
    you see it ([following](following.md)); you never move anyone else's view. Say
    `{"leave": true}` when you are done.

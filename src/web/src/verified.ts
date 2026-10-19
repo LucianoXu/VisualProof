@@ -5,6 +5,7 @@
 // they are told it again at each rename), and what the review's logs say of them comes with the
 // review, already under that name.
 
+import { sameName } from "../../shared/collab.ts";
 import type { Invited } from "../../shared/collab.ts";
 import { escapeHtml } from "./highlight.ts";
 
@@ -24,6 +25,12 @@ export function setPeople(list: Invited[]): void {
  *  opinion may be recorded for (ReviewSpec decision 8). */
 export function invitedNames(): string[] {
   return [...known.values()].filter((p) => !p.revoked).map((p) => p.name);
+}
+
+/** The link in force of the person invited who goes by `name` (in any case), as the server finds
+ *  whom an opinion is recorded or withdrawn for (server/reviewapi.ts, voice): their id, or null. */
+export function invitedId(name: string): string | null {
+  return [...known.values()].find((p) => !p.revoked && sameName(p.name, name))?.id ?? null;
 }
 
 /** The name someone goes by now: for someone invited by a personal link (`person`, their link's

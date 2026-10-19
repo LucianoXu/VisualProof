@@ -792,12 +792,20 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   version*, and **What changed** shows the lines removed and added since (the opinion
   records the text it was given on: the context it is written in, then its source), so a
   re-review reads only the change.
+- **Withdraw** takes your current opinion back: it stands beside it in the panel and in every source
+  window. An approval goes at once; a comment asks first. Afterwards you have no opinion there —
+  every status, count and list is as if you had given none, and an earlier opinion of yours does not
+  come back — but nothing is erased: the panel's **All opinions** keeps the opinion, faded, and the
+  withdrawal at its time ("Alice withdrew their approval"), and Activity says it. Speaking for
+  someone, it withdraws theirs, recorded by you. A new opinion of yours stands as any. Agents
+  withdraw their own advice ([docs/agent-api](agent-api/advice.md)).
 - **Speaking for someone else**, when several of you review at one screen: type their name in
   **Speaking for**, beside Approve and Comment (the list offers the people invited and those who
   have recorded something). Until you clear it, every review box says *Recording for* them and its
   buttons say *Approve for* them: what you record is their opinion — it replaces theirs, counts as
   theirs, and shows under their name, *recorded by* you, without their ✓. Their own next opinion
-  replaces it. Only approvals and comments; nobody records for an agent, nor does an agent.
+  replaces it. Only approvals and comments, and withdrawing them; nobody records for an agent, nor
+  does an agent.
 - **Comments** read as light Markdown: `> quotes`, `` `code` ``, ```` ```lean ```` blocks (highlighted as in
   the source window), `**bold**`, `*italics*`; a declaration's full name in backticks links to it.
   Nothing else becomes HTML, and the logs and the agents' API keep the text as written.
@@ -828,7 +836,8 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
 - **Key declarations** ([ExportSpec.md](../SPEC/ExportSpec.md), decisions 1–4): a target's review set can
   run to hundreds of declarations; the few that matter for reading it are marked **key** for it
   ([Concepts](#concepts)). Where the review is
-  focused on T, a declaration's panel (and the source window) has **◇ Mark as key for T** (`k`), and the
+  focused on T, every review box — the panel's, and each source window's, following or pinned, on
+  its own declaration — has **◇ Mark as key for T** (**◆ Key for T** once marked; `k`), and the
   selection bar **Mark selected as key** for the declarations clicked; only what the review holds
   can be marked, and the target is always key. Key declarations carry a small gold diamond on the
   canvas (where the review has a focus its target's, elsewhere every target's), a ◆ in the review
@@ -937,7 +946,8 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
 - Everything is in the site's `log/` (`<site>/log/`): **one append-only log per writer**
   (`<name>-<hash>.jsonl`, an agent's `….agent.jsonl`, every line marked as its; someone invited by
   a personal link `<id>.person.jsonl`, every line carrying the id, a rename a `name` line), one
-  event per line — opinions, advice, targets, trust, key declarations marked and unmarked. The review is
+  event per line — opinions and their withdrawals, advice, targets, trust, key declarations marked
+  and unmarked. The review is
   what replaying them gives; each person appends only to their own file. The review is the site's,
   local like the rest of it, and not committed. The server takes a declaration's hash and the text
   judged itself, refuses names outside the graph and files edited since compiled. A log line that

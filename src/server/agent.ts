@@ -259,10 +259,11 @@ export function lower(a: AgentLevel, b: AgentLevel): AgentLevel {
 }
 
 /** What a request to the page's review (POST /api/review, `{op, …}`) needs of an agent: an opinion
- *  is advice; a target, a prefix trusted or a key declaration is what a person does, open to an
- *  agent at level full (AgentSpec decision 9). */
+ *  is advice, and so is withdrawing its own (ReviewSpec decision 9); a target, a prefix trusted or a
+ *  key declaration is what a person does, open to an agent at level full (AgentSpec decision 9). */
 export function needOf(body: unknown): Need {
-  return (body as { op?: unknown } | null)?.op === "opinion" ? "advise" : "full";
+  const op = (body as { op?: unknown } | null)?.op;
+  return op === "opinion" || op === "withdraw" ? "advise" : "full";
 }
 
 /** A request said it comes from an agent; a write through this API must. */
@@ -2120,7 +2121,12 @@ export class AgentApi {
     const out: Record<string, unknown>[] = [];
     // what the review's logs record, as the page reads it
     for (const [name, ops] of Object.entries(d.opinions))
-      for (const o of ops) out.push({ at: o.at, kind: "opinion", by: o.by, ...(o.recordedBy ? { recordedBy: o.recordedBy.by } : {}), agent: !!o.agent, name, verdict: o.verdict, ...(o.comment ? { comment: o.comment } : {}) });
+      for (const o of ops) {
+        out.push({ at: o.at, kind: "opinion", by: o.by, ...(o.recordedBy ? { recordedBy: o.recordedBy.by } : {}), agent: !!o.agent, name, verdict: o.verdict, ...(o.comment ? { comment: o.comment } : {}), ...(o.withdrawn ? { withdrawn: true } : {}) });
+        // its withdrawal (ReviewSpec decision 9): whose it was, and who typed it for them
+        const w = o.withdrawn;
+        if (w) out.push({ at: w.at, kind: "withdrawal", by: o.by, ...(w.recordedBy ? { recordedBy: w.recordedBy.by } : {}), agent: !!o.agent, name, verdict: o.verdict, of: o.at });
+      }
     // what an agent did at level full is marked as an agent's, as its advice is
     for (const [name, t] of Object.entries(d.targets)) out.push({ at: t.at, kind: "target", by: t.by, agent: !!t.agent, name });
     for (const [target, marks] of Object.entries(d.keys)) for (const [name, m] of Object.entries(marks)) out.push({ at: m.at, kind: "key", by: m.by, agent: !!m.agent, target, name });
@@ -2253,6 +2259,26 @@ export class AgentApi {
     const r = this.advise(v, body(a), a.caller);
     if (r.status !== 200) return r;
     return ok({ ok: true, ...(r.body as object), counted: false, note: "Recorded as advice: shown apart to people, never counted." });
+  }
+
+  /** The agent's advice on a declaration taken back (ReviewSpec decision 9): its own, never anyone
+   *  else's; afterwards it has none there, its earlier advice not restored. A name the graph folds
+   *  into a declaration is that declaration's; a name the graph no longer has keeps what was said of
+   *  it, which can be withdrawn too. */
+  private withdrawPost(a: Ask): Answer {
+    const no = needAgent(a.caller) ?? this.refuse(a.caller, "advise");
+    if (no) return no;
+    const b = body(a);
+    if (b.for !== undefined) return fail(403, "An agent withdraws its own advice alone.", "Leave out for: what you withdraw is your own advice.");
+    const name = str(b.name)?.trim() ?? "";
+    if (!name) return fail(400, "name is missing.", "Give the full name of the declaration you advised on.");
+    const v = this.graph();
+    const folded = v instanceof View && !v.g.byName.has(name) ? v.g.foldedInto.get(name) : undefined;
+    const unit = folded === undefined ? name : (v as View).g.nodes[folded].name;
+    const r = this.reviews.post({ op: "withdraw", name: unit }, { name: a.caller.name!, agent: true });
+    const rb = r.body as { error?: string; hint?: string; withdrawn?: unknown };
+    if (r.status !== 200) return fail(r.status, rb.error ?? "Refused.", rb.hint ?? "GET /api/agent describes this endpoint.");
+    return ok({ ok: true, withdrawn: rb.withdrawn, ...(unit !== name ? { asked: name, foldedInto: unit } : {}), note: "Your advice there is withdrawn: you have none on it now, and your earlier advice is not restored. It stays in the history." });
   }
 
   /** Advice on several declarations at once: each item is checked and recorded as one opinion
@@ -2963,6 +2989,12 @@ export class AgentApi {
         run: (a) => this.opinionPost(a),
       },
       {
+        method: "POST", path: "/api/agent/opinion/withdraw", brief: "take your advice back", needs: "advise", about: "Withdraw your advice on a declaration, stale or not: you have none there after, your earlier advice not restored; it stays in the history, and the timeline records it. Your own alone.",
+        params: { name: "the declaration you advised on" },
+        returns: "{ok, withdrawn: {name, by, verdict, at}}; 409 where you have no advice there",
+        run: (a) => this.withdrawPost(a),
+      },
+      {
         method: "POST", path: "/api/agent/opinions", needs: "advise", about: `Advice on up to ${MAX_OPINIONS} declarations at once: each item is checked and recorded as POST opinion does it, and answered on its own — one refused does not refuse the others.`,
         params: { opinions: `[{name, verdict, comment}], at most ${MAX_OPINIONS}` },
         returns: "{ok, recorded, refused, counted: false, results: [{index, name, status, recorded? | error, hint, didYouMean?}]}",
@@ -3249,6 +3281,8 @@ export function doingOf(a: Ask): string | null {
       return clip(b.who) ? `asking ${clip(b.who)} to follow it` : "asking everyone to follow it";
     case "/api/agent/opinion":
       return of("giving advice on", clip(b.name));
+    case "/api/agent/opinion/withdraw":
+      return of("withdrawing its advice on", clip(b.name));
     case "/api/agent/opinions":
       return Array.isArray(b.opinions) ? `giving advice on ${b.opinions.length} declaration${b.opinions.length === 1 ? "" : "s"}` : null;
     case "/api/agent/note":

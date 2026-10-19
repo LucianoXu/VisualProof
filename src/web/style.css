@@ -421,6 +421,11 @@ body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn,
 .rv-c { margin: 2px 0 0 14px; padding: 4px 8px; background: var(--code-bg); border-radius: 6px; white-space: pre-wrap; font-size: 12px; }
 .rv-hist summary { cursor: pointer; color: var(--text-2); font-size: 12px; }
 .rv-hist .rv-op { margin-left: 8px; }
+/* an opinion withdrawn, and its withdrawal, in the history (ReviewSpec decision 9): faded, the
+   withdrawal's dot hollow */
+.rv-op.withdrawn { opacity: 0.6; }
+.rv-op.rv-wd { color: var(--text-2); }
+.rv-op.rv-wd .rv-dot { background: none; box-shadow: inset 0 0 0 1.5px var(--text-3); }
 /* comments read as light Markdown (ReviewSpec, "Comments"; web/src/markdown.ts): paragraphs keep the
    writer's line breaks, quotes are ruled at the left — a quoted opinion's in the accent, its
    attribution going back to it — and code is set as in the source window, a code quote under its
@@ -447,6 +452,8 @@ body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn,
   font: 600 11px var(--font); line-height: 17px; cursor: pointer; vertical-align: 1px;
 }
 .rv-quote:hover, .rv-quote:focus-visible { color: var(--accent); background: var(--code-bg); }
+/* Withdraw (ReviewSpec decision 9): as quiet as Quote, a finger's room on a touch screen */
+@media (pointer: coarse) { .rv-withdraw { line-height: 28px; padding: 0 10px; } }
 /* a quoted opinion gone to, and quoted lines opened: flashed in the accent, then as they were */
 @keyframes vp-flash { from { background-color: color-mix(in srgb, var(--accent) 24%, transparent); } to { background-color: transparent; } }
 .rv-flash, .sw-win .ln.ln-flash { animation: vp-flash 2.4s ease-out; border-radius: 6px; }
