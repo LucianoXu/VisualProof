@@ -262,3 +262,17 @@ test("a mention of an offline agent is written, and handed with what came before
     await S.close();
   }
 });
+
+test("a channel is read the newest 200 at a time, oldest first; before= reads what came before them", async () => {
+  const S = await site();
+  try {
+    for (let k = 1; k <= 250; k++) S.live.talk.post("public", { from: "Alice", kind: "person", text: `m${k}`, where: null });
+    const newest = (await S.ask("GET", "/api/chat?channel=public", undefined, BOB)).json!.messages as Json[];
+    assert.deepEqual([newest.length, newest[0].id, newest.at(-1)!.id], [200, 51, 250]);
+    const older = (await S.ask("GET", "/api/chat?channel=public&before=51", undefined, BOB)).json!.messages as Json[];
+    assert.deepEqual([older.length, older[0].id, older.at(-1)!.id], [50, 1, 50]);
+    assert.deepEqual((await S.ask("GET", "/api/chat?channel=public&before=1", undefined, BOB)).json!.messages, []);
+  } finally {
+    await S.close();
+  }
+});

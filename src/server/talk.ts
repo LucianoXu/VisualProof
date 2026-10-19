@@ -142,8 +142,9 @@ interface Agent {
   lastSeen: number | null;
   /** a wait that ended at its time counts as open until then */
   graceUntil: number;
-  /** the last message of its private channel handed to it, and of the public channel looked at for
-   *  it: what comes after either is handed at its next wait */
+  /** the last message of its private channel handed to it, and of the public channel's mentions of
+   *  it: what comes after either is handed at its next wait (reading the channel, GET
+   *  /api/agent/channel, hands nothing) */
   read: number;
   readPublic: number;
   /** the channel of the last message handed to it that it was to answer: where its reply goes when
@@ -169,6 +170,9 @@ export class Talk {
   private dir: string;
   private timing: TalkTiming;
   private threads = new Map<string, Kept[]>();
+  /** each channel's last id in this server's life: a channel whose messages all expired goes on
+   *  counting from there, so that no agent's place in it (`read`) passes what comes next */
+  private lastIds = new Map<string, number>();
   private agents = new Map<string, Agent>();
   private buckets = new Map<string, { tokens: number; at: number }>();
   private ticks = 0;
@@ -509,6 +513,9 @@ export class Talk {
   /** Whether `sender` (kind and name) may send now; if not, the seconds to wait. Taking one. */
   allow(kind: "person" | "agent", sender: string, now = Date.now()): number {
     const r = RATE[kind];
+    // the senders whose bursts are full again are forgotten, so that the buckets stay few
+    if (this.buckets.size > 2000)
+      for (const [k, b] of this.buckets) if (b.at + RATE[k.startsWith("agent") ? "agent" : "person"].burst * RATE[k.startsWith("agent") ? "agent" : "person"].refillMs < now) this.buckets.delete(k);
     const key = `${kind}\u0000${sender}`;
     const b = this.buckets.get(key) ?? { tokens: r.burst, at: now };
     b.tokens = Math.min(r.burst, b.tokens + (now - b.at) / r.refillMs);
@@ -527,7 +534,9 @@ export class Talk {
   post(channel: string, m: Writing, by: string | null = null, now = Date.now()): Message {
     const thread = this.load(channel);
     const { to, ...rest } = m;
-    const msg: Kept = { id: (thread.at(-1)?.id ?? 0) + 1, at: new Date(now).toISOString(), ...rest, channel: channel === PUBLIC ? "public" : "private", ...(to?.length ? { to } : {}) };
+    const id = Math.max(thread.at(-1)?.id ?? 0, this.lastIds.get(channel) ?? 0) + 1;
+    this.lastIds.set(channel, id);
+    const msg: Kept = { id, at: new Date(now).toISOString(), ...rest, channel: channel === PUBLIC ? "public" : "private", ...(to?.length ? { to } : {}) };
     thread.push(msg);
     if (thread.length > 2 * HELD) thread.splice(0, thread.length - HELD);
     mkdirSync(this.dir, { recursive: true });
@@ -590,6 +599,8 @@ export class Talk {
       }
       if (t.length > HELD) t = t.slice(-HELD);
     }
+    const last = t.at(-1)?.id ?? 0;
+    if (last > (this.lastIds.get(channel) ?? 0)) this.lastIds.set(channel, last);
     this.threads.set(channel, t);
     return t;
   }

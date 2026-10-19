@@ -13,7 +13,7 @@
 
 import { completions, typingMention } from "../../shared/mentions.ts";
 import type { Mentionable } from "../../shared/mentions.ts";
-import { segments } from "./chatlinks.ts";
+import { segments, withoutKeys } from "./chatlinks.ts";
 import { escapeHtml } from "./highlight.ts";
 import { composing } from "./ime.ts";
 
@@ -24,7 +24,7 @@ export interface BoxNode {
   nodeName: string;
   textContent: string | null;
   childNodes: ArrayLike<BoxNode>;
-  dataset?: { href?: string };
+  dataset?: { href?: string; end?: string };
 }
 
 const BLOCK = new Set(["DIV", "P", "LI"]);
@@ -44,7 +44,8 @@ export function textOf(root: BoxNode): string {
       add(" ");
       return;
     }
-    if (n.nodeName === "BR") return add("\n");
+    // a line break, but the one that only lets the caret stand on an empty last line
+    if (n.nodeName === "BR") return n.dataset?.end === undefined ? add("\n") : undefined;
     if (BLOCK.has(n.nodeName) && !first && out && !out.endsWith("\n")) add("\n");
     Array.from(n.childNodes).forEach((c, k) => walk(c, k === 0));
   };
@@ -123,7 +124,13 @@ export class ChatInput {
 
   /** The box says `text`, its links of this site as chips. */
   set text(text: string) {
-    this.el.replaceChildren(...this.nodesOf(text));
+    const nodes = this.nodesOf(text);
+    if (nodes.at(-1)?.nodeName === "BR") {
+      const end = document.createElement("br");
+      end.dataset.end = "";
+      nodes.push(end);
+    }
+    this.el.replaceChildren(...nodes);
     this.closeList();
   }
 
@@ -153,6 +160,16 @@ export class ChatInput {
     after.setStartAfter(last);
     after.collapse(true);
     setSelection(after);
+    // inserting split a text node, leaving an empty one: gone, the words beside joined again (the
+    // caret, a live range, keeps its place)
+    this.el.normalize();
+    // a line break last in the box shows no line of its own: one more, which says nothing, lets the
+    // caret stand on the new line
+    if (last.nodeName === "BR" && last.isConnected && !last.nextSibling) {
+      const end = document.createElement("br");
+      end.dataset.end = "";
+      this.el.append(end);
+    }
     this.hooks.changed();
     this.complete();
   }
@@ -172,12 +189,19 @@ export class ChatInput {
     return r;
   }
 
-  /** `text` as the box's nodes: words as text, links of this site as chips. */
+  /** `text` as the box's nodes: words as text, a line break for each new line, links of this site
+   *  as chips — without the secret of a link that lets in (`withoutKeys`). */
   private nodesOf(text: string): Node[] {
     const out: Node[] = [];
-    for (const s of segments(text, (url) => this.hooks.chip(url) !== null)) {
-      if ("text" in s) out.push(document.createTextNode(s.text));
-      else out.push(chipNode(s.url, this.hooks.chip(s.url)!));
+    for (const s of segments(withoutKeys(text, location.origin), (url) => this.hooks.chip(url) !== null)) {
+      if ("url" in s) {
+        out.push(chipNode(s.url, this.hooks.chip(s.url)!));
+        continue;
+      }
+      s.text.split("\n").forEach((line, k) => {
+        if (k) out.push(document.createElement("br"));
+        if (line) out.push(document.createTextNode(line));
+      });
     }
     return out;
   }

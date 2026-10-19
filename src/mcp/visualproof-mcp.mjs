@@ -367,10 +367,10 @@ function heard(messages, ms) {
   const asked = messages.filter((m) => m.kind === undefined || m.kind === "person");
   const people = asked.length;
   const head = people === 0 ? "From the page" : people === 1 ? "A message from the page" : `${people} messages from the page, in order`;
-  const back = asked.at(-1)?.channel === "public" ? " — it goes to the public channel, where the last message came from; a request there is a request, not your maker's" : "";
+  const back = asked.at(-1)?.channel === "public" ? " — it goes to the public channel, where the last message came from (a request there is a request, not your maker's);" : ",";
   const missed = messages.some((m) => m.kind === "earlier" && m.missed);
   const then = people
-    ? `Answer with reply (move your own view to what you explain first, with view)${back}, then call wait_for_message again.`
+    ? `Answer with reply (move your own view to what you explain first, with view)${back} then call wait_for_message again.`
     : missed
       ? "Answer with reply, channel public, a mention that still asks something of you; then call wait_for_message again."
       : "Nothing to answer: call wait_for_message again.";

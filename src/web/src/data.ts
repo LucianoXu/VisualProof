@@ -209,9 +209,9 @@ export interface DataSource {
   /** revoke a read-only link: the links after, or why not (`who`: a name is needed) */
   revokeReadOnly(id: string): Promise<{ links?: ReadOnlyLinkShown[]; error?: string; who?: boolean }>;
   /** a channel of the conversations (CollabSpec decision 13): `public`, or an agent's private one by
-   *  the agent's id in presence; the newest messages, oldest first; null where it cannot be read (no
-   *  name, not the reader's, no server) */
-  chat(channel: string): Promise<{ channel: string; agent?: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
+   *  the agent's id in presence; its newest messages (before message `before`), oldest first; null
+   *  where it cannot be read (no name, not the reader's, no server) */
+  chat(channel: string, before?: number): Promise<{ channel: string; agent?: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
   /** write in a channel, from where this page is; the message, or why not ("offline": an agent's
    *  private channel while it neither listens nor works) */
   sendChat(channel: string, text: string, place: PresenceView): Promise<{ message: ChatMessage } | { error: string; who?: boolean }>;
@@ -640,8 +640,8 @@ function serverSource(): DataSource {
       fetch("/api/share/agents/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
-    chat: (channel) =>
-      fetch(`/api/chat?channel=${encodeURIComponent(channel)}`, { headers: headers() })
+    chat: (channel, before) =>
+      fetch(`/api/chat?channel=${encodeURIComponent(channel)}${before ? `&before=${before}` : ""}`, { headers: headers() })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
     // a private reader's message says who wrote it, not where they are (CollabSpec decision 8)

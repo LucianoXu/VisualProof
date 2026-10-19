@@ -37,7 +37,7 @@ import type { AgentTalk, ChatMessage, Peer, PresenceView } from "../../shared/co
 import type { Mentionable } from "../../shared/mentions.ts";
 import { BOT } from "./agentmark.ts";
 import { ChatInput } from "./chatinput.ts";
-import { hostOf } from "./chatlinks.ts";
+import { hostOf, withoutKeys } from "./chatlinks.ts";
 import type { Chip } from "./chatlinks.ts";
 import type { ChatWindow } from "./chatwin.ts";
 import type { DataSource } from "./data.ts";
@@ -91,8 +91,10 @@ export class Talk {
   private channel: string;
   /** each channel's messages, oldest first, as read and as they came */
   private threads = new Map<string, ChatMessage[]>();
-  /** the channels read since the stream (re)connected; the one being read */
+  /** the channels read since the stream (re)connected; the one being read; those with nothing
+   *  before what they show */
   private read = new Set<string>();
+  private exhausted = new Set<string>();
   private loading = new Set<string>();
   /** what the reader was writing, per channel */
   private drafts = new Map<string, string>();
@@ -143,6 +145,7 @@ export class Talk {
       const tab = t.closest<HTMLElement>("[data-ch]");
       if (tab) return this.show(tab.dataset.ch!);
       if (t.closest("[data-fold]")) return this.toggleFold();
+      if (t.closest("[data-cv-older]")) return void this.older();
       if (t.closest("[data-cv-new]")) return void this.restart();
       if (t.closest("[data-cv-link]")) return void this.insertSeen();
       if (t.closest("[data-cv-name]")) return void this.hooks.ensureName();
@@ -357,7 +360,8 @@ export class Talk {
   private async send(): Promise<void> {
     const channel = this.channel;
     const a = this.agentOf(channel);
-    const text = this.input.text.trim();
+    // a link that lets in, typed whole, is sent without its secret, as a pasted one is
+    const text = withoutKeys(this.input.text, location.origin).trim();
     if (!text || this.sending || (a && (!a.talk || a.talk.state === "offline"))) return;
     if (!(await this.hooks.ensureName())) {
       this.error = "A message is sent under your name: give one first.";
@@ -406,6 +410,24 @@ export class Talk {
     this.renderRestart();
   }
 
+  /** The messages before those the channel shows (the server gives the newest 200 at a time), the
+   *  thread staying where it is on the screen; where there are none, the line that asks says so. */
+  private async older(): Promise<void> {
+    const channel = this.channel;
+    const first = this.threads.get(channel)?.[0]?.id;
+    if (!first || first <= 1 || this.loading.has(channel)) return;
+    this.loading.add(channel);
+    const r = await this.hooks.data.chat(channel, first);
+    this.loading.delete(channel);
+    if (!r || channel !== this.channel) return;
+    const el = this.thread();
+    const fromEnd = el.scrollHeight - el.scrollTop;
+    this.threads.set(channel, merge(r.messages, this.threads.get(channel) ?? []));
+    if (!r.messages.length) this.exhausted.add(channel);
+    this.renderThread();
+    el.scrollTop = el.scrollHeight - fromEnd;
+  }
+
   /** Open the earlier conversations, or fold them again, the line that does it staying where it is
    *  on the screen. */
   private toggleFold(): void {
@@ -420,11 +442,15 @@ export class Talk {
     line.focus();
   }
 
-  /** Who a mention may be completed with: the people online, then the agents listed. */
+  /** Who a mention may be completed with: the people online, then the agents listed with a token —
+   *  an agent known by its headers alone takes no part (AgentSpec, "Who takes part"). */
   private mentionable(): Mentionable[] {
     const me = this.hooks.me().name;
     const out: Mentionable[] = [];
-    for (const p of this.hooks.peers()) if (p.name && !(me && !p.agent && sameName(p.name, me))) out.push({ name: p.name, ...(p.agent ? { agent: true } : {}) });
+    for (const p of this.hooks.peers()) {
+      if (!p.name || (p.agent && !p.talk) || (me && !p.agent && sameName(p.name, me))) continue;
+      out.push({ name: p.name, ...(p.agent ? { agent: true } : {}) });
+    }
     return out;
   }
 
@@ -479,10 +505,12 @@ export class Talk {
       return;
     }
     const f = fold(messages);
+    // more before what the server gave: the line that reads it
+    const older = messages[0].id > 1 && !this.exhausted.has(this.channel) ? `<button class="tk-fold" type="button" data-cv-older>Earlier messages</button>` : "";
     const line = f.count
       ? `<button class="tk-fold" type="button" data-fold aria-expanded="${this.unfolded}"><span class="tk-chev" aria-hidden="true"></span>Earlier conversation · ${f.count} message${f.count === 1 ? "" : "s"}</button>`
       : "";
-    el.innerHTML = line + (this.unfolded ? f.earlier : []).map((m) => this.message(m)).join("") + (f.divider ? this.message(f.divider) : "") + f.current.map((m) => this.message(m)).join("");
+    el.innerHTML = older + line + (this.unfolded ? f.earlier : []).map((m) => this.message(m)).join("") + (f.divider ? this.message(f.divider) : "") + f.current.map((m) => this.message(m)).join("");
   }
 
   private message(m: ChatMessage): string {
@@ -560,11 +588,11 @@ export class Talk {
     const placeholder = !this.named
       ? "Give your name to write here"
       : !a
-        ? "Write to everyone · @ mentions · Enter sends"
+        ? "Write to everyone"
         : off
           ? `${who} is offline${t?.lastSeen ? ` — last seen ${ago(t.lastSeen)}` : ""}`
           : t!.state === "listening"
-            ? `Write to ${who} · Enter sends, Shift+Enter a new line`
+            ? `Write to ${who}`
             : `Write to ${who} · it reads this when it next listens`;
     const box = this.input.el;
     const was = box.dataset.channel;

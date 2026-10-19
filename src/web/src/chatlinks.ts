@@ -172,6 +172,27 @@ export function segments(text: string, site: (url: string) => boolean): ({ text:
   return out;
 }
 
+/** `text` with every link of this site (`origin`) that lets in — the key's, a personal link's, a
+ *  read-only link's — made the page's address, the secret left out: a link written in a
+ *  conversation never hands anyone a way in, nor a personal link's holder's name (CollabSpec
+ *  decision 13: Share makes the links that let people in). */
+export function withoutKeys(text: string, origin: string): string {
+  let out = "";
+  let at = 0;
+  for (const l of linksIn(text)) {
+    let u: URL;
+    try {
+      u = new URL(l.url);
+    } catch {
+      continue;
+    }
+    if (u.origin !== origin || !LETS_IN.test(u.pathname)) continue;
+    out += text.slice(at, l.start) + copyLink({ origin, pathname: "/" }, u.hash);
+    at = l.end;
+  }
+  return out + text.slice(at);
+}
+
 /** The host an address names, as it is shown beside a link to elsewhere. */
 export function hostOf(url: string): string {
   try {

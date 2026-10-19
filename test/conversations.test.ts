@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChatMessage, Peer } from "../src/shared/collab.ts";
-import { chipOf, chipText, copyLink, hostOf, linksIn, noteHash, noteIn, segments, siteLink } from "../src/web/src/chatlinks.ts";
+import { chipOf, chipText, copyLink, hostOf, linksIn, noteHash, noteIn, segments, siteLink, withoutKeys } from "../src/web/src/chatlinks.ts";
 import type { Namer } from "../src/web/src/chatlinks.ts";
 import { textOf } from "../src/web/src/chatinput.ts";
 import type { BoxNode } from "../src/web/src/chatinput.ts";
@@ -67,6 +67,9 @@ test("copied links carry no key: the page's address up to its path, the key's, a
     assert.ok(!/secret|token/.test(l));
   }
   assert.equal(copyLink({ origin: O, pathname: "/index.html" }, "mode=tcb"), `${O}/index.html#mode=tcb`);
+  // a link that lets in, written or pasted in a conversation, goes without its secret: Share makes
+  // the links that let people in
+  assert.equal(withoutKeys(`see ${O}/k/secret#mode=tcb&s=A.b and ${O}/i/vpp_0123456789_tok, https://x.org/k/y`, O), `see ${O}/#mode=tcb&s=A.b and ${O}/#, https://x.org/k/y`);
   // a note's link: the board, and the note; a snapshot or an older note left out
   const h = noteHash("#v=v1&mode=tcb&snap=jX&note=old", "n2", true);
   assert.equal(h, "v=v1&mode=tcb&note=n2&nv=1");
@@ -103,6 +106,9 @@ test("what the box says, as text: its words, each chip as its link apart from th
   assert.equal(textOf(el("DIV", [text("Look at"), chipN(L), text("please.")])), `Look at ${L} please.`);
   assert.equal(textOf(el("DIV", [chipN(L)])), L, "no space at the end");
   assert.equal(textOf(el("DIV", [text("one"), el("BR", []), text("two"), el("DIV", [text("three")])])), "one\ntwo\nthree");
+  // the break that only lets the caret stand on an empty last line says nothing
+  const end: BoxNode = { nodeType: 1, nodeName: "BR", textContent: null, childNodes: [], dataset: { end: "" } };
+  assert.equal(textOf(el("DIV", [text("one"), el("BR", []), end])), "one\n");
 });
 
 const msg = (id: number, from: string, kind: ChatMessage["kind"], over: Partial<ChatMessage> = {}): ChatMessage => ({ id, at: "2026-10-19T10:00:00.000Z", from, kind, channel: "public", text: `m${id}`, ...over });

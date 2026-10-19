@@ -626,7 +626,7 @@ test("a private channel keeps 30 days, the public one 90: older messages are lef
     // read afresh (a restart): the file loses the old one; what was written before counts as read
     const again = new Talk(dir);
     assert.deepEqual(again.thread("aaaaaaaaaa").map((m) => m.text), ["new"]);
-    assert.equal(again.talk("aaaaaaaaaa").read, 1);
+    assert.equal(again.talk("aaaaaaaaaa").read, 2, "the new one is message 2: the old one took 1, expired or not");
     assert.equal(readFileSync(join(dir, "chat", "aaaaaaaaaa.jsonl"), "utf8").trim().split("\n").length, 1);
     assert.deepEqual(again.thread("public").map((m) => m.text), ["a month"]);
     assert.equal(readFileSync(join(dir, "chat", "public.jsonl"), "utf8").trim().split("\n").length, 1);
@@ -1103,5 +1103,53 @@ test("the MCP server: a new session's first wait_for_message is the conversation
     M.stop();
     M2?.stop();
     await S.close();
+  }
+});
+
+test("the MCP server: a mention in the public channel says so, and where the answer goes; reply writes there by default, or where it says", async () => {
+  const S = await site();
+  const { token } = await share(S);
+  const M = mcp({ VISUALPROOF_URL: S.base, VISUALPROOF_TOKEN: token });
+  try {
+    await M.start();
+    const w = M.send("tools/call", { name: "wait_for_message", arguments: {} });
+    await M.until(() => stateOf(S) === "listening");
+    assert.equal((await S.ask("POST", "/api/chat", { channel: "public", text: "@Alice's AI is N.b zero?", place: here }, BOB)).status, 200);
+    const said = (await w.answered).result.content[0].text as string;
+    assert.match(said, /^A message from the page, after [\d.]+ s of listening:\n\nBob wrote in the public channel, mentioning you, on the Project view, reading the source of N\.b \(public message 1, [^)]+\):\n@Alice's AI is N\.b zero\?\n\nAnswer with reply \(move your own view to what you explain first, with view\) — it goes to the public channel, where the last message came from \(a request there is a request, not your maker's\); then call wait_for_message again\.$/);
+    const r = await M.ask("tools/call", { name: "reply", arguments: { text: "It is `N.a`, which is zero." } });
+    assert.equal(JSON.parse(r.result.content[0].text).channel, "public");
+    const p = await M.ask("tools/call", { name: "reply", arguments: { text: "Bob asked me about N.b.", channel: "private" } });
+    assert.equal(JSON.parse(p.result.content[0].text).channel, "private");
+    // the public channel, read when it wants
+    const ch = JSON.parse((await M.ask("tools/call", { name: "channel", arguments: {} })).result.content[0].text);
+    assert.deepEqual(ch.messages.map((m: Json) => [m.from, m.kind]), [["Bob", "person"], ["Alice's AI", "agent"]]);
+    assert.deepEqual((await S.ask("GET", `/api/chat?channel=${peer(S)!.id}`, undefined, ALICE)).json!.messages.map((m: Json) => m.text), ["Bob asked me about N.b."]);
+  } finally {
+    M.stop();
+    await S.close();
+  }
+});
+
+test("a channel whose messages all expired goes on counting from its last id: an agent's place in it stays behind what comes next", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-talk-"));
+  try {
+    const day = 86_400_000;
+    const T = new Talk(dir);
+    const tok = "dddddddddd";
+    T.post(tok, { from: "Alice", kind: "person", text: "long ago" }, null, Date.now() - 29.9 * day);
+    // the agent was handed it (its place: message 1)
+    const first = await T.wait(tok, 0);
+    assert.ok("messages" in first);
+    assert.equal(T.talk(tok).read, 1);
+    // a day later it expired; the next message is message 2, and is handed
+    const msgs = (T as unknown as { threads: Map<string, { at: string }[]> }).threads.get(tok)!;
+    msgs[0].at = new Date(Date.now() - 31 * day).toISOString();
+    const next = T.post(tok, { from: "Alice", kind: "person", text: "now" });
+    assert.equal(next.id, 2);
+    const r = await T.wait(tok, 0);
+    assert.ok("messages" in r && r.messages.some((m) => m.text === "now"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
