@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ChatMessage, Peer } from "../src/shared/collab.ts";
-import { chipOf, chipText, copyLink, hostOf, linksIn, noteHash, noteIn, segments, siteLink, withoutKeys } from "../src/web/src/chatlinks.ts";
+import { chipOf, chipText, copyLink, hostOf, linksIn, noteHash, noteIn, segments, siteLink, siteOrigins, withoutKeys } from "../src/web/src/chatlinks.ts";
 import type { Namer } from "../src/web/src/chatlinks.ts";
 import { textOf } from "../src/web/src/chatinput.ts";
 import type { BoxNode } from "../src/web/src/chatinput.ts";
@@ -18,6 +18,7 @@ import { encodeState } from "../src/web/src/state.ts";
 import { inYours, keyActs, pressActs, YOURS } from "../src/web/src/surfaces.ts";
 import type { PageEl } from "../src/web/src/surfaces.ts";
 import { markMentions, merge, ownAgents, unseen } from "../src/web/src/talk.ts";
+import { site } from "./site.ts";
 
 const O = "https://vp.example.org";
 const names: Namer = {
@@ -57,6 +58,37 @@ test("a link of this site is read into a chip naming what it leads to: a declara
   assert.equal(chipText(chip(`${O}/`)!), "this site");
   // not this site, not a page of it, not one the page can read: no chip
   for (const u of ["https://elsewhere.org/#mode=tcb", `${O}/api/agent`, `${O}/tips/tour.mp4`, `${O}/#hello`, "http://vp.example.org/#mode=tcb", "not a url"]) assert.equal(chip(u), null, u);
+});
+
+test("--public-url: links of the server's public address are this site's too, and the page makes its own with it", async () => {
+  const P = "https://vp.example.org";
+  const own = "http://10.0.0.5:4173";
+  // the page is told it; a server without one says nothing
+  const S = await site({ publicUrl: P });
+  const plain = await site();
+  try {
+    assert.equal((await S.ask("GET", "/api/status")).json?.publicUrl, P);
+    assert.equal((await plain.ask("GET", "/api/status")).json?.publicUrl, undefined);
+  } finally {
+    await S.close();
+    await plain.close();
+  }
+  // the site's addresses: the page's own and the public one; links made with the public one
+  const at = siteOrigins(own, P);
+  assert.deepEqual(at, { origins: [own, P], base: P });
+  assert.deepEqual(siteOrigins(P, `${P}/`), { origins: [P], base: P });
+  assert.deepEqual(siteOrigins(own, null), { origins: [own], base: own });
+  assert.deepEqual(siteOrigins(own, "not an address"), { origins: [own], base: own });
+  // an agent's link (made with the public address) is a chip on a page reached at another, and so
+  // is one of the page's own address; any other host's is not
+  const hash = encodeState({ view: "v1", scope: null, mode: "tcb", picks: "tcb(Foo.bar)", shown: { decl: "Foo.bar" } });
+  for (const o of [P, own]) assert.equal(siteLink(`${o}/#${hash}`, at.origins)?.kind, "decl", o);
+  assert.equal(siteLink(`https://elsewhere.org/#${hash}`, at.origins), null);
+  assert.equal(siteLink(`${P}/#${hash}`, own), null, "one address alone: the page's");
+  // a link that lets in, of either address, goes without its secret, keeping its address
+  assert.equal(withoutKeys(`${P}/r/vpr_0123456789_tok#mode=tcb and ${own}/k/secret#mode=plain`, at.origins), `${P}/#mode=tcb and ${own}/#mode=plain`);
+  // Copy link, from a page let in by the key at its own address: the public address, no key
+  assert.equal(copyLink({ origin: at.base, pathname: "/k/secret" }, "mode=tcb"), `${P}/#mode=tcb`);
 });
 
 test("copied links carry no key: the page's address up to its path, the key's, a personal link's or a read-only link's left out", () => {

@@ -49,6 +49,9 @@ export interface Status {
   error?: string;
   /** the server's "Open in editor" template (`--editor`, shared/editor.ts); a snapshot has none */
   editor?: string | null;
+  /** the address people reach the server at (`--public-url`), where it was given one: a link of it
+   *  is this site's, and Copy link makes links with it (CollabSpec, "Copied links") */
+  publicUrl?: string;
   /** how far a build going on is, and how many files are in each state (`?brief`: the files' own
    *  status the page reads by GET /api/build; a server from before 0.6.0 sends them too) */
   build?: Pick<BuildStatus, "active" | "progress" | "counts"> | null;

@@ -1090,6 +1090,9 @@ export class App {
       // `?brief`: the build status without its files, which the page reads by GET /api/build
       if (path === "/api/status") {
         const st: Record<string, unknown> = { ...(live.status(url.searchParams.has("brief")) as Record<string, unknown>), lean: this.hover.state() };
+        // the address people reach the server at (--public-url): links of it are this site's, and the
+        // page makes its own with it (CollabSpec, "Copied links")
+        if (this.publicUrl) st.publicUrl = this.publicUrl;
         if (this.readOnlyOf.get(req) !== undefined) {
           delete st.log;
           st.review = { ...(st.review as object), folder: undefined };

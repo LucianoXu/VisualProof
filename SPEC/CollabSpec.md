@@ -433,14 +433,22 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   each channel (its last id) is kept per browser, the furthest of its tabs'. The window's layer is
   above the source and reference windows' order (web/src/floatwin.ts, `onTop`; style.css), the
   following strip over it.
-- **Copied links** (decision 13, web/src/chatlinks.ts): the page's address up to its path, the
+- **Copied links** (decision 13, web/src/chatlinks.ts): the site's address and the page's path, the
   key's `/k/<key>`, a personal link's and a read-only link's left out, then `#` and the state's
   address (web/src/state.ts), with `snap=` for what the reader sees; a note's, the board's address
   and `note=<id>` (`nv=1` for a view's own note), which the page shows once it opened the board. The
   chip is drawn from the link alone: the names it holds, and the view's title from the views the
   page knows (else "a view"), a note's first words from the notes it knows (else "a note"); a link
-  the page cannot read stays a plain link. A link of this site is one of the page's own origin,
-  at `/`, or at a path that lets in.
+  the page cannot read stays a plain link. A link of this site is one of the page's own origin or
+  of the server's public address, at `/`, or at a path that lets in; one that lets in, of either,
+  goes without its secret, keeping its address.
+  - **The server's public address** (`--public-url`; the conversations' proposal, accepted by the
+    owner on 2026-10-19): the page is told it (`GET /api/status`, `publicUrl`), so that an agent's
+    links, made with it, are chips where the page was reached at another address (a proxy's inside
+    name, the machine's own). Copy link and the box's link to what the reader sees are made with it
+    too, not with the address the page was reached at — as the agents' prompt, their links and
+    Share's personal and read-only links are — so that a link copied opens for the others it is
+    given to, whichever address its copier came by. Without `--public-url`, the page's own address.
 - **Bounds**: at most 200 event streams (then 503), and 400 more for read-only readers, counted
   apart; 4 per page (the oldest goes); a stream with more than 4 MB unread is closed. Read-only
   readers' hovers: 60 a minute per address and 300 in all (429 with `Retry-After`), answers kept per

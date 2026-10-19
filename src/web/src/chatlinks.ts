@@ -7,10 +7,12 @@
 //
 // The chip is drawn from the link alone: the names it holds, and the view's title or the note's
 // words from what the page knows (else "a view", "a note"); a link of this site the page cannot read
-// stays a plain link. Copy link (the canvas's menu) and the box's link to what the reader sees make
-// links without the key: the page's address up to its path, the key's `/k/<key>`, a personal link's
-// `/i/…` and a read-only link's `/r/…` left out — everyone in a channel is let in already, and a link
-// copied elsewhere opens nothing for whoever is not.
+// stays a plain link. This site is the page's own address and, where the server is given one, its
+// public address (`--public-url`), which agents' links and Share's are made with. Copy link (the
+// canvas's menu) and the box's link to what the reader sees make links without the key: the site's
+// address (the public one, where there is one) up to the page's path, the key's `/k/<key>`, a
+// personal link's `/i/…` and a read-only link's `/r/…` left out — everyone in a channel is let in
+// already, and a link copied elsewhere opens nothing for whoever is not.
 
 import { snapshotIn } from "../../shared/sharesnap.ts";
 import { readSelection } from "./selection.ts";
@@ -35,17 +37,35 @@ export interface SiteLink {
   note: { id: string; ofView: boolean } | null;
 }
 
-/** `url` as a link of this site (`origin`, the page's): one the page opens — its address, or a link
- *  that lets in — with a fragment it reads; null for any other, a link of this site it cannot read
- *  among them (it stays a plain link). */
-export function siteLink(url: string, origin: string): SiteLink | null {
+/** This site's addresses: the page's own origin, and the server's public one (`--public-url`) where
+ *  it is another. */
+export type SiteOrigins = string | readonly string[];
+
+const ofSite = (u: URL, site: SiteOrigins) => (typeof site === "string" ? u.origin === site : site.includes(u.origin));
+
+/** The page's own origin, and the public address the server was given (`--public-url`, GET
+ *  /api/status) where there is one: the site's origins, and the one its links are made with. */
+export function siteOrigins(own: string, publicUrl: string | null | undefined): { origins: string[]; base: string } {
+  let pub: string | null = null;
+  try {
+    pub = publicUrl ? new URL(publicUrl).origin : null;
+  } catch {
+    // not an address: the page's own
+  }
+  return { origins: pub && pub !== own ? [own, pub] : [own], base: pub ?? own };
+}
+
+/** `url` as a link of this site (`site`: the page's origin, and the server's public one): one the
+ *  page opens — its address, or a link that lets in — with a fragment it reads; null for any other,
+ *  a link of this site it cannot read among them (it stays a plain link). */
+export function siteLink(url: string, site: SiteOrigins): SiteLink | null {
   let u: URL;
   try {
     u = new URL(url);
   } catch {
     return null;
   }
-  if (u.origin !== origin) return null;
+  if (!ofSite(u, site)) return null;
   if (u.pathname !== "/" && u.pathname !== "/index.html" && !LETS_IN.test(u.pathname)) return null;
   const hash = u.hash.replace(/^#/, "");
   if (!hash) return { hash, kind: "home", state: null, note: null };
@@ -115,8 +135,9 @@ export function chipText(c: Chip): string {
   return [...c.words, ...(c.name ? [c.name] : [])].join(" · ") + (c.more ? ` +${c.more}` : "");
 }
 
-/** A link to what the page shows, without the key (CollabSpec, "Copied links"): the page's address up
- *  to its path, a path that lets in left out, then `#` and the fragment. */
+/** A link to what the page shows, without the key (CollabSpec, "Copied links"): the site's address
+ *  (`at.origin`: the public one, where the server has one) and the page's path, a path that lets in
+ *  left out, then `#` and the fragment. */
 export function copyLink(at: { origin: string; pathname: string }, hash: string): string {
   const path = LETS_IN.test(at.pathname) ? "/" : at.pathname || "/";
   return `${at.origin}${path}#${hash.replace(/^#/, "")}`;
@@ -172,11 +193,12 @@ export function segments(text: string, site: (url: string) => boolean): ({ text:
   return out;
 }
 
-/** `text` with every link of this site (`origin`) that lets in — the key's, a personal link's, a
- *  read-only link's — made the page's address, the secret left out: a link written in a
- *  conversation never hands anyone a way in, nor a personal link's holder's name (CollabSpec
- *  decision 13: Share makes the links that let people in). */
-export function withoutKeys(text: string, origin: string): string {
+/** `text` with every link of this site (`site`: the page's origin, and the server's public one) that
+ *  lets in — the key's, a personal link's, a read-only link's — made the site's address it named,
+ *  the secret left out: a link written in a conversation never hands anyone a way in, nor a
+ *  personal link's holder's name (CollabSpec decision 13: Share makes the links that let people
+ *  in). */
+export function withoutKeys(text: string, site: SiteOrigins): string {
   let out = "";
   let at = 0;
   for (const l of linksIn(text)) {
@@ -186,8 +208,8 @@ export function withoutKeys(text: string, origin: string): string {
     } catch {
       continue;
     }
-    if (u.origin !== origin || !LETS_IN.test(u.pathname)) continue;
-    out += text.slice(at, l.start) + copyLink({ origin, pathname: "/" }, u.hash);
+    if (!ofSite(u, site) || !LETS_IN.test(u.pathname)) continue;
+    out += text.slice(at, l.start) + copyLink({ origin: u.origin, pathname: "/" }, u.hash);
     at = l.end;
   }
   return out + text.slice(at);
