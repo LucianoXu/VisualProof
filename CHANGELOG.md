@@ -5,6 +5,16 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.5.0
+
+- Follow a branch of a git repository: `visualproof serve <git URL> [--branch …]` builds each new commit itself, in a clone of its own, and shows its builds, commits and failures; the source window opens the line on GitHub. Whoever can push to that branch runs code on the server ([SECURITY.md](SECURITY.md)).
+- Show a VisualProof page, not a 404, to a browser that comes without the key: the site is private, or its link was replaced or revoked. The API and agents still get the 404.
+- Redesign the dark theme (midnight): clusters seen in depth, edges that step back when many, the Status colours from quiet to urgent. Text meets WCAG AA contrast in both themes; reduced motion holds on the whole page.
+- Lay a board out the same in every browser and on the server, to the last bit, and faster (NavierStokesAndEuler by file: 56 s → 11 s). Nothing kept moves.
+- Lighten the server: the review is read once, by its revision (a page on 5,000 opinions: 11.5 → 3.5 MB); the Time Machine no longer holds the server; a server at rest costs next to nothing (7–10 % of a core → 0.4 %); the usage pass starts fewer workers while memory is short.
+- Record the tips' film again: 3½ minutes, typing faster, a paper beside the source it formalises.
+- Fix the dark ring round every cluster of the Project view in the Status colours, the linear form not following a change of theme, and a not-yet-reviewed grey too close to the clusters'.
+
 ## 0.4.4
 
 - Add a layout for upright monitors: the board above, and below it a work area with the panel and the windows stacked beside it. An upright tablet keeps the drawer and the sheet.
