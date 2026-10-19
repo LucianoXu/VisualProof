@@ -93,11 +93,25 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      log says who is who by itself. Logs named by a guest's name are read as before.
    - **Names are protected**: a holder's name carries ✓ wherever names show, and while the link is in
      force no guest (in any case or Unicode form) and no other link may take it.
-   - **The link** is shown once to its maker; the server keeps only its digest. **It lasts until
+   - **The link** is shown once to its maker, as it is made, and again to its holder alone (the
+     owner's decision of 2026-10-19): **everyone can show their own personal link**, to open the
+     site as themselves in another browser, on another device. The server keeps it in full, as it
+     keeps the read-only links and the agents' tokens. The reader a personal link let in finds
+     *My personal link* in their name's menu, shown in the name's window: the link, Copy, and one
+     line, that whoever has it is them. Only the holder sees it — not its maker, not anyone else
+     (others may revoke it, as before); guests, read-only readers, agents and servers behind
+     `--identity-header` have no such item, and the server refuses them. **It lasts until
      revoked**: a person's link is who they are in the review, and an expiry would make them someone
      else with a new log (an agent's token, a credential for a piece of work, lasts days). Revoking
      cuts it off at once, its pages too; a browser that also holds the key goes on as a guest.
      People with a name make and revoke links; agents never.
+   - **Made anew** (the owner's decision of 2026-10-19): *Make my link anew*, beside the link, gives
+     it a new secret under the same id — the same person, log and names. The old link and every
+     browser it let in are cut off at once, which the window says before it is done; this browser
+     stays in, given the new cookie. A link made before 0.6.0, of which the server kept only a
+     digest, cannot be shown: its holder is offered this instead; any holder who thinks their link
+     leaked is offered it too. The timeline and Share's list record nothing of it; revoking is
+     unchanged.
    - A private invited person is as decision 8 says, their review keeping its ✓.
 10. **Asking others to follow.** *Ask everyone to follow me* (the name's menu) asks everyone online,
     private readers included (counted, never named), except those already following; *Ask … to
