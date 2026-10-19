@@ -16,7 +16,8 @@
 // with the panel's foot; below 900 px, collapsed. Where the reader puts it, its size, whether it is
 // collapsed, and whether it is open are a reading preference kept in this browser
 // (web/src/store.ts). On a phone and a tall screen it docks in the sheet's place, on an upright
-// monitor in the work area's column (PhoneSpec decisions 21 and 34), as the source windows do.
+// monitor in the work area's column (PhoneSpec decisions 21 and 34), as the source windows do. The
+// following strip, over it, steps aside rather than cover its box (`keepStripClear`).
 
 import { clampRect, EDGE, FloatWindow, readKept, readPlace, rectOf } from "./floatwin.ts";
 import type { Kept, Rect, Size } from "./floatwin.ts";
@@ -53,6 +54,46 @@ export function restore(kept: unknown, vp: Size, insets: { left: number; top: nu
     rect: place ? rectOf(place, vp, MIN) : defaultRect(vp, insets),
     collapsed: typeof k.collapsed === "boolean" ? k.collapsed : vp.w < NARROW,
   };
+}
+
+/** the room kept between the following strip and the window it steps aside from */
+export const STRIP_GAP = 8;
+
+/** Where the following strip goes so as not to cover the window (`win`, null: not shown): beside it,
+ *  at the strip's height, to its right, else to its left; else above it, as centred as the strip is;
+ *  null where it covers nothing, or nowhere is clear and it stays where it is. `strip` is where the
+ *  strip stands by itself (style.css: low in the middle). */
+export function stripAside(strip: Rect, win: Rect | null, vp: Size): { x: number; y: number } | null {
+  if (!win) return null;
+  const g = STRIP_GAP;
+  const covers = strip.x < win.x + win.w + g && win.x < strip.x + strip.w + g && strip.y < win.y + win.h + g && win.y < strip.y + strip.h + g;
+  if (!covers) return null;
+  if (win.x + win.w + g + strip.w <= vp.w - EDGE) return { x: win.x + win.w + g, y: strip.y };
+  if (win.x - g - strip.w >= EDGE) return { x: win.x - g - strip.w, y: strip.y };
+  if (win.y - g - strip.h >= EDGE) return { x: strip.x, y: win.y - g - strip.h };
+  return null;
+}
+
+/** Keep the following strip (`#following`, over the windows so that whom and its ✕ stay in sight)
+ *  clear of the conversation window, whose foot — the box and Send — it would cover: wherever the
+ *  window is, opens, collapses or docks, and as the strip's words change. The strip moves, never the
+ *  window, whose place is the reader's. */
+export function keepStripClear(strip: HTMLElement, win: HTMLElement): void {
+  const place = () => {
+    if (strip.hidden) return;
+    strip.style.left = strip.style.top = strip.style.bottom = strip.style.transform = "";
+    const r = strip.getBoundingClientRect();
+    const w = win.hidden ? null : win.getBoundingClientRect();
+    const to = stripAside({ x: r.left, y: r.top, w: r.width, h: r.height }, w && w.width > 0 ? { x: w.left, y: w.top, w: w.width, h: w.height } : null, viewport());
+    if (!to) return;
+    strip.style.left = `${Math.round(to.x)}px`;
+    strip.style.top = `${Math.round(to.y)}px`;
+    strip.style.bottom = "auto";
+    strip.style.transform = "none";
+  };
+  new MutationObserver(place).observe(win, { attributes: true, attributeFilter: ["style", "hidden", "class"] });
+  new MutationObserver(place).observe(strip, { attributes: true, attributeFilter: ["hidden"], childList: true, subtree: true, characterData: true });
+  window.addEventListener("resize", place);
 }
 
 export interface ChatWindowHooks {

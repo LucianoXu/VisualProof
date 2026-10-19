@@ -2,11 +2,11 @@
 // side panel; what the browser keeps of it read back, the invalid included; the pill's excerpt of a
 // message (web/src/talk.ts); a new conversation's fold, and when one may be started (the owner's
 // decision of 2026-10-11). Its geometry, moved and resized, is the floating windows'
-// (test/floatwin.test.ts).
+// (test/floatwin.test.ts). The following strip stepping aside from it.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultRect, DEFAULT, FOOT, MIN, restore } from "../src/web/src/chatwin.ts";
+import { defaultRect, DEFAULT, FOOT, MIN, restore, STRIP_GAP, stripAside } from "../src/web/src/chatwin.ts";
 import { EDGE, readPlace } from "../src/web/src/floatwin.ts";
 import { excerpt, fold, fresh } from "../src/web/src/talk.ts";
 
@@ -70,4 +70,25 @@ test("the page folds what came before the last divider into one line counting it
   assert.equal(fresh([]), true);
   assert.equal(fresh(thread), false);
   assert.equal(fresh(thread.slice(0, 6)), true);
+});
+
+test("the following strip steps aside from the window rather than cover its box", () => {
+  // the strip low in the middle, the window at the bottom left beside the side panel, under it
+  const strip = { x: 570, y: 818, w: 300, h: 30 };
+  const win = defaultRect(VP, INSETS);
+  const to = stripAside(strip, win, VP);
+  assert.deepEqual(to, { x: win.x + win.w + STRIP_GAP, y: strip.y });
+  // nothing to step aside from: the window closed, or elsewhere
+  assert.equal(stripAside(strip, null, VP), null);
+  assert.equal(stripAside(strip, { x: 900, y: 100, w: 440, h: 420 }, VP), null);
+  // no room at its right: to its left
+  const right = { x: 700, y: 400, w: 600, h: 440 };
+  assert.deepEqual(stripAside(strip, right, VP), { x: right.x - STRIP_GAP - strip.w, y: strip.y });
+  // as wide as the screen (a phone's dock): above it, where it was across
+  const phone = { w: 390, h: 844 };
+  const ps = { x: 45, y: 760, w: 300, h: 30 };
+  const dock = { x: 12, y: 420, w: 366, h: 400 };
+  assert.deepEqual(stripAside(ps, dock, phone), { x: ps.x, y: dock.y - STRIP_GAP - ps.h });
+  // nowhere clear: it stays
+  assert.equal(stripAside(ps, { x: 0, y: 0, w: 390, h: 844 }, phone), null);
 });

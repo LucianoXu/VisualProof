@@ -110,7 +110,7 @@ import type { Scheme } from "./status.ts";
 import { Tabs } from "./tabs.ts";
 import { Share } from "./share.ts";
 import { excerpt, ownAgents, PUBLIC, stateWords, Talk } from "./talk.ts";
-import { ChatWindow } from "./chatwin.ts";
+import { ChatWindow, keepStripClear } from "./chatwin.ts";
 import { chipOf, chipText, copyLink, noteHash, noteIn, siteLink } from "./chatlinks.ts";
 import type { Chip } from "./chatlinks.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
@@ -1399,6 +1399,8 @@ async function boot(): Promise<void> {
       if (open) $("#talk-notice").hidden = true;
     },
   });
+  // the following strip steps aside from it rather than cover its box
+  keepStripClear($("#following"), $("#convo"));
   // a phone: the bar's ⋯, the side panel's drawer, the panel's sheet (web/src/phone.ts)
   new Phone({
     closePanel: () => $<HTMLElement>("#panel [data-close]")?.click(),
