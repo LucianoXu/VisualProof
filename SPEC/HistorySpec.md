@@ -175,7 +175,9 @@ Routes under `/api/history` (agents: `/api/agent/history`, docs/agent-api/histor
 to}` is refused where `from` is in the graph or `to` is not. Moving and archiving need a name (a
 private reader's too, CollabSpec decision 8) and record an invitee's link id (CollabSpec decision 9);
 agents need level full. Pages are sent `lost` (`{rev, count, lost}`) and read the list again at a new
-`rev`. A server serving a saved graph keeps no history.
+`rev`. A server serving a saved graph keeps no history. A snapshot's parts, its whole graph and the
+diffs are made off the server's thread (server/historythread.ts; the owner's decision of 2026-10-19),
+so that the Time Machine never holds the server.
 
 ### The lost-and-found
 

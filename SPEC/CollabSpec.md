@@ -383,5 +383,6 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   (429), the export's cache answering the rest. Request bodies are bounded (413); a failing handler answers 500 with a
   JSON reason, never hangs. Only the graph's modules are served or hovered.
 - **Far pages**: pages are often far away, over lossy links. The page's files and the graph carry a
-  content tag (304 when the browser has them); edges travel packed; JSON over 2 KB is gzipped; the
+  content tag, and the review a tag of its revision (304 when the browser has them; the review's, the
+  owner's decision of 2026-10-19); edges travel packed; JSON over 2 KB is gzipped; the
   page asks for the graph's two parts and the review at once.

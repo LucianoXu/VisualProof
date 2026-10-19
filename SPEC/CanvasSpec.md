@@ -42,6 +42,10 @@ the placement of a cluster's children changes; the clusters stay.
     against the provisional layout, which lacked the notation's edges. So a first read gives the
     picture a Re-layout gives, and a later build keeps the places of the build before. A site with no
     memory lays its graph out afresh, whatever view the cache holds.
+- **The same picture everywhere** (the owner's decision of 2026-10-19). The layout is a function of
+  the graph alone, to the last bit, on the server and in every browser: it computes its
+  transcendental functions itself (shared/libm.ts), sorts by total orders, and finds overlapping
+  pairs through grids in the order a plain pass takes them.
 - **Layout version** (`LAYOUT_VERSION`, shared/graph.ts): when it changes, the server drops every
   view's pins once (both clusterings) and its layout memory (`<site>/layout-memory.json`). Scoped
   boards' memory (`<site>/view-memory/`) has no version and is kept.
@@ -292,6 +296,9 @@ Implementation notes:
   the key graph's edges instead: dashed ("rests on, through non-key declarations") and slightly bowed.
 - Colour runs from the user (orange) to the used (blue), a key-graph edge from the end that rests on
   to the end rested on; in a selection, proof-only edges are fainter. The legend shows the gradient.
+- **In the dark theme, edges step back as they grow many** (`--edge-crowd`; the owner's decision of
+  2026-10-19), their ends deeper, so that a dense bundle mixes into a colour, not a haze. The light
+  theme draws as before.
 
 Implementation notes:
 
@@ -332,6 +339,8 @@ Implementation notes:
   the lock, edges, the linear form (ExportSpec decision 18, `o`) and theme (light, dark
   or the system's; light by default on every platform, the owner's decision of 2026-10-14); the theme
   is the browser's, for all projects, applied from the first paint.
+- **Reduced motion holds on the whole page** (the reader's system setting; the owner's decision of
+  2026-10-19): nothing glides; the camera is where it goes at once.
 
 ## Colour schemes and the legend
 

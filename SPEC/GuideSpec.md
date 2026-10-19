@@ -51,7 +51,7 @@ what each part does in full; a tip links to it.
    thirteen scenes, in order — *Mark a target*, *A view of what it uses*, *Arrange the board*, *Read
    the source*, *Key declarations*, *Three ways to check*, *Comment and approve*, *Back to the
    Project*, *Share*, *Work with an agent*, *Papers and notes*, *A typeset document*, *Artwork* —
-   slow enough to follow, about four minutes. On a larger screen the player (about 960 px wide) has
+   slow enough to follow, about 3½ minutes. On a larger screen the player (about 960 px wide) has
    the chapters beside it, on a phone above them; under it a bar of one segment per chapter, the
    one playing filling. Each chapter is a card of one row; the one playing is open, with its words,
    **Show me** and **More** (the manual's section on GitHub); the first is open when the sheet opens.
