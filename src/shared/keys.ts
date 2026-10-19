@@ -1,21 +1,26 @@
-// Key declarations (ExportSpec decisions 1, 3 and 4): the members of a target's review that matter
-// for understanding it — the central definitions, the structures they are built on, the main theorem —
-// marked by people, or by agents at level full, per target; the target itself is always key. What each key declaration rests
-// on beyond itself (its support), and how the key declarations rest on one another (the key graph),
-// are pure functions of the graph, the review and the target's review set, over the same set and
-// edges the review queue walks (shared/reviewqueue.ts): the page, the agents' API and the exported
-// document (shared/doc/) all read them here.
+// Key declarations (ExportSpec decisions 1, 3 and 4): the members of a target's TCB that matter for
+// understanding it — the central definitions, the structures they are built on, the main theorem —
+// marked by people, or by agents at level full, per target; the target itself is always key. A key
+// declaration may be trusted (the owner's decision of 2026-10-19): trust says it needs no review, key
+// that it is needed to read the target. It is read and printed as any key one is, and counted apart:
+// key progress counts the key declarations that need review, "+N trusted" beside them (keyCounts).
+// What each key declaration rests on beyond itself (its support), and how the key declarations rest
+// on one another (the key graph), are pure functions of the graph, the review and the target's review
+// set, over the same edges the review queue walks (shared/reviewqueue.ts): the page, the agents' API
+// and the exported document (shared/doc/) all read them here.
 //
 // A member x that is not key is *supported by* a key declaration k when x is reachable from k
-// through members that are not key, along statement and body references. The key graph has an edge
-// from k₁ to k₂ when k₂ is reachable from k₁ that way. Two refinements keep "every member is
-// supported by some key declaration" true where the review set is more than what the target
-// reaches through its members:
+// through members of the TCB that are not key, along statement and body references; k's support is
+// the members of the review set it supports — a trusted member is passed through, never counted
+// (TCBSpec decision 7). The key graph has an edge from k₁ to k₂ when k₂ is reachable from k₁ that
+// way. Two refinements keep "every member is supported by some key declaration" true where the
+// review set is more than what the target reaches through its members:
 //
-// - a declaration of the project in the target's TCB that is trusted, by module or by name (a layer
-//   reviewed elsewhere), is not a member, but what it uses may be: the walk passes through it as
-//   through a member that is not key (the outside world never uses the project, so nothing else
-//   outside the set can lead back into it);
+// - a declaration of the target's TCB that is trusted, by module or by name (a layer reviewed
+//   elsewhere, or the outside world), is not a member, but what it uses may be, and it may be key:
+//   the walk passes through it as through a member that is not key. Through the outside world only
+//   where something there is key or needs review: the outside world never uses the project, so
+//   nothing else there can lead back to a key declaration or a member;
 // - a non-standard axiom the target rests on only through a proof is a member that no statement or
 //   body reaches: it is the target's support, as `viaProof` says.
 //
@@ -25,19 +30,23 @@
 
 import type { ReviewData } from "./review.ts";
 import { keyMarks, statusOf } from "./review.ts";
-import { TCB_SITES } from "./reviewqueue.ts";
+import { dependencyOrder, TCB_SITES } from "./reviewqueue.ts";
 import type { Graph } from "./viewgraph.ts";
 
 /** A target's key declarations, what each supports, and how they rest on one another. */
 export interface KeyGraph {
   root: number;
-  /** the key declarations, in review order (bottom-up, so the target comes last): the target, and
-   *  the members of its review marked key */
+  /** the key declarations (keySet's order): those trusted first, then the members of its review
+   *  marked key in review order, the target last */
   keys: number[];
+  /** the key declarations that need no review: those of `keys` its review set does not hold (a
+   *  member of the TCB that is trusted), in the order of `keys` */
+  trusted: number[];
   /** per member of the review that is not key, the key declarations supporting it: indices into
    *  `keys`, ascending */
   supporters: Map<number, number[]>;
-  /** per key declaration (an index into `keys`), the members it supports, in review order */
+  /** per key declaration (an index into `keys`), the members of the review it supports, in review
+   *  order */
   support: number[][];
   /** the key graph: [from, to] as indices into `keys`, sorted */
   edges: [number, number][];
@@ -55,30 +64,54 @@ export interface StatusCounts {
   unreviewed: number;
 }
 
-/** The key declarations of `root` among the members of its review (`order`, the queue's order —
- *  shared/reviewqueue.ts), in that order: the target, and each member marked key. A mark on
- *  a declaration that has left the review (now trusted, or no longer in the TCB) is kept in the
- *  review but counts for nothing until it is back. */
-export function keySet(g: Graph, d: ReviewData, root: number, order: readonly number[]): number[] {
-  const marked = new Set(keyMarks(d, g.nodes[root].name));
-  return order.filter((i) => i === root || marked.has(g.nodes[i].name));
+/** How a target's key declarations stand (ExportSpec decision 4): those that need review by status,
+ *  `total` of them, the target among them where it needs review; `trusted`, the key declarations
+ *  that need none, told apart and never added in, as a TCB's size tells them (TCBSpec decision 7). */
+export interface KeyCounts extends StatusCounts {
+  trusted: number;
 }
 
-/** `root`'s key graph over its review: `order` is the review's members in review order (the
- *  queue's `order`). */
+/** The key declarations of `root`: the target, and each declaration marked key for it that its TCB
+ *  (`tcb`, statement and body reach) or its review set (`order`, the members in the queue's order —
+ *  shared/reviewqueue.ts) holds, trusted or not (ExportSpec decision 1). In order: the trusted ones
+ *  first, in dependency order among themselves; then those of the review set in review order; the
+ *  target last, whether it needs review or not. A mark on a declaration that has left the TCB is
+ *  kept in the review but counts for nothing until it is back; one on a declaration trusted since
+ *  stays, trusted. */
+export function keySet(g: Graph, d: ReviewData, root: number, order: readonly number[], tcb: Uint8Array = g.reach([root], TCB_SITES, "out")): number[] {
+  const marked = new Set(keyMarks(d, g.nodes[root].name));
+  const member = new Set(order);
+  const trusted: number[] = [];
+  for (const name of marked) {
+    const i = g.byName.get(name);
+    if (i !== undefined && i !== root && tcb[i] && !member.has(i)) trusted.push(i);
+  }
+  return [...dependencyOrder(g, trusted), ...order.filter((i) => i !== root && marked.has(g.nodes[i].name)), root];
+}
+
+/** `root`'s key declarations (keySet) and those of them that need no review, without walking the key
+ *  graph: what counting them needs (keyCounts). */
+export function keyParts(g: Graph, d: ReviewData, root: number, order: readonly number[], tcb?: Uint8Array): Pick<KeyGraph, "keys" | "trusted"> {
+  const keys = keySet(g, d, root, order, tcb);
+  const member = new Set(order);
+  return { keys, trusted: keys.filter((k) => !member.has(k)) };
+}
+
+/** `root`'s key graph over its TCB: `order` is the review's members in review order (the queue's
+ *  `order`). */
 export function keyGraph(g: Graph, d: ReviewData, root: number, order: readonly number[]): KeyGraph {
-  const keys = keySet(g, d, root, order);
-  // the target is always key, also where the review does not hold it (a test, a graph read again)
-  if (!keys.includes(root)) keys.push(root);
+  const tcb = g.reach([root], TCB_SITES, "out");
+  const { keys, trusted } = keyParts(g, d, root, order, tcb);
   const keyAt = new Map<number, number>();
   keys.forEach((k, j) => keyAt.set(k, j));
   const position = new Map<number, number>();
   order.forEach((i, k) => position.set(i, k));
   const member = (v: number) => position.has(v);
-  // what a walk may pass through besides members: the project's own declarations in the target's
-  // TCB that are not members, which only a trusted prefix keeps out of the review
-  const tcb = g.reach([root], TCB_SITES, "out");
-  const passable = (v: number) => member(v) || (tcb[v] === 1 && !g.isExt(v));
+  // what a walk may pass through besides members: the declarations of the target's TCB that are not
+  // members, which only trust keeps out of the review — the outside world's only where something
+  // there is key or a member, since nothing outside leads back into the project
+  const outside = keys.some((k) => g.isExt(k)) || order.some((i) => g.isExt(i));
+  const passable = (v: number) => member(v) || (tcb[v] === 1 && (outside || !g.isExt(v)));
 
   const supporters = new Map<number, number[]>();
   const support: number[][] = keys.map(() => []);
@@ -126,11 +159,19 @@ export function keyGraph(g: Graph, d: ReviewData, root: number, order: readonly 
   return {
     root,
     keys,
+    trusted,
     supporters,
     support,
     edges: [...edges].sort((a, b) => a - b).map((x) => [Math.floor(x / K), x % K]),
     viaProof,
   };
+}
+
+/** How `kg`'s key declarations stand (ExportSpec decision 4): those that need review by people's
+ *  status; the trusted ones counted apart. */
+export function keyCounts(g: Graph, d: ReviewData, kg: Pick<KeyGraph, "keys" | "trusted">): KeyCounts {
+  const trusted = new Set(kg.trusted);
+  return { ...statusCounts(g, d, kg.keys.filter((k) => !trusted.has(k))), trusted: trusted.size };
 }
 
 /** The key graph's edges to draw while the tool is the Keys step of Rests on and something is lit
@@ -163,11 +204,12 @@ export function statusCounts(g: Graph, d: ReviewData, xs: Iterable<number>): Sta
   return c;
 }
 
-/** The review's order with its key declarations first (ExportSpec decision 4): the key ones in
- *  review order, then the rest in review order — how the agents' API lists a review set with
- *  `key=first`. */
-export function keyFirst(order: readonly number[], isKey: (i: number) => boolean): number[] {
-  return [...order.filter(isKey), ...order.filter((i) => !isKey(i))];
+/** The review's order with its key declarations first (ExportSpec decision 4): the key ones, `keys`
+ *  in their order (keySet: the trusted ones first, then the review's in review order), then the rest
+ *  of the review in review order — how the agents' API lists a review set with `key=first`. */
+export function keyFirst(order: readonly number[], keys: readonly number[]): number[] {
+  const isKey = new Set(keys);
+  return [...keys, ...order.filter((i) => !isKey.has(i))];
 }
 
 /** The key graph's layers, top-down (an index per key declaration, into `kg.keys`): the target at

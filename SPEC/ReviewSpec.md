@@ -23,7 +23,8 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
      `@external` trusts everything outside the project. The list is part of the review, changed by
      people and agents at level full (AgentSpec decision 9) from the cluster tree's shields and the
      Trusted popover (ViewSpec decision 17), where removed defaults stay listed. Trusted
-     declarations are not counted but can get opinions; the panel names the prefix that trusts one.
+     declarations are not counted but can get opinions, and be key (ExportSpec decision 1); the
+     panel names the prefix that trusts one.
      A TCB's size leaves them out too, telling them apart as "+N trusted" (TCBSpec decision 7).
    - The count is the review set wherever the focus is on the target (ViewSpec decision 28), on the
      whole graph, never what a board holds.
@@ -76,22 +77,26 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   else *approved* if one approves, else *stale* if any exist, else *not yet reviewed*. Comment
   before approve is one order, `VERDICT_ORDER` (shared/review.ts), read by every status, count,
   colour and query.
-- **The panel**: Approve (solid green) and Comment (solid blue) wherever a review box stands; the box
-  empties when the opinion is taken and keeps its text when refused. Each reviewer's latest opinion
-  (stale ones marked, with What changed) and the history; ☆ Mark as target; for a target, progress
-  (key declarations, then all) and its view (ViewSpec decision 29).
-- **A review box** stands in the panel and in each source window, following or pinned, each on its
-  own declaration, with the same controls but the target's (☆ Mark as target, progress, its view).
+- **The review box**: each reviewer's latest opinion (stale ones marked, with What changed) and the
+  history; the agents' advice apart; the comment box, Approve (solid green) and Comment (solid blue)
+  — the box empties when the opinion is taken and keeps its text when refused — and Speaking for;
+  the key mark; ☆ Mark as target; for a target, its progress (key declarations, then all), the
+  axioms outside the graph with their Approve and Comment, and its view (Its view, Key view, Link to
+  this view: ViewSpec decision 29).
+- **One review box** (the owner's decision of 2026-10-19): it stands in the panel and in each source
+  window, following or pinned, each on its own declaration, and it is the same box in each — the
+  same controls, in the same order, under the same rules. Nothing of it is the panel's alone.
 - **Withdraw** (decision 9) stands beside the current opinion of whoever the box records for — the
   reader, or the person they speak for — in every review box. An approval goes at once; a comment is
   asked about first; the page says what it did. The history lists an opinion withdrawn, faded, and
   its withdrawal at its time ("Alice withdrew their approval"; "recorded by" the typist where they
   spoke for its author).
-- **The key mark** (ExportSpec decision 1): where the reader's focus is a target whose review set
-  holds the declaration, *◇ Mark as key for T* / *◆ Key for T* (`k`), in every review box alike —
-  the panel's, and each source window's on its own declaration; in a following window, a control of
-  a followed surface (CollabSpec, "Following ends"). Who may not mark sees *◆ Key for T* where it
-  is marked. The target is key without a mark, and offered none.
+- **The key mark** (ExportSpec decision 1): where the reader's focus is a target whose TCB holds the
+  declaration — trusted or not, in the project or outside it (the owner's decision of 2026-10-19) —
+  or whose review set does, *◇ Mark as key for T* / *◆ Key for T* (`k`), in every review box alike;
+  in a following window, a control of a followed surface (CollabSpec, "Following ends"). Who may
+  not mark sees *◆ Key for T* where it is marked. The target is key without a mark, and offered
+  none.
 - **Speaking for** (decision 8), beside Approve and Comment wherever a review box stands: yourself to
   start with; the people the site knows — invited people, and the names in the logs, agents left
   out; or someone else, by a name typed. The choice stays, on every review box of the page, until
@@ -125,7 +130,8 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   marked with a gold five-pointed star, never too small to see.
 - **Typing is typing**: while a field has focus, the page's shortcuts stand aside; Esc leaves it.
 - **The source window** (Space, or "Source") shows the selected declaration's source, not modal:
-  context above the code, review below, one vertical scrollbar. It follows the selection and closes
+  context above the code, its review box below (the panel's: "One review box"), one vertical
+  scrollbar. It follows the selection and closes
   when no declaration is selected.
   - The code wraps, a continuation hanging four characters past its line's indentation; copying
     copies the source. Each line keeps its line break in the text, so hover positions count in it.
@@ -170,10 +176,10 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   demand; an opinion on the declaration covers it.
 - **Reviewing a target** is done wherever the focus is on it (ViewSpec decision 28), by following
   names in the source window.
-  - **The review strip**: *Reviewing ★target · ◆ approved / K · approved / total*, commented and
-    stale counts, the declarations agents comment on (AgentSpec decision 6), and *All reviewed ✓*
-    once the reader has an opinion on the present version of every member and every non-standard
-    axiom is approved. Only the target's name can be pressed. No focus, no strip.
+  - **The review strip**: *Reviewing ★target · ◆ approved / K · approved / total* (K and "+N
+    trusted" as ExportSpec decision 4 counts them), commented and stale counts, the declarations
+    agents comment on (AgentSpec decision 6), and *All reviewed ✓* once the reader has an opinion on
+    the present version of every member and every non-standard axiom is approved. Only the target's name can be pressed. No focus, no strip.
   - **There is no *Next to review***: no button, no key (`n`, `s` do nothing), nothing for agents.
   - **Review order** (the target's list; the agents' `tcb`, `key=first` putting key declarations
     first): non-standard axioms, then bottom-up over statement and body references (cycles

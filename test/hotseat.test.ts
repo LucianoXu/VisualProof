@@ -155,7 +155,7 @@ test("the page records for someone else only where the server would: one's own n
   const speak = (name: string) => box.input({ value: name, matches: (q: string) => q === "[data-rv-for]" } as unknown as HTMLElement, 0);
   const settle = () => new Promise((ok) => setImmediate(ok));
   const said = () => {
-    const html = box.html(0, false);
+    const html = box.html(0);
     return { recordingFor: /data-rv-for-on( hidden)?>/.exec(html)![1] === undefined, button: /data-rv="approve"[^>]*>Approve<span data-rv-for-who>([^<]*)</.exec(html)![1] };
   };
   // another person: said on the box and the buttons, and sent as theirs

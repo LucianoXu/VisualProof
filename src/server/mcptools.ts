@@ -339,7 +339,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "mark",
-    about: "Mark or unmark a target (a theorem whose TCB people review) or key declarations of a target's review, as people do in the page.",
+    about: "Mark or unmark a target (a theorem whose TCB people review) or key declarations of a target's TCB, trusted ones too, as people do in the page.",
     actions: {
       target: { method: "POST", path: "/api/agent/target", says: "mark a target", args: ["name", "on"] },
       key: { method: "POST", path: "/api/agent/key", says: "mark key declarations of a target", args: ["target", "name", "names", "on"] },

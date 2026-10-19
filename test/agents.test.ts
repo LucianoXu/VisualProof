@@ -809,13 +809,13 @@ test("key declarations through the API: read by agents, written at level full as
     assert.equal(a.support.total, 4);
     assert.deepEqual(k.keys.find((x: Json) => x.name === "N.y").support.members, ["N.z"]);
     assert.deepEqual(k.edges.map((e: string[]) => e.join(">")).sort(), ["N.t>N.a", "N.t>N.y"]);
-    assert.deepEqual(k.counts.key, { total: 3, approved: 1, commented: 0, stale: 0, unreviewed: 2 });
+    assert.deepEqual(k.counts.key, { total: 3, approved: 1, commented: 0, stale: 0, unreviewed: 2, trusted: 0 });
     assert.equal(json(await W.ask("GET", "/api/agent/keys", { target: "N.t", members: "0" })).keys[1].support.members, undefined);
     assert.deepEqual(k.keys[0].restsOn, ["N.a", "N.y"]);
     // the TCB: members carry key, counts the key level; key=first and key=only
     const t = json(await W.ask("GET", "/api/agent/tcb", { target: "N.t", limit: "50" }));
     assert.deepEqual(t.members.filter((m: Json) => m.key).map((m: Json) => m.name).sort(), ["N.a", "N.t", "N.y"]);
-    assert.deepEqual(t.counts.key, { total: 3, approved: 1, commented: 0, stale: 0, unreviewed: 2 });
+    assert.deepEqual(t.counts.key, { total: 3, approved: 1, commented: 0, stale: 0, unreviewed: 2, trusted: 0 });
     const first = json(await W.ask("GET", "/api/agent/tcb", { target: "N.t", key: "first" }));
     assert.deepEqual(first.members.slice(0, 3).map((m: Json) => m.key), [true, true, true]);
     assert.deepEqual(json(await W.ask("GET", "/api/agent/tcb", { target: "N.t", key: "only" })).members.length, 3);
@@ -824,6 +824,23 @@ test("key declarations through the API: read by agents, written at level full as
     // a declaration says what it is key for
     const d = json(await W.ask("GET", "/api/agent/declaration", { name: "N.a" }));
     assert.deepEqual(d.keyFor, ["N.t"]);
+    // a trusted member of the TCB may be key (the owner's decision of 2026-10-19): Mathlib's Ext.E,
+    // read with the others, counted apart, never in need of review; a proof's helper may not
+    assert.equal((await W.ask("POST", "/api/agent/key", { target: "N.t", name: "Ext.E", on: true })).status, 200);
+    assert.equal((await W.ask("POST", "/api/agent/key", { target: "N.t", name: "N.p", on: true })).status, 409);
+    const tk = json(await W.ask("GET", "/api/agent/keys", { target: "N.t" }));
+    const e = tk.keys.find((x: Json) => x.name === "Ext.E");
+    assert.deepEqual([e.trusted, e.trustedBy, "status" in e, e.markedByAgent], [true, ["Mathlib"], false, true]);
+    assert.deepEqual(tk.counts.key, { total: 3, approved: 1, commented: 0, stale: 0, unreviewed: 2, trusted: 1 });
+    assert.deepEqual(tk.edges.map((x: string[]) => x.join(">")).sort(), ["N.a>Ext.E", "N.t>N.a", "N.t>N.y", "N.y>Ext.E"]);
+    const only = json(await W.ask("GET", "/api/agent/tcb", { target: "N.t", key: "only" }));
+    // the trusted first, then in review order (N.y, which N.u shares too, before N.a), the target last
+    assert.deepEqual(only.members.map((m: Json) => [m.name, !!m.key, !!m.trusted]), [["Ext.E", true, true], ["N.y", true, false], ["N.a", true, false], ["N.t", true, false]]);
+    assert.deepEqual(only.members[0].trustedBy, ["Mathlib"]);
+    assert.equal(json(await W.ask("GET", "/api/agent/tcb", { target: "N.t", include: "trusted" })).members.find((m: Json) => m.name === "Ext.E").key, true);
+    assert.equal((await W.ask("GET", "/api/agent/tcb", { target: "N.t", include: "trusted", key: "first" })).status, 400);
+    assert.equal(json(await W.ask("GET", "/api/agent/targets")).targets[0].counts.key.trusted, 1);
+    assert.equal((await W.ask("POST", "/api/agent/key", { target: "N.t", name: "Ext.E", on: false })).status, 200);
     // agents read them, and at level full mark them too, as theirs (AgentSpec decision 9)
     assert.equal((await W.ask("POST", "/api/agent/key", { target: "N.t", name: "N.z", on: true })).status, 200);
     const activity = json(await W.ask("GET", "/api/agent/activity"));

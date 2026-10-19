@@ -36,10 +36,10 @@ export interface LitCount {
 }
 
 /** What "Mark selected as key" would do where the review has a focus: how many of the declarations
- *  clicked its review holds that are not key yet, and the target's short name. */
+ *  clicked its TCB holds, trusted or not, that are not key yet, and the target's short name. */
 export interface KeyMarking {
   target: string;
-  /** not key yet, and in the target's review */
+  /** not key yet, and in the target's TCB */
   fresh: number;
   /** clicked declarations already key */
   already: number;
@@ -103,7 +103,7 @@ export class SelectionBar {
         ? `<button class="sb-btn sb-key" data-mark-keys${
             key.fresh
               ? ` title="${esc(`Mark the ${key.fresh} declaration${key.fresh === 1 ? "" : "s"} you clicked as key for ${key.target}`)}"`
-              : ` disabled title="${esc(key.already ? `What you clicked is key for ${key.target} already` : `Nothing you clicked is in ${key.target}'s review besides the target`)}"`
+              : ` disabled title="${esc(key.already ? `What you clicked is key for ${key.target} already` : `Nothing you clicked is in ${key.target}'s TCB besides the target`)}"`
           }>◆ Mark selected as key${key.fresh > 1 ? ` (${key.fresh})` : ""}</button>`
         : "") +
       `<button class="sb-btn" data-clear title="Select nothing (Esc)">Clear</button></span>`;

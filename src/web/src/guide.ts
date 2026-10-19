@@ -59,9 +59,12 @@ export interface RestsOn {
   assumed: number;
   /** what Uses lights beyond what TCB lights: what its proofs alone use, trusted or not */
   proofs: number;
-  /** what Keys lights besides it: the key declarations among what TCB lights — none trusted, a mark
-   *  on what has left the review lighting nothing (shared/query.ts) */
+  /** what Keys lights besides it: the key declarations among what TCB lights that are to be read —
+   *  a mark on what has left the TCB lighting nothing (shared/query.ts) */
   keys: number;
+  /** the key declarations it lights that are trusted (ExportSpec decision 1): read with the others,
+   *  in need of no review */
+  trustedKeys?: number;
   /** it is a target */
   target: boolean;
 }
@@ -74,20 +77,24 @@ export function restsOnCounts(
   d: ReviewData,
   self: number,
   lit: { tcb: Uint8Array | null; uses: Uint8Array | null; keys: Uint8Array | null },
-): Pick<RestsOn, "self" | "read" | "assumed" | "proofs" | "keys"> {
-  let read = 0, assumed = 0, proofs = 0, keys = 0;
+): Pick<RestsOn, "self" | "read" | "assumed" | "proofs" | "keys" | "trustedKeys"> {
+  let read = 0, assumed = 0, proofs = 0, keys = 0, trustedKeys = 0;
   for (let j = 0; j < g.n; j++) {
     if (j === self) continue;
     if (!lit.tcb?.[j]) {
       if (lit.uses?.[j]) proofs++;
       continue;
     }
-    if (!needsReview(g, d, j)) assumed++;
+    const counted = needsReview(g, d, j);
+    if (!counted) assumed++;
     else read++;
-    if (lit.keys?.[j]) keys++;
+    if (lit.keys?.[j]) {
+      if (counted) keys++;
+      else trustedKeys++;
+    }
   }
   const at = self >= 0 && lit.tcb?.[self] ? (needsReview(g, d, self) ? "read" : "trusted") : null;
-  return { self: at, read, assumed, proofs, keys };
+  return { self: at, read, assumed, proofs, keys, trustedKeys };
 }
 
 /** The TCB view's words for `r`: the numbers the selection bar shows beside them, "N lit · +M
@@ -111,12 +118,17 @@ export function tcbText(r: RestsOn): string {
 }
 
 /** The Keys view's words for `r`, where something is marked key: the key declarations among what is
- *  to be read, which the bar counts with the theorem. */
+ *  to be read, which the bar counts with the theorem; then the trusted ones, which it tells apart. */
 export function keysText(r: RestsOn): string {
+  const t = r.trustedKeys ?? 0;
+  const trusted = t ? ` ${t === 1 ? "One more is" : `${t.toLocaleString()} more are`} key and trusted: read for what ${t === 1 ? "it means" : "they mean"}, in need of no review.` : "";
+  if (!r.keys) return `The review marked <b>key</b> ${t === 1 ? "one declaration" : `${t.toLocaleString()} declarations`} it rests on, trusted: what carries its meaning, in need of no review. Read ${t === 1 ? "it" : "them"} first.`;
   const of = `Of the ${r.read.toLocaleString()} declaration${r.read === 1 ? "" : "s"} to read, `;
-  return r.keys === 1
-    ? `${of}the one the review marked <b>key</b>: what carries its meaning. Read it first.`
-    : `${of}the ${r.keys.toLocaleString()} the review marked <b>key</b>: the few that carry its meaning. Read them first.`;
+  return (
+    (r.keys === 1
+      ? `${of}the one the review marked <b>key</b>: what carries its meaning. Read it first.`
+      : `${of}the ${r.keys.toLocaleString()} the review marked <b>key</b>: the few that carry its meaning. Read them first.`) + trusted
+  );
 }
 
 export interface GuideHooks {
@@ -831,18 +843,18 @@ export class Guide {
         label: "Keys",
         // no key declaration: the TCB stays lit, and the card says how keys are marked
         before: () => {
-          this.hooks.setTool(r.keys ? "keys" : "tcb");
+          this.hooks.setTool(r.keys || r.trustedKeys ? "keys" : "tcb");
           this.hooks.frameLit();
         },
         text: () =>
-          r.keys
+          r.keys || r.trustedKeys
             ? keysText(r)
             : ro || this.hooks.snapshot()
               ? "None is marked <b>key</b> yet: the review marks the few of a target's TCB that carry its meaning."
               : phone
                 ? "None is marked <b>key</b> yet. On a target's view, its panel's ◇ Mark as key marks the few that carry its meaning."
                 : "None is marked <b>key</b> yet. On a view focused on a target, <kbd>k</kbd> marks the few of its TCB that carry its meaning.",
-        at: () => (r.keys ? lit("#rests-steps [data-mode=keys]")() : ring("#rests-steps [data-mode=keys]")()),
+        at: () => (r.keys || r.trustedKeys ? lit("#rests-steps [data-mode=keys]")() : ring("#rests-steps [data-mode=keys]")()),
       },
     ];
     return { title: "What it rests on", text: "", views };

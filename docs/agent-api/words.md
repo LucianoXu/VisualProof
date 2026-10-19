@@ -49,8 +49,8 @@ The terms the other topics use.
   none on the present version; else `none`.
 - **Target**: a theorem whose TCB is reviewed; marked by people, or agents at level full
   (`markedByAgent`).
-- **Key declaration**: a review member that matters for reading the target (central definitions,
-  the structures under them, the main theorem), marked per target as targets are; the target always
-  is one. A non-key member is **supported by** a key declaration reaching it by statement and body
-  references through non-key members; the **key graph** links key declarations reached so. People
-  review key declarations first.
+- **Key declaration**: a TCB member, trusted or not, that matters for reading the target (central
+  definitions, the structures under them, the main theorem), marked per target as targets are; the
+  target always is one; a trusted one needs no review. A non-key member is **supported by** a key
+  declaration reaching it by statement and body references through non-key members; the **key
+  graph** links key declarations reached so. People read key declarations first.

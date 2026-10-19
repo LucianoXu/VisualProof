@@ -11,8 +11,8 @@
 // whatever hash or text a request carries is ignored. A name that is not a declaration of the graph
 // is refused, and so is an opinion on a declaration whose file changed since it was compiled (the
 // graph, and the hash, are about the compiled text, not what the reviewer would read). A target is a
-// declaration of the project. A key declaration is marked for a target, and is a member of what its
-// review holds (shared/reviewqueue.ts).
+// declaration of the project. A key declaration is marked for a target, and is a member of its TCB,
+// trusted or not, or of its review set (shared/reviewqueue.ts, keyableSet; ExportSpec decision 1).
 //
 // A withdrawal (ReviewSpec decision 9, the owner's decision of 2026-10-19) takes back the asker's
 // current opinion on a declaration — an agent's, its advice — or, at one screen, the current opinion
@@ -30,7 +30,7 @@ import type { ModuleContexts } from "../shared/context.ts";
 import type { ViewMeta } from "../shared/graph.ts";
 import { MAX_TEXT, STANDARD_AXIOMS, standing, validPrefix } from "../shared/review.ts";
 import type { ReviewOp } from "../shared/review.ts";
-import { reviewSet } from "../shared/reviewqueue.ts";
+import { keyableSet } from "../shared/reviewqueue.ts";
 import type { NewEvent, StoredEvent } from "../shared/timeline.ts";
 import type { Graph } from "../shared/viewgraph.ts";
 import type { AppendResult, ReviewStore, Writer } from "./review.ts";
@@ -224,8 +224,8 @@ export class ReviewApi {
         if (typeof b.on !== "boolean") return answer(refuse(400, "on is true or false.", "Send {op: \"key\", target, name, on}."));
         if (typeof b.target !== "string" || !b.target || b.target.length > 2000) return answer(refuse(400, "target is missing.", "Give the target's full name."));
         if (typeof b.name !== "string" || !b.name || b.name.length > 2000) return answer(refuse(400, "name is missing.", "Give the declaration's full name."));
-        if (b.name === b.target) return answer(refuse(400, "A target is always key for itself.", "Mark the declarations its review holds that matter for reading it."));
-        // a mark on what is gone from the graph, or from the review, can still be taken off
+        if (b.name === b.target) return answer(refuse(400, "A target is always key for itself.", "Mark the declarations of its TCB that matter for reading it."));
+        // a mark on what is gone from the graph, or from the TCB, can still be taken off
         if (b.on) {
           const v = this.graph();
           if ("status" in v) return answer(v);
@@ -234,9 +234,9 @@ export class ReviewApi {
             return answer(refuse(409, `${b.target} is not a target.`, "Key declarations are a target's: mark it as a target first (☆ Mark as target)."));
           const i = v.g.byName.get(b.name);
           if (i === undefined) return answer(refuse(404, `There is no declaration ${b.name} in the graph.`, "Mark declarations of the graph, by full name."));
-          if (!reviewSet(v.g, d, t)[i])
+          if (!keyableSet(v.g, d, t)[i])
             return answer(
-              refuse(409, `${b.name} is not among what the review of ${b.target} holds.`, "A key declaration is one of the declarations its target's review holds: its TCB without what is trusted, and the non-standard axioms it rests on."),
+              refuse(409, `${b.name} is not in the TCB of ${b.target}.`, "A key declaration is one of its target's TCB, trusted or not, or a non-standard axiom it rests on."),
             );
         }
         return this.record({ op: "key", target: b.target, name: b.name, by, on: b.on, ...agent }, who);

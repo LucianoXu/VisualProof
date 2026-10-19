@@ -15,20 +15,23 @@
 // them. Their advice is never counted here: the progress and what the reader reviewed are people's.
 //
 // Key declarations come first in reading (ExportSpec decision 4): progress has two levels, key
-// (approved of the key declarations, the target among them) and all (approved of the review). They
-// are marked ◆ in the review list, which can show them alone; what each supports is shared/keys.ts.
+// (approved of the key declarations that need review, the target among them, those trusted told
+// apart as "+N trusted") and all (approved of the review). They are marked ◆ in the review list,
+// which can show them alone, the trusted ones among them (the owner's decision of 2026-10-19: a key
+// declaration is a member of the TCB, trusted or not); what each supports is shared/keys.ts.
 
 import { SITE_STMT } from "../../shared/graph.ts";
 import { advice, adviceOf, fresh, statusOf } from "../../shared/review.ts";
 import type { Progress, ReviewData } from "../../shared/review.ts";
-import { keyGraph, statusCounts } from "../../shared/keys.ts";
-import type { KeyGraph, StatusCounts } from "../../shared/keys.ts";
-import { keyMarks } from "../../shared/review.ts";
-import { inTargets, nonStandardAxiom, offBoard, queueProgress, reviewQueue, settled, whyChain } from "../../shared/reviewqueue.ts";
+import { keyCounts, keyGraph } from "../../shared/keys.ts";
+import type { KeyCounts, KeyGraph } from "../../shared/keys.ts";
+import { keyMarks, trustedBy } from "../../shared/review.ts";
+import { inTargets, nonStandardAxiom, offBoard, queueProgress, reviewQueue, settled, TCB_SITES, whyChain } from "../../shared/reviewqueue.ts";
 import type { Queue, QueueAxiom } from "../../shared/reviewqueue.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { BOT } from "./agentmark.ts";
 import { escapeHtml } from "./highlight.ts";
+import { SHIELD } from "./trust.ts";
 
 export interface ReviewFlowHooks {
   graph(): Graph;
@@ -47,11 +50,12 @@ function chainName(g: Graph, i: number): string {
 const KEEP_FLOWS = 4;
 
 /** What is worked out for one graph and one set of targets and trusted modules: the review queues
- *  per target, and the key graphs per target with the marks each was worked out for. */
+ *  per target, their TCBs, and the key graphs per target with the marks each was worked out for. */
 interface FlowState {
   g: Graph;
   review: string;
   orders: Map<number, Queue>;
+  tcbs: Map<number, Uint8Array>;
   shared: Uint16Array | null;
   keyGraphs: Map<number, { marks: string; kg: KeyGraph }>;
 }
@@ -94,7 +98,7 @@ export class ReviewFlow {
     const review = Object.keys(d.targets).sort().join("\n") + "\n\n" + d.trusted.join("\n");
     const k = this.states.findIndex((s) => s.g === g);
     let st = k >= 0 ? this.states.splice(k, 1)[0] : null;
-    if (!st || st.review !== review) st = { g, review, orders: new Map(), shared: null, keyGraphs: new Map() };
+    if (!st || st.review !== review) st = { g, review, orders: new Map(), tcbs: new Map(), shared: null, keyGraphs: new Map() };
     this.states.push(st);
     if (this.states.length > KEEP_FLOWS) this.states.shift();
     return st;
@@ -123,15 +127,35 @@ export class ReviewFlow {
     return i === root || this.keys(root).keys.includes(i);
   }
 
-  /** Whether `i` is in what `root`'s review holds: what can be marked key for it. */
+  /** Whether `i` is a key declaration of `root` that needs no review: trusted. */
+  isTrustedKey(root: number, i: number): boolean {
+    return this.keys(root).trusted.includes(i);
+  }
+
+  /** Whether `i` is in what `root`'s review holds. */
   inReview(root: number, i: number): boolean {
     return this.queue(root).order.includes(i);
   }
 
-  /** How far the review of `root`'s key declarations has come: approved of K, the target among
-   *  them. */
-  keyProgress(root: number): StatusCounts {
-    return statusCounts(this.hooks.graph(), this.hooks.review(), this.keys(root).keys);
+  /** `root`'s TCB: statement and body reach. */
+  private tcb(root: number): Uint8Array {
+    const st = this.state();
+    let t = st.tcbs.get(root);
+    if (!t) st.tcbs.set(root, (t = st.g.reach([root], TCB_SITES, "out")));
+    return t;
+  }
+
+  /** Whether `i` can be marked key for `root` (ExportSpec decision 1, the owner's decision of
+   *  2026-10-19): a member of its TCB, trusted or not, in the project or outside it, or of its review
+   *  set (a non-standard axiom reached through proofs alone) — never the target itself. */
+  keyable(root: number, i: number): boolean {
+    return i !== root && (this.tcb(root)[i] === 1 || this.inReview(root, i));
+  }
+
+  /** How far the review of `root`'s key declarations has come: approved of those that need review
+   *  (K, the target among them), the trusted ones counted apart. */
+  keyProgress(root: number): KeyCounts {
+    return keyCounts(this.hooks.graph(), this.hooks.review(), this.keys(root));
   }
 
   /** How far `root`'s review has come: its review set, and the axioms beside it. */
@@ -158,9 +182,10 @@ export class ReviewFlow {
     return q.order.filter((i) => !this.done(i)).length + offBoard(q).filter((a) => !this.axiomDone(a)).length;
   }
 
-  /** What is left of `root`'s key declarations for this reader. */
+  /** What is left of `root`'s key declarations for this reader: those that need review. */
   keysLeft(root: number): number {
-    return this.keys(root).keys.filter((i) => !this.done(i)).length;
+    const kg = this.keys(root);
+    return kg.keys.filter((i) => !kg.trusted.includes(i) && !this.done(i)).length;
   }
 
   /** The declarations of `root`'s TCB that an agent comments on (advice on the present version), in
@@ -199,7 +224,7 @@ export class ReviewFlow {
       ? ` · <span class="lens-adv" title="${escapeHtml(`${who.join(", ")} (agent${who.length === 1 ? "" : "s"}) ${who.length === 1 ? "comments" : "comment"} on ${commented.length} declaration${commented.length === 1 ? "" : "s"} here — advice, not counted; the target's review list marks them`)}">${BOT}${escapeHtml(who.length === 1 ? `${who[0]} comments on` : "Agents comment on")} ${commented.length}</span>`
       : "";
     meta.innerHTML =
-      `· <span class="lens-key" title="${escapeHtml(`Key declarations: ${k.approved} of ${k.total} approved (the target among them) · ${keysLeft} not yet reviewed by you`)}"><span class="key-mark">◆</span>${k.approved} / ${k.total}</span>` +
+      `· <span class="lens-key" title="${escapeHtml(`Key declarations: ${k.approved} of the ${k.total} that need review approved (the target among them) · ${keysLeft} not yet reviewed by you${k.trusted ? ` · ${k.trusted} more trusted, needing no review` : ""}`)}"><span class="key-mark">◆</span>${k.approved} / ${k.total}${k.trusted ? ` <span class="muted">+${k.trusted} trusted</span>` : ""}</span>` +
       ` · ${p.approved} / ${p.total} approved` + (p.commented ? ` · ${p.commented} commented` : "") + (p.stale ? ` · ${p.stale} stale` : "") + adv +
       // the reader's own part done: an opinion on every one, every non-standard axiom approved
       (left ? "" : ` · <span class="lens-done">All reviewed ✓</span>`);
@@ -212,15 +237,18 @@ export class ReviewFlow {
   /** The panel's list of a target's review in review order: numbered, the review status of each,
    *  the ones the reader reviewed faded. A non-standard axiom says so, and
    *  where it is used; one the graph has no declaration for on the board is listed first, and goes
-   *  to the target, whose panel approves it. */
+   *  to the target, whose panel approves it. `keyOnly` (◆ Key): the key declarations alone, in their
+   *  order (shared/keys.ts, keySet) — the trusted ones first, marked trusted and unnumbered, since
+   *  they are not in the review order; then the rest, numbered as in the review order. */
   listHtml(root: number, keyOnly = false): string {
     const g = this.hooks.graph();
     const d = this.hooks.review();
     const q = this.queue(root);
-    const keys = new Set(this.keys(root).keys);
+    const kg = this.keys(root);
+    const keys = new Set(kg.keys);
     const off = keyOnly ? [] : offBoard(q);
     // the positions are the review order's, also where only the key declarations are listed
-    const order = keyOnly ? q.order.filter((i) => keys.has(i)) : q.order;
+    const order = keyOnly ? kg.keys : q.order;
     const position = new Map(q.order.map((i, k) => [i, k]));
     const offN = offBoard(q).length;
     const where = (a: QueueAxiom) => (a.via.length ? ` · used in ${a.via.map((j) => chainName(g, j)).join(", ")}` : "");
@@ -232,7 +260,7 @@ export class ReviewFlow {
     );
     const kp = this.keyProgress(root);
     const note = keyOnly
-      ? `The key declarations, ◆, in review order: ${kp.approved} of ${kp.total} approved, ${this.keysLeft(root)} not yet reviewed by you.`
+      ? `The key declarations, ◆, ${kp.trusted ? `${kp.trusted} trusted first, needing no review, then the rest ` : ""}in review order: ${kp.approved} of ${kp.total} approved, ${this.keysLeft(root)} not yet reviewed by you.`
       : `Non-standard axioms first, then bottom-up: what a declaration uses comes before it; ` +
         `${this.left(root)} of ${q.order.length + offN} not yet reviewed by you.`;
     return (
@@ -240,8 +268,18 @@ export class ReviewFlow {
       `<div class="q-list">` +
       offRows.join("") +
       order
-        .map((i, k) => {
+        .map((i) => {
           const v = g.nodes[i];
+          const at = position.get(i);
+          // a trusted key declaration: read with the others, in need of no review, so no status and
+          // no place in the review order (ExportSpec decision 1)
+          if (at === undefined) {
+            const by = trustedBy(d, v.name, v.module, g.isExt(i));
+            return (
+              `<button class="row q-row q-key rv-trusted" data-walk="${i}" title="${escapeHtml(`Go to ${v.name} — a key declaration, trusted without review${by.length ? `, under ${by.join(" and ")}` : ""}: it is read with the others and needs no opinion`)}">` +
+              `<span class="q-n q-trusted" aria-label="trusted">${SHIELD}</span>${i === root ? `<span class="star">★</span>` : `<span class="key-mark">◆</span>`}${escapeHtml(v.name)}<span class="muted"> · trusted</span></button>`
+            );
+          }
           const mine = this.done(i);
           const cls = `row q-row rv-${statusOf(d, v.name, v.hash)}${mine ? " q-mine" : ""}`;
           const what = mine ? " — you reviewed it" : "";
@@ -252,7 +290,7 @@ export class ReviewFlow {
           const key = i !== root && keys.has(i);
           return (
             `<button class="${cls}${key ? " q-key" : ""}" data-walk="${i}" title="Go to ${escapeHtml(v.name)}${what}${key ? " — a key declaration" : ""}${ax ? escapeHtml(` — a non-standard axiom${where(ax)}`) : ""}">` +
-            `<span class="q-n">${offN + position.get(i)! + 1}</span>${i === root ? `<span class="star">★</span>` : key ? `<span class="key-mark">◆</span>` : ""}${ax ? "axiom " : ""}${escapeHtml(v.name)}${ax ? `<span class="muted">${escapeHtml(where(ax))}</span>` : ""}${mark}</button>`
+            `<span class="q-n">${offN + at + 1}</span>${i === root ? `<span class="star">★</span>` : key ? `<span class="key-mark">◆</span>` : ""}${ax ? "axiom " : ""}${escapeHtml(v.name)}${ax ? `<span class="muted">${escapeHtml(where(ax))}</span>` : ""}${mark}</button>`
           );
         })
         .join("") +

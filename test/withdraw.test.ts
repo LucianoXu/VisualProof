@@ -277,11 +277,11 @@ test("the review box: Withdraw beside the current opinion of whoever it records 
   /** whose current opinion each shown Withdraw is beside */
   const shown = (html: string) => [...html.matchAll(/<button type="button" class="rv-quote rv-withdraw" data-rv-withdraw data-rv-by="([^"]*)"( hidden)?/g)].filter((m) => !m[2]).map((m) => m[1]);
   const speak = (name: string) => box.input({ value: name, matches: (q: string) => q === "[data-rv-for]" } as unknown as HTMLElement, 0);
-  // the reader's own, alone; never beside advice; the panel and a source window alike
-  for (const full of [false, true]) assert.deepEqual(shown(box.html(0, full)), ["Olivia"], `full: ${full}`);
+  // the reader's own, alone; never beside advice; one review box, the panel's and a source window's
+  assert.deepEqual(shown(box.html(0)), ["Olivia"]);
   // speaking for Bob: beside his
   speak("bob");
-  assert.deepEqual(shown(box.html(0, false)), ["Bob"]);
+  assert.deepEqual(shown(box.html(0)), ["Bob"]);
   // a comment asks first; declined, nothing is sent
   const ask: string[] = [];
   (globalThis as { confirm?: (s: string) => boolean }).confirm = (s: string) => (ask.push(s), false);
@@ -308,7 +308,7 @@ test("the review box: Withdraw beside the current opinion of whoever it records 
   }
   // as the server takes it: her opinion withdrawn, the history says so, in time order
   record(d, { op: "withdraw", name: "N.a", by: "Olivia" }, "tc", at(4));
-  const html = box.html(0, false);
+  const html = box.html(0);
   assert.deepEqual(shown(html), []);
   const hist = /<details class="rv-hist"><summary>All 2 opinions · 1 withdrawn<\/summary>(.*)<\/details>/.exec(html);
   assert.ok(hist, html);
@@ -317,7 +317,7 @@ test("the review box: Withdraw beside the current opinion of whoever it records 
   // a read-only reader is offered no Withdraw
   readOnly = true;
   record(d, { op: "opinion", name: "N.a", by: "Olivia", verdict: "approve", hash: "h" }, "tc", at(5));
-  assert.doesNotMatch(box.html(0, false), /data-rv-withdraw/);
+  assert.doesNotMatch(box.html(0), /data-rv-withdraw/);
   // nothing standing any more: nothing is sent, the box says so
   readOnly = false;
   const n = sent.length;

@@ -101,7 +101,7 @@ export const QUERY_LIMITS = {
   /** characters of one name or prefix */
   name: 2_000,
   /** closures (tcb, uses, usedBy, refs), each a walk of the graph; each target of a `key(…)` counts as
-   *  one too, since its review set is walked to keep only the marks still in it. `key(targets)`
+   *  one too, since its TCB is walked to keep only the marks still in it (keyScope). `key(targets)`
    *  counts as one: how many targets there are is the project's, not the query's, and every
    *  `key(targets)` of a query shares the same walks (evaluateIn) */
   closures: 64,
@@ -603,6 +603,16 @@ export function reviewScope(target: string): Query {
   ]);
 }
 
+/** What can be key for a target (ExportSpec decision 1, the owner's decision of 2026-10-19): a
+ *  member of its TCB, trusted or not, in the project or outside it, or of its review set — a
+ *  non-standard axiom it rests on through proofs alone: `tcb(T) or (uses(T) and kind(axiom) and
+ *  nonstandard)`. It reads nothing of the review: no trust changes it, so that a key declaration
+ *  trusted since it was marked stays key. */
+export function keyScope(target: string): Query {
+  const axioms: Query = { op: "and", a: { op: "and", a: { op: "uses", of: [target] }, b: { op: "kind", kinds: ["axiom"] } }, b: { op: "nonstandard" } };
+  return { op: "or", a: { op: "tcb", of: [target] }, b: axioms };
+}
+
 /** What the Keys step of Rests on selects (ViewSpec decision 20): what was clicked — a declaration,
  *  or the set a cluster holds — and the key declarations in its TCB, of the targets `keys` names
  *  (`targets`: every target). That is `decl(X) or (tcb(X) and key(T…))`, written
@@ -763,15 +773,15 @@ function evaluateIn(q: Query, ctx: QueryContext, walks: Map<string, Uint8Array>)
       for (const i of idx(q.names)) out[i] = 1;
       return out;
     case "key":
-      // each target, and what was marked key for it that its review still holds (its Review
-      // view's set, shared/reviewqueue.ts): a mark on what has left the review counts for nothing
+      // each target, and what was marked key for it that its TCB or review set still holds, trusted
+      // or not (keyScope): a mark on what has left them counts for nothing
       for (const t of q.of === "targets" ? Object.keys(d.targets) : q.of) {
         const root = g.byName.get(t);
         if (root === undefined) continue;
         out[root] = 1;
         const marks = keyMarks(d, t).map((x) => g.byName.get(x)).filter((i): i is number => i !== undefined);
         if (!marks.length) continue;
-        const set = evaluateIn(reviewScope(t), ctx, walks);
+        const set = evaluateIn(keyScope(t), ctx, walks);
         for (const i of marks) if (set[i]) out[i] = 1;
       }
       return out;
