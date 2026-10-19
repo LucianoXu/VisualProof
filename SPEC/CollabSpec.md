@@ -441,6 +441,12 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   page knows (else "a view"), a note's first words from the notes it knows (else "a note"); a link
   the page cannot read stays a plain link. A link of this site is one of the page's own origin,
   at `/`, or at a path that lets in.
+- **Writes from the server's own pages** (proposed 2026-10-19, SECURITY.md; server/access.ts
+  `fromOwnPage`): a request other than GET and HEAD whose browser says it comes from another site or
+  another port of this host (`Sec-Fetch-Site` other than `same-origin` or `none`; without it, an
+  `Origin` that is neither the Host's nor `--public-url`'s, `null` included) is answered 403 before
+  anything else is looked at, the cookies a browser sends with it notwithstanding. Requests without
+  either header (agents, the MCP server, scripts) are as before.
 - **Bounds**: at most 200 event streams (then 503), and 400 more for read-only readers, counted
   apart; 4 per page (the oldest goes); a stream with more than 4 MB unread is closed. Read-only
   readers' hovers: 60 a minute per address and 300 in all (429 with `Retry-After`), answers kept per

@@ -29,7 +29,7 @@ import { writeSnapshot } from "./snapshot.ts";
 import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
 import { packEdges } from "../shared/edgecodec.ts";
-import { Access, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
+import { Access, fromOwnPage, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
@@ -977,6 +977,9 @@ export class App {
     // rebinding) is refused whatever it asks — the page, its data, the event stream, the agents'
     // API, the MCP server's file
     if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res, path);
+    // what may write, only from a page of this server's own (server/access.ts, fromOwnPage): a page
+    // of another site, or of another port of this host, would send this server's cookies with it
+    if (!fromOwnPage(req.method, req.headers, this.publicUrl)) return sendJson(res, { error: "A page of another site cannot change anything here." }, 403);
     // every route; whatever one throws, handle() answers
     {
       // an agent's own token (server/tokens.ts) lets it into its API alone: the page and the page's
