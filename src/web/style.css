@@ -2799,6 +2799,11 @@ span.tm-row { color: var(--text-2); cursor: default; }
     position: fixed !important; top: 58px !important; left: 8px !important; right: 8px !important; bottom: auto !important;
     width: auto !important; max-width: none !important; max-height: calc(100dvh - 70px); overflow: auto;
   }
+  /* the build status's popover too, which opens at the left of a larger screen, 460 px wide */
+  #build-pop { top: 58px; left: 8px; right: 8px; width: auto; max-height: calc(100dvh - 70px); }
+  /* and what shows under the bar by itself, at the right of its button on a larger screen: a
+     mention's notice, what a request to follow came to — across the screen, its words wrapping */
+  #talk-notice, #ask-line { position: fixed; top: 58px; left: 8px; right: 8px; width: auto; white-space: normal; }
   #viewbar { top: 58px; left: 8px; right: 8px; gap: 6px; }
   #tabs { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   #tabs::-webkit-scrollbar { display: none; }
