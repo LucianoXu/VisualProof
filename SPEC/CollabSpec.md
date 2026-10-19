@@ -383,6 +383,23 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   (429), the export's cache answering the rest. Request bodies are bounded (413); a failing handler answers 500 with a
   JSON reason, never hangs. Only the graph's modules are served or hovered.
 - **Far pages**: pages are often far away, over lossy links. The page's files and the graph carry a
-  content tag, and the review a tag of its revision (304 when the browser has them; the review's, the
-  owner's decision of 2026-10-19); edges travel packed; JSON over 2 KB is gzipped; the
-  page asks for the graph's two parts and the review at once.
+  content tag, and the review and the build status a tag of their revision (304 when the browser has
+  them; the review's and the build status's, the owner's decisions of 2026-10-19); edges travel
+  packed; JSON over 2 KB is gzipped; the page asks for the graph's two parts, the review and the
+  build status at once.
+- **The build status on the stream** (the owner's decision of 2026-10-19): the event stream never
+  carries it whole, as it does not the review. It says which revision the server holds (`build-rev`:
+  `{epoch, rev}`, the epoch the server's process, the revision counted from 0 before the first
+  look), as it opens and at a change sent as no delta; each change after goes as the files whose
+  status changed (`build-delta`: `{epoch, base, rev, active, progress, counts, files, gone}`, `files`
+  the files changed or new, `gone` the modules no longer listed), which the page applies to the
+  revision it holds. A page that holds another revision — a change it missed or cannot apply,
+  another run of the server's — reads the whole (`GET /api/build`: `{epoch, rev, status}`, gzipped,
+  tagged with the process and the revision, 304 to a page that has it), one reading at a time, the
+  changes that come meanwhile applied to what it brings. A change larger than 64 KB and than an
+  eighth of the whole (about what the whole takes compressed) goes as the revision alone (proposed).
+  A page asks for changes as it opens its stream (`build=delta`); a page from before 0.6.0, left
+  open across an update, is sent the whole status at every change (`build`), and a page meeting a
+  server from before takes the whole it sends. `GET /api/status` keeps the whole status for agents
+  and scripts; `?brief` leaves out the files (the page's loader). NavierStokesAndEuler (2,657
+  files): the hello 362 → 1 KB, the whole read 42 KB, a change during a build 373 → 26 KB.

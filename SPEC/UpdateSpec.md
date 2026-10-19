@@ -220,7 +220,9 @@ The owner's decisions of 2026-10-16.
 - `server/main.ts`: `--updates`, the supervisor's start, `stop()`, `GET /api/updates`, the version
   recorded at start (`recordVersion`); `/api/meta?v=&i=` refuses another process's version (409).
 - `server/live.ts`: `instance`, `toolVersion`, `hello`'s `server`, `GraphInfo.instance`,
-  `updatesChanged`, `end`.
+  `updatesChanged`, `end`; the build status's revisions counted per process (its epoch is
+  `instance`), and a stream that does not ask for its changes (`build=delta`: a page from before
+  0.6.0) sent it whole, as before (CollabSpec, the build status on the stream).
 - `web/src/reload.ts`: the page's version (`__VP_VERSION__`, defined as the page is bundled), what
   is kept (`keep`, `takeKept`, sessionStorage `visualproof:reload`, ten minutes at most), `Reloader`.
 - The timeline's `tool` event (`shared/timeline.ts`), drawn by `web/src/activity.ts`.
