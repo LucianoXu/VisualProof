@@ -26,6 +26,7 @@ npm test                    # the whole suite, on the fixture's own toolchain
 npm run test:toolchains     # the tests the toolchain can change, on the oldest and the newest
                             # toolchain of test/toolchains.json (-- --all: on every one)
 npm run test:updates        # the update path end to end, against a registry of its own
+npm run test:e2e -- --showcase <flt-regular checkout>   # a smoke run in a real browser
 node src/server/main.ts serve <a built Lean project>     # then open http://127.0.0.1:4173/
 ```
 
@@ -47,6 +48,20 @@ it is packed. Pack it, then install the file.
   folders or your cache.
 - To try a change on a real project, point `--site` and `--cache` at scratch folders, so that
   nothing is written into a real site's review and history.
+- `scripts/e2e/harness.mjs` is a small library for trying a change in a real browser, as a
+  scenario does: a server of this checkout on a built project — the flt-regular showcase with its
+  site copied in, or another on a new site — on a free port, with or without a key, `--public`,
+  `--public-url` (`serve`); the people it lets in, each in a browser context of its own (`guest`
+  with a name, `invited` by a personal link, `reader` by a read-only link, `visitor` of a public
+  site); agents' tokens at a level and the agents' API asked with them (`server.agent`); pages in
+  light or dark, on a desktop or a phone, the board waited for; screenshots numbered in the order
+  they are taken (`camera`). Each server's site, key, log and PID are in a new folder under the
+  system's temporary folder, its cache in one kept there between runs (or a folder you give, which
+  it writes: never in the repository or VisualProof's homes), and it is stopped by that PID.
+  `npm run test:e2e -- --showcase <flt-regular checkout> [--cache dir] [--port n] [--headed]` runs
+  `scripts/e2e/smoke.mjs`: two people, an agent, a message, a screenshot of each page in each
+  theme, a read-only reader, a phone, a public site; copy it to start a scenario of your own. It
+  needs Playwright (as below, "Real projects"), and is not part of `npm test`.
 
 ## Real projects
 
