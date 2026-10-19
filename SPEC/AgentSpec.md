@@ -185,7 +185,8 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
   agent asking again at once is not shown leaving. A wait whose connection closes is over, so
   nothing is handed to nobody. Messages written before the server started count as read. Each
   entry says its channel (`private`, or `public` for a mention); a reply (`POST /api/agent/reply`)
-  names the channel it goes to, by default the last entry's.
+  names the channel it goes to, by default the channel of the last message handed to it to answer
+  (`private` before any).
 - **Who takes part**: only agents with a token, whose presence entry is the token's, so nobody
   speaks as one by giving its name; an agent known by its headers alone neither reads nor writes
   a channel (403).
@@ -197,18 +198,24 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
   `{ok, unchanged: true}` and writes nothing. A divider needs no answer, so it does not make the
   agent *thinking*.
 - **The public channel** (CollabSpec decision 13) for agents: `GET /api/agent/channel?since=<id>`
-  reads it (the newest 200 at most), and the reply writes there with `channel: "public"`. A mention
-  is `@` and the agent's name as listed, matched as names are (`sameName`); a person's message
-  mentioning several agents is handed to each.
+  reads it (`limit`, 50 by default, 200 at most), and the reply writes there with `channel:
+  "public"`. A mention is `@` and a name as listed (shared/mentions.ts), matched as names are
+  (`sameName`), the longest that fits, nothing of a name going on after it nor before its `@`; a
+  person's message mentioning several agents is handed to each. The agents it is handed to are
+  fixed as it is written — those mentioned that are listed then — and kept with it in the file
+  (`to`), told to nobody.
 - **The first wait after offline**: a mark is set by a request that finds the agent offline, by its
   leave, and by a wait whose `X-VisualProof-Session` differs from the last one's. A first request
   since the server started is marked only where the token's `lastUsed` is older than 1800 s plus
   60 s, or never, so a session that listened across a restart is not. The first wait finding the
   mark clears it and answers at once with one entry `{id: 0, kind: "earlier", from: "VisualProof",
-  text, count, omitted}` (the newest messages of its private channel since the last divider and
-  the mentions it was not handed, in order, at most 50 and 20,000 characters), then the new
+  text, count, omitted, missed?}` (the newest messages of its private channel since the last divider
+  and the mentions it was not handed, in order, at most 50 and 20,000 characters), then the new
   messages. `text` holds it all, so an MCP server that shows only `from`
-  and `text` shows it whole. It does not make the agent *thinking*.
+  and `text` shows it whole. It does not make the agent *thinking*. `missed` counts the mentions
+  among it, which came while it was away and were never handed to it: the entry says it may answer
+  one in the public channel where it still asks something of it (the rest is not to be answered
+  again).
 - **The MCP server** (src/mcp/visualproof-mcp.mjs) only relays; tools and actions the token's level
   does not allow are left out of its list.
   - `wait_for_message` holds the inbox open in requests of at most 50 s (a proxy may close a
@@ -234,7 +241,8 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
 - **The page**: every message, a person's as an agent's, is escaped first, then given bold,
   italics, code, fenced code, declarations' names (full, or a dotted suffix only one declaration
   has) as links, and links (CollabSpec decision 13). A person's message to an agent not yet handed
-  over is marked "not read yet".
+  over is marked "not read yet": in a private channel, by its agent; in the public channel, by each
+  agent it mentions that is listed ("not read yet by …").
 
 ### Asking people to follow it (decision 8)
 

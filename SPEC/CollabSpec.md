@@ -419,19 +419,28 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   grace); the asker closing or going private withdraws it. Held in memory only.
 - **The conversations** (decision 13, server/talk.ts): the public channel is
   `<site>/chat/public.jsonl`, kept 90 days; a private channel is its agent's file (AgentSpec,
-  "Talking with agents"). `GET /api/chat?channel=public|<agent id>&before=<id>` reads a channel, the
-  newest 200 first; `POST /api/chat {channel, text}` writes: 401 without a name, 403 to a read-only
-  reader and, for a private channel, to anyone but its maker; 409 to an offline agent's private
-  channel; 429 beyond the rate. A message is `{id, at, from, kind, channel, text, mentions, where}`,
-  `where` the writer's place as presence carries it, given to agents and not drawn. The stream
-  sends a public message to every page with a name, private readers' included, and a private
-  channel's only to its maker's pages; nothing to a read-only page. What the reader has seen of the
-  public channel (its last id) is kept per browser.
-- **Copied links** (decision 13): the page's address up to its path, the key's `/k/<key>`, a
-  personal link's and a read-only link's left out, then `#` and the state's address
-  (web/src/state.ts), with `snap=` for what the reader sees. The chip is drawn from the link alone:
-  the names it holds, and the view's title from the views the page knows (else "a view"); a link
-  the page cannot read stays a plain link.
+  "Talking with agents"). `GET /api/chat?channel=public|<agent id>&before=<id>` reads a channel: its
+  newest 200 (before message `before`), oldest first; `POST /api/chat {channel, text, place}` writes:
+  401 without a name, 403 to a read-only reader, to an agent and, for a private channel, to anyone
+  but its maker (shared/collab.ts, `madeBy`); 404 for no such channel; 409 to an offline agent's
+  private channel; 429 beyond the rate, a person's messages in every channel together. A message is
+  `{id, at, from, kind, channel, text, mentions, where}`, each channel counting its ids, `where` the
+  writer's place as presence carries it, given to agents and never sent to pages. The stream sends a
+  public message to every page with a name, private readers' included, and a private channel's only
+  to its maker's pages; nothing to a read-only page. A page's name is its personal link's or the
+  proxy's, else the one its heartbeats give (an event stream carries no header of the page's), so
+  the page reads its channels again once a heartbeat named its stream. What the reader has seen of
+  each channel (its last id) is kept per browser, the furthest of its tabs'. The window's layer is
+  above the source and reference windows' order (web/src/floatwin.ts, `onTop`; style.css), the
+  following strip over it.
+- **Copied links** (decision 13, web/src/chatlinks.ts): the page's address up to its path, the
+  key's `/k/<key>`, a personal link's and a read-only link's left out, then `#` and the state's
+  address (web/src/state.ts), with `snap=` for what the reader sees; a note's, the board's address
+  and `note=<id>` (`nv=1` for a view's own note), which the page shows once it opened the board. The
+  chip is drawn from the link alone: the names it holds, and the view's title from the views the
+  page knows (else "a view"), a note's first words from the notes it knows (else "a note"); a link
+  the page cannot read stays a plain link. A link of this site is one of the page's own origin,
+  at `/`, or at a path that lets in.
 - **Bounds**: at most 200 event streams (then 503), and 400 more for read-only readers, counted
   apart; 4 per page (the oldest goes); a stream with more than 4 MB unread is closed. Read-only
   readers' hovers: 60 a minute per address and 300 in all (429 with `Retry-After`), answers kept per
