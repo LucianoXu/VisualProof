@@ -85,6 +85,17 @@ Concepts): each is a recipe the script holds, drawn by this checkout's `visualpr
 copy of the flt-regular showcase's site, on the build it serves (`showcase/flt-regular/setup.sh`),
 then written as WebP by ImageMagick. The same build, site and recipes make the same files.
 
+`node scripts/readme-figures.mjs --sphere-packing <dir> --flt-regular <dir> --prime-numbers <dir>
+--navier-stokes <dir> --cedar <dir> --showcase <dir> [--cache dir] [--only name,…]` makes the
+README's pictures again. The five posters (`docs/images/artwork-*.webp`) are each a recipe the
+script holds, drawn by this checkout's `visualproof artwork` without a site from a project of the
+table above, built at its commit (`--cedar` is cedar-spec's checkout, whose `cedar-lean` is drawn),
+then 640 pixels wide. The board (`docs/images/board.webp`) is the flt-regular showcase served by this
+checkout on a copy of its site (`--showcase`, its build at `b8a5f23`), Alice's page in the middle of
+the review taken in a headless Chromium, 1440 × 900 at twice the pixels; its dates are the page's,
+on the real clock. Only the pictures asked for need their checkouts; the board needs Playwright, as
+above, and every picture ImageMagick. The same builds, recipes and ImageMagick make the same files.
+
 The tips' films (GuideSpec) are made by
 `npm run tips:record -- --sphere <dir> --showcase <dir> --film <dir> [--cache <dir>] [<id>…]`: each
 storyboard (`scripts/tips/storyboards/`) played on a server of this checkout, in a headless Chromium
@@ -152,8 +163,9 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   A patch found broken is withdrawn by the owner with `npm deprecate visualproof@<version> "<why>"`:
   servers neither take nor tell of a deprecated release (one that took it already sets it aside only
   if it fails), and the next patch replaces it.
-- Before a release, the documentation's figures are made again where the board's drawing or the
-  showcase changed (`node scripts/docs-figures.mjs`, "Real projects" above), and committed.
+- Before a release, the documentation's figures and the README's pictures are made again where the
+  board's drawing, the page or the showcase changed (`node scripts/docs-figures.mjs` and
+  `node scripts/readme-figures.mjs`, "Real projects" above), and committed.
 - Before a release, the tips' films are recorded again when a part of the page they show changed
   (`npm run tips:record -- <id>…`, above), so that what they show is what the page does.
 - Releasing, by the owner: one pull request carries the release — its work, the `CHANGELOG.md`
