@@ -317,7 +317,8 @@ to a team. It needs git, besides elan.
   the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
   its buttons, the branch and the remote, when it was last asked, the build going on and what it
   says now, the newest commit waiting, and the last build that ended: when, how long, and — where it
-  failed — why, with the end of its log (to those let in fully: never a read-only reader). A failed
+  failed — why, with the end of its log (to those let in fully: never a read-only reader), its
+  paths written from the clone's folder (`.`) and the home (`~`), however links lead there. A failed
   build shows its failed files as any failed build does, in the Status colours and the popover, the
   board reading what could be; `Build failed · a1b2c3d` where no file says it (a lakefile that does
   not elaborate). The history keeps each build's commit, on the branch, so that the Time Machine's

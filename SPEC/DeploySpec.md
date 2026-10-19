@@ -205,6 +205,17 @@ otherwise).
       last build and why it failed, to every reader; the end of its log, its paths written from the
       clone's folder (`.`) and the home (`~`), to those let in fully and to agents, never to a
       read-only reader (whose `GET /api/status` has no log either: CollabSpec decision 11).
+    - **No path of the machine in the log the pages are told** (the owner's decision of 2026-10-19):
+      the paths are named so whether the log writes them as given or resolved, as Lean, elan and
+      Lake print them: the home's realpath reads `~`, and the realpath of what elan and Lake use
+      under it its path under the home: `~/.elan` (or `$ELAN_HOME`), `~/.cache` (or `$XDG_CACHE_HOME`: Lake's cache,
+      Mathlib's), `$MATHLIB_CACHE_DIR` where it is set. Where the home or a folder under it is
+      reached through a symlink (`~/.elan` → `/data/.elan`), `/data/.elan/toolchains/…/bin/lean`
+      reads `~/.elan/toolchains/…/bin/lean`. The deployment's folder, which holds the clone, its logs
+      and its own Mathlib cache, is written from the clone's (`../..`). A path is named so where it is
+      whole or begins a longer one (`/home/ann` is not in `/home/anne`), the longest first; the clone
+      not made yet is resolved as the folder it will be in. A folder those variables name outside the
+      home keeps the path given.
 
 ### What a build is of
 
