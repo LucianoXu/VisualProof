@@ -111,8 +111,8 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     where it would cover a pinned one exactly. At most one following and six pinned; a seventh pin
     is refused, saying why. A pinned window has no back and forward, a name in it goes to the page,
     and its review keys act on its own declaration. Pins do not survive a reload.
-  - **In front**: the window pressed or focused last (the conversation's too); hover cards above all
-    windows; popovers, modal windows and transient messages above those.
+  - **In front**: the window pressed or focused last; the conversation window above them all
+    (CollabSpec decision 13, the owner's decision of 2026-10-19); hover cards above all windows; popovers, modal windows and transient messages above those.
   - **Keys**: Space opens and closes the following window, also from its pill. Focus in a window:
     Esc closes it, `a` `m` `k` act on its declaration, Space presses a focused button, its comment
     box is typing (Esc returns to the window). Elsewhere Esc closes in turn a question about trust,

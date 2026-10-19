@@ -135,8 +135,8 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       nothing (the owner's decision of 2026-10-16), and the reader's own choice holds over the
       shared state until then. Pins, notes (written, edited, moved or deleted), the review
       (opinions, targets, key marks, trust), views (made, renamed or changed), re-layout, undo,
-      uploads, fetching by URL and talking to agents are not offered, and the server refuses them
-      (403) whatever the page sends.
+      uploads, fetching by URL and the conversations (decision 13) are not offered, and the server
+      refuses them (403) whatever the page sends. Copy link is (decision 13).
     - **What costs the server is bounded.** Lean's hovers are answered from a cache per build where
       they can be, and within bounds per address and in all (429 beyond). The printed document is of
       the view as it is shared, never of a reader's folds, so the export's cache answers most
@@ -165,6 +165,47 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
     an address only as that address, and browsers resolve `localhost` themselves: neither can be a
     name a page chose. With a key nothing changes: the key keeps out whoever was not given it, by
     any name. SECURITY.md.
+13. **Conversations: the public channel and one's own agents** (the owner's decisions of
+    2026-10-19). Agents' side: AgentSpec decision 8.
+    - **One conversation window, the reader's own.** The reader opens and closes it — the top bar's
+      conversation button, *Talk* in an agent's menu, a click on a mention's notice — and nothing
+      else does: following never opens, closes or changes it, and nothing in it ends following but
+      a link followed from it (a tool of the reader's own changing followed parts, decision 4) and
+      Esc (in its box, Esc first leaves the box). It moves, resizes and collapses to a pill; its
+      place, size, whether it is collapsed and the channel on show are kept per browser. **It is in
+      front of the source and reference windows**, always (ReviewSpec, "In front").
+    - **Its channels**, at its head: *Everyone*, then each of the reader's own agents with its state
+      (AgentSpec decision 8). The button counts the public messages the reader has not seen, and is
+      marked where they are mentioned or one of their agents answered.
+    - **The public channel, *Everyone***: everyone with a name writes in it, every agent with a
+      token too; a private reader (decision 8) reads it, and what they write is under their name,
+      which tells that they are there. Read-only readers (decision 11) neither see it nor are told
+      it exists. A person's message is at most 4,000 characters, an agent's 10,000, at the rate of
+      messages to agents; the channel is kept 90 days, as the timeline is. No dividers.
+    - **Mentions**: `@` and a name, completed from the people online and the agents listed. A
+      mention of the reader marks the button and the message. A person's mention of an agent is
+      handed to the agent; an agent's mention of an agent is shown, never handed (AgentSpec
+      decision 8).
+    - **Private channels are between a person and their own agent**: the agent whose token they made
+      (AgentSpec decision 7). There are none between people, and nobody sees another's. They are as
+      private as names are: a guest's name is anyone's to give (decision 3), so whoever gives the
+      maker's name sees what they said to their agent; an invited person's name (decision 9) and a
+      proxy's (`--identity-header`) are protected. SECURITY.md says so.
+    - **Messages** are text, escaped, with bold, italics, code, fenced code, declarations' names as
+      links, and links. The place each was written from is handed to agents, not shown on the page:
+      a link says where, when its writer wants to.
+    - **Links of this site show as what they lead to, never as their address**: a chip naming the
+      declaration, cluster or note, or, for what someone sees, the view, the tool and the selection
+      ("Case II · Rests on · `Foo.bar` +2"). A click goes there in the page, without a reload,
+      applied as a share link is (decision 7). A link of this site pasted into the box shows as its
+      chip there too. Other `http(s)` links open in a new tab, their host shown beside them.
+    - **Copy link**: the canvas's menu (ViewSpec decision 21) copies a link to what it was opened on —
+      a declaration, a cluster, a note — and on the empty canvas to what the reader sees (decision
+      7's snapshot, whatever Share's switch). In the conversation's box, a button inserts a link to
+      what the reader sees. **These links carry no key** (`https://<the server>/#<the address>`,
+      without `/k/<key>`): everyone in the channel is let in already, and a link copied elsewhere
+      opens nothing for whoever is not (they see decision 7's page). Share makes the links that let
+      people in.
 
 ## What the page shows
 
@@ -210,8 +251,8 @@ outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme; t
 zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
-others' initials and a person's menu; the request banner; the follower's own conversation window and
-its pin, and the following strip; hover cards; the pointer's highlight; the frame meter (`p`). A
+others' initials and a person's menu; the request banner; the conversation window (decision 13) and
+the following strip; hover cards; the pointer's highlight; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.
 
 **No surface**: the frames (bars, footer, windows' layer), whose blank parts count as the canvas;
@@ -225,10 +266,10 @@ words, tooltips and hints, the notes of others' changes, the loader.
   control, not on text or a scrollbar; outside every surface (the canvas), always. A double-click
   on a source or reference window's title bar ends it; the wheel, on the canvas only; Back and
   Forward too.
-- The presence bar, a person's menu, the following strip and its conversation, the name's menu and
-  window and the request banner are wholly the reader's own: only their own way out ends following
-  (the strip's ✕, the followed initials clicked again, a Shift-click on a pinned agent's badge),
-  and Esc.
+- The presence bar, a person's menu, the following strip, the conversation window, the name's menu
+  and window and the request banner are wholly the reader's own: only their own way out ends
+  following (the strip's ✕, the followed initials clicked again, a link followed from the
+  conversation), and Esc.
 - **Keys**: a followed part's key (table above), yes, wherever the focus is; typing in a field of a
   surface of the reader's own, no, but Enter choosing a search result does; typing anywhere else,
   yes; Enter or Space on a control, as a press; a modifier alone, Ctrl or ⌘ with a letter outside a
@@ -293,7 +334,7 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   without one (401). Pins need no name. A private page sends `X-VisualProof-Private: <its session>`;
   an agent's is ignored. What arranges a board (pins, folds, re-layouts, scopes, views, notes on a
   board, an undo from Activity) is recorded under the caller's name, or none for a private reader;
-  the review and messages to agents always take the caller's name.
+  the review and messages always take the caller's name.
 - **Presence**: one entry per open event stream. The stream's first event, `hello`, gives the page a
   public id and a secret token; a heartbeat counts only with that token, so no page speaks for
   another. Heartbeats every 10 s, and at once when a followed part changes; an entry goes when its
@@ -368,7 +409,7 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   (server/readonlygate.ts): reads, the posts that only read (`/api/hover/open`, `/api/hover/names`)
   and `POST /api/export`; anything else is 403 `{readOnly: true}`. `/api/identity` tells the page
   `{readOnly: {by: "link" | "public"}}`, and the page offers nothing that writes, sends no
-  heartbeat, gives no name and talks to no agent.
+  heartbeat, gives no name and has no conversation window; its stream carries no message.
 - **Requests to follow** (`POST /api/ask`, server/askfollow.ts): 401 without a name, 409 from a
   private page or for an agent, 404 for someone gone, 429 with `retryAfter` within 30 s, counted per
   person (link, else name) and per page. Nobody to ask makes no request and does not count. Answers:
@@ -376,6 +417,21 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   following the asker; the server does not know who follows whom). A replaced request, or one on a
   page that closes, is answered `timeout`. A request ends when all answered or after 33 s (30 + 3 of
   grace); the asker closing or going private withdraws it. Held in memory only.
+- **The conversations** (decision 13, server/talk.ts): the public channel is
+  `<site>/chat/public.jsonl`, kept 90 days; a private channel is its agent's file (AgentSpec,
+  "Talking with agents"). `GET /api/chat?channel=public|<agent id>&before=<id>` reads a channel, the
+  newest 200 first; `POST /api/chat {channel, text}` writes: 401 without a name, 403 to a read-only
+  reader and, for a private channel, to anyone but its maker; 409 to an offline agent's private
+  channel; 429 beyond the rate. A message is `{id, at, from, kind, channel, text, mentions, where}`,
+  `where` the writer's place as presence carries it, given to agents and not drawn. The stream
+  sends a public message to every page with a name, private readers' included, and a private
+  channel's only to its maker's pages; nothing to a read-only page. What the reader has seen of the
+  public channel (its last id) is kept per browser.
+- **Copied links** (decision 13): the page's address up to its path, the key's `/k/<key>`, a
+  personal link's and a read-only link's left out, then `#` and the state's address
+  (web/src/state.ts), with `snap=` for what the reader sees. The chip is drawn from the link alone:
+  the names it holds, and the view's title from the views the page knows (else "a view"); a link
+  the page cannot read stays a plain link.
 - **Bounds**: at most 200 event streams (then 503), and 400 more for read-only readers, counted
   apart; 4 per page (the oldest goes); a stream with more than 4 MB unread is closed. Read-only
   readers' hovers: 60 a minute per address and 300 in all (429 with `Retry-After`), answers kept per

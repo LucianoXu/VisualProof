@@ -44,62 +44,71 @@ and tokens at rest: SECURITY.md. Presence, following and Share: CollabSpec.md.
      token's, not the headers') and its level (read, advise or full; advise by default; at most the
      server's `--agents`); lasts 1, 7 (the default) or 30 days; reaches the agents' API only; and can
      be revoked at once.
-   - **The prompt can be shown again** from Share while the token is in force, to anyone with a name
-     (names are not checked, so not only to the maker); agents are refused. So the server keeps each
-     token's secret in the site's token file, readable by its owner alone like the access key:
+   - **The prompt can be shown again** from Share while the token is in force, to its maker alone
+     (the owner's decision of 2026-10-19: whoever holds the token reads the agent's private channel,
+     decision 8); agents are refused. Its maker is the personal link that made it, where an invited
+     person made it (CollabSpec decision 9), else the name it was made under. So the server keeps
+     each token's secret in the site's token file, readable by its owner alone like the access key:
      whoever can read that file can read the key, and with the key make a token of their own.
+     Revoking stays anyone's with a name, so that anyone can stop an agent at once.
    - **Companion**: an agent can see where every person is (view, mode, selection, the panel's
      declaration, the source windows) and wait until someone moves, to follow the people it helps.
-8. **Talking with an agent in the page.**
+8. **Talking with agents in the page** (the owner's decisions of 2026-10-19, which replace one
+   conversation per agent shared by everyone).
+   - **Two places** (CollabSpec decision 13): the public channel, where everyone with a name and
+     every agent talk; and each agent's private channel with its maker (decision 7), which nobody
+     else sees. There is no other private channel. The conversation window is the reader's own and
+     has nothing to do with following.
    - **Agents listen; nothing is pushed.** An agent waits for messages (`GET /api/agent/inbox`, or
-     the MCP server's `wait_for_message`); a wait returns the moment a message arrives, with who
-     wrote it and where they were, or with nothing at the end of the longest wait.
+     the MCP server's `wait_for_message`); a wait returns the moment one is handed to it, with who
+     wrote it, where they were and in which channel, or with nothing at the end of the longest wait.
+     Handed to it: its maker's messages in its private channel, and a person's message in the public
+     channel that mentions it (`@` and its name). Nothing else in the public channel is handed to it;
+     it reads the channel when it wants (`GET /api/agent/channel`). **An agent's mention of another
+     agent is shown, never handed**: no two agents talk on without a person.
    - **The agent listens by itself**, once set up and again after each answer; interrupted by its
      person (Esc ends the waiting call), it does what they ask, then listens again. The prompt, the
      install text and the entry say so.
-   - **States**, inferred by the server, shown in the presence bar and the conversation:
+   - **States**, inferred by the server, shown in the presence bar and the conversation window:
      *listening* (a wait open); *thinking* (from a message handed over until a reply or a new wait,
      with the time elapsed and what its requests show it doing); *working* (requests with nothing
      to answer); *offline* (no wait open and no request for as long as the wait it last asked for,
      plus 60 s). Its `status` line, in its own words, shows with the state until it replies or waits
      again.
    - **Messages queue** while it thinks or works and all come at its next wait, in order. An offline
-     agent cannot be written to (409).
+     agent's private channel cannot be written to (409); a mention of it in the public channel is
+     posted, and handed to it when it comes back.
    - **A new session picks up the conversation.** When the agent comes back from offline (it left,
-     or went offline by the rule above), its first wait returns at once with the conversation since
-     the last divider, labelled as earlier and to be read as context, not answered again; then
-     anything new. Once per return. Nothing on the agent's machine needs to change for this.
-   - **A new conversation**: anyone with a name who can talk to the agent may start one (also to an
-     offline agent), at the rate of their messages. It appends a divider (same file, kept as long)
-     with who and when; pages fold what came before it into one line. A divider right after a
-     divider does nothing. The running agent is handed a notice at its next wait (at once if it
-     listens): "X started a new conversation: disregard what came before." The page cannot erase
-     what a running session holds (only `/clear` in its terminal can; the button's tooltip says
-     so); later sessions are given only what follows the last divider.
-   - **Talking while following**: following an agent opens its conversation, one per agent, shared
-     by everyone following it; typing there does not end following. The agent answers in text
-     (Markdown, declarations' names as links, no HTML) and moves its own view to what it explains,
-     never anyone else's. An offline agent's box is disabled.
-   - **The conversation is a window** among the source windows (ReviewSpec, "The source window"),
-     its place, size and collapsing kept per browser, the same for every agent. Nothing in it ends
-     following but Esc (in its box, Esc first leaves the box).
-   - **A pinned conversation**: its pin is the reader's own (CollabSpec, "Surfaces"), kept per
-     browser and agent. Pinned, the window stays open when following ends ("Talking with X"; its ✕
-     closes it, leaving it pinned) and across a reload, once the server lists the agent; a
-     Shift-click on the agent's badge opens it without following (ending any following). On touch
-     there is no Shift: a tap follows and stops following, and the pinned window stays. Unpinned, it
-     opens and closes with following. There is one conversation window: while following someone it
-     shows what following shows, and the pinned one comes back when following ends.
+     or went offline by the rule above), its first wait returns at once with its private channel
+     since the last divider and the mentions it was not handed, labelled as earlier and to be read
+     as context, not answered again; then anything new. Once per return. Nothing on the agent's
+     machine needs to change for this.
+   - **A new conversation**: its maker may start one in its private channel (also with an offline
+     agent), at the rate of their messages. It appends a divider (same file, kept as long) with who
+     and when; pages fold what came before it into one line. A divider right after a divider does
+     nothing. The running agent is handed a notice at its next wait (at once if it listens): "X
+     started a new conversation: disregard what came before." The page cannot erase what a running
+     session holds (only `/clear` in its terminal can; the button's tooltip says so); later
+     sessions are given only what follows the last divider. The public channel has no dividers.
+   - **Its answers**: text (Markdown, declarations' names as links, links of the site shown as what
+     they lead to, CollabSpec decision 13; no HTML), in the channel it answers — by default the one
+     of the message it was handed last; it may also write in the public channel unasked. It moves
+     its own view to what it explains, never anyone else's. Following an agent shows what it looks
+     at, never its conversations.
    - **Asking people to follow it** (CollabSpec decision 10), at advise and full: everyone (private
      readers counted, never named) or one person by name, one request per 30 s. The banner says it
-     is an agent; Follow opens its conversation. The agent is told who follows, declined or did not
-     answer. Agents cannot be asked to follow.
-   - Any agent with a token can be talked to, whatever its level. Messages are untrusted input: the
-     agent can do no more than its token allows. The conversation is kept in the site, apart from
-     the review's logs, for a while; sending is rate-limited.
+     is an agent. The agent is told who follows, declined or did not answer. Agents cannot be asked
+     to follow.
+   - Every agent with a token reads and writes the public channel and talks with its maker,
+     whatever its level. Messages are untrusted input, the public channel's above all: the agent
+     can do no more than its token allows, whoever asks. The ground rules (the prompt, the entry)
+     tell it to take a request in the public channel as a request, and to ask its maker before
+     changing the board on someone else's word. The channels are kept in the site, apart from the
+     review's logs (the private ones 30 days, the public one 90); sending is rate-limited.
 9. **Three levels.** An agent's level is the lower of its token's and the server's `--agents`.
-   - **read**: it reads, shows what it looks at, typesets documents (ExportSpec decision 11), and
-     makes links to pictures of the board (ExportSpec decision 20, drafted 2026-10-15).
+   - **read**: it reads, shows what it looks at, typesets documents (ExportSpec decision 11),
+     makes links to pictures of the board (ExportSpec decision 20, drafted 2026-10-15), and talks
+     (decision 8).
    - **advise**: also advice (decision 2), notes (decision 5), files and links of the library
      (AttachmentSpec decision 20), its own changed, moved, archived or deleted; asking people to
      follow it (decision 8).
@@ -149,8 +158,9 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
 ### Sharing with an agent (decision 7)
 
 - **Tokens** (server/tokens.ts): `vpa_<10 hex id>_<32 random bytes, base64url>`. The site keeps
-  `agent-tokens.json` (mode 600): the secret, id, name, level, maker, created, expires, revoked (by
-  whom), lastUsed; pages and the API see all but the secret. A token is found by its id and compared
+  `agent-tokens.json` (mode 600): the secret, id, name, level, maker (and the maker's personal
+  link's id, `makerPerson`, where an invited person made it), created, expires, revoked (by whom),
+  lastUsed; pages and the API see all but the secret. A token is found by its id and compared
   in constant time, by digest (an unknown id against a fixed digest). lastUsed is written at most
   once a minute and when the server stops. An ended token's prompt is never shown; ended tokens are
   forgotten 30 days after they ended. A record without its secret is dropped.
@@ -160,31 +170,44 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
 - **Scope** (server/main.ts): a `Bearer vpa_…` is looked at before the access key. A token above
   the server's level is refused when made (400); the level is held to `--agents` as it is now. The
   page's endpoints (`/api/share/agents`, `…/prompt`, `…/revoke`) refuse agents (403) and, but the
-  list, need a name. The prompt is asked for by POST, so the browser sends its Origin and the prompt
-  names the server the same way each time.
+  list, need a name; the prompt, the token's maker (decision 7: the personal link where the record
+  has one, else the name, as `sameName` compares names; 403 to anyone else). The prompt is asked for
+  by POST, so the browser sends its Origin and the prompt names the server the same way each time.
 - **The prompt** (server/prompt.ts) is made from the token and its record alone: who invites the
   agent, the server's address (`--public-url`, else the page's Origin where it names the Host, else
   `http://<Host>`), the token as a secret, who the agent is, its level and expiry, "start with GET
   /api/agent", the MCP server's setup for Claude Code (with a restart of the session, since MCP
   servers load when a session starts), the same over HTTP, and the ground rules.
 
-### Talking with an agent (decision 8)
+### Talking with agents (decision 8)
 
 - **The inbox** (server/talk.ts): a wait that ended at its time counts as open 15 s longer, so an
   agent asking again at once is not shown leaving. A wait whose connection closes is over, so
-  nothing is handed to nobody. Messages written before the server started count as read.
-- **The conversation**: `<site>/chat/<token id>.jsonl`, kept 30 days. A divider is a line `{kind:
-  "divider", from, text}`, its text the agent's notice. `POST /api/chat/new {agent}`: from a person
-  with a name (401; 403 to an agent), on their message rate (429); where the conversation is empty
-  or ends with a divider it answers `{ok, unchanged: true}` and writes nothing. A divider needs no
-  answer, so it does not make the agent *thinking*.
+  nothing is handed to nobody. Messages written before the server started count as read. Each
+  entry says its channel (`private`, or `public` for a mention); a reply (`POST /api/agent/reply`)
+  names the channel it goes to, by default the last entry's.
+- **Who takes part**: only agents with a token, whose presence entry is the token's, so nobody
+  speaks as one by giving its name; an agent known by its headers alone neither reads nor writes
+  a channel (403).
+- **The private channel**: `<site>/chat/<token id>.jsonl`, kept 30 days. Read, written and divided
+  by the token's maker alone (decision 7; 403 to anyone else, agents included, and nothing of it on
+  their pages' streams). A divider is a line `{kind: "divider", from, text}`, its text the agent's
+  notice. `POST /api/chat/new {agent}`: from its maker (401 without a name; 403 to anyone else), on
+  their message rate (429); where the conversation is empty or ends with a divider it answers
+  `{ok, unchanged: true}` and writes nothing. A divider needs no answer, so it does not make the
+  agent *thinking*.
+- **The public channel** (CollabSpec decision 13) for agents: `GET /api/agent/channel?since=<id>`
+  reads it (the newest 200 at most), and the reply writes there with `channel: "public"`. A mention
+  is `@` and the agent's name as listed, matched as names are (`sameName`); a person's message
+  mentioning several agents is handed to each.
 - **The first wait after offline**: a mark is set by a request that finds the agent offline, by its
   leave, and by a wait whose `X-VisualProof-Session` differs from the last one's. A first request
   since the server started is marked only where the token's `lastUsed` is older than 1800 s plus
   60 s, or never, so a session that listened across a restart is not. The first wait finding the
   mark clears it and answers at once with one entry `{id: 0, kind: "earlier", from: "VisualProof",
-  text, count, omitted}` (the newest messages since the last divider, at most 50 and 20,000
-  characters), then the new messages. `text` holds it all, so an MCP server that shows only `from`
+  text, count, omitted}` (the newest messages of its private channel since the last divider and
+  the mentions it was not handed, in order, at most 50 and 20,000 characters), then the new
+  messages. `text` holds it all, so an MCP server that shows only `from`
   and `text` shows it whole. It does not make the agent *thinking*.
 - **The MCP server** (src/mcp/visualproof-mcp.mjs) only relays; tools and actions the token's level
   does not allow are left out of its list.
@@ -202,16 +225,16 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
   - It speaks MCP revisions up to 2025-11-25 and answers a client asking for another with that one.
     Its instructions stay within the 2,048 characters Claude Code keeps, with 60-character names.
   - The instructions, the prompt, the install text, the entry and the wait's descriptions all say
-    that the first wait after the agent joins may bring earlier messages, to read and not answer.
+    that the first wait after the agent joins may bring earlier messages, to read and not answer;
+    that a message comes from its maker or from the public channel, and a reply goes back where it
+    came from; and the public channel's ground rule (decision 8).
 - **Input methods**: an Enter that commits a composition (pinyin, say) only commits it, in the
   conversation's box and in every field that acts on Enter: while composing, with keyCode 229, or
   within 80 ms after `compositionend` (Safari sends it then).
-- **The page**: an agent's text is escaped first, then given bold, italics, code, fenced code, and
-  declarations' names (full, or a dotted suffix only one declaration has) as links; a click on one
-  goes there while still following (following re-applies the followed place only when that place
-  changes). A person's message not yet handed over is marked "not read yet". Pinned conversations
-  are kept per browser by the agents' presence ids (a digest of their token); another tab's pins are
-  adopted as they are.
+- **The page**: every message, a person's as an agent's, is escaped first, then given bold,
+  italics, code, fenced code, declarations' names (full, or a dotted suffix only one declaration
+  has) as links, and links (CollabSpec decision 13). A person's message to an agent not yet handed
+  over is marked "not read yet".
 
 ### Asking people to follow it (decision 8)
 
