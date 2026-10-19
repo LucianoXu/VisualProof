@@ -15,7 +15,10 @@ import { after, before, test } from "node:test";
 import type { RawGraph } from "../src/shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../src/shared/graph.ts";
 import { EXTRACTOR } from "../src/server/extract.ts";
-import { FIXTURE_TOOLCHAIN, copyFixture, fixtureToolchain } from "./fixturecopy.ts";
+import { FIXTURE_TOOLCHAIN, copyFixture, extractor, fixtureToolchain } from "./fixturecopy.ts";
+
+/** the extractor, compiled as the server runs it (test/fixturecopy.ts) */
+const EXTRACT = await extractor();
 
 let haveLake = true;
 try {
@@ -114,7 +117,7 @@ before(() => {
   dir = copyFixture("vp-compat-");
   execFileSync("lake", ["build", ...ROOTS], { cwd: dir, stdio: "ignore" });
   const out = join(dir, "graph.json");
-  execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, out, join(dir, ".lake/build/lib/lean"), ...ROOTS], { cwd: dir, stdio: "ignore" });
+  execFileSync("lake", ["env", ...EXTRACT, out, join(dir, ".lake/build/lib/lean"), ...ROOTS], { cwd: dir, stdio: "ignore" });
   g = JSON.parse(readFileSync(out, "utf8"));
   now = normalize(g);
 });
@@ -145,6 +148,13 @@ test("what Lean puts in differs from the golden only as known-differences.json s
   assert.equal(unknown.length, 0, `${tc} differs from the golden (${golden.toolchain}) where known-differences.json allows nothing; list each with why, or fix the extractor:\n${told(unknown, golden.lenient, now.lenient)}`);
   for (const k of here) if (!k.keys.some((p) => diff.some((d) => pattern(p).test(d)))) t.diagnostic(`known difference no longer seen on ${tc}: ${k.why}`);
   if (diff.length) t.diagnostic(`${diff.length} known differences on ${tc}`);
+});
+
+test("the extractor interpreted, as the server runs it where it cannot compile it, reads what compiled it reads", opts, () => {
+  if (UPDATE) return;
+  const out = join(dir, "interpreted.json");
+  execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, out, join(dir, ".lake/build/lib/lean"), ...ROOTS], { cwd: dir, stdio: "ignore" });
+  assert.deepEqual(normalize(JSON.parse(readFileSync(out, "utf8"))), now);
 });
 
 // --------------------------------------------------- what the golden holds, said in so many words

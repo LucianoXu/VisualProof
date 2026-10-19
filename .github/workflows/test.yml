@@ -1,8 +1,8 @@
 # Typecheck and the whole suite, with the fixture's own Lean toolchain, on Linux and macOS, on the
 # oldest Node supported too; and the package as npm installs it. Once per change: on a pull
 # request, and on main as a merge lands there (what a release then checks, release.yml) — not on
-# the pushes to a pull request's branch, whose pull request runs it already, nor on tags. The suite
-# on every supported toolchain, and the typesetting, are in toolchains.yml.
+# the pushes to a pull request's branch, whose pull request runs it already, nor on tags. The tests
+# the toolchain can change, on every supported toolchain, and the typesetting, are in toolchains.yml.
 name: test
 
 on:
