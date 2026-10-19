@@ -43,10 +43,19 @@ into the latest release only.
   (`/k/<key>`) or a personal link made in Share (`/i/vpp_…`, revoked on its own), and answers
   everything else 404; or put an authenticating proxy in front. Agents send the key, or a token
   made in Share (`vpa_…`), which reaches the agents' API alone and lasts a few days.
+- **Personal links.** Whoever holds one is that person on the server. It is shown to its maker as
+  it is made, and again to its holder alone (`POST /api/share/people/mine`), in a browser it let
+  in: never to anyone else, never to an agent, a read-only reader or a guest. So whatever reads a
+  page of the holder's — someone at their unlocked screen, a script running in it — can read their
+  link, as it can already make an agent's token under their name. The holder may make it anew
+  (`POST /api/share/people/mine/renew`): the same person under a new secret, the old link and every
+  browser it let in cut off at once — and so may whoever holds the link, which is the holder as far
+  as the server knows: someone who took it can lock its holder out, and then only revoking it,
+  which anyone with a name may, stops them.
 - **Who is not let in.** A browser asking for a page (GET or HEAD, accepting HTML, not the API nor a
   file, no `Authorization: Bearer`) is shown, rather than the 404, a page saying the site is private
   — or that its link no longer opens it, alike for a key replaced and for a personal or read-only
-  link revoked or never made, naming nobody — 403. It is the same page on every server, made of
+  link revoked, made anew or never made, naming nobody — 403. It is the same page on every server, made of
   nothing the site holds: whoever comes learns that a VisualProof server is there, and nothing else —
   not the project, the version, the people or how many there are. No script, nothing fetched, a CSP
   of `default-src 'none'`, never cached. A browser the key lets in is still told who revoked a link
@@ -168,9 +177,10 @@ into the latest release only.
 
 ## Secrets at rest
 
-The site folder (`--site`) holds the agents' tokens and the read-only links in full (Share shows
-them again), the personal links' digests, and the conversations (`chat/`: the public channel 90
-days, the private ones 30); the access key is
+The site folder (`--site`) holds the agents' tokens, the read-only links and the personal links in
+full (Share shows the first two again, and a personal link is shown again to its holder; of a
+personal link made before 0.6.0, its digest alone, until its holder makes it anew), and the
+conversations (`chat/`: the public channel 90 days, the private ones 30); the access key is
 wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
 folder up as you would any secret, and never commit it.
 
