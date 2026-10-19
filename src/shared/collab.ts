@@ -395,8 +395,11 @@ export interface Peer {
   /** an agent with a token of its own (AgentSpec decisions 7 and 8): its state, as the server
    *  infers it from what the agent does; absent for any other */
   talk?: AgentTalk;
-  /** who shared with it */
+  /** who shared with it: the name its token was made under */
   by?: string;
+  /** where an invited person made its token (CollabSpec decision 9): their personal link's id, which
+   *  says who its maker is rather than the name (AgentSpec decision 7, `makerPerson`) */
+  byPerson?: string;
 }
 
 /** What an agent with a token of its own is doing, as the server infers it from its requests
@@ -414,8 +417,11 @@ export interface AgentTalk {
   doing: string | null;
   /** the line it set itself (POST /api/agent/status), until it replies or waits again */
   status: string | null;
-  /** the last message handed to it: people's messages after it wait for its next wait */
+  /** the last message of its private channel handed to it: its maker's messages after it wait for
+   *  its next wait */
   read: number;
+  /** the same in the public channel (CollabSpec decision 13): the mentions of it after it wait */
+  readPublic: number;
   /** its last request, or the end of its last wait; null before the first */
   lastSeen: string | null;
 }
@@ -429,8 +435,11 @@ export interface AgentTokenInfo {
    *  when another in force had it */
   name: string;
   level: "read" | "advise" | "full";
-  /** who made it */
+  /** who made it: the name it was made under */
   by: string;
+  /** where an invited person made it (CollabSpec decision 9): their personal link's id. Its maker is
+   *  that person, whatever name they go by, rather than whoever gives the name (AgentSpec decision 7) */
+  makerPerson?: string;
   created: string;
   expires: string;
   revoked: string | null;
@@ -438,18 +447,42 @@ export interface AgentTokenInfo {
   lastUsed: string | null;
 }
 
-/** One message of a conversation with an agent (AgentSpec decision 8, server/talk.ts), as pages
- *  and the agent are told it; or a divider, where someone started a new conversation (the owner's
+/** The two kinds of channel (CollabSpec decision 13): the public one, where everyone with a name and
+ *  every agent with a token talk; an agent's private one, between it and the person who made its
+ *  token. Pages name a private channel by its agent's id in presence. */
+export type ChannelKind = "public" | "private";
+
+/** One message of a channel (CollabSpec decision 13, server/talk.ts), as pages and agents are told
+ *  it; or, in a private channel, a divider, where its maker started a new conversation (the owner's
  *  decision of 2026-10-11): `from` is who did, and its text the notice the agent is handed. */
 export interface ChatMessage {
-  /** its place in the conversation, from 1 */
+  /** its place in its channel, from 1: each channel counts its own */
   id: number;
   at: string;
   from: string;
   kind: "person" | "agent" | "divider";
+  channel: ChannelKind;
   text: string;
-  /** where the writer was: in words, and the view, declaration and selection */
+  /** the names it mentions (`@` and a name, shared/mentions.ts), as they are listed */
+  mentions?: string[];
+  /** where the writer was: in words, and the view, declaration and selection; handed to agents,
+   *  never drawn on a page (a link says where, when its writer wants to) */
   where?: { inWords: string; view: string; declaration: string | null; selection: string | null } | null;
+}
+
+/** A message as the event stream sends it to a page (`chat`): the channel it is in — `public`, or
+ *  the id of the agent whose private channel it is — and the message. */
+export interface ChatEvent {
+  channel: string;
+  message: ChatMessage;
+}
+
+/** Whether `who` made the token `t` (AgentSpec decision 7): the personal link that made it, where an
+ *  invited person did; else the name it was made under, as names are compared. Its private channel
+ *  and its prompt are theirs alone. */
+export function madeBy(t: { by: string; makerPerson?: string }, who: { name: string | null; person: string | null }): boolean {
+  if (t.makerPerson) return who.person === t.makerPerson;
+  return who.name !== null && sameName(who.name, t.by);
 }
 
 /** A session id: what a page calls itself for as long as it is open, in its event stream's address

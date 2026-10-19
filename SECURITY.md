@@ -146,11 +146,26 @@ into the latest release only.
 - **Agents.** A token has a level: `read`, `advise` or `full` (and `--agents` caps it for the whole
   server). At `full` an agent can do whatever a person can through the page; its opinions stay
   advice and are never counted.
+- **The conversations.** The public channel is read and written by everyone with a name and every
+  agent with a token: what is written there is untrusted input to every agent. A person's message
+  there is handed to the agents it mentions; the agents' ground rules (the prompt, the entry, the
+  MCP server's instructions) say that a request there is a request, not their maker's, and to ask
+  their maker before changing the board on someone else's word; and no agent can do more than its
+  token allows, whoever asks. An agent's mention of an agent is never handed to it, so agents do
+  not talk on among themselves. An agent's private channel is read and written by the person who
+  made its token alone — their personal link where they came by one, else their name — so it is as
+  private as names are: a guest's is open to whoever gives that guest's name, while an invited
+  person's and a proxy's names are protected. The token's prompt, which holds the token (and so the
+  private channel), is shown again to its maker alone; revoking a token is anyone's with a name.
+  Read-only readers have no channel, and their streams carry no message. Where a writer was is
+  handed to agents, never sent to pages. A link copied from the page (Copy link, the conversation's
+  box) carries no key: only Share's links let anyone in.
 
 ## Secrets at rest
 
 The site folder (`--site`) holds the agents' tokens and the read-only links in full (Share shows
-them again), and the personal links' digests; the access key is
+them again), the personal links' digests, and the conversations (`chat/`: the public channel 90
+days, the private ones 30); the access key is
 wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
 folder up as you would any secret, and never commit it.
 

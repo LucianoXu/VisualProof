@@ -12,6 +12,11 @@
 // of their own. Tokens made before the secret was kept (only test tokens) are dropped when the file
 // is read.
 //
+// Its maker is the person who made it: their personal link, where an invited person did, else the
+// name they gave (shared/collab.ts, madeBy). Only they are shown its prompt again and read its
+// private channel (the owner's decisions of 2026-10-19): whoever holds the token reads that channel.
+// Revoking it stays anyone's with a name, so that anyone can stop an agent at once.
+//
 // The identity is the token's, not the request's: the name is the one the person gave, "<their
 // name>'s AI" unless they wrote another, and stays the same for the token's life, being the name
 // its advice is logged under (shared/review.ts, logFileName). Among the tokens in force no two have
@@ -107,8 +112,9 @@ export class AgentTokens {
 
   /** Make a token for an agent: the token (for its prompt) and its record. The name and level are
    *  checked by the caller (server/main.ts); the name is used as given, numbered when an agent in
-   *  force has it already; `by` is a person's name. */
-  create(o: { name: string; by: string; level: AgentLevel; days: number; now?: number }): { token: string; record: TokenRecord } {
+   *  force has it already; `by` is a person's name, and `person` their personal link's id where an
+   *  invited person makes it (`makerPerson`: who its maker is, AgentSpec decision 7). */
+  create(o: { name: string; by: string; person?: string | null; level: AgentLevel; days: number; now?: number }): { token: string; record: TokenRecord } {
     const now = o.now ?? Date.now();
     this.expire(now);
     let id: string;
@@ -120,6 +126,7 @@ export class AgentTokens {
       name: uniqueName(o.name, this.inForce(now).map((r) => r.name)),
       level: o.level,
       by: o.by,
+      ...(o.person ? { makerPerson: o.person } : {}),
       created: new Date(now).toISOString(),
       expires: new Date(now + o.days * 24 * 3600 * 1000).toISOString(),
       revoked: null,
@@ -240,5 +247,6 @@ export function invalidAgentName(s: unknown): string | null {
 function isRecord(x: unknown): x is TokenRecord {
   const r = x as TokenRecord;
   return !!r && typeof r === "object" && typeof r.id === "string" && ID.test(r.id) && typeof r.secret === "string" && SECRET.test(r.secret) &&
-    typeof r.name === "string" && typeof r.by === "string" && typeof r.expires === "string" && ["read", "advise", "full"].includes(r.level);
+    typeof r.name === "string" && typeof r.by === "string" && typeof r.expires === "string" && ["read", "advise", "full"].includes(r.level) &&
+    (r.makerPerson === undefined || typeof r.makerPerson === "string");
 }

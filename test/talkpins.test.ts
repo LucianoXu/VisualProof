@@ -12,7 +12,7 @@ import { closed, isPinned, opened, pin, readPins, shownTalk, unpin, writePins } 
 import { inYours, keyActs, pressActs, YOURS } from "../src/web/src/surfaces.ts";
 import type { PageEl } from "../src/web/src/surfaces.ts";
 
-const talk = { state: "listening" as const, since: "2026-10-12T10:00:00.000Z", doing: null, status: null, read: 0, lastSeen: null };
+const talk = { state: "listening" as const, since: "2026-10-12T10:00:00.000Z", doing: null, status: null, read: 0, readPublic: 0, lastSeen: null };
 const agent = (id: string, name: string): Peer => ({ id, name, view: null, idle: false, agent: true, talk });
 const A = agent("a1", "Alice's AI");
 const B = agent("b2", "Bob's AI");

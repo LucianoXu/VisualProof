@@ -31,7 +31,7 @@ Each wraps the endpoints of a topic, which says what their answers hold. `*`: th
 | `opinion` (advise) | — (`name`…, or `opinions` for several) | `POST opinion`, [advice](advice.md) |
 | `view` | `move`\*, `link`; `ask_follow` (advise) | `POST view`, `view/link`, `ask-follow`, [following](following.md) |
 | `wait_for_message` | — (no arguments) | `GET inbox`, below and [talking](talking.md) |
-| `reply`, `status`, `conversation` | — | `POST reply`, `POST status`, `GET conversation`, [talking](talking.md) |
+| `reply`, `status`, `conversation`, `channel` | — | `POST reply`, `POST status`, `GET conversation`, `GET channel`, [talking](talking.md) |
 | `notes` | `list`; `write`, `edit`, `move`, `delete` (advise; anyone's at full) | `GET notes`, `POST note`, `note/edit`, `note/move`, `note/delete`, [notes](notes.md) |
 | `views` | `list`, `read`, `open`; `create`, `duplicate`, `rename`, `delete`, `scope`, `items`, `focus`, `link`, `arrange`, `relayout` (full) | `GET views`, `views/view`, `POST views/…`, [views](views.md) |
 | `pins` | `place`; `pin`, `undo` (full) | `GET place`, `POST pins`, `undo`, [views](views.md) |
@@ -62,16 +62,17 @@ returns at once:
 ```
 A message from the page, after 3.0 s of listening:
 
-Alice wrote, on the view "TCB of flt_regular", flt_regular's view, looking at IsRegularNumber (message 1, 2026-10-12T22:21:31.672Z):
+Alice wrote to you, in your private channel, on the view "TCB of flt_regular", looking at IsRegularNumber (message 1, 2026-10-12T22:21:31.672Z):
 Why does flt_regular need IsRegularNumber at all?
 
 Answer with reply (move your own view to what you explain first, with view), then call wait_for_message again.
 ```
 
-or, once the longest wait is over, `Nothing: no one wrote in 30 min. Call wait_for_message again to
-go on listening.` The first call after you join may bring the earlier messages first ("Earlier in
-this conversation, before you joined — read it as context, and do not answer it again: …"), and a
-new conversation its notice; neither is to be answered ([talking](talking.md)).
+A mention in the public channel reads "Bob wrote in the public channel, mentioning you"; `reply`
+goes back there. Once the longest wait is over: `Nothing: no one wrote in 30 min. Call
+wait_for_message again to go on listening.` The first call after you join may bring the earlier
+messages first ("Earlier in this conversation, before you joined — …"), and a new conversation its
+notice; neither is to be answered ([talking](talking.md)).
 
 - Its waits name its session (`X-VisualProof-Session`, a random id per process), so VisualProof
   knows a new session even when the one before ended without saying it left.

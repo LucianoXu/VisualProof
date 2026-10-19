@@ -58,7 +58,7 @@ test("the pill shows a message's start as one line of plain text", () => {
 });
 
 test("the page folds what came before the last divider into one line counting its messages; a new conversation needs something said since the last", () => {
-  const m = (id: number, kind: "person" | "agent" | "divider", text = `m${id}`) => ({ id, at: "2026-10-11T10:00:00.000Z", from: kind === "agent" ? "Alice's AI" : "Alice", kind, text });
+  const m = (id: number, kind: "person" | "agent" | "divider", text = `m${id}`) => ({ id, at: "2026-10-11T10:00:00.000Z", from: kind === "agent" ? "Alice's AI" : "Alice", kind, channel: "private" as const, text });
   const plain = [m(1, "person"), m(2, "agent")];
   assert.deepEqual(fold(plain), { earlier: [], count: 0, divider: null, current: plain });
   const thread = [m(1, "person"), m(2, "agent"), m(3, "divider"), m(4, "person"), m(5, "agent"), m(6, "divider"), m(7, "person")];

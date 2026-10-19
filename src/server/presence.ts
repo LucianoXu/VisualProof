@@ -54,8 +54,9 @@ interface Entry {
 /** An agent with a token in force: listed until the token ends. */
 interface TokenAgent {
   name: string;
-  /** who made its token */
+  /** who made its token, and the personal link they made it by where they came by one */
   by: string;
+  byPerson?: string;
   view: PresenceView | null;
   /** its state, what it does, when it was last seen (server/talk.ts) */
   talk: AgentTalk;
@@ -214,7 +215,7 @@ export class Presence {
   /** The tokens in force (server/tokens.ts): each one's agent is listed, in the state `talkOf`
    *  says (offline until it is seen), with when its token was last used until it is; an agent whose
    *  token ended goes. */
-  setTokens(list: { id: string; name: string; by: string; lastUsed?: string | null }[], talkOf?: (id: string) => AgentTalk): void {
+  setTokens(list: { id: string; name: string; by: string; makerPerson?: string; lastUsed?: string | null }[], talkOf?: (id: string) => AgentTalk): void {
     let changed = false;
     const ids = new Set(list.map((r) => r.id));
     for (const id of [...this.tokens.keys()])
@@ -228,8 +229,8 @@ export class Presence {
         t.by = r.by;
         continue;
       }
-      const talk = talkOf?.(r.id) ?? { state: "offline", since: new Date().toISOString(), doing: null, status: null, read: 0, lastSeen: null };
-      this.tokens.set(r.id, { name: r.name, by: r.by, view: null, talk: { ...talk, lastSeen: talk.lastSeen ?? r.lastUsed ?? null } });
+      const talk = talkOf?.(r.id) ?? { state: "offline", since: new Date().toISOString(), doing: null, status: null, read: 0, readPublic: 0, lastSeen: null };
+      this.tokens.set(r.id, { name: r.name, by: r.by, ...(r.makerPerson ? { byPerson: r.makerPerson } : {}), view: null, talk: { ...talk, lastSeen: talk.lastSeen ?? r.lastUsed ?? null } });
       changed = true;
     }
     if (changed) this.notify();
@@ -260,7 +261,7 @@ export class Presence {
       .filter(([, e]) => !e.private)
       .map(([id, e]) => ({ id, name: e.name, view: e.view, idle: e.idle, ...(e.agent ? { agent: true as const } : {}), ...(e.verified ? { verified: true as const } : {}) }));
     for (const [tok, t] of this.tokens)
-      out.push({ id: agentKey({ name: t.name, token: tok }), name: t.name, view: t.view, idle: t.talk.state === "offline", agent: true, talk: t.talk, by: t.by });
+      out.push({ id: agentKey({ name: t.name, token: tok }), name: t.name, view: t.view, idle: t.talk.state === "offline", agent: true, talk: t.talk, by: t.by, ...(t.byPerson ? { byPerson: t.byPerson } : {}) });
     return out;
   }
 

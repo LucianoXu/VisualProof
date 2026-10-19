@@ -15,8 +15,8 @@
 
 import { randomBytes } from "node:crypto";
 import type { ServerResponse } from "node:http";
-import type { Invited, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
-import { sameName } from "../shared/collab.ts";
+import type { ChatEvent, ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
+import { madeBy, nameKey, sameName } from "../shared/collab.ts";
 import type { ViewMeta } from "../shared/graph.ts";
 import { prepare } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
@@ -33,9 +33,10 @@ import { fileOf, filesOf } from "../shared/library.ts";
 import { Timeline } from "./events.ts";
 import { agentKey, Presence } from "./presence.ts";
 import { AgentTokens } from "./tokens.ts";
+import type { TokenRecord } from "./tokens.ts";
 import { Invites } from "./invites.ts";
 import { ReadOnlyLinks } from "./readonly.ts";
-import { Talk } from "./talk.ts";
+import { forPages, PUBLIC, Talk } from "./talk.ts";
 import { Asks } from "./askfollow.ts";
 import type { ReviewChange, ReviewStore } from "./review.ts";
 import type { ReviewData, ReviewRev } from "../shared/review.ts";
@@ -107,6 +108,10 @@ interface Stream {
   /** a read-only reader's (CollabSpec decision 11): the read-only link it came by, whose revoking
    *  ends the stream, or "public" (--public); null for anyone else */
   readOnly: string | null;
+  /** the name its page goes by, a private page's too: its personal link's or the proxy's from the
+   *  start, a guest's from its heartbeats (an event stream carries no header of the page's); null
+   *  for none. Which messages of the channels it is sent depends on it (CollabSpec decision 13) */
+  name: string | null;
   /** told all of the server's own releases (UpdateSpec decision 11): someone let in fully, not a
    *  read-only reader nor an agent */
   toldAll: boolean;
@@ -328,11 +333,8 @@ export class Live {
     this.tokens.onEnded = (r) => this.talk.close(r.id, r.revoked ? "revoked" : "expired");
     this.talk.inForce = (id) => this.tokens.inForce().some((r) => r.id === id);
     this.talk.onState = (id, talk) => this.presence.setTalk(id, talk);
-    // a new message goes to every page, named by the agent's entry in presence
-    this.talk.onMessage = (id, message) => {
-      const r = this.tokens.get(id);
-      if (r) this.send("chat", { agent: agentKey({ name: r.name, token: r.id }), message });
-    };
+    // a new message goes to the pages that may read its channel (CollabSpec decision 13)
+    this.talk.onMessage = (channel, message) => this.sendChat(channel, message);
     this.views.pageOf = (token) => (typeof token === "string" ? this.byToken.get(token)?.id ?? null : null);
     // the views a private page holds live while a page of its session is open
     this.views.sessionOpen = (session) => [...this.streams.values()].some((st) => st.session === session);
@@ -385,9 +387,12 @@ export class Live {
    *  stream that closed, a guess), and nothing changes. A private page's (`priv`, CollabSpec
    *  decision 8) is counted and nothing more is kept of it: not its name, not where it is.
    *  `verified`: the page of someone invited by a personal link (decision 9). */
-  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false): boolean {
+  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false, who: string | null = name): boolean {
     const s = typeof token === "string" ? this.byToken.get(token) : undefined;
     if (!s) return false;
+    // the name the page goes by, said by its heartbeat's request, a private page's too (`who`): what
+    // of the channels its stream is sent (CollabSpec decision 13)
+    if (s.readOnly === null) s.name = who;
     if (s.private !== priv) this.rename(s, priv, name, view, idle, verified);
     else if (priv) this.presence.beatPrivate(s.id);
     else this.presence.beat(s.id, name, view, idle, false, verified);
@@ -1238,7 +1243,7 @@ export class Live {
    *  it), `person` the personal link it came by. The stream is named by the server: the page is
    *  told its id, which everyone sees, and a secret for its heartbeats (`hello`); it is gone from
    *  presence when its stream closes. */
-  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null): void {
+  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null, name: string | null = null): void {
     if (session) {
       // a page that opens one more than a page needs (a reload whose old stream lingers) loses
       // its oldest
@@ -1257,7 +1262,7 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll, room: Infinity, after: 0 };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, name: readOnly === null ? name : null, toldAll, room: Infinity, after: 0 };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
@@ -1302,6 +1307,34 @@ export class Live {
     if (!this.streams.size) return;
     const text = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const st of [...this.streams.values()]) this.push(st, text);
+  }
+
+  /** A message of a channel, sent to the pages that read it (CollabSpec decision 13): a public one to
+   *  every page with a name, private readers' too; a private one only to the pages of the person
+   *  who made its agent's token (shared/collab.ts, madeBy), named by the agent's entry in presence;
+   *  nothing to a read-only reader's page, nor to a page without a name. */
+  private sendChat(channel: string, message: ChatMessage): void {
+    if (!this.streams.size) return;
+    const t = channel === PUBLIC ? null : (this.tokens.get(channel) ?? null);
+    if (channel !== PUBLIC && !t) return;
+    const text = `event: chat\ndata: ${JSON.stringify({ channel: t ? agentKey({ name: t.name, token: t.id }) : PUBLIC, message: forPages(message) } satisfies ChatEvent)}\n\n`;
+    for (const st of [...this.streams.values()]) if (mayRead(st, t)) this.push(st, text);
+  }
+
+  /** Who a message may mention (CollabSpec decision 13): the agents listed with a token in force, by
+   *  their tokens, and the people — with a page open, invited by a link, or who wrote in the public
+   *  channel lately — by the names they go by. */
+  mentionable(): { names: string[]; agents: Map<string, string> } {
+    const agents = new Map<string, string>();
+    const names: string[] = [];
+    for (const r of this.tokens.inForce()) {
+      agents.set(nameKey(r.name), r.id);
+      names.push(r.name);
+    }
+    for (const p of this.presence.list()) if (!p.agent && p.name) names.push(p.name);
+    for (const r of this.invites.inForce()) names.push(r.name);
+    for (const m of this.talk.thread(PUBLIC)) if (m.kind === "person") names.push(m.from);
+    return { names, agents };
   }
 
   /** Write to a stream, unless what it has not read yet passed MAX_BUFFERED beyond its hello (`room`):
@@ -1371,4 +1404,13 @@ function viewsCarried(views: { ops: { op: string; id?: string }[]; scope?: unkno
     if (v.scope) scopes++;
   }
   return { notes, pins, scopes, reviewViews: 0 };
+}
+
+/** Whether a page's stream is sent a channel's messages (CollabSpec decision 13): the public channel
+ *  (`t` null) where it has a name, a private one where its reader made the agent's token; never a
+ *  read-only reader's. */
+function mayRead(st: Pick<Stream, "readOnly" | "name" | "person">, t: TokenRecord | null): boolean {
+  if (st.readOnly !== null) return false;
+  if (!t) return st.name !== null || st.person !== null;
+  return madeBy(t, { name: st.name, person: st.person });
 }
