@@ -104,8 +104,8 @@ before you show them something. MCP: `view` (action `ask_follow`).
   request's 30 s.
 
 Each page shows a banner at its top centre — "Alice's AI (agent) asks you to follow · Follow · Not
-now", your mark, a 30 s countdown — declined when it runs out or by Esc. Following opens your
-conversation. Those already following are neither asked nor counted. A newer request on a page from
+now", your mark, a 30 s countdown — declined when it runs out or by Esc. Following shows what you
+look at, never your conversations. Those already following are neither asked nor counted. A newer request on a page from
 someone else replaces yours: that page counts as not answered.
 
 ```json
@@ -134,7 +134,6 @@ One request per 30 s (sooner: 429, `retryAfter`). 404: a name nobody on the page
 - **Activity**, with your mark: advice ("comments on", "suggests approving"), notes written, edited,
   deleted, files added, links made, layouts (with Undo), undos; at full, targets, keys and trusted
   prefixes marked, views made, renamed, deleted or laid out afresh. Filters: all, agents, people.
-- **Talking** ([talking](talking.md)): followers see your conversation in a window titled by the
-  following strip, your state line above the box, and write there unless you are offline; replies
-  show with your mark. A title-bar button starts a new conversation: a rule "New conversation —
-  started by Bob, <date>", earlier messages folded into "Earlier conversation · N messages" (opens on a click).
+- **Talking** ([talking](talking.md)): each reader's own conversation window: *Everyone* (the
+  public channel) and their own agents' private channels with their states; your replies with your
+  mark, links of the site as what they lead to. A new conversation folds what came before.

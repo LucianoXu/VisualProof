@@ -172,7 +172,7 @@ export interface DataSource {
   setIdentity(name: string): Promise<{ ok?: true; name?: string; person?: PersonInvite; error?: string; taken?: boolean }>;
   /** tell the others where this page is (CollabSpec decision 4), or only that it is here (a private
    *  page, decision 8), by the secret this page's event stream was given (`hello`) */
-  presence(token: string, beat: Heartbeat): void;
+  presence(token: string, beat: Heartbeat): Promise<void>;
   /** what the server's timeline holds (CollabSpec decision 5); a snapshot has none */
   activity(): Promise<StoredEvent[]>;
   /** what this page may share (web/src/share.ts): the link that lets someone in, and whether
@@ -212,14 +212,15 @@ export interface DataSource {
   makeReadOnly(): Promise<{ made: ReadOnlyLinkShown; links: ReadOnlyLinkShown[] } | { error: string }>;
   /** revoke a read-only link: the links after, or why not (`who`: a name is needed) */
   revokeReadOnly(id: string): Promise<{ links?: ReadOnlyLinkShown[]; error?: string; who?: boolean }>;
-  /** an agent's conversation (AgentSpec decision 8), by the agent's id in presence; null where it
-   *  cannot be read */
-  chat(agent: string): Promise<{ agent: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
-  /** write to an agent, from where this page is; the message, or why not ("offline": it neither
-   *  listens nor works) */
-  sendChat(agent: string, text: string, place: PresenceView): Promise<{ message: ChatMessage } | { error: string; who?: boolean }>;
-  /** start a new conversation with an agent (the owner's decision of 2026-10-11): the divider, null
-   *  where nothing was said since the last one, or why not */
+  /** a channel of the conversations (CollabSpec decision 13): `public`, or an agent's private one by
+   *  the agent's id in presence; its newest messages (before message `before`), oldest first; null
+   *  where it cannot be read (no name, not the reader's, no server) */
+  chat(channel: string, before?: number): Promise<{ channel: string; agent?: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
+  /** write in a channel, from where this page is; the message, or why not ("offline": an agent's
+   *  private channel while it neither listens nor works) */
+  sendChat(channel: string, text: string, place: PresenceView): Promise<{ message: ChatMessage } | { error: string; who?: boolean }>;
+  /** start a new conversation in an agent's private channel (the owner's decision of 2026-10-11):
+   *  the divider, null where nothing was said since the last one, or why not */
   newChat(agent: string): Promise<{ divider: ChatMessage | null } | { error: string; who?: boolean }>;
   /** ask everyone on the server to follow this reader, or the person whose page is `to` (CollabSpec
    *  decision 10), from this page's event stream (its secret, `hello`): whom it went to, or why not
@@ -443,7 +444,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     name: null,
     privateSession: null,
     identity: async () => ({ mode: "none", name: null }),
-    presence: () => {},
+    presence: async () => {},
     undoLayout: async () => ({ error: "a snapshot shows the layout as it was" }),
     exportHead: async () => "a snapshot cannot typeset documents: export from the server",
     exportOutline: async () => "a snapshot of the page has no linear form: its document is the server's",
@@ -646,13 +647,13 @@ function serverSource(): DataSource {
       fetch("/api/share/agents/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
-    chat: (agent) =>
-      fetch(`/api/chat?agent=${encodeURIComponent(agent)}`)
+    chat: (channel, before) =>
+      fetch(`/api/chat?channel=${encodeURIComponent(channel)}${before ? `&before=${before}` : ""}`, { headers: headers() })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
     // a private reader's message says who wrote it, not where they are (CollabSpec decision 8)
-    sendChat: (agent, text, place) =>
-      fetch("/api/chat", { method: "POST", headers: headers(), body: JSON.stringify({ agent, text, place: src.privateSession ? null : place }) })
+    sendChat: (channel, text, place) =>
+      fetch("/api/chat", { method: "POST", headers: headers(), body: JSON.stringify({ channel, text, place: src.privateSession ? null : place }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
     newChat: (agent) =>
@@ -694,9 +695,11 @@ function serverSource(): DataSource {
     presence: (token, beat) => {
       const r = heartbeatRequest(token, beat, headers());
       // its answer let go: the browser holds the requests kept alive, 64 KB between them, until their
-      // answers are read, and a heartbeat carrying an artwork's names chosen is some kilobytes
-      void fetch("/api/presence", { method: "POST", headers: r.headers, body: r.body, keepalive: true })
-        .then((res) => res.body?.cancel())
+      // answers are read, and a heartbeat carrying an artwork's names chosen is some kilobytes. Done
+      // once it was answered: the stream it names knows the page's name from then on (CollabSpec
+      // decision 13: which messages it is sent)
+      return fetch("/api/presence", { method: "POST", headers: r.headers, body: r.body, keepalive: true })
+        .then((res) => void res.body?.cancel())
         .catch(() => {});
     },
     source: (module) => {

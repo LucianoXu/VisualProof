@@ -9,6 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import { CASCADE, cascadeRect, clampRect, EDGE, FloatWindow, insideRect, moveRect, onTop, placeOf, raise, readKept, readPlace, rectOf, resizeRect, snapRect, underRect } from "../src/web/src/floatwin.ts";
 import type { FloatOptions, Kept, Rect } from "../src/web/src/floatwin.ts";
 import { MIN } from "../src/web/src/chatwin.ts";
@@ -283,4 +284,30 @@ test("the conversation's window is kept where the reader put it, from one openin
   assert.deepEqual(kept.place, placeOf({ x: 588, y: 264, w: 440, h: 380 }, VP));
   // opened again, or on a page loaded again: where it was put
   assert.deepEqual(make().win.rect, { x: 588, y: 264, w: 440, h: 380 });
+});
+
+test("the conversation window is in front of the others always (ReviewSpec, \"In front\"): never in their order, whichever was pressed last", () => {
+  const conv = new FakeEl("div", "convo");
+  conv.append(new FakeEl("div", "cv-head"));
+  const top = new FloatWindow(conv as unknown as HTMLElement, { min: MIN, handle: ".cv-head", collapser: "[data-collapse]", opener: ".fl-pill-open", keeper: null, onTop: true, start: () => ({ x: 288, y: 464, w: 440, h: 380 }), live: () => true });
+  top.layout();
+  const a = sourceWindow({ w: 600, h: 400 });
+  const b = sourceWindow({ w: 500, h: 300 });
+  // pressed, a source window comes in front of the other, and gets a place in their order
+  b.win.front();
+  a.win.front();
+  assert.ok(Number(a.el.style.zIndex) > Number(b.el.style.zIndex));
+  // the conversation window pressed: it takes no place in their order (its layer is style.css's,
+  // above theirs), and theirs stays as it was
+  const order = [a.el.style.zIndex, b.el.style.zIndex];
+  top.front();
+  conv.dispatch({ type: "pointerdown" });
+  assert.equal(conv.style.zIndex ?? "", "", "no z-index of the order's");
+  assert.deepEqual([a.el.style.zIndex, b.el.style.zIndex], order);
+  // and the stylesheet puts its layer above every place in that order
+  const css = readFileSync(new URL("../src/web/style.css", import.meta.url), "utf8");
+  assert.match(css, /#windows > #convo \{ z-index: 1000; \}/);
+  a.win.dispose();
+  b.win.dispose();
+  top.dispose();
 });

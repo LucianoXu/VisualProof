@@ -136,7 +136,7 @@ The README says how to install the `visualproof` command. A checkout also runs a
   project, and nothing into this repository.
   - `--site <dir>` is the **site's folder**: the review's logs (`log/`) and what this running
     VisualProof site accumulates — the history of builds, the library's files, the views and their
-    layouts (with the notes they keep), the timeline, conversations with agents, agents' tokens and
+    layouts (with the notes they keep), the timeline, the conversations, agents' tokens and
     personal links. By default `~/.local/share/visualproof/sites/<project>-<hash>/` (macOS:
     `~/Library/Application Support/visualproof/sites/…`); `--site` is relative to the current directory,
     as `--cache` is, or absolute; `<site>` below. It is local: it cannot be derived again and holds secrets, so back it
@@ -511,11 +511,16 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   the middle button; the wheel zooms. A drag starts after 6 px, so a click never moves anything.
 - **The right click** opens a menu on what is under the pointer (`Shift F10`, or the ContextMenu
   key, on what is selected): on a declaration, its source (or in a pinned window), its TCB, what it
-  uses or what uses it selected, its full name copied, *Remove from this view* or *Add to view ▸*,
+  uses or what uses it selected, its full name copied, *Copy link*, *Remove from this view* or *Add to view ▸*,
   marking it key (where the review has a focus) or a target, approving or commenting, trusting its namespace;
-  on a cluster, fold, remove, add to a view, trust; on the empty canvas, fit and Re-layout; and
+  on a cluster, fold, *Copy link*, remove, add to a view, trust; on the empty canvas, *Copy link to
+  what I see*, fit and Re-layout; on a note, *Copy link* among its items; and
   everywhere *Add a note here* and *Add a note for this view*. What you cannot do there is not
-  offered. The Project holds a fixed scope: there, *New view without it…* makes a copy of the board
+  offered. **Copy link** (ViewSpec decision 21) copies a link to it on this board, and *Copy link to
+  what I see* a link to everything you see (as Share's *Exactly what I see* makes one, whatever its
+  switch); the page says what the link leads to. These links carry no key: whoever opens one must be
+  let in already — a conversation shows it as what it leads to (Together, below), and Share makes the
+  links that let people in. Read-only readers have it too. The Project holds a fixed scope: there, *New view without it…* makes a copy of the board
   that leaves it out, and opens it.
 - **Notes** (CanvasSpec, "Notes"; AttachmentSpec decisions 13–19): a note is the project's, and
   everyone sees it at once. It belongs to views as declarations do: the Project shows every note;
@@ -686,7 +691,7 @@ keeping what you were doing.
 - **The panel** is a sheet from the bottom, across the screen, at half its height: drag its handle
   to make it taller or shorter, or tap it for the tallest and back. Activity, the lost-and-found and
   Export's window open in the same place.
-- **Source windows, the reference window and a conversation** dock there too, over the panel: side
+- **Source windows, the reference window and the conversation window** dock there too, over the panel: side
   by side on a wide enough screen, one over the other otherwise; the handle above them sets their
   height. They are not dragged: the dock places them.
 - The review strip and the selection bar go across the top, under the view bar; the legend and the
@@ -701,7 +706,7 @@ the screen while something is in it.
 
 - **The panel** is a pane at the work area's left; alone, it takes the whole width. Activity and the
   lost-and-found open in its place.
-- **Source windows, the reference window and a conversation** form one column at the panel's
+- **Source windows, the reference window and the conversation window** form one column at the panel's
   right, stacked from the top in that order — the reference the tallest, so that a page of a PDF
   reads well. One window alone takes the column's height; with no declaration selected the column
   takes the work area's width. They are not dragged: the column places them, and a collapsed one
@@ -853,7 +858,7 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   windows can be compared side by side; Approve and Comment in a pinned window, and `a`, `m`, `k`
   with the focus in it, are about its declaration, whatever is selected. Pinned windows are this
   page's (a reload starts without them; the reload into a new version, Updates below, keeps them). The window pressed last
-  comes to the front, the conversation with an agent among them. Space closes the following
+  comes to the front; the conversation window stays in front of them all. Space closes the following
   window; Esc closes the window the focus is in, and from the page closes the following one. Above
   the code, muted, is the context it is written in, as Lean: the namespaces and
   sections around it, the `open`s, `variable`s, universes, options and local notation in force
@@ -1238,8 +1243,9 @@ what each one looks at stays their own.
   personal links in force — for whom, who made each and when, when it was last used, **Revoke**
   (pressed twice), which cuts it off at once (their page then says the link no longer opens the
   site, naming nobody; a browser that has the guest link too stays, as a guest) — then the agents' tokens in force: who made each and when, when it expires,
-  when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy,
-  and **Revoke** (pressed twice).
+  when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy —
+  to whoever made the token alone, as whoever holds the token reads its agent's private channel —,
+  and **Revoke** (pressed twice), which anyone with a name may, to stop an agent at once.
 - **Your name**, at the top right: opinions, pins and re-layouts are recorded under it. A click
   opens its menu (the arrows, Enter and Esc work in it too): **Change name**, at any time — but not
   to the name of someone invited by a personal link, which the window says; behind a sign-in proxy
@@ -1255,7 +1261,8 @@ what each one looks at stays their own.
   eye is struck through. The browser keeps the choice for all its tabs; it changes at once.
 - **Who else is here**: their initials beside your name, faded when they are away. Rest on one to
   see where they are; click for their menu, **Follow** them or **Ask … to follow me** (an agent's
-  initials follow it at once). What they see is followed; how you look at it is yours
+  menu: **Follow**, and **Talk** with it, in its private channel if it is yours, else by mentioning
+  it in Everyone). What they see is followed; how you look at it is yours
   (CollabSpec decision 4): you take their view (in a tab opened for it if need be), their build in
   the Time Machine, camera, tool, selection and focus, what their panel tells of, their source
   windows and reference window (each opened, collapsed and closed with theirs, placed as your
@@ -1293,30 +1300,52 @@ what each one looks at stays their own.
   robot — and can be undone or reversed as anyone's. Two things stay as they are at full too: its
   opinions are advice, and tokens are made, shown and revoked by people only. An agent is never
   private: it is always listed, and its companion tells it how many private readers are here.
-- **Talking with an agent** (AgentSpec decision 8): an agent given a token by Share is listed beside
+- **Conversations** (CollabSpec decision 13): the conversation button at the top right opens your
+  own conversation window, and closes it. It counts the messages of Everyone you have not seen, and
+  carries an **@** where you were mentioned or one of your agents answered. At the window's head,
+  its channels: **Everyone**, the public channel — everyone with a name on the page writes there,
+  and every agent with a token (a private reader too, under their name, which tells that they are
+  there), kept 90 days — then each of **your agents**, those whose token you made in Share, with
+  its state: a private channel between you and it, which nobody else sees, kept 30 days. A
+  read-only reader has no window. Write in the box: Enter sends, Shift+Enter makes a new line (the
+  Enter that commits an input method's composition, Chinese pinyin say, only commits it); `@` and
+  the start of a name offers the people online and the agents listed. A person's message mentioning
+  an agent is handed to it; an agent's mention of another agent is shown, never handed, so that no
+  two agents talk on without a person. A mention of you marks the message and the button, and a
+  notice under the button opens the window on it. Messages are plain text with simple Markdown
+  (`**bold**`, `*italics*`, `` `code` ``, fenced code), declarations' names as links, and links: a
+  link of this site never shows as its address, but as a chip naming what it leads to — a
+  declaration, a cluster, a note, or for what someone saw, the view, the tool and the selection
+  ("Case II · Rests on · `Foo.bar` +2"), pasted into the box as in a message — and a click goes
+  there in the page, as a share link opens; any other link opens in a new tab, its host beside it.
+  **What I see**, under the box, inserts a link to what you see; a link that lets in (Share's), put
+  in the box, is sent without its key. Where a message was written from is
+  told to agents, never shown: a link says where, when you want to.
+- **The window is yours** (CollabSpec decision 13): drag its head to move it, any edge or corner to
+  resize it; its – button, or a double-click on the head, collapses it to a pill (the channel and
+  the start of its last message), which lights up when something comes; ✕ closes it. Where you put
+  it, its size, whether it is collapsed or open and the channel on show are kept in your browser. It
+  stays in front of the source and reference windows, and following never opens, closes or changes
+  it: nothing in it ends following but a link followed from it (a declaration's name, a chip) and
+  Esc (in its box, Esc first leaves the box). Following an agent shows what it looks at, never its
+  conversations.
+- **Talking with your agent** (AgentSpec decision 8): an agent given a token by Share is listed beside
   the others while the token is in force, with a dot for its state, which the server infers from
   what it does: **listening** (it waits for messages: one reaches it at once), **thinking** (it was
   handed a message and has neither replied nor waited again: how long, and what it is doing —
   searching, reading a declaration, giving advice — or the line it set itself), **working** (it
   makes requests with nothing to answer: what you write waits for its next wait), or **offline**
   (greyed, with when it was last seen: no wait and no request for as long as its last wait could
-  last, plus a minute). Following it opens its conversation in a window at the bottom left of the
-  canvas: drag its title bar (the following strip) to move it, any edge or corner to resize it; its
-  – button, or a double-click on the title bar, collapses it to a one-line pill — the agent's state
-  and the start of its last message — which lights up when a reply comes, and a click opens it
-  again. Where you put it, its size and whether it is collapsed are kept in your browser, the same
-  for every agent; it lies among the source windows, in front when you pressed it last, so that it
-  can sit beside the code; nothing done in it ends following (Esc in its box leaves the box; the
-  next Esc stops following). Its pin keeps it open when you stop following, so that you can go on
-  talking with the agent on your own, and after a reload; Shift-click the agent's badge to open a
-  pinned conversation again without following (the pin is kept in your browser, per agent). One
-  conversation per agent, shared by everyone following it, kept 30 days, with its state line above
-  the box; write there (Enter sends, Shift+Enter a new line; the Enter that commits an input
-  method's composition, Chinese pinyin say, only commits it) to any agent that is not offline. Its
-  answers come with its mark, in simple Markdown, declarations' names as links (a click looks there,
-  still following). Nothing is pushed to an agent: it listens by waiting — `wait_for_message`, a
+  last, plus a minute). Its state line shows above the box in its channel; it cannot be written to
+  while offline, though a mention of it in Everyone is kept and handed to it when it comes back.
+  It answers where it was written to, in simple Markdown, and may write in Everyone unasked;
+  messages in Everyone are untrusted input to it: it is told to take a request there as a request,
+  and to ask you before changing the board on someone else's word. **New conversation**, in the
+  head of its channel: what was said folds into one line, and its next session starts without it
+  (a session running now is told to disregard it, but only `/clear` in its own terminal erases what
+  it holds). Nothing is pushed to an agent: it listens by waiting — `wait_for_message`, a
   tool of VisualProof's MCP server (`mcp/visualproof-mcp.mjs`, served to it at `/api/agent/mcp`),
-  which returns the moment someone writes, or `GET /api/agent/inbox?wait=` over HTTP — so any agent
+  which returns the moment someone writes to it, or `GET /api/agent/inbox?wait=` over HTTP — so any agent
   can be talked to, with no special client setting. Share's prompt tells a Claude Code agent to add
   the MCP server (`claude mcp add`), to have its person restart the session (`claude --continue`),
   and then to listen by itself, again after each answer. While it waits, what its person types in
@@ -1339,8 +1368,8 @@ what each one looks at stays their own.
   tokens, so that their prompts can be shown again, readable by the owner alone as the access key
   is; ended ones are forgotten after 30 days), `person-invites.json` (the personal links: a digest
   of each, never the link, the names its holder had, who made it, when it was last used; readable
-  by the owner alone; revoked ones are kept), `chat/<token id>.jsonl` (each agent's conversation,
-  30 days).
+  by the owner alone; revoked ones are kept), `chat/public.jsonl` (the public channel, 90 days),
+  `chat/<token id>.jsonl` (each agent's private channel, 30 days).
 
 ## How the TCB is computed
 
@@ -1464,16 +1493,16 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `server/main.ts`, `server/project.ts`, `server/extract.ts`, `server/pipeline.ts`, `server/view.ts`, `server/live.ts`, `server/status.ts` | the command line and HTTP; project discovery, extraction, what the page loads, the live loop and build status |
 | `server/review.ts`, `server/reviewapi.ts`, `server/hover.ts` | the review's logs, what the page records in them, Lean's language server for hovers, `describe` and `print` |
 | `server/access.ts`, `server/invites.ts`, `server/identity.ts`, `server/presence.ts`, `server/events.ts`, `server/snapshot.ts`, `web/src/people.ts`, `web/src/whomenu.ts`, `web/src/verified.ts` | the access link, personal links, names and who records what (a private reader's layout without a name, a link holder's under their link), presence, the timeline, the exported snapshot; on the page, the others and following, the menu under the name, and a link holder's ✓ |
-| `web/` | the page: scene graph, motion, bundles, WebGL renderer (`web/src/gl/`), panels, tabs and boards, history, the source windows (`web/src/sourcewin.ts`, the following and pinned ones `web/src/sources.ts`), the conversation with an agent (`web/src/talk.ts`, its window `web/src/chatwin.ts`), the floating windows they all are (`web/src/floatwin.ts`) |
+| `web/` | the page: scene graph, motion, bundles, WebGL renderer (`web/src/gl/`), panels, tabs and boards, history, the source windows (`web/src/sourcewin.ts`, the following and pinned ones `web/src/sources.ts`), the conversations (`web/src/talk.ts`, their window `web/src/chatwin.ts`, its box `web/src/chatinput.ts`, links as chips `web/src/chatlinks.ts`), the floating windows they all are (`web/src/floatwin.ts`) |
 | `web/src/timemachine.ts`, `web/src/past.ts`, `shared/pastgraph.ts`, `web/src/layoutworker.ts`, `web/src/layoutqueue.ts` | the Time Machine (HistorySpec): its bar, the past graph and its marks against now (shared with the server, which prints a view of a past build from it), the build aimed at and the one shown (latest wins), its layouts off the page's thread, in turn |
 | `web/src/phone.ts` | a phone's page (PhoneSpec): ⋯ of the bar, the side panel's drawer, the panel's sheet; its styles are the last block of `web/style.css`, the fingers' gestures in `web/src/canvas.ts` |
 | `shared/graph.ts`, `shared/edgecodec.ts`, `shared/build.ts` | the data crossing the boundaries, the edges packed for pages, build status |
 | `shared/review.ts`, `shared/reviewqueue.ts`, `web/src/trust.ts`, `web/src/linediff.ts` | the review's events and replay, review order and why-chains, trusting from the page, what changed in a stale opinion (ReviewSpec) |
-| `shared/collab.ts`, `shared/places.ts`, `shared/timeline.ts` | names and presence, shared pins, the timeline (CollabSpec) |
+| `shared/collab.ts`, `shared/mentions.ts`, `shared/places.ts`, `shared/timeline.ts` | names and presence, mentions in the conversations, shared pins, the timeline (CollabSpec) |
 | `shared/search.ts`, `shared/editor.ts`, `shared/viewgraph.ts`, `shared/excerpt.ts`, `shared/scope.ts`, `shared/context.ts` | the search, the editor link's templates, the graph, a declaration's source, and the context it is written in (the text an opinion judges) as page and server both read them |
 | `shared/query.ts`, `shared/board.ts`, `shared/views.ts`, `server/views.ts` | the query language of scopes and the selection, what a scope makes of the graph, the views and their store (ViewSpec) |
 | `server/agent.ts`, `server/agentviews.ts`, `server/agentdocs.ts`, `docs/agent-api/` | the JSON API for agents (AgentSpec), its endpoints about views, and its documentation in topics |
-| `server/tokens.ts`, `server/prompt.ts`, `server/talk.ts`, `server/mcptools.ts`, `mcp/visualproof-mcp.mjs` | agents' tokens and the prompt Share makes; conversations with agents, their inboxes and states; VisualProof's MCP server and the tools it offers |
+| `server/tokens.ts`, `server/prompt.ts`, `server/talk.ts`, `server/mcptools.ts`, `mcp/visualproof-mcp.mjs` | agents' tokens and the prompt Share makes; the conversations' channels, agents' inboxes and states; VisualProof's MCP server and the tools it offers |
 | `shared/layout.ts`, `shared/separate.ts`, `shared/libm.ts` | the layout, on the server for the project and on the page for a board's own scope; the separation of a cluster's children, found through grids; the transcendental functions the layout computes alike on every engine |
 | `shared/keys.ts` | key declarations: what each supports, the key graph, the key-first order (ExportSpec) |
 | `shared/doc/`, `shared/lexer.ts`, `shared/palette.ts` | the exported document: its model, settings, plan of a view's sections (`sections.ts`), author line from the traces left on a view (`authors.ts`), builder (with proofs left out, `proof.ts`), docstrings read as Markdown (`markdown.ts`) and LaTeX renderer; the Lean tokenizer the page and the document highlight with; the colours they share |

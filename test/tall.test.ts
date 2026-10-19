@@ -253,12 +253,12 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     monitor: "at the top in the middle, as on a larger screen (decision 30)",
   },
   conversation: {
-    tall: "docked in the sheet's place; the following strip above the legend (decisions 21, 23)",
-    monitor: "the column, under the reference; the following strip above the legend (decision 34)",
+    tall: "the conversation window docked in the sheet's place, its button in the bar (decisions 18, 21)",
+    monitor: "the conversation window in the column, under the reference; its button in the bar (decisions 30, 34)",
   },
-  talkPin: {
-    tall: "the conversation's title bar, docked (decision 21)",
-    monitor: "the conversation's title bar, in the column (decision 34)",
+  followingStrip: {
+    tall: "above the legend (decision 23)",
+    monitor: "above the legend (decision 30)",
   },
   hoverCards: {
     tall: "as on a larger screen (decision 18)",

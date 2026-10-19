@@ -100,7 +100,8 @@ test("the MCP server: initialize without channels, the tools, a call; wait_for_m
     assert.equal(init.result.serverInfo.name, "visualproof");
     assert.match(init.result.instructions, /You are "Alice's AI"/);
     assert.match(init.result.instructions, /call wait_for_message/);
-    assert.ok(!/channel/i.test(init.result.instructions));
+    // the conversations' channels (CollabSpec decision 13), not MCP's: the capabilities above have none
+    assert.match(init.result.instructions, /your private channel, or a person mentioning you in the public channel/);
     assert.ok(init.result.instructions.length <= 2048, `instructions: ${init.result.instructions.length} characters, Claude Code keeps 2,048`);
     assert.equal((await M.ask("initialize", { protocolVersion: "2025-03-26" })).result.protocolVersion, "2025-03-26");
     M.tell("notifications/initialized");
@@ -108,7 +109,7 @@ test("the MCP server: initialize without channels, the tools, a call; wait_for_m
     assert.equal((await M.ask("prompts/list")).error.code, -32601);
     const tools = (await M.ask("tools/list")).result.tools as Json[];
     const names = tools.map((x) => x.name);
-    for (const n of ["wait_for_message", "status", "reply", "conversation", "docs", "search", "declaration", "source", "lean", "refs", "review", "companion", "opinion", "notes", "view"]) assert.ok(names.includes(n), n);
+    for (const n of ["wait_for_message", "status", "reply", "conversation", "channel", "docs", "search", "declaration", "source", "lean", "refs", "review", "companion", "opinion", "notes", "view"]) assert.ok(names.includes(n), n);
     for (const x of tools) {
       assert.ok(x.description && x.description.length <= 2048, x.name);
       assert.equal(x.inputSchema.type, "object");
@@ -152,7 +153,7 @@ test("the MCP server: initialize without channels, the tools, a call; wait_for_m
     // working: requests, nothing to answer
     assert.equal(stateOf(S), "working");
     // listening, from the moment the wait is open
-    const page = stream(S.port, "/api/events?session=aaaaaaaa1111");
+    const page = stream(S.port, "/api/events?session=aaaaaaaa1111", ALICE);
     const waited = M.send("tools/call", { name: "wait_for_message", arguments: {}, _meta: { progressToken: "w1" } });
     await M.until(() => stateOf(S) === "listening");
     await page.until(() => (page.last("presence") as Peer[] | undefined)?.find((p) => p.name === "Alice's AI")?.talk?.state === "listening");
@@ -166,7 +167,7 @@ test("the MCP server: initialize without channels, the tools, a call; wait_for_m
     assert.ok(latency < 1000, `at once: ${latency} ms`);
     assert.ok(!got.result.isError);
     const said = got.result.content[0].text as string;
-    assert.match(said, /^A message from the page, after \d+\.\d s of listening:\n\nAlice wrote, on the Project view, reading the source of N\.b \(message 1, [^)]+\):\nWhat does N\.b stand for\?\n\nAnswer with reply/);
+    assert.match(said, /^A message from the page, after \d+\.\d s of listening:\n\nAlice wrote to you, in your private channel, on the Project view, reading the source of N\.b \(message 1, [^)]+\):\nWhat does N\.b stand for\?\n\nAnswer with reply/);
     // thinking from now on, with what its requests show it doing
     assert.equal(stateOf(S), "thinking");
     await M.ask("tools/call", { name: "declaration", arguments: { name: "N.b" } });
@@ -181,8 +182,8 @@ test("the MCP server: initialize without channels, the tools, a call; wait_for_m
     assert.ok(!replied.result.isError, replied.result.content[0].text);
     await page.until(() => page.events.some((e) => e.event === "chat" && e.data.message.kind === "agent"));
     assert.equal(stateOf(S), "working");
-    const thread = await S.ask("GET", `/api/chat?agent=${encodeURIComponent(peer(S)!.id)}`);
-    assert.deepEqual(thread.json!.messages.map((m: Json) => [m.from, m.kind, m.text]), [["Alice", "person", "What does N.b stand for?"], ["Alice's AI", "agent", "It is **a**, by `N.a`."]]);
+    const thread = await S.ask("GET", `/api/chat?channel=${encodeURIComponent(peer(S)!.id)}`, undefined, ALICE);
+    assert.deepEqual(thread.json!.messages.map((m: Json) => [m.from, m.kind, m.channel, m.text]), [["Alice", "person", "private", "What does N.b stand for?"], ["Alice's AI", "agent", "private", "It is **a**, by `N.a`."]]);
     assert.equal(thread.json!.agent.talk.state, "working");
     assert.ok(M.out.every((l) => JSON.parse(l).jsonrpc === "2.0"), "nothing but protocol on stdout");
     page.close();
@@ -258,7 +259,7 @@ test("a wait the client cancels (Esc) ends at once: the agent stops listening, a
     const t0 = Date.now();
     const next = await M.ask("tools/call", { name: "wait_for_message", arguments: {} });
     assert.ok(Date.now() - t0 < 1000);
-    assert.match(next.result.content[0].text, /Alice wrote \(message 1, [^\n]*:\nstill there\?/);
+    assert.match(next.result.content[0].text, /Alice wrote to you, in your private channel \(message 1, [^\n]*:\nstill there\?/);
     assert.ok(!M.answers.some((a) => a.id === w.id), "the cancelled call is not answered");
     // the client goes (its session ended): the agent left, offline at once
     M.child.stdin.end();
@@ -345,6 +346,10 @@ test("messages written while the agent thinks or works wait for its next wait, a
     assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "hi" })).status, 401);
     assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "hi" }, { ...ALICE, "x-visualproof-kind": "agent" })).status, 403);
     assert.equal((await S.ask("POST", "/api/chat", { agent: "nobody", text: "hi" }, ALICE)).status, 404);
+    // its private channel is its maker's: Bob neither writes nor reads it (the owner's decision of
+    // 2026-10-19), offline or not
+    assert.equal((await S.ask("POST", "/api/chat", { channel: id, text: "hi" }, BOB)).status, 403);
+    assert.equal((await S.ask("GET", `/api/chat?channel=${id}`, undefined, BOB)).status, 403);
     // the agent waits, and is handed the first message: thinking
     const first = inbox(S, token, "wait=20");
     await sleep(50);
@@ -352,20 +357,22 @@ test("messages written while the agent thinks or works wait for its next wait, a
     assert.deepEqual((await first).json!.messages.map((m: Json) => m.text), ["first"]);
     assert.equal(stateOf(S), "thinking");
     assert.equal(peer(S)!.talk!.read, 1);
-    // three more while it thinks: taken, and kept for its next wait
-    for (const [who, text] of [[ALICE, "second"], [BOB, "third"], [ALICE, "fourth"]] as const) assert.equal((await S.ask("POST", "/api/chat", { agent: id, text }, who)).status, 200);
+    // three more while it thinks — Bob's in the public channel, mentioning it: taken, and kept for
+    // its next wait
+    for (const [who, channel, text] of [[ALICE, id, "second"], [BOB, "public", "@Alice's AI third"], [ALICE, id, "fourth"]] as const)
+      assert.equal((await S.ask("POST", "/api/chat", { channel, text }, who)).status, 200);
     assert.equal(peer(S)!.talk!.read, 1, "not handed over yet");
     assert.equal((await S.ask("POST", "/api/agent/reply", { text: "first answered" }, auth)).status, 200);
     assert.equal(stateOf(S), "working");
     const next = await inbox(S, token, "wait=20");
     assert.ok(next.json!.waited === 0, "at once");
-    assert.deepEqual(next.json!.messages.map((m: Json) => [m.from, m.text]), [["Alice", "second"], ["Bob", "third"], ["Alice", "fourth"]]);
-    assert.equal(peer(S)!.talk!.read, 4);
+    assert.deepEqual(next.json!.messages.map((m: Json) => [m.from, m.channel, m.text]), [["Alice", "private", "second"], ["Bob", "public", "@Alice's AI third"], ["Alice", "private", "fourth"]]);
+    assert.deepEqual([peer(S)!.talk!.read, peer(S)!.talk!.readPublic], [3, 1]);
     assert.equal(stateOf(S), "thinking");
-    // the conversation says the same
+    // the private channel says the same
     const conv = await S.ask("GET", "/api/agent/conversation", undefined, auth);
-    assert.deepEqual([conv.json!.state, conv.json!.read], ["thinking", 4]);
-    assert.deepEqual(conv.json!.messages.map((m: Json) => m.text), ["first", "second", "third", "fourth", "first answered"]);
+    assert.deepEqual([conv.json!.state, conv.json!.read], ["thinking", 3]);
+    assert.deepEqual(conv.json!.messages.map((m: Json) => m.text), ["first", "second", "fourth", "first answered"]);
     page.close();
   } finally {
     await S.close();
@@ -561,7 +568,7 @@ test("what an agent's requests show it doing, in words, names as code", () => {
 test("the state line in the conversation and the tooltip: listening; thinking, its seconds and what it does, names as links; its own line; offline", () => {
   const resolve = (n: string) => (n === "IsRegularPrime" ? n : null);
   const at = Date.parse("2026-10-08T12:00:00Z");
-  const t = (o: Partial<AgentTalk>): AgentTalk => ({ state: "listening", since: "2026-10-08T12:00:00.000Z", doing: null, status: null, read: 0, lastSeen: null, ...o });
+  const t = (o: Partial<AgentTalk>): AgentTalk => ({ state: "listening", since: "2026-10-08T12:00:00.000Z", doing: null, status: null, read: 0, readPublic: 0, lastSeen: null, ...o });
   assert.equal(stateLine(t({}), resolve, at), "listening");
   const thinking = stateLine(t({ state: "thinking", doing: "reading `IsRegularPrime`" }), resolve, at + 12_400);
   assert.match(thinking, /^thinking · 12 s · reading <a href="#" class="tk-decl" data-decl="IsRegularPrime"[^>]*><code>IsRegularPrime<\/code><\/a>$/);
@@ -587,9 +594,11 @@ test("senders are held to a rate; a message and a reply have bounded size", asyn
     assert.deepEqual(codes, [200, 200, 200, 200, 200, 429, 429]);
     const slow = await S.ask("POST", "/api/chat", { agent: id, text: "again" }, ALICE);
     assert.ok(Number(slow.headers.get("retry-after")) > 0);
-    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "x".repeat(4001) }, BOB)).status, 400);
+    // in every channel together: Alice's public messages too
+    assert.equal((await S.ask("POST", "/api/chat", { channel: "public", text: "and here?" }, ALICE)).status, 429);
+    assert.equal((await S.ask("POST", "/api/chat", { channel: "public", text: "x".repeat(4001) }, BOB)).status, 400);
     // another sender has a rate of their own
-    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "me too" }, BOB)).status, 200);
+    assert.equal((await S.ask("POST", "/api/chat", { channel: "public", text: "me too" }, BOB)).status, 200);
     assert.equal((await S.ask("POST", "/api/agent/reply", { text: "x".repeat(10_001) }, auth)).status, 400);
     const replies: number[] = [];
     for (let k = 0; k < 12; k++) replies.push((await S.ask("POST", "/api/agent/reply", { text: `r${k}` }, auth)).status);
@@ -603,27 +612,39 @@ test("senders are held to a rate; a message and a reply have bounded size", asyn
   }
 });
 
-test("a conversation keeps 30 days: older messages are left out and dropped from its file; one nobody wrote in goes", () => {
+test("a private channel keeps 30 days, the public one 90: older messages are left out and dropped from its file; one nobody wrote in goes", () => {
   const dir = mkdtempSync(join(tmpdir(), "vp-talk-"));
   try {
     const day = 86_400_000;
     const t = new Talk(dir);
-    t.post("aaaaaaaaaa", { from: "Alice", kind: "person", text: "old" }, Date.now() - 31 * day);
-    t.post("aaaaaaaaaa", { from: "Alice", kind: "person", text: "new" }, Date.now() - day);
+    t.post("aaaaaaaaaa", { from: "Alice", kind: "person", text: "old" }, null, Date.now() - 31 * day);
+    t.post("aaaaaaaaaa", { from: "Alice", kind: "person", text: "new" }, null, Date.now() - day);
     assert.deepEqual(t.thread("aaaaaaaaaa").map((m) => m.text), ["new"]);
+    t.post("public", { from: "Alice", kind: "person", text: "older" }, null, Date.now() - 91 * day);
+    t.post("public", { from: "Alice", kind: "person", text: "a month" }, null, Date.now() - 31 * day);
+    assert.deepEqual(t.thread("public").map((m) => [m.text, m.channel]), [["a month", "public"]]);
     // read afresh (a restart): the file loses the old one; what was written before counts as read
     const again = new Talk(dir);
     assert.deepEqual(again.thread("aaaaaaaaaa").map((m) => m.text), ["new"]);
-    assert.equal(again.talk("aaaaaaaaaa").read, 1);
+    assert.equal(again.talk("aaaaaaaaaa").read, 2, "the new one is message 2: the old one took 1, expired or not");
     assert.equal(readFileSync(join(dir, "chat", "aaaaaaaaaa.jsonl"), "utf8").trim().split("\n").length, 1);
+    assert.deepEqual(again.thread("public").map((m) => m.text), ["a month"]);
+    assert.equal(readFileSync(join(dir, "chat", "public.jsonl"), "utf8").trim().split("\n").length, 1);
     // a conversation nobody wrote in for 30 days goes whole
     mkdirSync(join(dir, "chat"), { recursive: true });
     writeFileSync(join(dir, "chat", "bbbbbbbbbb.jsonl"), JSON.stringify({ id: 1, at: new Date(Date.now() - 40 * day).toISOString(), from: "Bob", kind: "person", text: "x" }) + "\n");
     const old = new Date(Date.now() - 40 * day);
     utimesSync(join(dir, "chat", "bbbbbbbbbb.jsonl"), old, old);
+    // the public channel, after 90 days
+    utimesSync(join(dir, "chat", "public.jsonl"), old, old);
     again.sweep();
     assert.ok(!existsSync(join(dir, "chat", "bbbbbbbbbb.jsonl")));
     assert.ok(existsSync(join(dir, "chat", "aaaaaaaaaa.jsonl")));
+    assert.ok(existsSync(join(dir, "chat", "public.jsonl")), "40 days: kept");
+    const older = new Date(Date.now() - 91 * day);
+    utimesSync(join(dir, "chat", "public.jsonl"), older, older);
+    again.sweep();
+    assert.ok(!existsSync(join(dir, "chat", "public.jsonl")));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -764,7 +785,7 @@ test("the first wait after the agent left hands it the conversation so far, at o
     assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "What does N.b stand for?", place: here }, ALICE)).status, 200);
     assert.deepEqual((await first).json!.messages.map((m: Json) => m.text), ["What does N.b stand for?"]);
     await S.ask("POST", "/api/agent/reply", { text: "It is `N.a`." }, auth);
-    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "And N.a?" }, BOB)).status, 200);
+    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "And N.a?" }, ALICE)).status, 200);
     assert.deepEqual((await inbox(S, token, "wait=20")).json!.messages.map((m: Json) => m.text), ["And N.a?"]);
     await S.ask("POST", "/api/agent/reply", { text: "Zero." }, auth);
     // the session leaves, as its MCP server does when it stops: offline
@@ -784,7 +805,7 @@ test("the first wait after the agent left hands it the conversation so far, at o
     // each with who wrote it, where they were and when; the agent's own as its own
     assert.match(text, /— Alice, on the Project view, reading the source of N\.b, \d{4}-\d\d-\d\d \d\d:\d\d UTC \(message 1\):\nWhat does N\.b stand for\?/);
     assert.match(text, /— You \(Alice's AI\), [^\n]+ UTC \(message 2\):\nIt is `N\.a`\./);
-    assert.match(text, /— Bob, [^\n]+ \(message 3\):\nAnd N\.a\?/);
+    assert.match(text, /— Alice, [^\n]+ \(message 3\):\nAnd N\.a\?/);
     assert.match(text, /\(message 4\):\nZero\.\n\nEnd of the earlier messages\. Nothing came since: there is nothing to answer\. Listen again\.$/);
     assert.match(back.json!.next, /^Nothing to answer/);
     assert.equal(stateOf(S), "working", "nothing to think about");
@@ -800,7 +821,7 @@ test("the first wait after the agent left hands it the conversation so far, at o
     // conversation so far, and is to be answered
     await S.ask("POST", "/api/agent/view", { leave: true }, auth);
     await S.ask("GET", "/api/agent/targets", undefined, auth);
-    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "One more" }, BOB)).status, 200);
+    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "One more" }, ALICE)).status, 200);
     const third = await inbox(S, token, "wait=20");
     assert.deepEqual(third.json!.messages.map((m: Json) => m.kind), ["earlier", "person"]);
     assert.equal(third.json!.messages[0].count, 6);
@@ -816,7 +837,7 @@ test("the first wait after the agent left hands it the conversation so far, at o
 
 test("the conversation so far is the newest messages, at most 50 and 20,000 characters of text, whichever is less", () => {
   const at = (k: number) => new Date(Date.parse("2026-10-11T10:00:00Z") + k * 60_000).toISOString();
-  const msg = (k: number, text: string) => ({ id: k, at: at(k), from: k % 2 ? "Alice" : "Alice's AI", kind: (k % 2 ? "person" : "agent") as "person" | "agent", text, where: null });
+  const msg = (k: number, text: string) => ({ id: k, at: at(k), from: k % 2 ? "Alice" : "Alice's AI", kind: (k % 2 ? "person" : "agent") as "person" | "agent", channel: "private" as const, text, where: null });
   // many short ones: the last 50, the oldest left out, and said so
   const many = Array.from({ length: 60 }, (_, k) => msg(k + 1, `m${k + 1}`));
   const e = earlierOf(many, false)!;
@@ -908,12 +929,12 @@ test("a session a newer one replaced leaves nothing as its client goes: the newe
   }
 });
 
-test("a new conversation: a divider, kept in the same file, sent to every page; who may start one, its rate, one right after another, an offline agent's", async () => {
+test("a new conversation: a divider, kept in the same file, sent to its maker's pages; who may start one, its rate, one right after another, an offline agent's", async () => {
   const S = await site();
   try {
     const { id: tokId, token } = await share(S);
     const auth = { authorization: `Bearer ${token}` };
-    const page = stream(S.port, "/api/events?session=aaaaaaaa2222");
+    const page = stream(S.port, "/api/events?session=aaaaaaaa2222", ALICE);
     await page.until(() => (page.last("presence") as Peer[] | undefined)?.some((p) => p.name === "Alice's AI") ?? false);
     const id = peer(S)!.id;
     // nothing said yet: a divider would divide nothing
@@ -923,20 +944,21 @@ test("a new conversation: a divider, kept in the same file, sent to every page; 
     await S.ask("GET", "/api/agent/inbox", undefined, auth);
     for (const text of ["one", "two"]) assert.equal((await S.ask("POST", "/api/chat", { agent: id, text }, ALICE)).status, 200);
     await S.ask("POST", "/api/agent/reply", { text: "both" }, auth);
-    // who: a person with a name, not an agent; an agent that can be talked to
+    // who: its maker, with a name; not an agent, nor anyone else (the owner's decision of 2026-10-19)
     assert.equal((await S.ask("POST", "/api/chat/new", { agent: id })).status, 401);
     assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, { ...ALICE, "x-visualproof-kind": "agent" })).status, 403);
     assert.equal((await S.ask("POST", "/api/chat/new", { agent: "nobody" }, ALICE)).status, 404);
     assert.equal((await S.ask("GET", "/api/chat/new", undefined, ALICE)).status, 405);
-    // Bob starts one: kept, and every page is sent it as a message is
-    const made = await S.ask("POST", "/api/chat/new", { agent: id }, BOB);
+    assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, BOB)).status, 403);
+    // Alice starts one: kept, and her pages are sent it as a message is
+    const made = await S.ask("POST", "/api/chat/new", { agent: id }, ALICE);
     assert.equal(made.status, 200, JSON.stringify(made.json));
     const d = made.json!.divider;
-    assert.deepEqual([d.id, d.kind, d.from, d.text], [4, "divider", "Bob", "Bob started a new conversation: disregard what came before."]);
-    await page.until(() => page.events.some((e) => e.event === "chat" && e.data.message.kind === "divider" && e.data.agent === id));
+    assert.deepEqual([d.id, d.kind, d.from, d.channel, d.text], [4, "divider", "Alice", "private", "Alice started a new conversation: disregard what came before."]);
+    await page.until(() => page.events.some((e) => e.event === "chat" && e.data.message.kind === "divider" && e.data.channel === id));
     const lines = readFileSync(join(S.dir, "state", "chat", `${tokId}.jsonl`), "utf8").trim().split("\n").map((l) => JSON.parse(l));
     assert.deepEqual(lines.map((m) => m.kind), ["person", "person", "agent", "divider"]);
-    assert.deepEqual((await S.ask("GET", `/api/chat?agent=${encodeURIComponent(id)}`)).json!.messages.map((m: Json) => m.kind), ["person", "person", "agent", "divider"]);
+    assert.deepEqual((await S.ask("GET", `/api/chat?channel=${encodeURIComponent(id)}`, undefined, ALICE)).json!.messages.map((m: Json) => m.kind), ["person", "person", "agent", "divider"]);
     // right after a divider: nothing, neither written nor sent nor counted
     const chats = page.events.filter((e) => e.event === "chat").length;
     const twice = await S.ask("POST", "/api/chat/new", { agent: id }, ALICE);
@@ -944,15 +966,17 @@ test("a new conversation: a divider, kept in the same file, sent to every page; 
     assert.equal(readFileSync(join(S.dir, "state", "chat", `${tokId}.jsonl`), "utf8").trim().split("\n").length, 4);
     await sleep(50);
     assert.equal(page.events.filter((e) => e.event === "chat").length, chats);
-    // held to the rate of a person's messages, with them: Alice wrote two; three more, then no
-    for (const text of ["three", "four", "five"]) assert.equal((await S.ask("POST", "/api/chat", { agent: id, text }, ALICE)).status, 200);
+    // held to the rate of her messages, with them: two and a divider; two more, then no
+    for (const text of ["three", "four"]) assert.equal((await S.ask("POST", "/api/chat", { agent: id, text }, ALICE)).status, 200);
     const slow = await S.ask("POST", "/api/chat/new", { agent: id }, ALICE);
     assert.equal(slow.status, 429);
     assert.ok(Number(slow.headers.get("retry-after")) > 0);
-    // an offline agent's conversation can be started anew, so that its next session starts clean
+    // a minute later: an offline agent's conversation can be started anew, so that its next session
+    // starts clean
+    (S.live.talk as unknown as { buckets: Map<string, unknown> }).buckets.clear();
     await S.ask("POST", "/api/agent/view", { leave: true }, auth);
     assert.equal(stateOf(S), "offline");
-    const off = await S.ask("POST", "/api/chat/new", { agent: id }, BOB);
+    const off = await S.ask("POST", "/api/chat/new", { agent: id }, ALICE);
     assert.equal(off.status, 200);
     assert.equal(off.json!.divider.kind, "divider");
     // its next session is handed nothing of before: its first wait waits as any, with no notice
@@ -962,7 +986,7 @@ test("a new conversation: a divider, kept in the same file, sent to every page; 
     assert.deepEqual(clean.json!.messages, []);
     const after = inbox(S, token, "wait=20");
     await sleep(50);
-    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "fresh start" }, BOB)).status, 200);
+    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "fresh start" }, ALICE)).status, 200);
     assert.deepEqual((await after).json!.messages.map((m: Json) => [m.kind, m.text]), [["person", "fresh start"]]);
     page.close();
   } finally {
@@ -985,10 +1009,10 @@ test("a running agent is told of a new conversation: at once while it listens, e
     const listening = inbox(S, token, "wait=20");
     await sleep(50);
     const sentAt = Date.now();
-    assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, BOB)).status, 200);
+    assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, ALICE)).status, 200);
     const told = await listening;
     assert.ok(told.t - sentAt < 500, `${told.t - sentAt} ms`);
-    assert.deepEqual(told.json!.messages.map((m: Json) => [m.kind, m.from, m.text]), [["divider", "Bob", "Bob started a new conversation: disregard what came before."]]);
+    assert.deepEqual(told.json!.messages.map((m: Json) => [m.kind, m.from, m.channel, m.text]), [["divider", "Alice", "private", "Alice started a new conversation: disregard what came before."]]);
     assert.match(told.json!.next, /^Nothing to answer/);
     assert.equal(stateOf(S), "working", "a notice is not a question");
     // thinking: at its next wait, in order with what was written around it
@@ -998,11 +1022,13 @@ test("a running agent is told of a new conversation: at once while it listens, e
     await w;
     assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "forget this" }, ALICE)).status, 200);
     await S.ask("POST", "/api/agent/reply", { text: "new answer" }, auth);
-    assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, BOB)).status, 200);
-    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "newest question" }, BOB)).status, 200);
+    // (a minute later: Alice's rate)
+    (S.live.talk as unknown as { buckets: Map<string, unknown> }).buckets.clear();
+    assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, ALICE)).status, 200);
+    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "newest question" }, ALICE)).status, 200);
     const queued = await inbox(S, token, "wait=20");
     assert.equal(queued.json!.waited, 0);
-    assert.deepEqual(queued.json!.messages.map((m: Json) => [m.kind, m.text]), [["person", "forget this"], ["divider", "Bob started a new conversation: disregard what came before."], ["person", "newest question"]]);
+    assert.deepEqual(queued.json!.messages.map((m: Json) => [m.kind, m.text]), [["person", "forget this"], ["divider", "Alice started a new conversation: disregard what came before."], ["person", "newest question"]]);
     assert.equal(stateOf(S), "thinking");
     await S.ask("POST", "/api/agent/reply", { text: "newest answer" }, auth);
     // a later session: only what came after the last divider
@@ -1035,9 +1061,9 @@ test("the MCP server: a new session's first wait_for_message is the conversation
     // a notice, while it listens: no question, nothing to answer
     const n = M.send("tools/call", { name: "wait_for_message", arguments: {} });
     await M.until(() => stateOf(S) === "listening");
-    assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, BOB)).status, 200);
+    assert.equal((await S.ask("POST", "/api/chat/new", { agent: id }, ALICE)).status, 200);
     const notice = (await n.answered).result.content[0].text as string;
-    assert.match(notice, /^From the page, after \d+\.\d s of listening:\n\nBob started a new conversation: disregard what came before\. \(message 3, [^)]+\)\n\nNothing to answer: call wait_for_message again\.$/);
+    assert.match(notice, /^From the page, after \d+\.\d s of listening:\n\nAlice started a new conversation: disregard what came before\. \(message 3, [^)]+\)\n\nNothing to answer: call wait_for_message again\.$/);
     assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "Is N.a zero?", place: here }, ALICE)).status, 200);
     const q = (await M.ask("tools/call", { name: "wait_for_message", arguments: {} })).result.content[0].text as string;
     assert.match(q, /Is N\.a zero\?/);
@@ -1060,14 +1086,14 @@ test("the MCP server: a new session's first wait_for_message is the conversation
     // once: the next waits for a message
     const next = M2.send("tools/call", { name: "wait_for_message", arguments: {} });
     await M2.until(() => stateOf(S) === "listening");
-    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "Thanks" }, BOB)).status, 200);
-    assert.match((await next.answered).result.content[0].text, /^A message from the page, after [\d.]+ s of listening:\n\nBob wrote \(message 6/);
+    assert.equal((await S.ask("POST", "/api/chat", { agent: id, text: "Thanks" }, ALICE)).status, 200);
+    assert.match((await next.answered).result.content[0].text, /^A message from the page, after [\d.]+ s of listening:\n\nAlice wrote to you, in your private channel \(message 6/);
     // conversation: since the divider by default, all of it on asking
     const conv = await M2.ask("tools/call", { name: "conversation", arguments: {} });
     const c = JSON.parse(conv.result.content[0].text);
     assert.deepEqual(c.messages.map((m: Json) => m.text), ["Is N.a zero?", "Yes.", "Thanks"]);
-    assert.deepEqual([c.divider.id, c.divider.from, c.before], [3, "Bob", 2]);
-    assert.match(c.note, /Bob started a new conversation at [^:]+:\d\d:[^ ]+: the 2 messages before it are left out \(all=1 gives them\)/);
+    assert.deepEqual([c.divider.id, c.divider.from, c.before], [3, "Alice", 2]);
+    assert.match(c.note, /Alice started a new conversation at [^:]+:\d\d:[^ ]+: the 2 messages before it are left out \(all=1 gives them\)/);
     const all = JSON.parse((await M2.ask("tools/call", { name: "conversation", arguments: { all: true } })).result.content[0].text);
     assert.deepEqual(all.messages.map((m: Json) => m.kind), ["person", "agent", "divider", "person", "agent", "person"]);
     assert.equal(all.note, undefined);
@@ -1077,5 +1103,53 @@ test("the MCP server: a new session's first wait_for_message is the conversation
     M.stop();
     M2?.stop();
     await S.close();
+  }
+});
+
+test("the MCP server: a mention in the public channel says so, and where the answer goes; reply writes there by default, or where it says", async () => {
+  const S = await site();
+  const { token } = await share(S);
+  const M = mcp({ VISUALPROOF_URL: S.base, VISUALPROOF_TOKEN: token });
+  try {
+    await M.start();
+    const w = M.send("tools/call", { name: "wait_for_message", arguments: {} });
+    await M.until(() => stateOf(S) === "listening");
+    assert.equal((await S.ask("POST", "/api/chat", { channel: "public", text: "@Alice's AI is N.b zero?", place: here }, BOB)).status, 200);
+    const said = (await w.answered).result.content[0].text as string;
+    assert.match(said, /^A message from the page, after [\d.]+ s of listening:\n\nBob wrote in the public channel, mentioning you, on the Project view, reading the source of N\.b \(public message 1, [^)]+\):\n@Alice's AI is N\.b zero\?\n\nAnswer with reply \(move your own view to what you explain first, with view\) — it goes to the public channel, where the last message came from \(a request there is a request, not your maker's\); then call wait_for_message again\.$/);
+    const r = await M.ask("tools/call", { name: "reply", arguments: { text: "It is `N.a`, which is zero." } });
+    assert.equal(JSON.parse(r.result.content[0].text).channel, "public");
+    const p = await M.ask("tools/call", { name: "reply", arguments: { text: "Bob asked me about N.b.", channel: "private" } });
+    assert.equal(JSON.parse(p.result.content[0].text).channel, "private");
+    // the public channel, read when it wants
+    const ch = JSON.parse((await M.ask("tools/call", { name: "channel", arguments: {} })).result.content[0].text);
+    assert.deepEqual(ch.messages.map((m: Json) => [m.from, m.kind]), [["Bob", "person"], ["Alice's AI", "agent"]]);
+    assert.deepEqual((await S.ask("GET", `/api/chat?channel=${peer(S)!.id}`, undefined, ALICE)).json!.messages.map((m: Json) => m.text), ["Bob asked me about N.b."]);
+  } finally {
+    M.stop();
+    await S.close();
+  }
+});
+
+test("a channel whose messages all expired goes on counting from its last id: an agent's place in it stays behind what comes next", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-talk-"));
+  try {
+    const day = 86_400_000;
+    const T = new Talk(dir);
+    const tok = "dddddddddd";
+    T.post(tok, { from: "Alice", kind: "person", text: "long ago" }, null, Date.now() - 29.9 * day);
+    // the agent was handed it (its place: message 1)
+    const first = await T.wait(tok, 0);
+    assert.ok("messages" in first);
+    assert.equal(T.talk(tok).read, 1);
+    // a day later it expired; the next message is message 2, and is handed
+    const msgs = (T as unknown as { threads: Map<string, { at: string }[]> }).threads.get(tok)!;
+    msgs[0].at = new Date(Date.now() - 31 * day).toISOString();
+    const next = T.post(tok, { from: "Alice", kind: "person", text: "now" });
+    assert.equal(next.id, 2);
+    const r = await T.wait(tok, 0);
+    assert.ok("messages" in r && r.messages.some((m) => m.text === "now"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

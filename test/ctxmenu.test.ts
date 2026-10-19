@@ -215,3 +215,27 @@ test("on a visitor (ViewSpec decision 27): Add to this view makes it a member, b
   // a member keeps Remove from this view
   assert.ok(acts(menuItems(decl(), ctx({ here: "v7" }))).includes("remove"));
 });
+
+test("Copy link (CollabSpec decision 13, ViewSpec decision 21): on a declaration, a cluster, a note; to what the reader sees on the empty canvas; read-only readers too; never in a snapshot", () => {
+  const L = ctx({ link: true });
+  // a declaration: after Copy full name
+  const d = acts(menuItems(decl(), L));
+  assert.deepEqual(d.slice(d.indexOf("copy"), d.indexOf("copy") + 2), ["copy", "link"]);
+  // a cluster: after Hide this level, before Remove
+  const c = acts(menuItems({ kind: "cluster", key: "A.B", folded: false, folder: false, trust: null }, L));
+  assert.deepEqual(c.slice(0, 4), ["fold", "hide", "link", "remove"]);
+  // the empty canvas: first, to what the reader sees
+  const e = menuItems({ kind: "canvas" }, L);
+  assert.deepEqual([e[0].act, e[0].label], ["link", "Copy link to what I see"]);
+  assert.deepEqual(acts(e), ["link", "note", "note-view", "fit", "relayout"]);
+  // a note: after open or collapse
+  const n = acts(menuItems({ kind: "note", open: true, view: false }, L));
+  assert.deepEqual(n.slice(0, 3), ["note-edit", "note-toggle", "link"]);
+  // a read-only reader arranges nothing, and copies links all the same
+  const RO = ctx({ link: true, arrange: false, write: false });
+  assert.ok(acts(menuItems(decl(), RO)).includes("link"));
+  assert.deepEqual(acts(menuItems({ kind: "canvas" }, RO)), ["link", "fit"]);
+  assert.deepEqual(acts(menuItems({ kind: "note", open: false, view: false, own: true }, RO)), ["note-toggle", "link"]);
+  // a snapshot: nothing to open a link on
+  for (const t of [decl(), { kind: "canvas" } as MenuTarget, { kind: "note", open: true, view: false } as MenuTarget]) assert.ok(!acts(menuItems(t, ctx())).includes("link"));
+});

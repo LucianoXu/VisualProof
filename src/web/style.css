@@ -345,7 +345,7 @@ body.framing #viewbar, body.framing #foot, body.framing #zoom, body.framing #tab
 body.framing #bar [inert] { opacity: 0.32; }
 /* both fading as the mode comes and goes */
 body.art-moving :is(#side, #panel, #selbar, #lensbar, #tm-kept, #viewbar, #foot, #zoom, #tabs, #legend) { transition: opacity 240ms ease, visibility 240ms; }
-body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap) { transition: opacity 240ms ease; }
+body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap) { transition: opacity 240ms ease; }
 
 .glass {
   background: var(--surface);
@@ -1123,25 +1123,24 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 #ask-banner .rv-btn { flex: none; padding: 5px 12px; font-size: 12.5px; }
 .ab-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--line); }
 .ab-bar i { display: block; height: 100%; background: var(--c); transform-origin: left; transform: scaleX(var(--left, 1)); transition: transform 0.25s linear; }
-/* following someone: low in the middle, where the tabs and the strips above stay readable; in the
-   windows' layer, above the source windows while it is the strip alone; a conversation's window
-   takes its place among them (web/src/floatwin.ts) */
+/* following someone: the strip, low in the middle, where the tabs and the strips above stay
+   readable, in the windows' layer (web/src/people.ts) */
 #following {
   position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%); z-index: 36;
-  display: flex; flex-direction: column; gap: 8px; padding: 5px 6px 5px 12px; border-radius: 10px;
+  display: flex; align-items: center; padding: 5px 6px 5px 12px; border-radius: 10px;
   font-size: 12.5px; color: var(--text);
 }
+#following[hidden] { display: none; }
 .fl-strip { display: flex; align-items: center; gap: 6px; white-space: nowrap; min-width: 0; }
 .fl-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #following .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
-.fl-strip button, .fl-pill > button[data-unfollow] {
+.fl-strip button, .cv-head > button, .fl-pill > button[data-cv-close] {
   display: inline-grid; place-items: center; flex: none; padding: 0; border: 0; background: transparent;
   color: var(--text-2); cursor: pointer; width: 22px; height: 22px; border-radius: 6px;
 }
-.fl-strip button:hover, .fl-pill > button[data-unfollow]:hover { background: var(--code-bg); color: var(--text); }
-/* the strip alone has no state, no new conversation, no pin, no collapsing, no pill, no edges:
-   those are the window's */
-.fl-st, .fl-strip [data-restart], .fl-strip [data-pin], .fl-strip [data-collapse], .fl-pill, .fl-rz { display: none; }
+.fl-strip button:hover, .cv-head > button:hover, .fl-pill > button[data-cv-close]:hover { background: var(--code-bg); color: var(--text); }
+/* a window's pill and edges show only where the window says (the source windows', the conversation's) */
+.fl-pill, .fl-rz { display: none; }
 .peer.offline { filter: grayscale(1); opacity: 0.45; }
 /* an agent's state (AgentSpec decision 8): a dot on its badge, and its line in the conversation */
 .st-listening { --state: var(--st-ok); }
@@ -1155,26 +1154,42 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .st-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state); flex: none; }
 .peer-dot.st-thinking, .tk-state.st-thinking .st-dot, .st-dot.st-thinking { animation: pulse 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .peer-dot.st-thinking, .tk-state.st-thinking .st-dot, .st-dot.st-thinking { animation: none; } }
-/* talking with an agent while following it (web/src/talk.ts): a window (web/src/chatwin.ts, which
-   sets its place and size) — the strip its title bar, dragged to move it, then the thread, filling
-   it, and at its foot the state line and the box; every edge and corner resizes it */
-#following.talking {
-  transform: none; gap: 0; padding: 0; border-radius: 14px; box-shadow: 0 0 0 1px var(--line), var(--shadow-lg);
+/* the conversation window (CollabSpec decision 13, web/src/chatwin.ts, which sets its place and
+   size): in front of the source and reference windows always, a layer of its own above their order
+   (ReviewSpec, "In front"); hover cards, popovers and modal windows above #windows, so above it.
+   Its head the channels, dragged to move it; the thread filling it; at its foot the state line and
+   the box; every edge and corner resizes it */
+#windows > #convo { z-index: 1000; }
+/* the following strip, whom and its ✕, stays in sight over it */
+#windows > #following { z-index: 1001; }
+#convo {
+  position: fixed; display: flex; flex-direction: column; padding: 0; border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-lg); font-size: 12.5px; color: var(--text); --c: var(--accent);
 }
-#following.talking > .fl-strip {
-  flex: none; padding: 6px 6px 6px 12px; border-bottom: 1px solid var(--line); cursor: grab;
-  user-select: none; -webkit-user-select: none; touch-action: none;
+#convo[hidden] { display: none; }
+.cv-head {
+  flex: none; display: flex; align-items: center; gap: 2px; padding: 5px 6px 5px 6px; border-bottom: 1px solid var(--line);
+  cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none;
 }
-#following.talking.moving > .fl-strip { cursor: grabbing; }
-#following.talking .fl-who { flex: 1; }
-#following.talking .fl-strip > .dot { display: none; }
-#following.talking .fl-st, #following.talking .fl-strip [data-restart], #following.talking .fl-strip [data-pin], #following.talking .fl-strip [data-collapse] { display: inline-grid; }
-/* pinned (web/src/talkpins.ts): the pin filled in the accent, as a pinned source window's */
-.fl-strip [data-pin][aria-pressed="true"] { color: var(--accent); }
-.fl-strip [data-pin][aria-pressed="true"] path { fill: color-mix(in srgb, var(--accent) 35%, transparent); }
+#convo.moving .cv-head { cursor: grabbing; }
+#convo.moving, #convo.sizing { user-select: none; -webkit-user-select: none; }
+.cv-tabs { flex: 1 1 auto; min-width: 0; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.cv-tabs::-webkit-scrollbar { display: none; }
+.cv-tab {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; height: 24px; max-width: 190px; padding: 0 8px; border: 0;
+  border-radius: 7px; background: transparent; color: var(--text-2); font: 12px var(--font); cursor: pointer;
+}
+.cv-tab:hover { background: var(--code-bg); color: var(--text); }
+.cv-tab.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--text); font-weight: 600; }
+.cv-tab .bot { width: 12px; height: 12px; flex: none; }
+.cv-tn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-n { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10.5px; line-height: 16px; text-align: center; font-weight: 600; }
+.cv-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 /* nothing said since the conversation began: the button stays, with its tooltip, and does nothing */
-.fl-strip [data-restart][aria-disabled="true"] { opacity: 0.4; cursor: default; background: transparent; color: var(--text-2); }
-#following.talking > .fl-rz { display: block; position: absolute; z-index: 2; touch-action: none; }
+.cv-head [data-cv-new][aria-disabled="true"] { opacity: 0.4; cursor: default; background: transparent; color: var(--text-2); }
+.cv-head [data-cv-new][hidden] { display: none; }
+.cv-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px 12px; }
+#convo:not(.collapsed) > .fl-rz { display: block; position: absolute; z-index: 2; touch-action: none; }
 .fl-rz-n, .fl-rz-s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
 .fl-rz-e, .fl-rz-w { top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
 .fl-rz-n { top: -4px; }
@@ -1196,13 +1211,11 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
   .fl-rz-w { left: -9px; }
   .fl-rz-ne, .fl-rz-nw, .fl-rz-se, .fl-rz-sw { width: 26px; height: 26px; }
 }
-#following.moving, #following.sizing { user-select: none; -webkit-user-select: none; }
-#following.talking > #talk { flex: 1 1 auto; min-height: 0; padding: 8px 10px 10px 12px; }
-/* collapsed: a pill of one line, the agent's state and the start of its last message; a click
-   opens the window again; a reply meanwhile lights it a moment, and marks it until then */
-#following.talking.collapsed { border-radius: 999px; }
-#following.talking.collapsed > .fl-strip, #following.talking.collapsed > #talk, #following.talking.collapsed > .fl-rz { display: none; }
-#following.talking.collapsed > .fl-pill { display: flex; align-items: center; gap: 2px; min-width: 0; padding-right: 6px; }
+/* collapsed: a pill of one line, the channel on show and the start of its last message; a click
+   opens the window again; something new meanwhile lights it a moment, and marks it until then */
+#convo.collapsed { border-radius: 999px; }
+#convo.collapsed > .cv-head, #convo.collapsed > .cv-body { display: none; }
+#convo.collapsed > .fl-pill { display: flex; align-items: center; gap: 2px; min-width: 0; padding-right: 6px; }
 .fl-pill-open {
   flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 7px 6px 7px 12px; border: 0;
   border-radius: 999px; background: transparent; color: var(--text); font: 12.5px var(--font); text-align: left; cursor: pointer;
@@ -1213,16 +1226,77 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .fl-pill-msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
 .fl-pill-msg::before { content: "— "; color: var(--text-3); }
 .fl-new { display: none; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-#following.unseen .fl-new { display: inline-block; }
-#following.unseen .fl-pill-msg { color: var(--text); }
-#following.flash { animation: fl-flash 1.6s ease-out; }
+#convo.unseen .fl-new { display: inline-block; }
+#convo.unseen .fl-pill-msg { color: var(--text); }
+#convo.flash { animation: fl-flash 1.6s ease-out; }
 @keyframes fl-flash {
   0%, 35% { box-shadow: 0 0 0 1px var(--line), 0 0 0 5px color-mix(in srgb, var(--c) 45%, transparent), var(--shadow-lg); background: color-mix(in srgb, var(--c) 14%, var(--surface-solid)); }
   100% { box-shadow: 0 0 0 1px var(--line), 0 0 0 0 transparent, var(--shadow-lg); }
 }
-@media (prefers-reduced-motion: reduce) { #following.flash { animation: none; } }
-#talk { display: flex; flex-direction: column; gap: 8px; }
-#talk[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { #convo.flash { animation: none; } }
+/* the box (web/src/chatinput.ts): text and chips, what it says while empty, the completions of a
+   mention above it */
+.cv-form { flex: none; position: relative; display: flex; flex-direction: column; gap: 6px; }
+.cv-input {
+  min-height: 36px; max-height: 38vh; overflow: auto; font: 12.5px/1.5 var(--font); color: var(--text); background: var(--surface-solid);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+}
+.cv-input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
+.cv-input:empty::before { content: attr(data-placeholder); color: var(--text-3); pointer-events: none; }
+.cv-input.off { opacity: 0.6; cursor: default; }
+.cv-tools { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cv-hint { flex: 1 1 auto; min-width: 0; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-tool {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px;
+  background: var(--surface-solid); color: var(--text-2); font: 12px var(--font); cursor: pointer;
+}
+.cv-tool:hover:not(:disabled) { border-color: var(--accent); color: var(--text); }
+.cv-tool:disabled, .cv-form button[type=submit]:disabled { opacity: 0.6; cursor: default; filter: none; }
+.cv-err { color: var(--banner-bad); font-size: 12px; }
+.cv-err[hidden] { display: none; }
+.cv-mentions {
+  position: absolute; left: 0; bottom: calc(100% + 4px); z-index: 3; min-width: 200px; max-width: 100%; max-height: 220px; overflow: auto;
+  padding: 4px; border-radius: 10px; display: flex; flex-direction: column; background: var(--surface-solid);
+}
+.cv-mentions[hidden] { display: none; }
+.cv-mention { text-align: left; border: 0; background: transparent; padding: 4px 8px; border-radius: 6px; font: 12.5px var(--font); color: var(--text); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-mention.on, .cv-mention:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/* a link of this site: a chip naming what it leads to, never its address (the owner's decision of
+   2026-10-19); in a message it goes there, in the box it stands for the link */
+.cv-chip {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; vertical-align: bottom; margin: 0 1px; padding: 0 8px 0 5px;
+  border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 11%, var(--surface-solid));
+  color: var(--text); text-decoration: none; font-size: 12px; line-height: 18px; white-space: nowrap; cursor: pointer; user-select: none; -webkit-user-select: none;
+}
+a.cv-chip:hover { border-color: var(--accent); }
+.cv-chip.in-box { cursor: default; }
+.cv-cl { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.cv-chip code { font: 11px var(--mono); background: none; padding: 0; }
+.cv-chip .tk-ln { flex: none; color: var(--accent); }
+/* a link to elsewhere: a new tab, its host beside it */
+.tk-ext { color: var(--accent); overflow-wrap: anywhere; }
+.tk-host { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+/* a mention; the reader's own, and a message that mentions them, marked */
+.tk-at { color: var(--accent); font-weight: 600; }
+.tk-at.me { background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 4px; padding: 0 2px; }
+.tk-msg.for-me { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); border-radius: 0 6px 6px 0; }
+/* the conversation button: its count of what is new in Everyone, an @ where the reader is mentioned
+   or one of their agents answered; a mention's notice under it */
+.talk-wrap { position: relative; }
+#talk-btn[hidden] { display: none; }
+#talk-btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.talk-at {
+  position: absolute; bottom: -6px; right: -7px; min-width: 15px; height: 15px; border-radius: 8px; background: var(--accent); color: #fff;
+  font: 600 10px/15px var(--font); text-align: center; box-shadow: 0 0 0 2px var(--surface-solid);
+}
+.talk-at[hidden] { display: none; }
+#talk-notice {
+  position: absolute; top: 40px; right: 0; z-index: 40; width: min(320px, calc(100vw - 24px)); display: block; padding: 8px 10px; border: 0;
+  border-radius: 12px; text-align: left; font: 12.5px/1.4 var(--font); color: var(--text); cursor: pointer;
+  background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg);
+}
+#talk-notice[hidden] { display: none; }
+#talk-notice b { color: var(--accent); }
 /* the thread fills the window and scrolls, its messages from its foot up, as a conversation reads;
    at its end it stays there however the window is resized (talk.ts), which the browser's own scroll
    anchoring would undo, keeping a message above in place */
@@ -1230,7 +1304,7 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
   flex: 1 1 auto; min-height: 0; overflow: auto; overflow-anchor: none; display: flex; flex-direction: column; gap: 9px; padding-right: 4px;
 }
 .tk-thread > :first-child { margin-top: auto; }
-.tk-state, .tk-form { flex: none; }
+.tk-state { flex: none; }
 .tk-msg { font-size: 12.5px; line-height: 1.45; padding-left: 9px; border-left: 2px solid var(--line); }
 .tk-msg.agent { border-left-color: var(--c); }
 .tk-head { display: flex; align-items: center; gap: 4px; font-size: 11.5px; margin-bottom: 1px; }
@@ -1260,15 +1334,6 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .tk-chev { width: 0; height: 0; border-left: 4px solid currentColor; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; transition: transform 0.15s; }
 .tk-fold[aria-expanded="true"] .tk-chev { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .tk-chev { transition: none; } }
-.tk-form { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
-.tk-form textarea {
-  flex: 1; min-width: 0; resize: none; font: 12.5px var(--font); color: var(--text); background: var(--surface-solid);
-  border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px;
-}
-.tk-form textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); }
-.tk-form textarea:disabled, .tk-form button:disabled { opacity: 0.6; }
-.tk-form button:disabled { cursor: default; filter: none; }
-.tk-err { flex-basis: 100%; color: var(--banner-bad); font-size: 12px; }
 body.following::after {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 30;
   box-shadow: inset 0 0 0 3px var(--follow);
@@ -2874,17 +2939,17 @@ span.tm-row { color: var(--text-2); cursor: default; }
   }
   /* its handle, over the windows while one is open there, sets the dock's height as the sheet's does
      (the same height: web/src/phone.ts) */
-  #windows:has(> :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])) { padding-top: 14px; }
-  #windows:has(> :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden]))::before {
+  #windows:has(> :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden])) { padding-top: 14px; }
+  #windows:has(> :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden]))::before {
     content: ""; position: absolute; top: 0; left: 50%; width: 120px; height: 14px; transform: translateX(-50%);
     pointer-events: auto; cursor: ns-resize; touch-action: none;
     background: linear-gradient(var(--text-3), var(--text-3)) center 4px / 44px 5px no-repeat; opacity: 0.6; border-radius: 3px;
   }
-  /* the declaration's source first, then the reference beside it, then a conversation */
+  /* the declaration's source first, then the reference beside it, then the conversation window */
   #windows > .sw-win { order: 1; }
   #windows > .pw-win { order: 2; }
-  #windows > #following { order: 3; }
-  #windows > .sw-win, #windows > .pw-win, #windows > #following.talking {
+  #windows > #convo { order: 3; }
+  #windows > .sw-win, #windows > .pw-win, #windows > #convo {
     position: relative !important; inset: auto !important; transform: none;
     width: auto !important; height: auto !important; min-width: 0 !important; min-height: 0 !important; max-width: none !important; max-height: none !important;
     flex: 1 1 0; z-index: auto !important;
@@ -2892,7 +2957,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #windows > .collapsed { flex: none; align-self: flex-start; max-width: min(360px, 100%) !important; }
   #windows .fl-rz { display: none !important; }
   @media (min-width: 960px) { #windows { flex-direction: row; align-items: stretch; } #windows > .collapsed { align-self: flex-end; } }
-  #windows .sw-head, #windows .pw-head, #windows > #following.talking > .fl-strip { cursor: default; }
+  #windows .sw-head, #windows .pw-head, #windows > #convo > .cv-head { cursor: default; }
   /* Export's window: in the sheet's place too, the outline it arranges above it */
   #export-modal { top: auto; left: 12px; right: 12px; bottom: 12px; }
   #export-modal .ex-box { width: auto; max-height: var(--sheet-h, 50dvh); }
@@ -2904,7 +2969,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   /* the legend and the zoom's box at the foot of the board's room, above the sheet or the dock */
   #foot { left: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
   #zoom { right: 12px; bottom: var(--room-bottom, 12px); visibility: var(--room-shown, visible); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
-  #following:not(.talking), #whatsnew { bottom: calc(var(--room-bottom, 12px) + 40px); }
+  #following, #whatsnew { bottom: calc(var(--room-bottom, 12px) + 40px); }
   #welcome { left: 12px; bottom: calc(var(--room-bottom, 12px) + 40px); }
   /* the bar's popovers: at its right, under it, never past the screen's edge */
   .share-wrap, .library-wrap { position: static; }
@@ -2952,13 +3017,13 @@ span.tm-row { color: var(--text-2); cursor: default; }
   }
   #windows > .mon-docked.collapsed { width: auto !important; height: auto !important; max-width: 280px !important; }
   #windows .fl-rz { display: none !important; }
-  #windows .sw-head, #windows .pw-head, #windows > #following.talking > .fl-strip { cursor: default; }
+  #windows .sw-head, #windows .pw-head, #windows > #convo > .cv-head { cursor: default; }
   /* the review strip at the board's top left, beside the selection bar under the modes */
   #lensbar, #tm-kept { left: calc(var(--inset-left, 0px) + 12px); transform: none; max-width: calc(100vw - var(--inset-left, 0px) - 448px); }
   /* the legend and the zoom's box at the foot of the board's room */
   #foot { left: 320px; bottom: var(--mon-room-bottom, 12px); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
   #zoom { right: 12px; bottom: var(--mon-room-bottom, 12px); transition: bottom 0.32s cubic-bezier(0.2, 0.9, 0.25, 1); }
-  #welcome, #whatsnew, #following:not(.talking) { bottom: calc(var(--mon-room-bottom, 12px) + 40px); }
+  #welcome, #whatsnew, #following { bottom: calc(var(--mon-room-bottom, 12px) + 40px); }
   /* the splitters: the work area's top, between the panel and the column, between two windows */
   .mon-split { position: fixed; z-index: 36; touch-action: none; }
   .mon-split-y { cursor: ns-resize; }

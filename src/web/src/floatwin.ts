@@ -1,5 +1,6 @@
-// Floating windows: the conversation with an agent (web/src/chatwin.ts, decided 2026-10-08) and the
-// source windows (web/src/sourcewin.ts, decided 2026-10-09). The reader moves one by its title bar,
+// Floating windows: the conversation window (web/src/chatwin.ts, decided 2026-10-08; the reader's own
+// since the owner's decisions of 2026-10-19) and the source windows (web/src/sourcewin.ts, decided
+// 2026-10-09). The reader moves one by its title bar,
 // resizes it from any edge or corner, and collapses it — its button, or a double-click on the title
 // bar — to a one-line pill; a click on the pill opens it again. Mouse, pen and touch alike: the
 // pointer is captured until it is let go.
@@ -12,7 +13,8 @@
 // its kind; from then on its place and size are the reader's until it goes.
 //
 // The windows lie in one layer over the page (#windows), the one last pressed or focused in front;
-// hover cards and the page's modal windows lie above that layer. The geometry is pure functions,
+// the conversation window above them all (`onTop`, ReviewSpec "In front"); hover cards and the
+// page's modal windows lie above that layer. The geometry is pure functions,
 // tested without a browser (test/floatwin.test.ts).
 
 import { isMonitor, sheeted } from "./phone.ts";
@@ -238,6 +240,9 @@ export interface FloatOptions {
   keeper: Keeper | null;
   /** whether collapsing it is kept with its place */
   keepsCollapsed?: boolean;
+  /** in front of every other window always, in a layer of its own (the conversation window, the
+   *  owner's decision of 2026-10-19): never in their order, so that none comes in front of it */
+  onTop?: boolean;
   /** where it starts, the reader not having put it anywhere; or fitted to its content (`fit`),
    *  which a window with a kept place never is */
   start?(vp: Size): Rect;
@@ -319,9 +324,9 @@ export class FloatWindow {
     }
   }
 
-  /** Bring the window to the front of the others. */
+  /** Bring the window to the front of the others; one on top is there already. */
   front(): void {
-    if (stack[stack.length - 1] === this.el) return;
+    if (this.o.onTop || stack[stack.length - 1] === this.el) return;
     stack = raise(stack, this.el);
     restack();
   }

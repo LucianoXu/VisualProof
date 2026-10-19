@@ -74,16 +74,18 @@ export interface Saved {
   export?: { settings?: Record<string, unknown> };
   /** the artwork's size and look last time (web/src/artframe.ts), read back with care */
   artwork?: Record<string, unknown>;
-  /** the window of a conversation with an agent (web/src/chatwin.ts): where the reader put it and
-   *  how large, the same for every agent, and whether it is collapsed; read back with care, as
-   *  whatever is kept here may be from an older page. Nothing of the source windows is kept: each
-   *  opens in the middle of the screen (decided 2026-10-09) */
+  /** the conversation window (web/src/chatwin.ts, CollabSpec decision 13): where the reader put it
+   *  and how large, and whether it is collapsed; read back with care, as whatever is kept here may be
+   *  from an older page. Nothing of the source windows is kept: each opens in the middle of the
+   *  screen (decided 2026-10-09) */
   chat?: Kept;
-  /** the agents whose conversations this reader pinned (web/src/talkpins.ts, the owner's decision of
-   *  2026-10-12), by their entries' ids, and the one whose conversation is open without following;
-   *  read back with care (readPins) */
-  talkPins?: string[];
-  talkOpen?: string;
+  /** the conversation window left open by the reader, and the channel on show in it (`public`, or an
+   *  agent's id in presence) */
+  chatOpen?: true;
+  chatChannel?: string;
+  /** what the reader has seen of each channel: the last message's id, by channel; the public
+   *  channel's counts the button's number (web/src/talk.ts) */
+  chatSeen?: Record<string, number>;
   /** Share's "Exactly what I see" turned off in this browser: its links carry only the view (the
    *  owner's decision of 2026-10-12, on by default) */
   shareExact?: false;
@@ -127,6 +129,11 @@ export class Store {
     // the pairing choice an older page kept: the pairing is always on now (AttachmentSpec decision
     // 8, the owner's of 2026-10-11), and this goes with the next save
     delete (loaded as { paired?: unknown }).paired;
+    // the conversations an older page pinned: there are no pins (the conversation window is the
+    // reader's own, CollabSpec decision 13, the owner's decision of 2026-10-19), and these go with the
+    // next save
+    delete (loaded as { talkPins?: unknown }).talkPins;
+    delete (loaded as { talkOpen?: unknown }).talkOpen;
     this.data = {
       ...DEFAULTS,
       ...loaded,
@@ -195,9 +202,9 @@ export class Store {
 
   /** Another tab of this browser saved (`raw`, what it wrote under this store's key): whether the
    *  reader is private is the browser's, not the tab's, so this tab takes it — it neither stays
-   *  visible nor writes the old choice back with its next save. True when that changed here. The
-   *  conversations pinned are the browser's too: this tab takes them as they are, so that its next
-   *  save does not undo a pin made in another (which one is open stays the tab's own). */
+   *  visible nor writes the old choice back with its next save. True when that changed here. What
+   *  the reader has seen of the conversations is the browser's too: the furthest of the two, so that
+   *  this tab's next save does not undo what was read in another. */
   adopt(raw: string | null): boolean {
     // storage cleared elsewhere says nothing of the reader's choice: a private tab stays private
     if (!raw) return false;
@@ -207,10 +214,20 @@ export class Store {
     } catch {
       return false;
     }
-    this.data.talkPins = Array.isArray(other?.talkPins) ? other.talkPins : undefined;
+    this.data.chatSeen = seenOf(this.data.chatSeen, other?.chatSeen);
     const p = other?.private === true;
     if (p === (this.data.private === true)) return false;
     this.data.private = p || undefined;
     return true;
   }
+}
+
+/** What the reader has seen of the conversations, two tabs' together: the furthest of each channel,
+ *  read with care (an older page's, or one edited by hand). */
+export function seenOf(a: unknown, b: unknown): Record<string, number> | undefined {
+  const out: Record<string, number> = {};
+  for (const x of [a, b])
+    if (x && typeof x === "object")
+      for (const [k, v] of Object.entries(x as Record<string, unknown>)) if (typeof v === "number" && Number.isInteger(v) && v >= 0) out[k] = Math.max(out[k] ?? 0, v);
+  return Object.keys(out).length ? out : undefined;
 }
