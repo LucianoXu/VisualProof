@@ -1,77 +1,77 @@
 {
  "film": {
-  "file": "tour-5d6d75f7fa38.mp4",
-  "sha256": "5d6d75f7fa38eb34d3e0f071d105825618f95a6d5e50b53fca939924d1261b63",
-  "size": 48300562,
+  "file": "tour-65d0dbe881c2.mp4",
+  "sha256": "65d0dbe881c2e2d64932865976c177bf31e5685cf7fffe98089eae245eafa60a",
+  "size": 48323737,
   "width": 2560,
   "height": 1600,
-  "duration": 205.5
+  "duration": 208.83333333333334
  },
  "chapters": [
   {
    "id": "target",
    "start": 0,
-   "end": 16.733333333333334
+   "end": 16.766666666666666
   },
   {
    "id": "view",
-   "start": 16.733333333333334,
-   "end": 28.233333333333334
+   "start": 16.766666666666666,
+   "end": 28.266666666666666
   },
   {
    "id": "arrange",
-   "start": 28.233333333333334,
-   "end": 45.63333333333333
+   "start": 28.266666666666666,
+   "end": 45.666666666666664
   },
   {
    "id": "source",
-   "start": 45.63333333333333,
-   "end": 55.9
+   "start": 45.666666666666664,
+   "end": 55.766666666666666
   },
   {
    "id": "keys",
-   "start": 55.9,
-   "end": 76.2
+   "start": 55.766666666666666,
+   "end": 76.7
   },
   {
    "id": "checks",
-   "start": 76.2,
-   "end": 93.9
+   "start": 76.7,
+   "end": 94.46666666666667
   },
   {
    "id": "review",
-   "start": 93.9,
-   "end": 106.96666666666667
+   "start": 94.46666666666667,
+   "end": 110.33333333333333
   },
   {
    "id": "project",
-   "start": 106.96666666666667,
-   "end": 113.7
+   "start": 110.33333333333333,
+   "end": 117.06666666666666
   },
   {
    "id": "share",
-   "start": 113.7,
-   "end": 125.6
+   "start": 117.06666666666666,
+   "end": 128.9
   },
   {
    "id": "agent",
-   "start": 125.6,
-   "end": 141.83333333333334
+   "start": 128.9,
+   "end": 145.6
   },
   {
    "id": "library",
-   "start": 141.83333333333334,
-   "end": 169.93333333333334
+   "start": 145.6,
+   "end": 173.33333333333334
   },
   {
    "id": "export",
-   "start": 169.93333333333334,
-   "end": 188.26666666666668
+   "start": 173.33333333333334,
+   "end": 191.6
   },
   {
    "id": "artwork",
-   "start": 188.26666666666668,
-   "end": 205.5
+   "start": 191.6,
+   "end": 208.83333333333334
   }
  ],
  "captions": [
@@ -87,207 +87,217 @@
   },
   {
    "start": 9.966666666666667,
-   "end": 13.133333333333333,
+   "end": 13.166666666666666,
    "text": "Mark it as the target of the review."
   },
   {
-   "start": 13.133333333333333,
-   "end": 16.733333333333334,
+   "start": 13.166666666666666,
+   "end": 16.766666666666666,
    "text": "The side panel lists the targets, with their progress."
   },
   {
-   "start": 16.733333333333334,
-   "end": 21.9,
+   "start": 16.766666666666666,
+   "end": 21.933333333333334,
    "text": "Rests on · Uses: everything the theorem uses."
   },
   {
-   "start": 21.9,
-   "end": 25.233333333333334,
+   "start": 21.933333333333334,
+   "end": 25.266666666666666,
    "text": "Zoom in: a view of just that, in a tab of its own."
   },
   {
-   "start": 25.233333333333334,
-   "end": 28.233333333333334,
+   "start": 25.266666666666666,
+   "end": 28.266666666666666,
    "text": "The view is laid out for what it holds alone."
   },
   {
-   "start": 30.133333333333333,
-   "end": 34.666666666666664,
+   "start": 30.166666666666668,
+   "end": 34.7,
    "text": "Drag a cluster with Ctrl held: it stays there, for everyone."
   },
   {
-   "start": 34.666666666666664,
-   "end": 39.8,
+   "start": 34.7,
+   "end": 39.833333333333336,
    "text": "Or let the lock go with l, and drag without Ctrl."
   },
   {
-   "start": 39.8,
-   "end": 45.63333333333333,
+   "start": 39.833333333333336,
+   "end": 45.666666666666664,
    "text": "Double-click a circle to fold it to a point; again to open."
   },
   {
-   "start": 45.63333333333333,
-   "end": 49.666666666666664,
-   "text": "Space opens the source of what is selected."
+   "start": 45.666666666666664,
+   "end": 49.7,
+   "text": "Space opens its source, and its review box with it."
   },
   {
-   "start": 49.666666666666664,
-   "end": 52.96666666666667,
+   "start": 49.7,
+   "end": 52.833333333333336,
    "text": "Rest on a name: Lean says what it is."
   },
   {
-   "start": 52.96666666666667,
-   "end": 55.9,
+   "start": 52.833333333333336,
+   "end": 55.766666666666666,
    "text": "Click it to go there: its source, its panel."
   },
   {
-   "start": 55.9,
-   "end": 58.96666666666667,
+   "start": 55.766666666666666,
+   "end": 58.833333333333336,
    "text": "Keys: the definitions that carry what it says."
   },
   {
-   "start": 58.96666666666667,
-   "end": 69.56666666666666,
-   "text": "Mark each as a key with the mouse, in its panel."
+   "start": 58.833333333333336,
+   "end": 70,
+   "text": "Mark each as a key, in its source or its panel."
   },
   {
-   "start": 69.56666666666666,
-   "end": 76.2,
+   "start": 70,
+   "end": 76.7,
    "text": "Rests on · Keys lights them, joined to the target."
   },
   {
-   "start": 76.6,
-   "end": 78.9,
+   "start": 77.1,
+   "end": 79.46666666666667,
    "text": "Selection: the statement alone."
   },
   {
-   "start": 78.9,
-   "end": 81.7,
+   "start": 79.46666666666667,
+   "end": 82.26666666666667,
    "text": "Least effort — you trust every name in it."
   },
   {
-   "start": 81.7,
-   "end": 84.16666666666667,
+   "start": 82.26666666666667,
+   "end": 84.73333333333333,
    "text": "Keys: the few that carry the meaning."
   },
   {
-   "start": 84.16666666666667,
-   "end": 86.23333333333333,
+   "start": 84.73333333333333,
+   "end": 86.8,
    "text": "Little effort, good confidence."
   },
   {
-   "start": 86.23333333333333,
-   "end": 88.23333333333333,
+   "start": 86.8,
+   "end": 88.8,
    "text": "TCB: everything it rests on."
   },
   {
-   "start": 88.23333333333333,
-   "end": 90.23333333333333,
+   "start": 88.8,
+   "end": 90.8,
    "text": "Most effort, most confidence."
   },
   {
-   "start": 90.23333333333333,
-   "end": 93.9,
+   "start": 90.8,
+   "end": 94.46666666666667,
    "text": "Choose how far to read: the counts say what each costs."
   },
   {
-   "start": 93.9,
-   "end": 97.46666666666667,
+   "start": 94.46666666666667,
+   "end": 98.03333333333333,
    "text": "Read a definition, then say what you think of it."
   },
   {
-   "start": 97.46666666666667,
-   "end": 103.8,
+   "start": 98.03333333333333,
+   "end": 104.06666666666666,
    "text": "Approve it, with why: the comment stays with it."
   },
   {
-   "start": 103.8,
-   "end": 106.96666666666667,
+   "start": 104.06666666666666,
+   "end": 106.86666666666666,
+   "text": "Changed your mind? Withdraw takes it back."
+  },
+  {
+   "start": 106.86666666666666,
+   "end": 110.33333333333333,
    "text": "The target's progress counts your approval."
   },
   {
-   "start": 106.96666666666667,
-   "end": 111.06666666666666,
+   "start": 110.33333333333333,
+   "end": 114.43333333333334,
    "text": "The Project tab: the whole codebase."
   },
   {
-   "start": 111.06666666666666,
-   "end": 113.7,
+   "start": 114.43333333333334,
+   "end": 117.06666666666666,
    "text": "Every board shows the same review."
   },
   {
-   "start": 113.7,
-   "end": 119.4,
+   "start": 117.06666666666666,
+   "end": 122.7,
    "text": "Share → AI agent: a token, and a prompt for it."
   },
   {
-   "start": 119.4,
-   "end": 122.6,
+   "start": 122.7,
+   "end": 125.9,
    "text": "Paste the prompt into your agent: it joins here."
   },
   {
-   "start": 122.6,
-   "end": 125.6,
+   "start": 125.9,
+   "end": 128.9,
    "text": "The token is the agent's own: revoke it here."
   },
   {
-   "start": 126.1,
-   "end": 132.33333333333334,
-   "text": "Click the agent to follow it, and ask."
+   "start": 129.4,
+   "end": 136.43333333333334,
+   "text": "Its menu → Talk: your private channel with it."
   },
   {
-   "start": 132.33333333333334,
-   "end": 136.83333333333334,
-   "text": "It reads the code, and takes your view along."
+   "start": 136.43333333333334,
+   "end": 140.03333333333333,
+   "text": "It reads the code; its state says what it does."
   },
   {
-   "start": 136.83333333333334,
-   "end": 141.83333333333334,
-   "text": "Its answer names what it explains."
+   "start": 140.03333333333333,
+   "end": 142.5,
+   "text": "Its answer links to what it explains."
   },
   {
-   "start": 142.63333333333333,
-   "end": 148.03333333333333,
+   "start": 142.5,
+   "end": 145.6,
+   "text": "Click the link: your board goes there."
+  },
+  {
+   "start": 146.73333333333332,
+   "end": 151.36666666666667,
    "text": "Library: add a paper about the code."
   },
   {
-   "start": 148.03333333333333,
-   "end": 159.2,
+   "start": 151.36666666666667,
+   "end": 162.6,
    "text": "Link it to the theorem, at its page."
   },
   {
-   "start": 159.2,
-   "end": 163.6,
+   "start": 162.6,
+   "end": 167,
    "text": "Space: its source, and the paper beside it at its page."
   },
   {
-   "start": 163.6,
-   "end": 169.93333333333334,
+   "start": 167,
+   "end": 173.33333333333334,
    "text": "Pin a note on the target: where to start."
   },
   {
-   "start": 169.93333333333334,
-   "end": 177.36666666666667,
+   "start": 173.33333333333334,
+   "end": 180.76666666666668,
    "text": "Export prints a view: here, the target's TCB."
   },
   {
-   "start": 177.36666666666667,
-   "end": 181.33333333333334,
+   "start": 180.76666666666668,
+   "end": 184.66666666666666,
    "text": "Drag a section to change the document's order."
   },
   {
-   "start": 181.33333333333334,
-   "end": 188.26666666666668,
+   "start": 184.66666666666666,
+   "end": 191.6,
    "text": "Typeset: the PDF follows the order you set."
   },
   {
-   "start": 188.26666666666668,
-   "end": 192.33333333333334,
+   "start": 191.6,
+   "end": 195.66666666666666,
    "text": "Artwork: the board as a picture to keep."
   },
   {
-   "start": 192.33333333333334,
-   "end": 202.3,
+   "start": 195.66666666666666,
+   "end": 205.63333333333333,
    "text": "Frame it, then save it as PNG or SVG."
   }
  ]
