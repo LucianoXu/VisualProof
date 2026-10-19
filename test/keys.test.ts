@@ -160,7 +160,7 @@ test("the server binds a key mark to a target's review, and records no explanati
     const before = readFileSync(join(dir, "review", "log", logFileName("Alice", false)), "utf8");
     const ex = post({ op: "explain", name: "G", text: "The **game**." });
     assert.equal(ex.status, 400);
-    assert.match(ex.body.error, /op is opinion, target, trust or key/);
+    assert.match(ex.body.error, /op is opinion, withdraw, target, trust or key/);
     assert.equal(readFileSync(join(dir, "review", "log", logFileName("Alice", false)), "utf8"), before);
     assert.equal(Object.hasOwn(review.data, "explanations"), false);
   } finally {
@@ -218,6 +218,73 @@ test("the page's review of a declaration: the key toggle, and no explanation to 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the key toggle stands in every review box alike — the panel's and each source window's, on its own declaration — where the focus's review set holds it and the reader may mark", () => {
+  // T's review holds G and H; K is outside it; U is another target, whose review holds K
+  const g = graph(["T>G", "T>H", "U>K"]);
+  const d = reviewWith(["H"]);
+  record(d, { op: "target", name: "U", by: "Alice", on: true }, "tc", at(9));
+  const T = g.byName.get("T")!, G = g.byName.get("G")!, H = g.byName.get("H")!, K = g.byName.get("K")!, U = g.byName.get("U")!;
+  let focus: number | null = T;
+  let state = { readOnly: false, blocked: null as string | null };
+  const sent: ReviewRequest[] = [];
+  const hooks = {
+    review: () => ({ data: d, error: null, blocked: state.blocked, readOnly: state.readOnly, reviewer: "Alice" }),
+    ensureReviewer: async () => "Alice",
+    submit: async (op: ReviewRequest) => (sent.push(op), null),
+    editedNow: () => false,
+    edited: async () => false,
+    reviewRoot: () => focus,
+    inReview: (r: number, i: number) => !!reviewSet(g, d, r)[i],
+    isKey: (r: number, i: number) => i === r || keyMarked(d, g.nodes[r].name, g.nodes[i].name),
+    queue: (i: number) => reviewQueue(g, d, i, inTargets(g, [i])),
+    progress: () => ({ total: 0, approved: 0, commented: 0, stale: 0 }),
+    keyProgress: () => ({ total: 0, approved: 0, commented: 0, stale: 0, unreviewed: 0 }),
+  } as unknown as ReviewHooks;
+  const box = new ReviewBox(g, hooks);
+  /** what the box of declaration `i` shows of the key mark: the toggle's words, the tag's, or none */
+  const key = (i: number, full: boolean) => {
+    const html = box.html(i, full);
+    const b = /<button class="rv-btn rv-key[^"]*" data-rv-key aria-pressed="(true|false)"[^>]*>([^<]*)<\/button>/.exec(html);
+    if (b) return `button ${b[2]}`;
+    const t = /<div class="rv-tag rv-key-tag">([^<]*)<\/div>/.exec(html);
+    return t ? `tag ${t[1]}` : null;
+  };
+  // the panel (full) and a source window (not), each on the declaration it shows
+  for (const full of [true, false]) {
+    assert.equal(key(G, full), "button ◇ Mark as key for T", `G, full ${full}`);
+    assert.equal(key(H, full), "button ◆ Key for T", `H, full ${full}`);
+    assert.equal(key(T, full), null, "the target is key without a mark");
+    assert.equal(key(K, full), null, "what its review does not hold");
+  }
+  // another focus: its own review's
+  focus = U;
+  assert.equal(key(K, false), "button ◇ Mark as key for U");
+  assert.equal(key(G, false), null);
+  // no focus: no toggle anywhere
+  focus = null;
+  for (const i of [G, H, K]) for (const full of [true, false]) assert.equal(key(i, full), null);
+  // who may not mark (a snapshot, a past build, a read-only reader; a log that cannot be read) sees
+  // only what is marked
+  focus = T;
+  for (const s of [{ readOnly: true, blocked: null }, { readOnly: false, blocked: "Your review log …" }]) {
+    state = s;
+    for (const full of [true, false]) {
+      assert.equal(key(H, full), "tag ◆ Key for T");
+      assert.equal(key(G, full), null);
+    }
+  }
+  // a press on a window's toggle marks that window's declaration, whatever else the reader looks at
+  state = { readOnly: false, blocked: null };
+  const toggle = { closest: (s: string) => (s === "[data-rv-key]" ? toggle : null) } as unknown as HTMLElement;
+  assert.equal(box.click(toggle, G, { querySelector: () => null } as unknown as HTMLElement), true);
+  return new Promise<void>((done) =>
+    setImmediate(() => {
+      assert.deepEqual(sent, [{ op: "key", target: "T", name: "G", on: true }]);
+      done();
+    }),
+  );
 });
 
 test("the comment box, in the panel and the source window alike: Approve and Comment, emptied once the opinion is taken, its text kept when it is refused", async () => {
