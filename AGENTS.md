@@ -48,7 +48,8 @@ The tool is in `src/`; paths of code in its comments and in `SPEC/` are relative
 - `docs/agent-api/` is served to agents (`GET /api/agent/docs`, each topic as
   `GET /api/agent/docs/<topic>`; the topics are listed in `server/agentdocs.ts`): a change to the
   agents' API or to the MCP server's tools updates it in the same change, within the budgets
-  `test/agentapi.test.ts` keeps (the entry, each topic, the tools list).
+  `test/agentapi.test.ts` keeps: the entry, each topic and the tools list, which an agent loads at
+  once, small; the whole documentation, read a topic at a time, a larger one.
 
 ## General Guidelines
 
