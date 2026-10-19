@@ -78,11 +78,13 @@ The words used here are the next part's; the rest of the manual is the reference
   always means trusted without review: the panel lists the TCB itself as **Its TCB**.
 - **A target**: a theorem whose TCB is reviewed, marked ☆ by a reviewer (or by an agent at level
   `full`). It carries a gold star, and the Targets list says how far each review has come.
-- **Key declarations**: of a target's review set, the few that matter for reading it — the central
+- **Key declarations**: of a target's TCB, the few that matter for reading it — the central
   definitions, the structures they are built on, the main theorem — marked key for that target (a
-  gold diamond); the target always is one. They are read first, and progress counts them first:
-  ◆ approved of the key declarations, then approved of all. A declaration that is not key is
-  *supported by* the key declarations that reach it through members that are not key; the **key
+  gold diamond); the target always is one. A trusted declaration can be key too, in the project or
+  outside it: trusted says it needs no review, key that it is needed to read the target. They are
+  read first, and progress counts them first: ◆ approved of the key declarations that need review
+  (the trusted ones told apart, *+N trusted*), then approved of all. A declaration that is not key
+  is *supported by* the key declarations that reach it through members that are not key; the **key
   graph** joins key declarations reached so, dashed.
 - **The review's focus**: a view reviews one target at most, its focus, set when the view is made
   from the target. **Focus ▾**, at the top left, shows it: there each reader may focus otherwise for
@@ -789,7 +791,12 @@ lock, edges, the linear form, theme), the top holds your tabs and your mode.
 
 What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../SPEC/ReviewSpec.md)).
 
-- In the panel, **Approve** or **Comment** on the selected declaration (a comment needs text; an
+- **One review box**, in the panel and in every source window, following or pinned, each on its own
+  declaration: the same controls in the same order — the opinions and their history, the agents'
+  advice, the comment box, **Approve**, **Comment**, **Speaking for**, **Withdraw** beside your
+  opinion, the key mark, **☆ Mark as target**, and for a target its progress, its axioms outside the
+  graph and its view.
+- **Approve** or **Comment** on the declaration (a comment needs text; an
   approval may carry one too); a new opinion replaces your earlier one, and the box empties once
   it is recorded. The first time, a window asks for the name your opinions are recorded
   under; it stays at the top right of the page (see Together). Each
@@ -799,9 +806,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   version*, and **What changed** shows the lines removed and added since (the opinion
   records the text it was given on: the context it is written in, then its source), so a
   re-review reads only the change.
-- **Withdraw** takes your current opinion back: it stands beside it in the panel and in every source
-  window. An approval goes at once; a comment asks first. Afterwards you have no opinion there —
-  every status, count and list is as if you had given none, and an earlier opinion of yours does not
+- **Withdraw** takes your current opinion back: it stands beside it in every review box. An
+  approval goes at once; a comment asks first. Afterwards you have no opinion there — every
+  status, count and list is as if you had given none, and an earlier opinion of yours does not
   come back — but nothing is erased: the panel's **All opinions** keeps the opinion, faded, and the
   withdrawal at its time ("Alice withdrew their approval"), and Activity says it. Speaking for
   someone, it withdraws theirs, recorded by you. A new opinion of yours stands as any. Agents
@@ -821,9 +828,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   In the source window, select some code and press **❝ Quote in comment**: the lines it touches,
   whole, go into that window's box under their file and line numbers, and once posted that
   header opens the source at those lines ([ReviewSpec.md](../SPEC/ReviewSpec.md), "Comments").
-- **☆ Mark as target** a theorem whose TCB you review. The panel then counts how far that review
-  has come (approved, commented, stale, not yet reviewed; what is trusted is not counted:
-  [Concepts](#concepts)), and **Its view** opens its board, or a temporary view of its
+- **☆ Mark as target** a theorem whose TCB you review, from any review box. Its box then counts
+  how far that review has come (approved, commented, stale, not yet reviewed; what is trusted is
+  not counted: [Concepts](#concepts)), and **Its view** opens its board, or a temporary view of its
   TCB where it has none. The targets are listed
   at the top of the side panel, with their progress. What changes in a target's TCB shows by
   itself: an opinion on a declaration that changed goes stale, what newly enters it is not yet
@@ -845,15 +852,18 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   ([Concepts](#concepts)). Where the review is
   focused on T, every review box — the panel's, and each source window's, following or pinned, on
   its own declaration — has **◇ Mark as key for T** (**◆ Key for T** once marked; `k`), and the
-  selection bar **Mark selected as key** for the declarations clicked; only what the review holds
-  can be marked, and the target is always key. Key declarations carry a small gold diamond on the
-  canvas (where the review has a focus its target's, elsewhere every target's), a ◆ in the review
-  list, which can show them alone (**◆ Key**), and `key(T)` in the query language, `key(targets)`
-  for every target (the target's panel has **Key view**); the Keys step of Rests on selects them.
-  They are read first: the review list shows them alone, and agents list them first.
-  Progress has two levels, in the strip, the target's panel and the Targets list: *◆ approved of
-  the key declarations*, then *approved of all*. A target's key document is its Key view
-  exported (see Exported documents).
+  selection bar **Mark selected as key** for the declarations clicked; whatever T's TCB holds can be
+  marked, trusted or not, in the project or outside it, and the target is always key. A trusted key
+  declaration needs no review: it is listed and printed with the others, marked *trusted*, and
+  never counts as *not yet reviewed*; a key declaration trusted later stays key. Key declarations
+  carry a small gold diamond on the canvas (where the review has a focus its target's, elsewhere
+  every target's), a ◆ in the review list, which can show them alone (**◆ Key**, the trusted ones
+  first), and `key(T)` in the query language, `key(targets)` for every target (the target's review
+  box has **Key view**); the Keys step of Rests on selects them. They are read first: the review
+  list shows them alone, and agents list them first. Progress has two levels, in the strip, the
+  target's review box and the Targets list: *◆ approved of the key declarations that need review*
+  (*+N trusted* beside it), then *approved of all*. A target's key document is its Key view
+  exported (see Exported documents), a trusted key declaration printed as any.
 - **Trusted without review** ([Concepts](#concepts)): Mathlib, Lean core (`Init`, `Lean`, `Std`), Batteries and the standard axioms by default. Trust a part of
   the project too (a vendored library, a layer reviewed elsewhere) with the shield on its row in
   the side panel's cluster list; Trusted, over that list, shows what is trusted and stops
@@ -861,8 +871,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   trusted at once, from that list or the shield on the External row (recorded as `@external`).
   Trusted declarations are not counted and need no opinion; the timeline says who trusted what.
 - **Source** in the panel, or Space, opens the declaration's source in a window over the canvas,
-  with Approve and Comment below it. It is not modal: the canvas and the panels stay in use, and
-  the window follows the selection, so a click on another declaration shows its source at once.
+  with its review box below it, the panel's (One review box, above). It is not modal: the canvas
+  and the panels stay in use, and the window follows the selection, so a click on another
+  declaration shows its source at once.
   It opens in the middle of the screen, as large as the code needs (at most 92% × 88% of the
   screen), and is fitted again to each declaration it shows until you move or resize it; then it
   keeps your place and size until you close it, and the next one opens in the middle again
