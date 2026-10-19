@@ -411,9 +411,11 @@ toolchain, and Lean's internals change between releases, so every supported tool
 releases, and whatever the showcase project needs (v4.34.0-rc2, for NavierStokesAndEuler); v4.28.0,
 for the sphere packing formalization (the showcase before it), stays the floor.
 
-- `npm run test:toolchains` runs the whole suite once per toolchain, the fixture built by each
-  (`-- --jobs N` runs N at once, two by default; `-- v4.28.0` only that one); `VP_TOOLCHAIN=v4.30.0
-  npm test` runs it with one. elan installs a toolchain the first time it is asked for it.
+- `npm run test:toolchains` runs the tests whose answers can depend on the toolchain — those that
+  build the fixture with it — once per toolchain: the oldest and the newest, at once; `-- --all`
+  every one (`-- --jobs N` runs N at once, two by default; `-- v4.30.0` only that one). CI runs
+  every one before a change is merged. `VP_TOOLCHAIN=v4.30.0 npm test` runs the whole suite with
+  one. elan installs a toolchain the first time it is asked for it.
 - `test/compat.test.ts` compares the extraction of the whole fixture with a golden taken on the
   fixture's own toolchain ([test/golden/](../test/golden/)): what is the project's — its units, the
   edges between them, their axioms and TCBs — must be the same on every toolchain; what Lean's
@@ -1547,4 +1549,4 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `docs/` | the roadmap, the agents' manual, what Lake leaves behind |
 | `test/` | `npm test` (Lake-backed tests need `lake`); `test/live-scenario.sh` drives a live session |
 | `test/fixture/` | a small Lean project whose TCBs are known; `Fixture.Kinds` and `FixtureModule` (the module system) are built and read on their own |
-| `test/fixturecopy.ts`, `test/toolchains.json`, `test/compat.test.ts`, `test/golden/`, `scripts/test-toolchains.mjs` | the supported Lean toolchains: the fixture copied for each (`VP_TOOLCHAIN`), the golden extraction and its known differences, the suite run once per toolchain |
+| `test/fixturecopy.ts`, `test/toolchains.json`, `test/compat.test.ts`, `test/golden/`, `scripts/test-toolchains.mjs`, `test/matrix.test.ts` | the supported Lean toolchains: the fixture copied for each (`VP_TOOLCHAIN`), the golden extraction and its known differences, the tests that build the fixture, run once per toolchain, and the check that they are every test the toolchain can change |

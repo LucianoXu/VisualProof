@@ -23,7 +23,8 @@ is, and the page is bundled when the server starts, into the cache directory.
 npm install
 npm run typecheck
 npm test                    # the whole suite, on the fixture's own toolchain
-npm run test:toolchains     # the whole suite once per toolchain of test/toolchains.json
+npm run test:toolchains     # the tests the toolchain can change, on the oldest and the newest
+                            # toolchain of test/toolchains.json (-- --all: on every one)
 npm run test:updates        # the update path end to end, against a registry of its own
 node src/server/main.ts serve <a built Lean project>     # then open http://127.0.0.1:4173/
 ```
@@ -119,14 +120,24 @@ without a browser, and the tour's chapters, captions and stills.
 The supported toolchains are those of `test/toolchains.json`: the last six or so stable releases,
 and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor.
 
+- `npm run test:toolchains` runs the tests whose answers can depend on the toolchain once per
+  toolchain: the test files that import `test/fixturecopy.ts`, which build the fixture with the
+  toolchain under test (`VP_TOOLCHAIN`): the extraction and its golden, the usage pass, the build
+  status, Lean's hovers, a branch followed and built, among others. The rest of the suite runs no
+  Lean and answers the same on every toolchain; `npm test` runs it once, and `test/matrix.test.ts`
+  keeps both true. Locally it runs the oldest and the newest toolchain, at once: every difference
+  Lean has made so far (`known-differences.json`, the tests that ask `leanAtLeast`) shows on one
+  of them. `-- --all` runs every one, two at a time (`-- --jobs N`: N), and `-- v4.31.0` that one
+  alone.
 - A change to the extractor (`src/extractor/`), or to how the server runs Lean
   (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`,
   `server/children.ts`, and `server/deploy.ts`, which builds a branch the server follows), passes
-  `npm run test:toolchains` on all of them. CI runs the toolchains on
-  a pull request that touches those files, the fixture or its golden (`toolchains.yml` lists them),
-  and every week; the suite (`test.yml`) runs once per pull request and once on `main` as a merge
-  lands, which is what a release then checks. The newest Lean release and release candidate run
-  every week only: news of the next release, not a pull request's failure.
+  `npm run test:toolchains` locally, and CI runs those tests on every toolchain before it is
+  merged: on a pull request that touches those files, the fixture, its golden or those tests
+  (`toolchains.yml` lists them), and every week. The suite (`test.yml`) runs once per pull request
+  and once on `main` as a merge lands, which is what a release then checks. The newest Lean
+  release and release candidate run every week only: news of the next release, not a pull
+  request's failure.
 - A change to how the server follows its releases (`server/updates.ts`, `server/supervise.ts`,
   `web/src/reload.ts`, the stopping in `server/main.ts`) passes `npm run test:updates`: the package
   built as 8.0.0, its patch 8.0.1 and a broken 8.0.2, published to a registry the script serves on

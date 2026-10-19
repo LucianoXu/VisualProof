@@ -1,7 +1,8 @@
 // The fixture (test/fixture) copied where a test may build and change it, with the toolchain under
-// test: the fixture's own, or the one VP_TOOLCHAIN names. scripts/test-toolchains.mjs runs the whole
-// suite once per toolchain of test/toolchains.json; a test whose answer depends on the Lean version
-// asks `leanAtLeast` and says why.
+// test: the fixture's own, or the one VP_TOOLCHAIN names, read here alone. scripts/test-toolchains.mjs
+// runs the test files that import this one once per toolchain of test/toolchains.json, the rest of
+// the suite once (test/matrix.test.ts); a test whose answer depends on the Lean version asks
+// `leanAtLeast` and says why.
 
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
