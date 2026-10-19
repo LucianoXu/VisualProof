@@ -16,15 +16,17 @@ import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { EXTRACTOR } from "../src/server/extract.ts";
 import { bundlePage } from "../src/server/pipeline.ts";
 import type { ClusterMode, RawGraph, ViewNode } from "../src/shared/graph.ts";
 import { computeLayout, memoryOf } from "../src/shared/layout.ts";
 import { layOut } from "../src/web/src/layoutworker.ts";
 import type { LayoutAsk } from "../src/web/src/layoutworker.ts";
-import { copyFixture } from "./fixturecopy.ts";
+import { copyFixture, extractor } from "./fixturecopy.ts";
 import { folderGraph, showcaseGraphs } from "./layoutgraphs.ts";
 import type { LayoutGraph } from "./layoutgraphs.ts";
+
+/** the extractor, compiled as the server runs it (test/fixturecopy.ts) */
+const EXTRACT = await extractor();
 
 /** what the test asks of Playwright, which is not a dependency (so not named to the type checker) */
 interface Page {
@@ -79,7 +81,7 @@ before(async () => {
     const fx = copyFixture("vp-engines-fixture-");
     try {
       execFileSync("lake", ["build"], { cwd: fx, stdio: "ignore" });
-      execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, join(fx, "graph.json"), join(fx, ".lake/build/lib/lean"), "Fixture"], { cwd: fx, stdio: "ignore" });
+      execFileSync("lake", ["env", ...EXTRACT, join(fx, "graph.json"), join(fx, ".lake/build/lib/lean"), "Fixture"], { cwd: fx, stdio: "ignore" });
       const g = JSON.parse(readFileSync(join(fx, "graph.json"), "utf8")) as RawGraph;
       fresh({
         name: "the fixture",

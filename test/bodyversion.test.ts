@@ -8,8 +8,10 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import type { RawGraph } from "../src/shared/graph.ts";
-import { EXTRACTOR } from "../src/server/extract.ts";
-import { copyFixture } from "./fixturecopy.ts";
+import { copyFixture, extractor } from "./fixturecopy.ts";
+
+/** the extractor, compiled as the server runs it (test/fixturecopy.ts) */
+const EXTRACT = await extractor();
 
 let haveLake = true;
 try {
@@ -26,7 +28,7 @@ let after_: Map<string, string> = new Map();
 function versions(): Map<string, string> {
   execFileSync("lake", ["build", "Fixture.Kinds"], { cwd: dir, stdio: "ignore" });
   const out = join(dir, "graph.json");
-  execFileSync("lake", ["env", "lean", "--run", EXTRACTOR, out, join(dir, ".lake/build/lib/lean"), "Fixture.Kinds"], {
+  execFileSync("lake", ["env", ...EXTRACT, out, join(dir, ".lake/build/lib/lean"), "Fixture.Kinds"], {
     cwd: dir,
     stdio: "ignore",
   });
