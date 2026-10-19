@@ -129,7 +129,7 @@ const EDGE_PX = 12;
 /** Where the sheets are on a tall screen: the panel, or Activity or the lost-and-found in its place;
  *  then the floating windows docked there (style.css), and Export's window. */
 const SHEETS = ["panel", "activity", "lostfound"];
-const DOCKED = "#windows > :is(.sw-win, .pw-win, #following.talking):not(.collapsed, [hidden])";
+const DOCKED = "#windows > :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden])";
 
 /** A tall screen's board room, in px from the screen's edges (web/src/main.ts, the canvas's insets):
  *  the whole width; under the view bar, the review strip and the selection bar; above the sheet or the

@@ -1,9 +1,11 @@
 // Light Markdown, rendered from escaped text: comments on declarations (ReviewSpec, "Comments",
-// decided 2026-10-09) and an agent's messages in its conversation (AgentSpec decision 8). Nothing
+// decided 2026-10-09) and the messages of the conversations (CollabSpec decision 13). Nothing
 // written becomes HTML of its own: the text is escaped first, and only the marks below make
 // elements. No link is the writer's: a declaration's name in backticks links to it, and the two
 // references of shared/comment.ts — a quoted opinion, quoted source lines — become controls the page
-// follows; any other [text](url) stays text, `javascript:` and all.
+// follows; in a comment any other [text](url) stays text, `javascript:` and all. In a message an
+// http(s) address is drawn by the conversation (web/src/talk.ts): a link of this site as what it
+// leads to, any other opening in a new tab with its host beside it; any other scheme stays text.
 //
 // A comment: paragraphs, their line breaks kept; quotes (`>`), a quote of an opinion headed by its
 // attribution, which goes to the opinion; fenced code, Lean highlighted as in the source window
@@ -19,6 +21,7 @@
 import { attribution, blocks, parseRef, refText } from "../../shared/comment.ts";
 import type { QuoteRef } from "../../shared/comment.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
+import { linksIn } from "./chatlinks.ts";
 import { escapeHtml, highlightLean } from "./highlight.ts";
 import { resolver } from "./scope.ts";
 
@@ -41,9 +44,28 @@ function emphasis(text: string, link: (name: string, inner: string) => string, b
   return bare ? html.replace(BARE_NAME, (name) => link(name, name)) : html;
 }
 
+/** a link written as Markdown writes one, to an http(s) address */
+const MD_LINK = /\[([^\]\n]{1,200})\]\((https?:\/\/[^()\s]+)\)/gi;
+
+/** Escaped text with its emphasis, its addresses drawn by `urls` (CollabSpec decision 13): a
+ *  Markdown link's with its words, a bare address's alone; none of them is the writer's HTML. */
+function withLinks(text: string, link: (name: string, inner: string) => string, bare: boolean, urls: (url: string, label: string | null) => string): string {
+  const found: { start: number; end: number; url: string; label: string | null }[] = [];
+  for (const m of text.matchAll(MD_LINK)) found.push({ start: m.index!, end: m.index! + m[0].length, url: m[2], label: m[1] });
+  for (const l of linksIn(text)) if (!found.some((f) => l.start < f.end && f.start < l.end)) found.push({ ...l, label: null });
+  found.sort((a, b) => a.start - b.start);
+  let html = "";
+  let at = 0;
+  for (const f of found) {
+    html += emphasis(text.slice(at, f.start), link, bare) + urls(f.url, f.label);
+    at = f.end;
+  }
+  return html + emphasis(text.slice(at), link, bare);
+}
+
 /** One line or paragraph: `code` (a link where `link` makes one of it), the page's own references
- *  where `refs` says how to draw them, emphasis around them. */
-function inline(text: string, link: (name: string, inner: string) => string, bare: boolean, refs?: (label: string, r: QuoteRef) => string): string {
+ *  where `refs` says how to draw them, addresses where `urls` does, emphasis around them. */
+function inline(text: string, link: (name: string, inner: string) => string, bare: boolean, refs?: (label: string, r: QuoteRef) => string, urls?: (url: string, label: string | null) => string): string {
   return text
     .split(/(`[^`\n]+`)/)
     .map((piece, j) => {
@@ -51,6 +73,7 @@ function inline(text: string, link: (name: string, inner: string) => string, bar
         const code = piece.slice(1, -1);
         return link(code.trim(), `<code>${escapeHtml(code)}</code>`);
       }
+      if (urls) return withLinks(piece, link, bare, urls);
       if (!refs) return emphasis(piece, link, bare);
       let html = "";
       let at = 0;
@@ -65,9 +88,11 @@ function inline(text: string, link: (name: string, inner: string) => string, bar
     .join("");
 }
 
-/** An agent's message in its conversation as HTML: escaped first, then a little Markdown — fenced
- *  code, `code`, **bold**, *italics* — and declarations' names, in backticks or bare, as links. */
-export function renderMarkdown(text: string, resolve: (name: string) => string | null): string {
+/** A message of the conversations as HTML, a person's as an agent's (CollabSpec decision 13):
+ *  escaped first, then a little Markdown — fenced code, `code`, **bold**, *italics* — declarations'
+ *  names, in backticks or bare, as links, and, where `urls` draws them, its addresses
+ *  (web/src/chatlinks.ts: a link of this site as a chip, any other with its host). */
+export function renderMarkdown(text: string, resolve: (name: string) => string | null, urls?: (url: string, label: string | null) => string): string {
   const link = (name: string, inner: string) => {
     const full = resolve(name);
     return full ? `<a href="#" class="tk-decl" data-decl="${escapeHtml(full)}" title="${escapeHtml(full)}">${inner}</a>` : inner;
@@ -80,7 +105,7 @@ export function renderMarkdown(text: string, resolve: (name: string) => string |
         const body = part.replace(/^[\w+-]*\n/, "").replace(/\n$/, "");
         return `<pre class="tk-pre"><code>${escapeHtml(body)}</code></pre>`;
       }
-      return inline(part, link, true);
+      return inline(part, link, true, undefined, urls);
     })
     .join("");
 }

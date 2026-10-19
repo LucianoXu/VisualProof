@@ -20,7 +20,7 @@
 // the build on show.
 
 import type { BuildStatus } from "../../shared/build.ts";
-import type { ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../../shared/collab.ts";
+import type { ChatEvent, ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../../shared/collab.ts";
 import { artNameId } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout, ViewMeta } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_GRAMMAR, SITE_PROOF, SITE_STMT } from "../../shared/graph.ts";
@@ -101,15 +101,17 @@ import type { Kept } from "./reload.ts";
 import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
-import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, writeSnapshot } from "../../shared/sharesnap.ts";
+import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, withSnapshot, writeSnapshot } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { uploadFile } from "./library.ts";
 import { STATUS_LABEL, STATUSES, statusCodes, statusState } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { Tabs } from "./tabs.ts";
 import { Share } from "./share.ts";
-import { Talk } from "./talk.ts";
+import { excerpt, ownAgents, PUBLIC, stateWords, Talk } from "./talk.ts";
 import { ChatWindow } from "./chatwin.ts";
+import { chipOf, chipText, copyLink, noteHash, noteIn, siteLink } from "./chatlinks.ts";
+import type { Chip } from "./chatlinks.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
@@ -1150,7 +1152,7 @@ async function boot(): Promise<void> {
 
   /** In the artwork mode (ExportSpec decision 19, the owner's decision of 2026-10-15): of the bar,
    *  what is out of reach — all but Share and Search; and the keys that still act. */
-  const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
+  const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
   const ART_KEYS = new Set(["/", "1", "2", "3", "f", "+", "=", "-", "_", "e", "[", "]", "l"]);
   // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
@@ -1381,12 +1383,16 @@ async function boot(): Promise<void> {
     if (t.closest("[data-show-all]")) void sync.setHidden([...nav.board.rec.hidden[cm()]], false);
   });
 
-  // the window of a conversation with an agent followed or pinned (web/src/chatwin.ts), the following
-  // strip its title bar; it starts at the canvas's bottom left, beside the side panel
-  const chatWin = new ChatWindow($("#following"), store, {
+  // the conversation window, the reader's own (web/src/chatwin.ts, CollabSpec decision 13): opened
+  // and closed by the reader alone; it starts at the canvas's bottom left, beside the side panel
+  const chatWin = new ChatWindow($("#convo"), store, {
     // under the bars, not under the review strip, which comes and goes with the view
     insets: () => ({ left: canvas.insets.left, top: $("#viewbar").getBoundingClientRect().bottom + 8 }),
-    expanded: () => talk.revealed(),
+    expanded: () => talk.expanded(),
+    toggled: (open) => {
+      $("#talk-btn").setAttribute("aria-pressed", String(open));
+      if (open) $("#talk-notice").hidden = true;
+    },
   });
   // a phone: the bar's ⋯, the side panel's drawer, the panel's sheet (web/src/phone.ts)
   new Phone({
@@ -1438,7 +1444,7 @@ async function boot(): Promise<void> {
     document.body.style.setProperty("--inset-right", `${canvas.insets.right}px`);
     document.body.style.setProperty("--inset-left", `${canvas.insets.left}px`);
     $("#zoom").hidden = innerWidth - canvas.insets.right - canvas.insets.left < 140;
-    // the conversation's window, where it has not been put by the reader, starts beside the side
+    // the conversation window, where it has not been put by the reader, starts beside the side
     // panel (it does not move while the reader moves it, nor when a source window opens)
     chatWin.layout();
   };
@@ -1596,21 +1602,81 @@ async function boot(): Promise<void> {
       }
     return found;
   };
-  // talking with an agent while following it, or with one whose conversation is pinned (AgentSpec
-  // decision 8): its conversation (web/src/talk.ts), in the window the reader moves, resizes and
-  // collapses (chatWin, above)
-  const talk = new Talk($("#talk"), {
+  // the conversations (CollabSpec decision 13, web/src/talk.ts): Everyone and the reader's own
+  // agents, in the window the reader opens, moves, resizes and collapses (chatWin, above). A link
+  // followed from a message — a declaration, a link of this site — is the reader's own tool changing
+  // what is followed: it ends following (decision 4), and nothing else there does
+  const talk = new Talk($("#convo"), {
     data,
+    store,
+    win: chatWin,
+    me: () => ({ name: people.name, person: people.person?.id ?? null }),
     ensureName: () => people.ensure(),
     place: whereIAm,
+    peers: () => people.peers,
     resolve: resolveName,
     go: (name) => {
+      people.unfollow();
       const i = g.byName.get(name);
       if (i !== undefined) go(i);
     },
-    replied: () => chatWin.replied(),
+    open: (hash) => {
+      people.unfollow();
+      openAddress(hash);
+    },
+    chip: (url) => chipFor(url),
+    seenLink: async () => copyLink(location, await seenHash()),
+    counted: (n, marked) => {
+      const badge = $("#talk-badge");
+      badge.hidden = n === 0;
+      badge.textContent = n > 99 ? "99+" : String(n);
+      $("#talk-at").hidden = !marked;
+      $("#talk-btn").title = `Conversations: everyone on this page, and your agents${n ? ` — ${n} new in Everyone` : ""}${marked ? "; you were mentioned, or an agent of yours answered" : ""}`;
+    },
+    mentioned: (channel, m) => mentionNotice(channel, m),
   });
   if (kept) talk.restoreDrafts(kept.talk);
+  /** The conversation button: the window opened, expanded; open and expanded, closed. A read-only
+   *  reader has none (CollabSpec decision 11), nor has a snapshot. */
+  const talkBtn = $("#talk-btn");
+  talkBtn.hidden = !!reader || !!data.snapshot;
+  talkBtn.addEventListener("click", () => {
+    if (chatWin.open && !chatWin.collapsed) chatWin.close();
+    else chatWin.show(true);
+  });
+  /** A mention of the reader where they do not read: a notice under the button, which opens the
+   *  window on it, for a while. */
+  let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+  let noticeOf = PUBLIC;
+  const mentionNotice = (channel: string, m: ChatMessage) => {
+    const el = $("#talk-notice");
+    noticeOf = channel;
+    el.innerHTML = `<b>${escapeHtml(m.from)}</b> mentioned you${channel === PUBLIC ? " in Everyone" : ""}: “${escapeHtml(excerpt(m.text, 90))}”`;
+    el.title = "Open the conversation";
+    el.hidden = false;
+    if (noticeTimer) clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(() => (el.hidden = true), 12_000);
+  };
+  $("#talk-notice").addEventListener("click", () => {
+    $("#talk-notice").hidden = true;
+    talk.open(noticeOf);
+  });
+  // left open by the reader: open again, as they left it
+  if (store.data.chatOpen && !talkBtn.hidden) chatWin.show();
+  /** A link of this site's chip (CollabSpec decision 13, web/src/chatlinks.ts): named by what the page
+   *  knows — a view's title, a note's words; null for any other link and one it cannot read. */
+  const chipFor = (url: string): Chip | null => {
+    const l = siteLink(url, location.origin);
+    if (!l) return null;
+    return chipOf(l, {
+      view: (id) => (id === PROJECT ? "the Project" : views.summary(id) ? views.title(id) : null),
+      note: (id, ofView, view) => {
+        const text = ofView ? (view ? views.rec(view)?.notes?.find((n) => n.id === id)?.text : undefined) : projectNotes.get(id)?.text;
+        return text ? noteExcerpt(text, 40) : null;
+      },
+      tool: (t) => (restsOn(t) ? "Rests on" : MODE_NAME[t]),
+    });
+  };
   /** A reader's place in words: "Review ★fermatLastTheoremFour, looking at not_fermat_42". */
   const describePlace = (v: PresenceView): string => {
     const name = (m: string) => (TOOLS.includes(m as Tool) ? toolName(m as Tool) : m);
@@ -1628,15 +1694,6 @@ async function boot(): Promise<void> {
   const people: People = new People(data, store, {
     view: whereIAm,
     say: (text) => say(text),
-    talkTo: (agent) => {
-      // a read-only reader talks to no agent (CollabSpec decision 11)
-      if (reader) return;
-      chatWin.show(agent?.id ?? null);
-      void talk.show(agent);
-    },
-    // a pinned conversation opened from its agent's badge (web/src/talkpins.ts)
-    reveal: () => chatWin.reveal(),
-    stripDrawn: () => talk.dress(),
     describe: (v) => describePlace(v),
     follow: (v) => {
       artReach();
@@ -1645,6 +1702,7 @@ async function boot(): Promise<void> {
     changed: () => {
       syncPeers();
       peerMenu.render();
+      if (!reader) talk.peersChanged();
     },
     // the windows that stood for the followed reader's are this reader's own now, and none says any
     // more that the reader follows someone; what following left is theirs to leave (CollabSpec, "What
@@ -1656,10 +1714,12 @@ async function boot(): Promise<void> {
       artReach();
       if (!people.following && linear.followed && !exportModal.isOpen) say(`The board stays in the linear form you followed: ${isPhone() ? "⋯ at the bottom → Linear form puts" : "o, or ⋯ at the bottom → Linear form, puts"} it away.`);
     },
-    // what is left to review where the review has a focus is the reader's own
+    // what is left to review where the review has a focus is the reader's own; who may read which of
+    // the conversations, theirs
     renamed: () => {
       showSelected();
       renderStrip();
+      if (!reader) talk.identity();
     },
     // asking others to follow (CollabSpec decision 10): Esc declines a request shown, unless it is
     // typed into a field or pressed in a menu or a dialog, whose own it is
@@ -1668,8 +1728,7 @@ async function boot(): Promise<void> {
       return asking.banner.escape({ field: typing(t) || typing(document.activeElement), menu: !!t?.closest?.('[role="menu"], [role="dialog"], #modal, #help') });
     },
     menu: (key, at) => {
-      const p = people.people().find((x) => x.key === key);
-      if (!p || p.agent) return false;
+      if (!people.people().some((x) => x.key === key)) return false;
       peerMenu.toggle(key, at);
       return true;
     },
@@ -1702,10 +1761,21 @@ async function boot(): Promise<void> {
     person: (key) => {
       const p = people.people().find((x) => x.key === key);
       if (!p) return null;
-      const v = p.sessions[0].view;
-      return { name: p.name ?? "this reader", html: p.name ? escapeHtml(p.name) + (p.verified ? VERIFIED : "") : "A reader without a name", color: people.colorOf(p), where: v ? describePlace(v) : "", following: people.followedKey === key };
+      const s = p.sessions[0];
+      const v = s.view;
+      // an agent: talked with in its maker's private channel, else mentioned in Everyone; none by a
+      // read-only reader, nor with an agent without a token (AgentSpec decision 8)
+      const own = !!s.talk && ownAgents([s], { name: people.name, person: people.person?.id ?? null }).length > 0;
+      const agent = p.agent ? { talk: reader || !s.talk ? null : own ? ("own" as const) : ("public" as const), state: s.talk ? stateWords(s.talk) : null } : undefined;
+      return { name: p.name ?? "this reader", html: p.name ? escapeHtml(p.name) + (p.verified ? VERIFIED : "") : "A reader without a name", color: people.colorOf(p), where: v ? describePlace(v) : "", following: people.followedKey === key, ...(agent ? { agent } : {}) };
     },
     follow: (key) => people.follow(key),
+    talk: (key) => {
+      const s = people.people().find((x) => x.key === key)?.sessions[0];
+      if (!s?.talk || reader) return;
+      if (ownAgents([s], { name: people.name, person: people.person?.id ?? null }).length) talk.open(s.id);
+      else talk.open(PUBLIC, s.name ?? undefined);
+    },
     ask: (key) => {
       const p = people.people().find((x) => x.key === key);
       if (p) void asking.ask({ id: p.sessions[0].id, name: p.name ?? "This reader" });
@@ -2934,6 +3004,14 @@ async function boot(): Promise<void> {
     shown,
   });
   const entry = () => (history.state && typeof history.state.n === "number" ? (history.state as { n: number; cam?: object; tm?: number }) : { n: 0 });
+  /** The address of what this reader sees, with its snapshot (CollabSpec decision 7): what a link to
+   *  what they see carries, whatever Share's switch (decision 13); the address alone where the
+   *  snapshot cannot be made. */
+  const seenHash = async (): Promise<string> => {
+    const hash = encodeState(current());
+    const snap = await writeSnapshot(followedOf(parts.read), canvas.screen).catch(() => null);
+    return snap ? withSnapshot(hash, snap).slice(1) : hash;
+  };
   /** In the Time Machine, the build its board shows travels in the entry (not the address: where a
    *  reader is in it is their own, HistorySpec decision 18), so that back and forward return to a
    *  past board at its build (the owner's decision of 2026-10-09). */
@@ -2998,15 +3076,14 @@ async function boot(): Promise<void> {
     if (typeof opened === "string") say(`This link's view could not be opened: ${opened}`);
     else if (id && id !== PROJECT && !views.summary(id)) say(VIEW_GONE);
   };
-  window.addEventListener("popstate", (e) => {
+  /** Take what the address says (a link, back, forward): its board; a link with a snapshot opened in
+   *  this tab, then what its sharer saw, once; an artwork's recipe, once; the note a link names. */
+  const followAddress = (cam: { x: number; y: number; k: number } | null, tmAt?: number): Promise<void> => {
     const st = decodeState(location.hash);
-    const cam = (e.state as { cam?: { x: number; y: number; k: number } } | null)?.cam ?? null;
-    const tmAt = (e.state as { tm?: unknown } | null)?.tm;
-    // a link with a snapshot opened in this tab: its board, then what its sharer saw, once; and an
-    // artwork's recipe, once
     const snap = snapshotIn(location.hash);
     const recipe = recipeIn(location.hash);
-    void (st ? restore(st, cam, typeof tmAt === "number" ? tmAt : undefined) : Promise.resolve())
+    const note = noteIn(location.hash);
+    return (st ? restore(st, cam, tmAt) : Promise.resolve())
       .then(() => (snap ? openSnapshot(snap).then(() => writeAddress(false)) : undefined))
       .then(() => {
         // the recipe is read: the address goes back to the board's at once, as at the first load
@@ -3015,13 +3092,35 @@ async function boot(): Promise<void> {
         writeAddress(false);
       })
       .then(() => {
+        if (note) showNote(note.ofView ? nav.board.id : "", note.id);
         // the address names what is shown (CanvasSpec, "Navigation"), also where it named a view
         // that is gone or what no state reads as
         writeAddress(false);
         renderNav();
         people.report();
       });
+  };
+  window.addEventListener("popstate", (e) => {
+    const cam = (e.state as { cam?: { x: number; y: number; k: number } } | null)?.cam ?? null;
+    const tmAt = (e.state as { tm?: unknown } | null)?.tm;
+    void followAddress(cam, typeof tmAt === "number" ? tmAt : undefined);
   });
+  /** A link of this site followed from a conversation (CollabSpec decision 13): its address applied
+   *  in the page as a share link is — its board, what its sharer saw, the note it names — without a
+   *  reload; a step of the reader's history, which Back returns from. */
+  const openAddress = (hash: string) => {
+    const to = "#" + hash.replace(/^#/, "");
+    try {
+      // the entry being left remembers where the camera was
+      history.replaceState({ ...entry(), cam: { ...canvas.cam } }, "");
+      const n = entry().n + 1;
+      history.pushState({ n }, "", to);
+      navTop = n;
+    } catch {
+      return;
+    }
+    void followAddress(null);
+  };
   $("#nav-back").addEventListener("click", () => history.back());
   $("#nav-fwd").addEventListener("click", () => history.forward());
   // the review strip: its target's name goes back to the target
@@ -3237,7 +3336,9 @@ async function boot(): Promise<void> {
     const es = new EventSource(`/api/events?session=${people.session}`);
     es.addEventListener("hello", (e) => {
       const hello = JSON.parse((e as MessageEvent).data) as StreamHello;
-      people.connected(hello);
+      // the conversations are read again once the heartbeat named this page's stream: what of them
+      // it is sent depends on the name (CollabSpec decision 13)
+      void people.connected(hello).then(() => !reader && talk.connected());
       updatingTo = null;
       reloader.hello(hello.server);
       // the release this page's code is of, once it is the server's (GuideSpec decision 11): a page
@@ -3270,8 +3371,8 @@ async function boot(): Promise<void> {
       if (!pop.hidden) renderPop();
     });
     es.addEventListener("chat", (e) => {
-      const d = JSON.parse((e as MessageEvent).data) as { agent: string; message: ChatMessage };
-      talk.add(d.agent, d.message);
+      const d = JSON.parse((e as MessageEvent).data) as ChatEvent;
+      talk.add(d.channel, d.message);
     });
     // a request to follow someone, its answers to this page's own, and one ended on the server
     // (CollabSpec decision 10)
@@ -3558,6 +3659,8 @@ async function boot(): Promise<void> {
       preview: frozen(),
       // a phone: a source takes the whole screen, nothing is pinned beside it (PhoneSpec decision 13)
       noPin: isPhone(),
+      // a link to it, without the key, wherever there is a server to open it (CollabSpec decision 13)
+      link: !data.snapshot,
     };
   };
   /** Open the menu on what is at a point of the window: a declaration or a cluster of the board,
@@ -3639,7 +3742,7 @@ async function boot(): Promise<void> {
   };
   /** Copy text to the clipboard; where the browser refuses (a page not served securely), through a
    *  field selected for the moment. */
-  const copyText = async (text: string) => {
+  const copyText = async (text: string, said = `Copied ${text}`) => {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -3651,7 +3754,24 @@ async function boot(): Promise<void> {
       document.execCommand("copy");
       f.remove();
     }
-    say(`Copied ${text}`);
+    say(said);
+  };
+  /** Copy link (ViewSpec decision 21, CollabSpec decision 13): a link to what the menu was opened on
+   *  — a declaration, a cluster, a note — or, on the empty canvas, to what the reader sees (decision
+   *  7's snapshot, whatever Share's switch), on the board on show; never with the key. The page says
+   *  it was copied, as a conversation will show it. */
+  const copyLinkTo = async (on: NonNullable<typeof menuOn>) => {
+    const t = on.t;
+    const base = current();
+    let hash: string;
+    if (t.kind === "decl") hash = encodeState({ ...base, picks: selectionText([pickDecl(t.name)]), shown: { decl: t.name } });
+    else if (t.kind === "cluster" && on.c !== undefined) hash = encodeState({ ...base, picks: selectionText([pickCluster(on.c)]), shown: { cluster: t.key } });
+    else if (t.kind === "cluster") hash = encodeState({ ...base, picks: null, shown: { cluster: t.key } });
+    else if (t.kind === "note" && on.note) hash = noteHash(encodeState(base), on.note, noteOf(on.note)?.kind === "view");
+    else hash = await seenHash();
+    const url = copyLink(location, hash);
+    const c = chipFor(url);
+    await copyText(url, `Link copied: ${c ? chipText(c) : "this page"}. It carries no key: whoever opens it must be let in already.`);
   };
   /** What the menu was open on, in a few words. */
   const menuWhat = (t: MenuTarget) => (t.kind === "decl" ? short(t.name) : t.kind === "cluster" ? short(t.key) : "it");
@@ -4128,6 +4248,9 @@ async function boot(): Promise<void> {
       case "copy":
         if (t.kind === "decl") await copyText(t.name);
         return;
+      case "link":
+        await copyLinkTo(on);
+        return;
       case "remove":
       case "remove-new":
         if (on.part) await removeFromBoard(on.part, what, name);
@@ -4399,9 +4522,12 @@ async function boot(): Promise<void> {
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
   if (snap) await openSnapshot(snap);
+  // a link to a note (Copy link, CollabSpec decision 13): the note shown, on the board it opened
+  const noteLink = noteIn(location.hash);
+  if (noteLink) showNote(noteLink.ofView ? nav.board.id : "", noteLink.id);
   // the reader came to a place (a declaration, a view, what a sharer saw, an artwork): the welcome
   // stays quiet (GuideSpec decision 1)
-  const deepLink = filmLink !== undefined || !!snap || !!recipeIn(location.hash) || (!!linked && (!!linked.picks || !!linked.shown || (linked.view !== null && linked.view !== PROJECT) || !!linked.scope));
+  const deepLink = filmLink !== undefined || !!snap || !!noteLink || !!recipeIn(location.hash) || (!!linked && (!!linked.picks || !!linked.shown || (linked.view !== null && linked.view !== PROJECT) || !!linked.scope));
   // a link with an artwork's recipe (ExportSpec decision 20): once, after the board is there; the
   // files it asks for are saved meanwhile
   const recipe = recipeIn(location.hash);

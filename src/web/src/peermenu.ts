@@ -1,9 +1,10 @@
 // The menu a click on someone's initials opens (CollabSpec decisions 4 and 10, the owner's decision
-// of 2026-10-12): following them, or no longer, and asking them to follow you. It works with the
-// keyboard as the menu under the name does (web/src/whomenu.ts, menuKey) and closes on a press
-// elsewhere, Esc or Tab. It is the reader's own, as the initials are (web/src/surfaces.ts): nothing
-// done in it ends following but Stop following. An agent's initials open none: a click follows it, as
-// before, since an agent cannot be asked to follow.
+// of 2026-10-12): following them, or no longer, and asking them to follow you. An agent's menu
+// (decision 13, the owner's decisions of 2026-10-19) follows it, or talks with it: one of the
+// reader's own agents in its private channel, anyone else's in Everyone, by mentioning it; an agent
+// cannot be asked to follow. It works with the keyboard as the menu under the name does
+// (web/src/whomenu.ts, menuKey) and closes on a press elsewhere, Esc or Tab. It is the reader's own,
+// as the initials are (web/src/surfaces.ts): nothing done in it ends following but Stop following.
 
 import { escapeHtml } from "./highlight.ts";
 import { menuKey } from "./whomenu.ts";
@@ -17,6 +18,10 @@ export interface PeerShown {
   /** where they are, in words */
   where: string;
   following: boolean;
+  /** an agent: whether it can be talked to, and how — `own`, in its private channel with the
+   *  reader, its maker; `public`, mentioned in Everyone; null, an agent without a token of its own,
+   *  which takes no part — and its state in words */
+  agent?: { talk: "own" | "public" | null; state: string | null };
 }
 
 export interface PeerMenuHooks {
@@ -26,6 +31,8 @@ export interface PeerMenuHooks {
   follow(key: string): void;
   /** ask them to follow this reader */
   ask(key: string): void;
+  /** talk with an agent: the conversation window on its channel */
+  talk(key: string): void;
   /** why this reader cannot ask now, or null */
   cannotAsk(): string | null;
 }
@@ -115,9 +122,15 @@ export class PeerMenu {
       `</div><div class="wm-sep" role="separator"></div>` +
       (p.following
         ? `<button type="button" role="menuitem" class="wm-item" data-act="follow"><span class="wm-t">Stop following ${name}</span><span class="wm-d">What you see stays, as your own.</span></button>`
-        : `<button type="button" role="menuitem" class="wm-item" data-act="follow"><span class="wm-t">Follow ${name}</span><span class="wm-d">See what ${name} sees, as it changes; Esc stops.</span></button>`) +
-      `<button type="button" role="menuitem" class="wm-item" data-act="ask"${why ? ' aria-disabled="true"' : ""}><span class="wm-t">Ask ${name} to follow me</span>` +
-      `<span class="wm-d">${escapeHtml(why ?? `${p.name} gets a request for 30 s.`)}</span></button>`;
+        : `<button type="button" role="menuitem" class="wm-item" data-act="follow"><span class="wm-t">Follow ${name}</span><span class="wm-d">See what ${name} ${p.agent ? "looks at" : "sees"}, as it changes; Esc stops.</span></button>`) +
+      (p.agent
+        ? p.agent.talk === "own"
+          ? `<button type="button" role="menuitem" class="wm-item" data-act="talk"><span class="wm-t">Talk with ${name}</span><span class="wm-d">In your private channel with it: nobody else sees it.${p.agent.state ? ` ${escapeHtml(p.agent.state)}.` : ""}</span></button>`
+          : p.agent.talk === "public"
+            ? `<button type="button" role="menuitem" class="wm-item" data-act="talk"><span class="wm-t">Talk with ${name} in Everyone</span><span class="wm-d">Mention it: everyone sees it, and ${name} is handed it.</span></button>`
+            : ""
+        : `<button type="button" role="menuitem" class="wm-item" data-act="ask"${why ? ' aria-disabled="true"' : ""}><span class="wm-t">Ask ${name} to follow me</span>` +
+          `<span class="wm-d">${escapeHtml(why ?? `${p.name} gets a request for 30 s.`)}</span></button>`);
     if (was >= 0) this.items()[was]?.focus();
   }
 
@@ -137,5 +150,6 @@ export class PeerMenu {
     this.close();
     if (b.dataset.act === "follow") this.hooks.follow(key);
     else if (b.dataset.act === "ask") this.hooks.ask(key);
+    else if (b.dataset.act === "talk") this.hooks.talk(key);
   }
 }

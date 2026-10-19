@@ -1,4 +1,4 @@
-// The conversation's window (web/src/chatwin.ts, AgentSpec decision 8): where it starts, beside the
+// The conversation window (web/src/chatwin.ts, CollabSpec decision 13): where it starts, beside the
 // side panel; what the browser keeps of it read back, the invalid included; the pill's excerpt of a
 // message (web/src/talk.ts); a new conversation's fold, and when one may be started (the owner's
 // decision of 2026-10-11). Its geometry, moved and resized, is the floating windows'

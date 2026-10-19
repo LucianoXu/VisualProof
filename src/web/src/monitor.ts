@@ -154,7 +154,7 @@ const store = {
 };
 let sizes: Sizes = typeof localStorage === "object" ? store.read() : {};
 
-const WINDOWS = "#windows > :is(.sw-win, .pw-win, #following.talking):not([hidden])";
+const WINDOWS = "#windows > :is(.sw-win, .pw-win, #convo):not([hidden])";
 const kindOf = (el: Element): Kind => (el.classList.contains("sw-win") ? "source" : el.classList.contains("pw-win") ? "paper" : "talk");
 const paneOpen = () => ["panel", "activity", "lostfound"].some((id) => $(id)?.classList.contains("open"));
 
