@@ -301,7 +301,7 @@ export class Panel {
       ${v.type ? `<pre class="code sig">${highlightLean(v.type, (w) => w !== v.name && g.byName.has(w))}</pre>` : ""}
       ${v.doc ? `<div class="doc">${renderDoc(v.doc)}</div>` : ""}
       ${this.hooks.links?.(i) ?? ""}
-      ${this.box.html(i, true, tcb)}
+      ${this.box.html(i, tcb)}
       ${why ? part(PANEL_SECTIONS.why, "Why in the TCB", "", () => why) : ""}
       ${part(PANEL_SECTIONS.stats, "Counts", `${n(inTcb.counted)} in TCB · ${n(used.counted)} uses · ${n(appP)} used by`, () => `
       <div class="stats">

@@ -1,6 +1,8 @@
-// The review of one declaration (ReviewSpec, "What the page shows"), as the panel and the source
-// window both show it: each reviewer's latest opinion and the history behind it, the comment box
-// and the buttons, and — in the panel — the target's progress, its view and linking it to another.
+// The review of one declaration (ReviewSpec, "What the page shows"): each reviewer's latest opinion
+// and the history behind it, the comment box and the buttons, the key mark, the target mark, and for
+// a target its progress, its view and linking it to another. It is one review box (the owner's
+// decision of 2026-10-19): the panel's and each source window's, following or pinned, are the same
+// box on their own declaration — the same controls, in the same order, under the same rules.
 //
 // An opinion records the text the reviewer judged. Where it has gone stale, "What changed" shows
 // that text against the declaration's text now, line by line, so that a re-review reads the change
@@ -13,9 +15,8 @@
 // Key declarations (ExportSpec decision 1): where the review has a focus, a declaration its TCB holds,
 // trusted or not, in the project or outside it (the owner's decision of 2026-10-19), or its review
 // set, can be marked key for that target ("◇ Mark as key for …", "◆ Key for …"), in every review box
-// alike — the panel's and each source window's, following or pinned, on its own declaration; a
-// target's panel counts its key declarations apart, those that need review, "+N trusted" beside
-// them.
+// alike; a target's box counts its key declarations apart, those that need review, "+N trusted"
+// beside them.
 //
 // An opinion can be withdrawn (ReviewSpec decision 9, the owner's decision of 2026-10-19): Withdraw
 // stands beside the current opinion of whoever the box records for — the reader, or the person they
@@ -347,7 +348,7 @@ export class ReviewBox {
       this.give(verdict, i, root);
       return true;
     }
-    // an axiom the graph has no declaration for on the board, from its target's panel: the
+    // an axiom the graph has no declaration for on the board, from its target's review box: the
     // comment written there is what Comment sends
     const ax = t.closest<HTMLElement>("[data-rv-ax]");
     if (ax) {
@@ -462,8 +463,8 @@ export class ReviewBox {
     });
   }
 
-  /** Approve or comment on an axiom by its name, from the panel of target `i` (the board has no
-   *  declaration for it): a comment is the one written there. */
+  /** Approve or comment on an axiom by its name, from the review box of target `i` (the board has
+   *  no declaration for it): a comment is the one written there. */
   private giveAxiom(verdict: Opinion["verdict"], name: string, i: number, root: HTMLElement): void {
     const R = this.hooks.review();
     if (R.readOnly || R.blocked) return;
@@ -645,9 +646,9 @@ export class ReviewBox {
     }
   }
 
-  /** The review of declaration `i`. `full` (the panel) adds the target's progress and its view;
+  /** The review box of declaration `i`, one wherever it stands (the panel, each source window):
    *  `tcb` is its TCB when the caller has it already. */
-  html(i: number, full: boolean, tcb?: Uint8Array): string {
+  html(i: number, tcb?: Uint8Array): string {
     const g = this.g;
     const v = g.nodes[i];
     const R = this.hooks.review();
@@ -747,14 +748,13 @@ export class ReviewBox {
         : "";
     const head = `<div class="sec">Review${why}</div>`;
     const keyBtn = this.keyHtml(i);
-    if (!full) return `${head}<div class="rv">${ops}${history}${advised}${controls}${keyBtn}</div>`;
 
     // a target: how far its review has come — its review set, and the axioms beside it
     // (shared/reviewqueue.ts)
-    tcb ??= g.reach([i], SITE_STMT | SITE_BODY, "out");
     const target = Object.hasOwn(d.targets, v.name) ? d.targets[v.name] : undefined;
     let tgt = "";
     if (target) {
+      tcb ??= g.reach([i], SITE_STMT | SITE_BODY, "out");
       const members = membersOf(g, tcb);
       // what is not counted, by what trusts it (the broadest prefix, when several do)
       const free = new Map<string, number>();
@@ -799,9 +799,9 @@ export class ReviewBox {
     return `${head}<div class="rv">${ops}${history}${advised}${controls}${keyBtn}${targetBtn}${tgt}</div>`;
   }
 
-  /** In target `i`'s panel, the view it is linked to (ViewSpec decision 29): Its view, which opens
-   *  it, with its title; Key view; and Link to this view, where the view on show is another and may
-   *  be its view. A target with no view (marking makes none, the owner's decision of 2026-10-12, and
+  /** In target `i`'s review box, the view it is linked to (ViewSpec decision 29): Its view, which
+   *  opens it, with its title; Key view; and Link to this view, where the view on show is another and
+   *  may be its view. A target with no view (marking makes none, the owner's decision of 2026-10-12, and
    *  a view deleted leaves its targets with none) says so, and offers Link to this view and Key view;
    *  a click on the target gives it a view nobody keeps of its TCB (the owner's decision of
    *  2026-10-11). */
@@ -827,7 +827,7 @@ export class ReviewBox {
     return `${where}<div class="rv-actions">${its}${key}${link}</div>`;
   }
 
-  /** In target `i`'s panel, the non-standard axioms its review counts that the graph has no
+  /** In target `i`'s review box, the non-standard axioms its review counts that the graph has no
    *  declaration for on the board: each with its status, where it comes in, and — where this page
    *  may record — Approve and Comment (Comment sends the comment written above). */
   private axiomsHtml(i: number, readOnly: boolean): string {

@@ -317,15 +317,15 @@ test("Quote on an opinion puts its quote into the box beside it — the panel's 
   const box = reviewBox(g, d);
   const [f, gi] = [g.byName.get("A.f")!, g.byName.get("A.g")!];
   // drawn: each opinion with a comment has its Quote and its key; one without has no Quote
-  const html = box.html(f, false);
+  const html = box.html(f);
   const key = opinionRef("A.f", "Alice", AT);
   assert.ok(html.includes(`data-rv-op="${key}"`) && html.includes(`data-rv-quote="${key}"`));
   assert.ok(html.includes(`data-rv-quote="${opinionRef("A.f", "Claude", "2026-10-09T09:00:00.000Z")}"`), "an agent's advice is quoted too");
-  assert.ok(!box.html(gi, false).includes("data-rv-quote"));
+  assert.ok(!box.html(gi).includes("data-rv-quote"));
   assert.match(html, /<div class="rv-c md"><p>Why 2\?\nAnd not 3\?<\/p><\/div>/);
   // a snapshot can be written nothing: nothing to quote into
   const frozen = new ReviewBox(g, { review: () => ({ data: d, error: null, blocked: null, readOnly: true, reviewer: null }), editedNow: () => false, reviewRoot: () => null } as unknown as ReviewHooks);
-  assert.ok(!frozen.html(f, false).includes("data-rv-quote"));
+  assert.ok(!frozen.html(f).includes("data-rv-quote"));
 
   // the panel on A.g, a pinned window on A.f: Quote in the window fills the window's box, and A.f's
   // draft, the panel's untouched
@@ -338,7 +338,7 @@ test("Quote on an opinion puts its quote into the box beside it — the panel's 
   assert.deepEqual([win.box.focused, win.box.selectionStart, win.box.value.length], [true, win.box.value.length, win.box.value.length]);
   assert.ok(win.box.rows > 2, "the box grows with what it holds");
   assert.equal(panel.box.value, "my own words on g");
-  assert.match(box.html(f, false), /<textarea class="rv-text" data-rv-comment="A\.f"[^>]*>Thanks\.\n\n&gt; \[\*\*Alice\*\*/, "the draft is kept for the box drawn again");
+  assert.match(box.html(f), /<textarea class="rv-text" data-rv-comment="A\.f"[^>]*>Thanks\.\n\n&gt; \[\*\*Alice\*\*/, "the draft is kept for the box drawn again");
   // the agent's long advice: attributed as an agent's, trimmed with "…"
   box.click(control("rvQuote", opinionRef("A.f", "Claude", "2026-10-09T09:00:00.000Z")), f, win.root);
   assert.match(win.box.value, /> \[\*\*Claude\*\* \(agent, 2026-10-09\)\]\(opinion:A\.f#Claude@2026-10-09T09:00:00\.000Z\):\n> x{300}…\n\n$/);
@@ -361,8 +361,8 @@ test("source lines quoted in a pinned window go to its own declaration's comment
   assert.equal(box.insert(pinned.root, f, q), null);
   assert.equal(pinned.box.value, `${q}\n\n`);
   assert.equal(following.box.value, "");
-  assert.match(box.html(f, false), /data-rv-comment="A\.f"[^>]*>\[A\.lean:10–11\]\(source:A\.f#L10-L11\)\n```lean\ndef f :=\n  2\n```/);
-  assert.match(box.html(gi, false), /data-rv-comment="A\.g"[^>]*><\/textarea>/);
+  assert.match(box.html(f), /data-rv-comment="A\.f"[^>]*>\[A\.lean:10–11\]\(source:A\.f#L10-L11\)\n```lean\ndef f :=\n  2\n```/);
+  assert.match(box.html(gi), /data-rv-comment="A\.g"[^>]*><\/textarea>/);
   // a window with no box (nothing can be recorded there) takes nothing
   const none = { querySelector: () => null } as unknown as HTMLElement;
   assert.match(box.insert(none, f, q) ?? "", /no comment/);

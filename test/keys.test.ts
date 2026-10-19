@@ -214,8 +214,8 @@ test("the page's review of a declaration: the key toggle, and no explanation to 
     };
     const box = new ReviewBox(g, hooks);
     // the source window's review (G) and the panel's (the target T, in full)
-    const G = box.html(g.byName.get("G")!, false);
-    const T = box.html(root, true);
+    const G = box.html(g.byName.get("G")!);
+    const T = box.html(root);
     assert.match(G, /data-rv-key aria-pressed="true"[^>]*>◆ Key for T/);
     for (const html of [G, T]) assert.doesNotMatch(html, /explanation|explain|data-ex-|Definition 2\.3/i);
     assert.equal("aboutHtml" in box, false, "nothing draws an explanation above the doc");
@@ -223,7 +223,7 @@ test("the page's review of a declaration: the key toggle, and no explanation to 
     // (CollabSpec decision 11), and is not offered it
     assert.match(T, /data-rv-keyview/);
     const { keyView: _, ...reader } = hooks;
-    assert.doesNotMatch(new ReviewBox(g, { ...reader, review: () => ({ ...hooks.review(), readOnly: true }) }).html(root, true), /data-rv-keyview/);
+    assert.doesNotMatch(new ReviewBox(g, { ...reader, review: () => ({ ...hooks.review(), readOnly: true }) }).html(root), /data-rv-keyview/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -255,18 +255,14 @@ test("the key toggle stands in every review box alike — the panel's and each s
     keyProgress: () => ({ total: 0, approved: 0, commented: 0, stale: 0, unreviewed: 0, trusted: 0 }),
   } as unknown as ReviewHooks;
   const box = new ReviewBox(g, hooks);
-  /** what the box of declaration `i` shows of the key mark: the toggle's words, the tag's, or none —
-   *  the same in the panel (full) and a source window (not) */
-  const read = (html: string) => {
+  /** what the box of declaration `i` shows of the key mark: the toggle's words, the tag's, or none.
+   *  One review box (ReviewSpec, "One review box"): the panel and every source window draw it. */
+  const key = (i: number) => {
+    const html = box.html(i);
     const b = /<button class="rv-btn rv-key[^"]*" data-rv-key aria-pressed="(true|false)"[^>]*>([^<]*)<\/button>/.exec(html);
     if (b) return `button ${b[2]}`;
     const t = /<div class="rv-tag rv-key-tag">([^<]*)<\/div>/.exec(html);
     return t ? `tag ${t[1]}` : null;
-  };
-  const key = (i: number) => {
-    const k = read(box.html(i, true));
-    assert.equal(read(box.html(i, false)), k, g.nodes[i].name);
-    return k;
   };
   assert.equal(key(G), "button ◇ Mark as key for T");
   assert.equal(key(H), "button ◆ Key for T");
@@ -303,6 +299,49 @@ test("the key toggle stands in every review box alike — the panel's and each s
   );
 });
 
+test("one review box: the panel's and each source window's offer the same controls in the same order — Approve, Comment, Speaking for, the key mark, the target mark, and a target's progress and view", () => {
+  // T a target with G marked key and the trusted X.e marked key; G a declaration of its TCB
+  const g = graph(["T>G", "G>X.e"]);
+  const d = reviewWith(["G", "X.e"]);
+  const T = g.byName.get("T")!, G = g.byName.get("G")!;
+  const R = { data: d, error: null, blocked: null as string | null, readOnly: false, reviewer: "Alice" };
+  const hooks = {
+    review: () => R,
+    ensureReviewer: async () => "Alice",
+    submit: async () => null,
+    editedNow: () => false,
+    edited: async () => false,
+    reviewRoot: () => T,
+    keyable: (r: number, i: number) => i !== r && !!keyableSet(g, d, r)[i],
+    isKey: (r: number, i: number) => i === r || keyMarked(d, g.nodes[r].name, g.nodes[i].name),
+    queue: (i: number) => reviewQueue(g, d, i, inTargets(g, [i])),
+    progress: () => ({ total: 2, approved: 0, commented: 0, stale: 0 }),
+    keyProgress: () => ({ total: 2, approved: 0, commented: 0, stale: 0, unreviewed: 2, trusted: 1 }),
+    targetView: () => ({ title: null, here: false, why: null }),
+    linkHere: () => {},
+    reviewLens: () => {},
+    keyView: () => {},
+  } as unknown as ReviewHooks;
+  const box = new ReviewBox(g, hooks);
+  // the controls a box offers, in the order it shows them
+  const controls = (html: string) =>
+    [...html.matchAll(/<(?:button|textarea|input)[^>]*?\b(data-rv(?:-[a-z]+)?)(?:="([^"]*)")?/g)].map((m) => (m[1] === "data-rv" ? `rv=${m[2]}` : m[1])).filter((c) => c !== "data-rv-by");
+  // a declaration of the TCB: the comment, Approve, Comment, Speaking for, the key mark, the target mark
+  assert.deepEqual(controls(box.html(G)), ["data-rv-comment", "rv=approve", "rv=comment", "data-rv-for", "data-rv-key", "data-rv-target"]);
+  // the target: the same, its progress (key declarations apart, the trusted beside them) and its view
+  const t = box.html(T);
+  assert.deepEqual(controls(t), ["data-rv-comment", "rv=approve", "rv=comment", "data-rv-for", "data-rv-target", "data-rv-link", "data-rv-keyview"]);
+  assert.match(t, /◆<\/span> Key: <b>0<\/b> \/ 2 approved <span class="muted rv-key-trusted">\+1 trusted<\/span>/);
+  assert.match(t, /All: <b>0<\/b> \/ 2 approved/);
+  // the box takes no argument saying where it stands: the panel passes the TCB it has, nothing more
+  assert.equal(box.html(T, g.reach([T], SITE_STMT | SITE_BODY, "out")), t);
+  // who may not record sees the same marks as tags, wherever the box stands
+  R.readOnly = true;
+  assert.deepEqual(controls(box.html(G)), []);
+  assert.match(box.html(G), /◆ Key for T/);
+  assert.match(box.html(T), /<div class="rv-tag">★ Target<\/div>/);
+});
+
 test("the comment box, in the panel and the source window alike: Approve and Comment, emptied once the opinion is taken, its text kept when it is refused", async () => {
   const g = graph(["T>G"]);
   const d = emptyReview();
@@ -333,11 +372,11 @@ test("the comment box, in the panel and the source window alike: Approve and Com
     box.input(text as unknown as HTMLElement, G);
   };
   const settle = () => new Promise((ok) => setImmediate(ok));
-  const drawn = () => /<textarea class="rv-text" data-rv-comment[^>]*>([^<]*)<\/textarea>/.exec(box.html(G, false))![1];
+  const drawn = () => /<textarea class="rv-text" data-rv-comment[^>]*>([^<]*)<\/textarea>/.exec(box.html(G))![1];
 
   // the buttons: Approve, solid green, and Comment, solid blue, never a warning colour (the owner's
   // decision of 2026-10-12)
-  const html = box.html(G, false);
+  const html = box.html(G);
   // whom it is for, said on the buttons where it is someone else (ReviewSpec decision 8): no one here
   assert.match(html, /<button class="rv-btn approve" data-rv="approve"[^>]*>Approve<span data-rv-for-who><\/span><\/button>/);
   assert.match(html, /<button class="rv-btn comment" data-rv="comment" title="Comment \(m\)[^"]*">Comment<span data-rv-for-who><\/span><\/button>/);

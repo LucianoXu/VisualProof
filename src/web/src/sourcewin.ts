@@ -402,7 +402,7 @@ export class SourceWindow implements SourcePane {
     if (!r || this.current < 0 || this.reading) return;
     const a = document.activeElement;
     const typing = a instanceof HTMLTextAreaElement && r.contains(a) ? { from: a.selectionStart, to: a.selectionEnd } : null;
-    r.innerHTML = this.box.html(this.current, false);
+    r.innerHTML = this.box.html(this.current);
     // a box may have come or gone: the quote button with it
     this.selectionChanged();
     if (typing) {
@@ -847,7 +847,7 @@ export class SourceWindow implements SourcePane {
       this.el.setAttribute("aria-label", `Source of ${v.name}${pinned ? ", pinned" : ""}`);
       this.frameEl.innerHTML =
         `${head(where, editor)}${this.pairHtml()}${notes}` +
-        `<div class="sw-scroll"><div class="sw-body">${body}</div><div class="sw-review">${this.box.html(i, false)}</div></div>`;
+        `<div class="sw-scroll"><div class="sw-body">${body}</div><div class="sw-review">${this.box.html(i)}</div></div>`;
       // collapsed, a pill with the declaration's name; a click opens the window again
       this.pillEl.innerHTML =
         `<button class="sw-pill-open" type="button" title="Open the source of ${escapeHtml(v.name)} again"><span class="dot ${kindDot(v.kind, ext)}"></span>` +

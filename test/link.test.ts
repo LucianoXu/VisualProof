@@ -607,7 +607,7 @@ test("a target's panel: with no view, as marking leaves it, it says so and offer
     keyView: () => {},
   } as unknown as ReviewHooks;
   const box = new ReviewBox(g, hooks);
-  const html = box.html(0, true);
+  const html = box.html(0);
   assert.match(html, /<div class="rv-view muted" title="Clicking ★T opens a temporary view of its TCB[^"]*">It has no view\.<\/div>/);
   assert.doesNotMatch(html, /Review view|data-rv-make/);
   assert.match(html, /data-rv-link[^>]*>Link to this view</);
@@ -619,10 +619,10 @@ test("a target's panel: with no view, as marking leaves it, it says so and offer
   assert.deepEqual(linked, [0]);
   // the view on show cannot be its view (the Project): Link is there, greyed, saying why
   tv = { title: null, here: false, why: "The Project is everyone's way in, no target's: link ★T to another view." };
-  assert.match(box.html(0, true), /<button class="rv-btn" disabled title="The Project is everyone's way in[^"]*">Link to this view</);
+  assert.match(box.html(0), /<button class="rv-btn" disabled title="The Project is everyone's way in[^"]*">Link to this view</);
   // with a view, the temporary one a click gave it, say: Its view, by its title
   tv = { title: "TCB of T", here: false, why: null };
-  assert.match(box.html(0, true), /Its view: <b>TCB of T<\/b>/);
+  assert.match(box.html(0), /Its view: <b>TCB of T<\/b>/);
 });
 
 test("Activity: a view deleted is one event, with its targets, which have no view now", () => {
