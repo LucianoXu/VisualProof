@@ -1022,8 +1022,9 @@ export class App {
       if (path.startsWith("/pdfjs/")) return pdfjsAsset(res, path);
       // with Lean's language server as it is (server/hover.ts): what is open, what crashed
       // a read-only reader is told how the server is, not its log nor where its review is kept
+      // `?brief`: the build status without its files, which the page reads by GET /api/build
       if (path === "/api/status") {
-        const st: Record<string, unknown> = { ...(live.status() as Record<string, unknown>), lean: this.hover.state() };
+        const st: Record<string, unknown> = { ...(live.status(url.searchParams.has("brief")) as Record<string, unknown>), lean: this.hover.state() };
         if (this.readOnlyOf.get(req) !== undefined) {
           delete st.log;
           st.review = { ...(st.review as object), folder: undefined };
@@ -1090,7 +1091,13 @@ export class App {
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
       // logs that cannot be read; tagged with its revision, compressed once a revision
-      if (path === "/api/review" && req.method === "GET") return sendReview(req, res, live.review);
+      if (path === "/api/review" && req.method === "GET") return sendRevision(req, res, live.review, live.review.tag(), () => live.review.wholeText());
+      // the whole build status, tagged with its revision (the owner's decision of 2026-10-19): what
+      // changes after comes by the event stream
+      if (path === "/api/build" && req.method === "GET") {
+        const b = live.buildWhole();
+        return sendRevision(req, res, live, b.tag, () => b.text);
+      }
       if (path === "/api/review" && req.method === "POST") {
         // an opinion, a target, a trusted prefix or a key declaration is recorded under the
         // reader's name (CollabSpec decision 3), not one in the body; what it is about is
@@ -1145,7 +1152,8 @@ export class App {
       }
       if (path === "/api/events") {
         const session = url.searchParams.get("session");
-        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null, this.toldAll(req));
+        // `build=delta`: the page takes the build status as changes (a page of 0.6.0 or later)
+        return live.subscribe(res, validSession(session) ? session : null, this.ids.person(req)?.id ?? null, reader ?? null, this.toldAll(req), url.searchParams.get("build") === "delta");
       }
       // what happened (CollabSpec decision 5): what the server stored; the review's own history the
       // page reads from the review
@@ -1414,32 +1422,35 @@ function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Re
   res.end(text);
 }
 
-/** the whole review compressed, under the tag of the revision it is of, per review */
-const reviewGz = new WeakMap<ReviewStore, { tag: string; gz: Promise<Buffer> }>();
+/** what is sent whole under the tag of its revision, compressed, per what it is of (the review, the
+ *  build status) */
+const revisionGz = new WeakMap<object, { tag: string; gz: Promise<Buffer> }>();
 
-/** The whole review (GET /api/review), tagged with its run and its revision (server/review.ts): a
- *  page that has it is answered 304, which a reload is, and one whose review fell behind is sent it
- *  compressed — once a revision, off the server's thread when it is large, the same bytes for every
- *  page (a review of 5,000 opinions on Sphere-Packing-Lean: 8.5 MB of JSON, 1.1 MB sent). */
-function sendReview(req: IncomingMessage, res: ServerResponse, review: ReviewStore): void {
+/** A whole sent under the tag of its revision: the review (GET /api/review), tagged with its run and
+ *  its revision (server/review.ts), and the build status (GET /api/build, server/live.ts). A page that
+ *  has it is answered 304, which a reload is, and one that fell behind is sent it compressed — once a
+ *  revision, off the server's thread when it is large, the same bytes for every page (a review of
+ *  5,000 opinions on Sphere-Packing-Lean: 8.5 MB of JSON, 1.1 MB sent; the build status of
+ *  NavierStokesAndEuler's 2,657 files: 362 KB, 42 KB sent). `of` is what it is of; `whole` writes it,
+ *  asked only where it is sent. */
+function sendRevision(req: IncomingMessage, res: ServerResponse, of: object, tag: string, whole: () => string): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
-  const tag = review.tag();
   const head = { "content-type": "application/json", "cache-control": "private, no-cache", etag: tag, vary: "accept-encoding" };
   if (fresh(req, tag)) {
     res.writeHead(304, head);
     return void res.end();
   }
-  const text = review.wholeText();
+  const text = whole();
   if (text.length <= JSON_GZIP_FROM || !acceptsGzip(req)) {
     res.writeHead(200, head);
     return void res.end(text);
   }
-  let c = reviewGz.get(review);
+  let c = revisionGz.get(of);
   if (c?.tag !== tag) {
     const gz = text.length < JSON_GZIP_AWAY_FROM ? Promise.resolve(gzipSync(text)) : new Promise<Buffer>((ok, fail) => gzip(text, (e, b) => (e ? fail(e) : ok(b))));
-    reviewGz.set(review, (c = { tag, gz }));
+    revisionGz.set(of, (c = { tag, gz }));
     // a compression that failed is tried again by the next page that asks
-    gz.catch(() => reviewGz.get(review)?.gz === gz && reviewGz.delete(review));
+    gz.catch(() => revisionGz.get(of)?.gz === gz && revisionGz.delete(of));
   }
   c.gz.then(
     (gz) => {

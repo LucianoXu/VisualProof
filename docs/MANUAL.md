@@ -230,7 +230,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
   bytes); JSON answers over 2 KB go gzipped. The review goes gzipped too, tagged with its revision:
   the event stream says only which revision the server holds and what changes, so a page reads the
   whole review as it loads, and again only where it missed a change (a reload of an unchanged
-  review is answered 304). Brotli would be smaller still, but browsers take it only over HTTPS.
+  review is answered 304). The build status of every file travels the same way (`GET /api/build`):
+  while a build runs, the stream carries only the files whose status changed (on
+  NavierStokesAndEuler's 2,657 files, a change is tens of KB where the whole is 362 KB, 42 KB
+  gzipped). Brotli would be smaller still, but browsers take it only over HTTPS.
 - `docs/deploy/visualproof.service.example` is an example systemd user unit that serves a project this
   way: copy it and fill in its placeholders (it says how).
 - `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data

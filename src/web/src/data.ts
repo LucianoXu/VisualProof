@@ -1,7 +1,7 @@
 // Where the page gets its data: the live server, or a snapshot carried inside the page itself
 // (`visualproof export`), which opens from disk with no server at all.
 
-import type { BuildStatus } from "../../shared/build.ts";
+import type { BuildStatus, BuildWhole } from "../../shared/build.ts";
 import type { DeployStatus } from "../../shared/deploy.ts";
 import type { UpdateStatus } from "./guide.ts";
 import type { Outline } from "../../shared/doc/outline.ts";
@@ -49,8 +49,9 @@ export interface Status {
   error?: string;
   /** the server's "Open in editor" template (`--editor`, shared/editor.ts); a snapshot has none */
   editor?: string | null;
-  /** the build status of the project's files, and how far a build going on is */
-  build?: BuildStatus | null;
+  /** how far a build going on is, and how many files are in each state (`?brief`: the files' own
+   *  status the page reads by GET /api/build; a server from before 0.6.0 sends them too) */
+  build?: Pick<BuildStatus, "active" | "progress" | "counts"> | null;
   /** the branch the server follows and builds itself (DeploySpec): the loading page says what it does */
   deploy?: DeployStatus;
 }
@@ -140,6 +141,9 @@ export interface DataSource {
   /** the review (ReviewSpec.md), whole: tagged with its revision, which the browser keeps, so that
    *  a page that has it (a reload) is answered 304 */
   review(): Promise<ReviewState>;
+  /** the build status of the project's files, whole, with its revision (web/src/buildread.ts):
+   *  tagged as the review is; a snapshot has none */
+  build(): Promise<BuildWhole>;
   /** record an opinion, a target, a trusted prefix, a key declaration; resolves to what changed
    *  (null: nothing did, it was so already), rejects with the reason it was refused */
   postReview(op: ReviewRequest): Promise<ReviewChange | null>;
@@ -435,6 +439,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     // a snapshot shows the review as it was when taken
     review: () => json<ReviewData>("vp-review").then((data) => ({ epoch: "snapshot", rev: 0, data: reviewFromJson(data), problems: [], error: null })),
     postReview: () => Promise.reject(new Error("a snapshot shows the review as it was; it cannot be changed")),
+    build: async () => ({ epoch: "snapshot", rev: 0, status: null }),
     name: null,
     privateSession: null,
     identity: async () => ({ mode: "none", name: null }),
@@ -526,7 +531,8 @@ function serverSource(): DataSource {
       move: (from, to) => lostPost("move", { from, to }),
       unmove: (id) => lostPost("unmove", { id }),
     },
-    status: () => fetch("/api/status").then((r) => r.json()),
+    // the files' build status is read once, by build()
+    status: () => fetch("/api/status?brief").then((r) => r.json()),
     forget: () => cache.clear(),
     meta: (v, i) => fetch(`/api/meta${graphQuery(v, i, "?")}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`meta ${r.status}`)))),
     git: () =>
@@ -543,6 +549,7 @@ function serverSource(): DataSource {
       fetch("/api/review")
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`review ${r.status}`))))
         .then(reviewState),
+    build: () => fetch("/api/build").then((r) => (r.ok ? r.json() : Promise.reject(new Error(`build ${r.status}`)))),
     hover: (module, line, character, hash) =>
       fetch(`/api/hover?module=${encodeURIComponent(module)}&line=${line}&character=${character}&hash=${hash}`)
         .then((r) => r.json())
