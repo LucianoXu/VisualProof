@@ -23,7 +23,7 @@ import type { ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { DeployBuild, DeployStatus, DeployStep } from "../shared/deploy.ts";
 import { shortCommit, slimDeploy } from "../shared/deploy.ts";
 import { childEnv, DETACH, end, grouped } from "./children.ts";
@@ -43,8 +43,11 @@ const ASK_MS = 60_000;
 const GIT_MS = 10 * 60_000;
 /** Mathlib's cache (`lake exe cache get`): it compiles the cache program first */
 const CACHE_MS = 30 * 60_000;
-/** `lake build`, past which the build is stopped and failed (proposed: DeploySpec decision 14) */
-export const BUILD_MS = 6 * 3600_000;
+/** `--build-timeout`: the hours of `lake build` past which the build is stopped and failed
+ *  (DeploySpec decision 14), by default and the least and most it takes: fractions of an hour too */
+export const DEFAULT_BUILD_HOURS = 6;
+export const MIN_BUILD_HOURS = 0.05;
+export const MAX_BUILD_HOURS = 168;
 /** the most of a build's log kept for the pages, in lines and characters */
 const TAIL_LINES = 60;
 const TAIL_CHARS = 8000;
@@ -145,6 +148,24 @@ export function branchProblem(name: string): string | null {
   return r.status === 0 && r.stdout.trim() === name ? null : no;
 }
 
+// ---------------------------------------------------------------- how long a build may take
+
+/** `--build-timeout <hours>` read (DeploySpec decision 14): the hours, or why they are refused. */
+export function parseBuildHours(v: string): number | { error: string } {
+  const h = Number(v);
+  if (/^\d+(\.\d+)?$/.test(v) && h >= MIN_BUILD_HOURS && h <= MAX_BUILD_HOURS) return h;
+  return { error: `--build-timeout ${v.slice(0, 40)}: say after how many hours a build is stopped, from ${MIN_BUILD_HOURS} (3 min) to ${MAX_BUILD_HOURS} (a week); 1.5 is an hour and a half` };
+}
+
+/** A build's limit as it is said: `6 hours`, `1 hour`, `1 h 30 min`, `3 min`, `4 min 12 s`. */
+export function limitInWords(ms: number): string {
+  if (ms < 60_000) return `${Number((ms / 1000).toFixed(1))} s`;
+  const s = Math.round(ms / 1000);
+  if (s % 3600 === 0) return s === 3600 ? "1 hour" : `${s / 3600} hours`;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return [h ? `${h} h` : "", m ? `${m} min` : "", r ? `${r} s` : ""].filter(Boolean).join(" ");
+}
+
 // ---------------------------------------------------------------- where it is kept
 
 /** A deployment's name among the others: the repository's name and a hash of the address and the
@@ -154,17 +175,18 @@ export function deployKey(remote: Remote, branch: string): string {
 }
 
 /** A deployment's folder in the caches' root: the clone (the project the server shows), what is
- *  known of its builds, their logs. */
+ *  known of its builds, their logs, and Mathlib's cache where it is the deployment's own. */
 export interface DeployFolder {
   dir: string;
   checkout: string;
   state: string;
   logs: string;
+  mathlib: string;
 }
 
 export function deployFolder(cacheRoot: string, remote: Remote, branch: string): DeployFolder {
   const dir = join(cacheRoot, "deploy", deployKey(remote, branch));
-  return { dir, checkout: join(dir, remote.name), state: join(dir, "state.json"), logs: join(dir, "logs") };
+  return { dir, checkout: join(dir, remote.name), state: join(dir, "state.json"), logs: join(dir, "logs"), mathlib: join(dir, "mathlib-cache") };
 }
 
 /** The site of a deployment, without `--site`: under the data home by the address and the branch,
@@ -249,10 +271,27 @@ export function gitEnv(remote: Remote): NodeJS.ProcessEnv {
   return { ...noPrompts(gitBase()), GIT_ALLOW_PROTOCOL: remote.kind };
 }
 
+/** Where a deployment's `lake exe cache get` keeps Mathlib's files (DeploySpec decision 2): the
+ *  user's cache, shared by their builds (the default), or the deployment's own, in its folder. */
+export type MathlibCache = "shared" | "own";
+export const MATHLIB_CACHES: readonly MathlibCache[] = ["shared", "own"];
+
+/** Mathlib's cache as the user's builds find it, as Mathlib's cache program reads it
+ *  (`Cache/IO.lean`, `CACHEDIR`): `MATHLIB_CACHE_DIR`, else `$XDG_CACHE_HOME/mathlib`, else
+ *  `~/.cache/mathlib`. */
+export function sharedMathlibCache(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+  return env.MATHLIB_CACHE_DIR || join(env.XDG_CACHE_HOME || join(home, ".cache"), "mathlib");
+}
+
 /** Lake's environment for a build: the server's without what is its own — no access key or token
- *  of VisualProof's is in it — and no prompts for the git it runs for the dependencies. */
-export function buildEnv(): NodeJS.ProcessEnv {
-  return noPrompts(gitBase());
+ *  of VisualProof's is in it — and no prompts for the git it runs for the dependencies. With
+ *  `mathlib`, Mathlib's cache is that folder (`MATHLIB_CACHE_DIR`, which every Mathlib since
+ *  February 2025, Lean v4.17, reads: every supported toolchain's); `XDG_CACHE_HOME`, which an older
+ *  one read, is left as it is, since Lake's cache and git's credential cache are found by it too. */
+export function buildEnv(mathlib: string | null = null): NodeJS.ProcessEnv {
+  const env = noPrompts(gitBase());
+  if (mathlib) env.MATHLIB_CACHE_DIR = mathlib;
+  return env;
 }
 
 // ---------------------------------------------------------------- running a program
@@ -560,6 +599,11 @@ export interface DeploymentOptions {
   roots: string[];
   /** how often the remote is asked */
   everyMs: number;
+  /** `lake build` past which a build is stopped and failed (`--build-timeout`); by default
+   *  DEFAULT_BUILD_HOURS */
+  buildMs?: number;
+  /** Mathlib's cache: the user's (the default) or the deployment's own (`--mathlib-cache`) */
+  mathlibCache?: MathlibCache;
   hooks: DeployHooks;
   /** the commit the clone was made at, at the first start */
   head?: string | null;
@@ -595,6 +639,8 @@ export class Deployment {
   running: Promise<void> | null = null;
   private env: NodeJS.ProcessEnv;
   private lakeEnv: NodeJS.ProcessEnv;
+  /** `lake build` past which a build is stopped (DeploySpec decision 14) */
+  readonly buildMs: number;
   /** every build tried since the start, in order: what the tests read */
   readonly tried: string[] = [];
   /** the log of the build going on */
@@ -606,7 +652,8 @@ export class Deployment {
     this.branch = o.branch;
     this.folder = o.folder;
     this.env = gitEnv(o.remote);
-    this.lakeEnv = buildEnv();
+    this.lakeEnv = buildEnv(o.mathlibCache === "own" ? o.folder.mathlib : null);
+    this.buildMs = o.buildMs ?? DEFAULT_BUILD_HOURS * 3600_000;
     this.state = this.read();
     const head = this.headNow();
     // the tree is one build's only where the outputs are of the commit checked out and no build
@@ -815,7 +862,8 @@ export class Deployment {
         this.step("cache");
         say(`build: ${short}: getting Mathlib's cache`);
         for (let n = 1; n <= 2 && !this.stopped; n++) {
-          log.say(`$ lake exe cache get`);
+          // the deployment's own cache, beside the clone in its folder (DeploySpec decision 2)
+          log.say(`$ ${this.o.mathlibCache === "own" ? `MATHLIB_CACHE_DIR=../${basename(this.folder.mathlib)} ` : ""}lake exe cache get`);
           const c = await run(lake, ["exe", "cache", "get"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
           if (c.code === 0) break;
           // Lake builds what the cache did not give
@@ -826,7 +874,7 @@ export class Deployment {
       this.step("build");
       say(`build: ${short}: lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
       log.say(`$ lake build${this.o.roots.length ? ` ${this.o.roots.join(" ")}` : ""}`);
-      const b = await run(lake, ["build", ...this.o.roots], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: BUILD_MS, onText: (t) => log.text(t) });
+      const b = await run(lake, ["build", ...this.o.roots], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: this.buildMs, onText: (t) => log.text(t) });
       // cut short by the server's stop: done again at the next start
       if (this.stopped) return;
       if (b.error) {
@@ -844,7 +892,9 @@ export class Deployment {
         // read as it was after the checkout
       }
       const ok = b.code === 0 && !b.timedOut;
-      return ended({ ok, exit: b.code, ...(b.timedOut ? { error: `it took longer than ${BUILD_MS / 3600_000} hours: stopped` } : {}) });
+      // stopped past the limit: failed, and not tried again (DeploySpec decision 14)
+      if (b.timedOut) log.say(`lake build took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped`);
+      return ended({ ok, exit: b.code, ...(b.timedOut ? { error: `it took longer than ${limitInWords(this.buildMs)} (--build-timeout): stopped` } : {}) });
     } catch (e) {
       if (this.stopped) return;
       if (this.state.building) await this.restore(log);

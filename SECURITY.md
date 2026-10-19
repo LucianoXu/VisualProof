@@ -89,9 +89,13 @@ into the latest release only.
   server's `VISUALPROOF_*` variables or anything that points git at another repository; nothing
   they start waits on a prompt (`GIT_TERMINAL_PROMPT=0`, no askpass, ssh in batch mode: an unknown
   host key fails, so add it to `known_hosts` first). The remote is asked every `--poll` minutes
-  (`git ls-remote` of the branch's ref alone). What the build writes is in the deployment's folder
-  of the cache, and where the build tools write for any build: elan's toolchains (`~/.elan`) and
-  Mathlib's cache (`~/.cache/mathlib`). The pages are told the branch, the remote (host and path),
+  (`git ls-remote` of the branch's ref alone); a `lake build` past `--build-timeout` hours (6 by
+  default) is stopped. What the build writes is in the deployment's folder of the cache, and where
+  the build tools write for any build: elan's toolchains (`~/.elan`) and Mathlib's cache
+  (`~/.cache/mathlib`, the user's builds' too; with `--mathlib-cache own`, the deployment's own, in
+  its folder). An own cache keeps the deployment's downloads apart from the user's builds; it is no
+  boundary against the branch's code, which runs as the server's user and writes wherever that
+  user can. The pages are told the branch, the remote (host and path),
   the build going on, the commit waiting and why a build failed; the end of a build's log, its paths
   written from the clone's folder (`.`) and the home (`~`), goes to those let in fully and to
   agents, never to a read-only reader.
@@ -163,7 +167,8 @@ where another may write the folder). `versions/`
 is made `0700`; a folder in it that another user owns, or that its group or others may write, is
 refused and its patch never run. Keep the caches' root the server's user's alone, as the site. A branch the server follows is
 cloned and built in `deploy/` of the caches' root: the clone, its build's outputs and its
-dependencies, which the server's Lean programs import; and each build's log.
+dependencies, which the server's Lean programs import; each build's log; and with
+`--mathlib-cache own`, Mathlib's cache, whose files the build unpacks into its dependencies.
 
 ## Deploying
 

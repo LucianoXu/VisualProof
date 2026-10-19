@@ -57,8 +57,8 @@ import { RESTART_STATUS, supervise } from "./supervise.ts";
 import { stopChildren } from "./children.ts";
 import { filmStatus, serveFilm, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
-import { branchProblem, branchToFollow, DEFAULT_POLL_MINUTES, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, lockDeployment, MIN_POLL_MINUTES, parseRemote, recordedDefault } from "./deploy.ts";
-import type { DeployFolder, Remote } from "./deploy.ts";
+import { branchProblem, branchToFollow, DEFAULT_BUILD_HOURS, DEFAULT_POLL_MINUTES, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, limitInWords, lockDeployment, MATHLIB_CACHES, MAX_BUILD_HOURS, MIN_BUILD_HOURS, MIN_POLL_MINUTES, parseBuildHours, parseRemote, recordedDefault, sharedMathlibCache } from "./deploy.ts";
+import type { DeployFolder, MathlibCache, Remote } from "./deploy.ts";
 import { shortCommit, slimDeploy } from "../shared/deploy.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
 
@@ -115,12 +115,19 @@ interface Options {
   branch: string | null;
   /** --poll: how often the remote is asked, in minutes; null: DEFAULT_POLL_MINUTES */
   poll: number | null;
+  /** --build-timeout: the hours of `lake build` past which a build is stopped (DeploySpec decision
+   *  14); null: DEFAULT_BUILD_HOURS */
+  buildHours: number | null;
+  /** --mathlib-cache: the user's Mathlib cache, or the deployment's own (DeploySpec decision 2);
+   *  null: shared */
+  mathlibCache: MathlibCache | null;
 }
 
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
  *  to stdout with status 0. */
 function usage(code = 2): never {
-  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project | git URL> [--branch name] [--poll ${DEFAULT_POLL_MINUTES}] [--root Name]... [--port 4173] [--host 127.0.0.1]
+  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project | git URL> [--branch name] [--poll ${DEFAULT_POLL_MINUTES}] [--build-timeout ${DEFAULT_BUILD_HOURS}]
+                                         [--mathlib-cache shared|own] [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
@@ -148,6 +155,13 @@ function usage(code = 2): never {
   --branch the branch followed (default: the remote's default branch); never a pull request's or
            a fork's
   --poll   how often the remote is asked for the branch's head, in minutes (default ${DEFAULT_POLL_MINUTES})
+  --build-timeout  the hours past which \`lake build\` is stopped and the build failed, its commit
+           not tried again (default ${DEFAULT_BUILD_HOURS}; ${MIN_BUILD_HOURS} to ${MAX_BUILD_HOURS}, fractions too: 1.5)
+  --mathlib-cache  where \`lake exe cache get\` keeps Mathlib's files: shared (the default) — the
+           user's, as their own builds' (~/.cache/mathlib, or MATHLIB_CACHE_DIR), so that a build
+           fetches only what they have not; own — the deployment's, in its folder of the cache
+           (deploy/<repo>-<hash>/mathlib-cache/): about 0.45 GB per version of Mathlib the branch
+           builds, kept until that folder is removed
 
   --root   what to read: a library of the lakefile (the modules Lake builds of it) or a module;
            repeatable. By default the lakefile's default targets.
@@ -267,7 +281,7 @@ function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -329,6 +343,22 @@ function parseArgs(argv: string[]): Options {
       }
       o.poll = m;
     }
+    else if (a === "--build-timeout" && cmd === "serve") {
+      const h = parseBuildHours(val());
+      if (typeof h !== "number") {
+        console.error(`visualproof: ${h.error}`);
+        process.exit(2);
+      }
+      o.buildHours = h;
+    }
+    else if (a === "--mathlib-cache" && cmd === "serve") {
+      const v = val();
+      if (!MATHLIB_CACHES.includes(v as MathlibCache)) {
+        console.error(`visualproof: --mathlib-cache ${v.slice(0, 40)}: say shared (the user's Mathlib cache, as their builds': the default) or own (the deployment's, in its folder of the cache)`);
+        process.exit(2);
+      }
+      o.mathlibCache = v as MathlibCache;
+    }
     else if (a === "--updates" && cmd === "serve") {
       const mode = val();
       if (!UPDATE_MODES.includes(mode as UpdateMode)) usage();
@@ -372,9 +402,14 @@ function parseArgs(argv: string[]): Options {
       process.exit(2);
     }
     o.remote = r;
-  } else if (o.branch !== null || o.poll !== null) {
-    console.error("visualproof: --branch and --poll go with a git address (serve https://github.com/owner/repo): a folder is read as its owner's builds leave it");
-    process.exit(2);
+  } else {
+    // what is about following a branch and building it: a folder is never built (DeploySpec
+    // decision 15)
+    const given = [["--branch", o.branch], ["--poll", o.poll], ["--build-timeout", o.buildHours], ["--mathlib-cache", o.mathlibCache]].filter(([, v]) => v !== null).map(([n]) => n);
+    if (given.length) {
+      console.error(`visualproof: ${given.length > 1 ? `${given.slice(0, -1).join(", ")} and ${given[given.length - 1]} go` : `${given[0]} goes`} with a git address (serve https://github.com/owner/repo): a folder is read as its owner's builds leave it, never built`);
+      process.exit(2);
+    }
   }
   // read-only for whoever comes, beside those the key or a link lets in: without a key, everyone is in
   // already; behind a sign-in, there is nobody else
@@ -1671,6 +1706,8 @@ async function main(): Promise<void> {
         project,
         roots: o.roots,
         everyMs: (o.poll ?? DEFAULT_POLL_MINUTES) * 60_000,
+        buildMs: (o.buildHours ?? DEFAULT_BUILD_HOURS) * 3600_000,
+        mathlibCache: o.mathlibCache ?? "shared",
         head: deploy.head,
         hooks: {
           reading: () => live.reading,
@@ -1778,9 +1815,11 @@ async function main(): Promise<void> {
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
     if (deployment) {
       const d = deployment.status(true);
-      console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min`);
+      console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min; a build stopped past ${limitInWords(deployment.buildMs)}`);
       console.log(`  clone: ${deployment.folder.checkout}`);
       console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : `none yet: the first, of ${shortCommit(deploy!.head)}, starts now, and the page says so until it is done`}; their logs in ${deployment.folder.logs}`);
+      // where the project is on Mathlib, its cache: the user's, or the deployment's own (DeploySpec decision 2)
+      console.log(`  Mathlib's cache: ${o.mathlibCache === "own" ? `${deployment.folder.mathlib}, the deployment's own` : `${sharedMathlibCache()}, the user's, shared by their builds`}`);
     }
     recordVersion(live, version, supervised);
     process.send?.({ vp: "listening", version });

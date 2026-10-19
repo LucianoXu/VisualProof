@@ -9,8 +9,9 @@ branch".
 
 ## Decisions
 
-The owner's decisions of 2026-10-18, beside what is marked *proposed* (the owner has not decided
-those: they are what 0.5.0 does until decided otherwise).
+The owner's decisions of 2026-10-18 and, where they say so, of 2026-10-19, beside what is marked
+*proposed* (the owner has not decided those: they are what VisualProof does until decided
+otherwise).
 
 ### What is followed
 
@@ -38,9 +39,29 @@ those: they are what 0.5.0 does until decided otherwise).
      `--cache`. One server follows a branch with a cache at a time (`.lock` in the deployment's
      folder, as a site is held); a second is refused, saying which process holds it.
    - *Proposed*: what the build's own tools write for any build stays where they write it: elan's
-     toolchains (`~/.elan`) and Mathlib's cache (`~/.cache/mathlib`, shared by the user's builds,
-     so that a deployment fetches only what they have not; `MATHLIB_CACHE_DIR` would make it the
-     deployment's own, at the price of a whole cache each).
+     toolchains (`~/.elan`), and Mathlib's cache unless the deployment has its own (below).
+   - **Mathlib's cache: the user's, or the deployment's own** (the owner's decision of 2026-10-19).
+     By default `lake exe cache get` keeps Mathlib's files where the user's builds do
+     (`~/.cache/mathlib`, or wherever the server's environment says: `MATHLIB_CACHE_DIR`,
+     `XDG_CACHE_HOME`), shared, so that a deployment fetches only what they have not.
+     `--mathlib-cache own` gives the deployment its own, in its folder of the cache
+     (`<cache>/deploy/<repo>-<hash>/mathlib-cache/`), so that removing that folder removes it too:
+     about 0.45 GB per version of Mathlib (8,684 files for Mathlib of August 2026), each bump of
+     Mathlib on the branch fetching nearly the whole again (a file's hash changes with its
+     imports'), the versions before kept until the folder is removed; and
+     apart from the user's builds (before Mathlib of August 2026, #42752, two `lake exe cache get`
+     at once in one folder could leave a corrupt file there). What the cache's files unpack into,
+     the build of Mathlib in the clone's `.lake` (about 8 GB), is there either way.
+     - *Proposed*: `--mathlib-cache shared|own`, a word as `--updates` and `--agents` take, rather
+       than a folder: the deployment's own cache is in its folder of the cache, where nothing else
+       writes (a folder of one's own choosing is `MATHLIB_CACHE_DIR` in the server's environment,
+       with `shared`). It goes with a git address alone, as `--poll`; a folder is never built.
+     - *Proposed*: only `MATHLIB_CACHE_DIR` is set, for `lake exe cache get` and `lake build`. Mathlib
+       reads it since February 2025 (#21480, on Lean v4.17.0-rc1): the Mathlib of every supported
+       toolchain (v4.28.0 and after) does; an older one reads `XDG_CACHE_HOME` alone, and would
+       keep its files in the shared cache. `XDG_CACHE_HOME` is not moved: Lake finds its own
+       cache by it (`$XDG_CACHE_HOME/lake`) and git its credential cache's socket
+       (`$XDG_CACHE_HOME/git/credential/socket`), which a build's dependencies may need.
 3. **Polling the remote** (the owner's decision of 2026-10-18): `git ls-remote <url>
    refs/heads/<branch>` every 2 minutes by default; `--poll <minutes>` changes it (0.05 to 1440).
    Webhooks are later, not now. Asked at once at the start.
@@ -158,9 +179,16 @@ those: they are what 0.5.0 does until decided otherwise).
       past build, a clean one whose kept text came from its tree or its commit. The lines are those
       the window shows, from the doc comment above the declaration to its end. The popover links
       the branch and each commit there.
-14. *Proposed*: **a build that takes longer than 6 hours is stopped**, and is failed (its commit is
-    not tried again): a commit that loops forever does not hold the branch's later commits back
-    for good. Not an option yet.
+14. **A build that takes longer than `--build-timeout` hours is stopped** (the owner's decision of
+    2026-10-19), 6 by default, and is failed (its commit is not tried again): a commit that loops
+    forever does not hold the branch's later commits back for good.
+    - *Proposed*: from 0.05 (3 minutes) to 168 (a week), fractions too (`1.5`), refused outside
+      with a line that says so, as `--poll` is; with a folder it is refused, as `--poll` is (a
+      folder is never built: decision 15). The time is `lake build`'s, each run of it: a build
+      done again after a restart (decision 8) has the whole time again.
+    - *Proposed*: the failure says the limit in words, in the popover and the loading page, and in
+      the build's log: "it took longer than 6 hours (--build-timeout): stopped" (`1 h 30 min`,
+      `3 min`); the server's first lines say it ("a build stopped past 6 hours").
 
 ### The workspace
 
@@ -174,8 +202,12 @@ those: they are what 0.5.0 does until decided otherwise).
 - `parseRemote`, `isGitAddress`, `branchProblem`: the address and the branch (decisions 1, 10).
 - `deployFolder`, `deploySite`, `branchToFollow` (with `remotes.json`), `ensureClone`,
   `lockDeployment`: the folder, the site, the default branch, the clone, the lock (decision 2).
-- `gitEnv`, `buildEnv`, `noPrompts`: the programs' environment (decisions 9, 10); `run`: a program
-  with an argument array, as a group of its own (server/children.ts), stopped past its time.
+- `gitEnv`, `buildEnv`, `noPrompts`: the programs' environment (decisions 9, 10; `buildEnv`'s
+  `MATHLIB_CACHE_DIR` where the deployment has its own Mathlib cache, decision 2;
+  `sharedMathlibCache`, where the user's is); `run`: a program with an argument array, as a group
+  of its own (server/children.ts), stopped past its time.
+- `parseBuildHours`, `limitInWords`: `--build-timeout` and its limit in words (decision 14);
+  `Deployment`'s `buildMs`.
 - `askRemote`: `ls-remote` of the branch's ref, the exact ref alone (a pattern matches refs that
   end so), or `--symref HEAD`.
 - `Deployment`: the polling (`poll`, every `everyMs`), the queue (`want`, the newest head seen;
@@ -194,7 +226,8 @@ those: they are what 0.5.0 does until decided otherwise).
   build status's `active` include a build going on; `reading` is an extraction or a graph being
   served (`installing`); the snapshot's commit is `deploy.commit()`; `shownCommit()`,
   `following()`; `stop()` ends the loop (a test's end).
-- server/main.ts: `--branch`, `--poll`, the checks before anything runs, `openDeployment` before
+- server/main.ts: `--branch`, `--poll`, `--build-timeout`, `--mathlib-cache`, the checks before
+  anything runs (a folder with any of them is refused, naming them), `openDeployment` before
   the project is read, the supervisor's site (`deploySiteOf`, without the network), the terminal's
   lines, `GET /api/git`, the read-only reader's `GET /api/status`.
 
@@ -210,6 +243,9 @@ those: they are what 0.5.0 does until decided otherwise).
 - `<repo>-<hash>/logs/<commit>.log`: everything a build's programs wrote, with the commands (`$ git
   …`, `$ lake build`); a build done again writes it again; the newest 30 kept. `0600`.
 - `<repo>-<hash>/.lock`: the server that follows the branch with this cache.
+- `<repo>-<hash>/mathlib-cache/`: Mathlib's cache, with `--mathlib-cache own` (decision 2): the
+  files `lake exe cache get` fetched (`<hash>.ltar`), of every version of Mathlib the branch built
+  since the folder was made.
 
 ### What pages and agents are told (shared/deploy.ts)
 
