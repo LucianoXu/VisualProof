@@ -261,7 +261,7 @@ The README says how to install the `visualproof` command. A checkout also runs a
 
 ```bash
 visualproof serve https://github.com/<owner>/<repo>               # its default branch
-visualproof serve git@github.com:<owner>/<repo>.git --branch main --poll 5
+visualproof serve git@github.com:<owner>/<repo>.git --branch main --poll 5 --build-timeout 2 --mathlib-cache own
 ```
 
 With a git URL where the project goes, the server follows that branch of the repository and builds
@@ -289,6 +289,21 @@ to a team. It needs git, besides elan.
   **one build at a time**; heads pushed meanwhile are not queued: **only the newest is built after
   it**. A commit is built once, whatever came of it; one that could not be fetched is tried again at
   the next look.
+- **`--build-timeout <hours>`** (default 6; from 0.05 to 168, fractions too: `1.5`): a `lake build`
+  that takes longer is stopped and the build failed, its commit not tried again, so that a commit
+  that never finishes does not hold back those pushed after it. The popover says why: `it took
+  longer than 6 hours (--build-timeout): stopped`. A build done again after a restart has the whole
+  time again.
+- **`--mathlib-cache shared|own`**: where `lake exe cache get` keeps Mathlib's files. `shared`, the
+  default: the user's, as their own builds (`~/.cache/mathlib`, or `MATHLIB_CACHE_DIR` in the
+  server's environment), so that a deployment fetches only what they have not. `own`: the
+  deployment's, in its folder of the cache, `<cache root>/deploy/<repo>-<hash>/mathlib-cache/`,
+  apart from the user's builds. It costs about 0.45 GB per version of Mathlib the branch builds
+  (8,684 files for Mathlib of August 2026: a small project's first build on it, Mathlib cloned
+  and its cache fetched whole, took 75 s on a fast connection); a bump of Mathlib fetches
+  nearly all of it again, and the versions before stay until the folder is removed: remove
+  `mathlib-cache/` (the next build fetches what it needs again) or the deployment's whole folder,
+  the clone with it. Either way, Mathlib's build unpacked in the clone's `.lake` takes about 8 GB.
 - **Meanwhile the board keeps answering**, showing the last build: the pill says the build's step
   (`Fetching a1b2c3d`, `Mathlib's cache · a1b2c3d`, `Building 12 / 40 · …`), and once it is read,
   the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
