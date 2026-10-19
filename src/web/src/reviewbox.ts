@@ -10,10 +10,12 @@
 // marked as an agent's: "Claude (agent) comments — …". It is not an opinion of the review and
 // nothing here counts it.
 //
-// Key declarations (ExportSpec decision 1): where the review has a focus, a declaration its review
-// holds can be marked key for that target ("◇ Mark as key for …", "◆ Key for …"), in every review box
+// Key declarations (ExportSpec decision 1): where the review has a focus, a declaration its TCB holds,
+// trusted or not, in the project or outside it (the owner's decision of 2026-10-19), or its review
+// set, can be marked key for that target ("◇ Mark as key for …", "◆ Key for …"), in every review box
 // alike — the panel's and each source window's, following or pinned, on its own declaration; a
-// target's panel counts its key declarations apart.
+// target's panel counts its key declarations apart, those that need review, "+N trusted" beside
+// them.
 //
 // An opinion can be withdrawn (ReviewSpec decision 9, the owner's decision of 2026-10-19): Withdraw
 // stands beside the current opinion of whoever the box records for — the reader, or the person they
@@ -31,7 +33,7 @@ import { insertBlock, MAX_COMMENT, opinionRef, parseRef, quoteOpinion } from "..
 import type { OpinionRef } from "../../shared/comment.ts";
 import { advice, current, findOpinion, fresh, judgedOn, keyMarked, STANDARD_AXIOMS, standing, statusOf, trustedBy } from "../../shared/review.ts";
 import type { Author, Opinion, Progress, ReviewData, ReviewRequest } from "../../shared/review.ts";
-import type { StatusCounts } from "../../shared/keys.ts";
+import type { KeyCounts } from "../../shared/keys.ts";
 import { nonStandardAxiom, offBoard } from "../../shared/reviewqueue.ts";
 import type { Queue } from "../../shared/reviewqueue.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
@@ -98,11 +100,13 @@ export interface ReviewHooks {
   text(i: number): Promise<DeclarationText | null>;
   /** the target the review's focus is on, or null (ViewSpec decision 28; web/src/focus.ts) */
   reviewRoot(): number | null;
-  /** whether `i` is in what `root`'s review holds, and whether it is key for it (the target is) */
-  inReview(root: number, i: number): boolean;
+  /** whether `i` can be key for `root` — a member of its TCB, trusted or not, or of its review set,
+   *  never the target (ExportSpec decision 1) — and whether it is key for it (the target is) */
+  keyable(root: number, i: number): boolean;
   isKey(root: number, i: number): boolean;
-  /** how far the review of a target's key declarations has come */
-  keyProgress(i: number): StatusCounts;
+  /** how far the review of a target's key declarations has come: those that need review, the
+   *  trusted counted apart */
+  keyProgress(i: number): KeyCounts;
   /** open a view of a target's key declarations alone, `key(T)`; none on a page that makes no views
    *  (a read-only reader's, CollabSpec decision 11), which does not offer it */
   keyView?(i: number): void;
@@ -609,11 +613,11 @@ export class ReviewBox {
   }
 
   /** Where the review has a focus, the toggle that marks declaration `i` key for that target, or
-   *  says it is; "" elsewhere, for the target itself (always key) and for what its review does not
+   *  says it is; "" elsewhere, for the target itself (always key) and for what its TCB does not
    *  hold. */
   private keyHtml(i: number): string {
     const root = this.hooks.reviewRoot();
-    if (root === null || root === i || !this.hooks.inReview(root, i)) return "";
+    if (root === null || root === i || !this.hooks.keyable(root, i)) return "";
     const R = this.hooks.review();
     const on = this.hooks.isKey(root, i);
     const t = escapeHtml(this.g.short(root));
@@ -765,13 +769,15 @@ export class ReviewBox {
       const p = this.hooks.progress(i);
       const open = p.total - p.approved - p.commented - p.stale;
       const pct = (x: number) => (p.total ? ((100 * x) / p.total).toFixed(1) : "0");
-      // the key declarations apart (ExportSpec decision 4): approved of K, the target among them
+      // the key declarations apart (ExportSpec decision 4): approved of K, those that need review,
+      // the target among them; the trusted ones beside them, never counted in
       const k = this.hooks.keyProgress(i);
       const kpct = (x: number) => (k.total ? ((100 * x) / k.total).toFixed(1) : "0");
       const keyLine =
-        `<div class="rv-prog rv-keyprog" title="The key declarations, the target among them: they come first in its review"><span class="key-mark">◆</span> Key: <b>${k.approved}</b> / ${k.total} approved` +
+        `<div class="rv-prog rv-keyprog" title="The key declarations that need review, the target among them: they come first in its review${k.trusted ? `; ${k.trusted} more are trusted, read with them and in need of no review` : ""}"><span class="key-mark">◆</span> Key: <b>${k.approved}</b> / ${k.total} approved` +
+        (k.trusted ? ` <span class="muted rv-key-trusted">+${k.trusted} trusted</span>` : "") +
         (k.commented ? ` · <span class="commented">${k.commented} commented</span>` : "") + (k.stale ? ` · ${k.stale} stale` : "") +
-        (k.total === 1 ? ` <span class="muted">— none marked besides the target</span>` : "") + `</div>` +
+        (k.total + k.trusted === 1 ? ` <span class="muted">— none marked besides the target</span>` : "") + `</div>` +
         `<div class="rv-bar rv-keybar"><i class="ok" style="width:${kpct(k.approved)}%"></i><i class="commented" style="width:${kpct(k.commented)}%"></i><i class="stale" style="width:${kpct(k.stale)}%"></i></div>`;
       tgt =
         `<div class="rv-target">${keyLine}<div class="rv-prog">All: <b>${p.approved}</b> / ${p.total} approved` +

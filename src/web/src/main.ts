@@ -629,7 +629,7 @@ async function boot(): Promise<void> {
       return textNow(i) ?? null;
     },
     reviewRoot: () => reviewRoot(),
-    inReview: (r, i) => flow.inReview(r, i),
+    keyable: (r, i) => flow.keyable(r, i),
     isKey: (r, i) => flow.isKey(r, i),
     keyProgress: (i) => flow.keyProgress(i),
     // a view made from the board on show: at its build, leaving the Time Machine for it; focused on
@@ -660,12 +660,13 @@ async function boot(): Promise<void> {
       return j === undefined ? [] : [j];
     });
   /** What "Mark selected as key" would mark where the review has a focus (web/src/selbar.ts): the
-   *  declarations clicked that the focus's review holds, not key yet; null where there is no focus. */
+   *  declarations clicked that the focus's TCB holds, trusted or not (ExportSpec decision 1), not key
+   *  yet; null where there is no focus. */
   const keyMarking = () => {
     const r = reviewRoot();
     // a past build is not reviewed: the review box says so
     if (r === null || data.snapshot || pastShown() || reader) return null;
-    const xs = clickedDecls().filter((j) => j !== r && flow.inReview(r, j));
+    const xs = clickedDecls().filter((j) => flow.keyable(r, j));
     const already = xs.filter((j) => flow.isKey(r, j)).length;
     return { target: g.short(r), fresh: xs.length - already, already, names: xs.filter((j) => !flow.isKey(r, j)).map((j) => g.nodes[j].name) };
   };
@@ -676,7 +677,7 @@ async function boot(): Promise<void> {
     if (r === null || i === null || i === r || data.snapshot) return;
     if (reader) return say(READ_ONLY);
     if (pastShown()) return say(PAST_REVIEW);
-    if (!flow.inReview(r, i)) return say(`${g.short(i)} is not in ${g.short(r)}'s review: only what it holds can be key for it.`);
+    if (!flow.keyable(r, i)) return say(`${g.short(i)} is not in ${g.short(r)}'s TCB: only what it holds can be key for it.`);
     const target = g.nodes[r].name;
     void people.ensure().then((me) => {
       if (!me) return;
@@ -3717,7 +3718,7 @@ async function boot(): Promise<void> {
         kind: "decl",
         name,
         ext: g.isExt(i),
-        key: r !== null && r !== i && flow.inReview(r, i) ? keyMarked(boardReview(), g.nodes[r].name, name) : null,
+        key: r !== null && flow.keyable(r, i) ? keyMarked(boardReview(), g.nodes[r].name, name) : null,
         target: Object.hasOwn(boardReview().targets, name),
         ns: g.isExt(i) ? null : trustOf(name.split(".").slice(0, -1).join(".") || null),
         ...(visitor ? { visitor: true } : {}),

@@ -128,11 +128,14 @@ test("the tour's TCB step says the selection bar's numbers: it and what is to be
   const { g, d, at } = world();
   record(d, { op: "target", name: "N.t", on: true, by: "Alice" } as ReviewOp, "tc", "2026-10-17T00:00:02Z");
   record(d, { op: "key", target: "N.t", name: "N.a", on: true, by: "Alice" } as ReviewOp, "tc", "2026-10-17T00:00:03Z");
-  // a mark on what the review trusts lights nothing
+  // a mark on what the review trusts lights too, told apart (the owner's decision of 2026-10-19)
   record(d, { op: "key", target: "N.t", name: "N.c", on: true, by: "Alice" } as ReviewOp, "tc", "2026-10-17T00:00:04Z");
   const views = { tcb: lit(g, d, "tcb"), uses: lit(g, d, "deps"), keys: lit(g, d, "keys") };
   const r: RestsOn = { name: "t", ...restsOnCounts(g, d, at("N.t"), views), target: true };
-  assert.deepEqual({ self: r.self, read: r.read, assumed: r.assumed, proofs: r.proofs, keys: r.keys }, { self: "read", read: 4, assumed: 4, proofs: 1, keys: 1 });
+  assert.deepEqual(
+    { self: r.self, read: r.read, assumed: r.assumed, proofs: r.proofs, keys: r.keys, trustedKeys: r.trustedKeys },
+    { self: "read", read: 4, assumed: 4, proofs: 1, keys: 1, trustedKeys: 1 },
+  );
   // the TCB view: the bar beside it says 5 lit · +4 trusted, and so does the card
   const tcbBar = trustSplit(g, d, views.tcb);
   assert.equal(barSays(bar(tcbBar)), "5 lit · +4 trusted");
@@ -142,9 +145,15 @@ test("the tour's TCB step says the selection bar's numbers: it and what is to be
     "Its TCB lights 5: it, and 4 declarations to read — definitions, axioms, the project's notation. The 4 trusted, as Mathlib is, light too, and are assumed. To trust it, read those 4. What its proofs alone use, 1 more, is not lit: the proofs are Lean's to check.",
   );
   assert.ok(words.includes(`lights ${tcbBar.counted}:`) && words.includes(`The ${tcbBar.trusted} trusted`));
-  // the Keys view: the bar says 2 lit (it and N.a), the card the one key among the 4 to read
-  assert.equal(barSays(bar(trustSplit(g, d, views.keys))), "2 lit");
-  assert.equal(keysText(r).replace(/<[^>]*>/g, ""), "Of the 4 declarations to read, the one the review marked key: what carries its meaning. Read it first.");
+  // the Keys view: the bar says 2 lit (it and N.a) · +1 trusted (N.c), the card the one key among the
+  // 4 to read, then the trusted one
+  assert.equal(barSays(bar(trustSplit(g, d, views.keys))), "2 lit · +1 trusted");
+  assert.equal(
+    keysText(r).replace(/<[^>]*>/g, ""),
+    "Of the 4 declarations to read, the one the review marked key: what carries its meaning. Read it first. One more is key and trusted: read for what it means, in need of no review.",
+  );
+  assert.equal(keysText({ ...r, keys: 0 }).replace(/<[^>]*>/g, ""), "The review marked key one declaration it rests on, trusted: what carries its meaning, in need of no review. Read it first.");
+  assert.equal(keysText({ ...r, trustedKeys: 0 }).replace(/<[^>]*>/g, ""), "Of the 4 declarations to read, the one the review marked key: what carries its meaning. Read it first.");
 });
 
 test("the tour's TCB step where the bar counts otherwise: nothing to read, the theorem trusted itself, one alone", () => {

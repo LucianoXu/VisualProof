@@ -1,7 +1,9 @@
 // Key declarations (ExportSpec decisions 1, 3 and 4): their events and replay, what the server
 // binds, what the page's review of a declaration shows (no explanation since 2026-10-08), the
 // support and the key graph (shared/keys.ts) on small graphs with diamonds and cycles, the review
-// set listed key first, `key(T)` in the query language, and what the agents' API says of them.
+// set listed key first, `key(T)` in the query language, and what the agents' API says of them. A
+// key declaration is a member of the TCB, trusted ones included (the owner's decision of
+// 2026-10-19): trusted keys are marked, kept, counted apart, and read as any.
 
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -10,17 +12,18 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../src/shared/graph.ts";
-import { keyFirst, keyGraph, keyLayers, keySet, statusCounts, topDown } from "../src/shared/keys.ts";
+import { keyCounts, keyFirst, keyGraph, keyLayers, keySet, statusCounts, topDown } from "../src/shared/keys.ts";
 import { evaluate, parseQuery, printQuery, QUERY_LIMITS, readsReview } from "../src/shared/query.ts";
 import { emptyReview, invalid, keyFor, keyMarked, keyMarks, logFileName, noChange, readEvent, record, replay, reviewFromJson } from "../src/shared/review.ts";
 import type { ReviewData, ReviewEvent, ReviewOp, ReviewRequest } from "../src/shared/review.ts";
-import { inTargets, reviewQueue, reviewSet } from "../src/shared/reviewqueue.ts";
+import { inTargets, keyableSet, reviewQueue } from "../src/shared/reviewqueue.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
 import { ReviewStore } from "../src/server/review.ts";
 import { ReviewApi } from "../src/server/reviewapi.ts";
 import type { GraphView } from "../src/server/reviewapi.ts";
 import { ReviewBox } from "../src/web/src/reviewbox.ts";
 import type { ReviewHooks } from "../src/web/src/reviewbox.ts";
+import { ReviewFlow } from "../src/web/src/reviewqueue.ts";
 
 const at = (k: number) => `2026-10-08T10:${String(k).padStart(2, "0")}:00.000Z`;
 
@@ -145,15 +148,21 @@ test("the server binds a key mark to a target's review, and records no explanati
     assert.equal(post({ op: "target", name: "T", on: true }).status, 200);
     assert.equal(post({ op: "key", target: "T", name: "G", on: true }).status, 200);
     assert.equal(post({ op: "key", target: "T", name: "S", on: true }, "Bob").status, 200);
-    assert.equal(post({ op: "key", target: "T", name: "P", on: true }).status, 409, "a proof's helper is not in the review");
-    assert.equal(post({ op: "key", target: "T", name: "X.m", on: true }).status, 409, "the outside world trusted by default is not in it");
+    assert.equal(post({ op: "key", target: "T", name: "P", on: true }).status, 409, "a proof's helper is not in the TCB");
+    // the outside world, trusted by default, is in the TCB: it may be key (the owner's decision of
+    // 2026-10-19), and so may a declaration of the project trusted by name
+    assert.equal(post({ op: "key", target: "T", name: "X.m", on: true }).status, 200, "an outside declaration of the TCB, trusted");
+    assert.equal(post({ op: "trust", prefix: "S", on: true }).status, 200);
+    assert.equal(post({ op: "key", target: "T", name: "S", on: false }, "Bob").status, 200);
+    assert.equal(post({ op: "key", target: "T", name: "S", on: true }, "Bob").status, 200, "trusted by name, still in the TCB");
+    assert.equal(post({ op: "trust", prefix: "S", on: false }).status, 200);
     assert.equal(post({ op: "key", target: "T", name: "Nope", on: true }).status, 404);
     assert.equal(post({ op: "key", target: "T", name: "T", on: true }).status, 400);
     assert.equal(post({ op: "key", target: "T", name: "G", on: "yes" }).status, 400);
     // taking a mark off needs nothing of the graph: what is gone can be unmarked
     assert.equal(post({ op: "key", target: "T", name: "Gone", on: false }).status, 200);
-    assert.deepEqual(keyMarks(review.data, "T"), ["G", "S"]);
-    const line = JSON.parse(readFileSync(join(dir, "review", "log", logFileName("Bob", false)), "utf8").trim());
+    assert.deepEqual(keyMarks(review.data, "T"), ["G", "S", "X.m"]);
+    const line = JSON.parse(readFileSync(join(dir, "review", "log", logFileName("Bob", false)), "utf8").trim().split("\n").at(-1)!);
     assert.deepEqual([line.op, line.by, line.target, line.name, line.on], ["key", "Bob", "T", "S", true]);
 
     // explanations were removed (2026-10-08): the request is refused, and nothing is written
@@ -196,9 +205,9 @@ test("the page's review of a declaration: the key toggle, and no explanation to 
       textNow: () => null,
       text: async () => null,
       reviewRoot: () => root,
-      inReview: (r, i) => !!reviewSet(g, d, r)[i],
+      keyable: (r, i) => i !== r && !!keyableSet(g, d, r)[i],
       isKey: (r, i) => i === r || keyMarked(d, g.nodes[r].name, g.nodes[i].name),
-      keyProgress: () => ({ total: 2, approved: 0, commented: 0, stale: 0, unreviewed: 2 }),
+      keyProgress: () => ({ total: 2, approved: 0, commented: 0, stale: 0, unreviewed: 2, trusted: 0 }),
       keyView: () => {},
       go: () => {},
       openSource: () => {},
@@ -220,12 +229,15 @@ test("the page's review of a declaration: the key toggle, and no explanation to 
   }
 });
 
-test("the key toggle stands in every review box alike — the panel's and each source window's, on its own declaration — where the focus's review set holds it and the reader may mark", () => {
-  // T's review holds G and H; K is outside it; U is another target, whose review holds K
-  const g = graph(["T>G", "T>H", "U>K"]);
+test("the key toggle stands in every review box alike — the panel's and each source window's, on its own declaration — where the focus's TCB holds it, trusted or not, and the reader may mark", () => {
+  // T's TCB holds G, H, the trusted layer L and the outside X.e (trusted by default); K is outside
+  // it; U is another target, whose TCB holds K; T's proof uses P
+  const g = graph(["T>G", "T>H", "U>K", "T>L", "L=X.e", "T~P"]);
   const d = reviewWith(["H"]);
   record(d, { op: "target", name: "U", by: "Alice", on: true }, "tc", at(9));
+  record(d, { op: "trust", prefix: "L", by: "Alice", on: true }, "tc", at(10));
   const T = g.byName.get("T")!, G = g.byName.get("G")!, H = g.byName.get("H")!, K = g.byName.get("K")!, U = g.byName.get("U")!;
+  const L = g.byName.get("L")!, Xe = g.byName.get("X.e")!, P = g.byName.get("P")!;
   let focus: number | null = T;
   let state = { readOnly: false, blocked: null as string | null };
   const sent: ReviewRequest[] = [];
@@ -236,52 +248,56 @@ test("the key toggle stands in every review box alike — the panel's and each s
     editedNow: () => false,
     edited: async () => false,
     reviewRoot: () => focus,
-    inReview: (r: number, i: number) => !!reviewSet(g, d, r)[i],
+    keyable: (r: number, i: number) => i !== r && !!keyableSet(g, d, r)[i],
     isKey: (r: number, i: number) => i === r || keyMarked(d, g.nodes[r].name, g.nodes[i].name),
     queue: (i: number) => reviewQueue(g, d, i, inTargets(g, [i])),
     progress: () => ({ total: 0, approved: 0, commented: 0, stale: 0 }),
-    keyProgress: () => ({ total: 0, approved: 0, commented: 0, stale: 0, unreviewed: 0 }),
+    keyProgress: () => ({ total: 0, approved: 0, commented: 0, stale: 0, unreviewed: 0, trusted: 0 }),
   } as unknown as ReviewHooks;
   const box = new ReviewBox(g, hooks);
-  /** what the box of declaration `i` shows of the key mark: the toggle's words, the tag's, or none */
-  const key = (i: number, full: boolean) => {
-    const html = box.html(i, full);
+  /** what the box of declaration `i` shows of the key mark: the toggle's words, the tag's, or none —
+   *  the same in the panel (full) and a source window (not) */
+  const read = (html: string) => {
     const b = /<button class="rv-btn rv-key[^"]*" data-rv-key aria-pressed="(true|false)"[^>]*>([^<]*)<\/button>/.exec(html);
     if (b) return `button ${b[2]}`;
     const t = /<div class="rv-tag rv-key-tag">([^<]*)<\/div>/.exec(html);
     return t ? `tag ${t[1]}` : null;
   };
-  // the panel (full) and a source window (not), each on the declaration it shows
-  for (const full of [true, false]) {
-    assert.equal(key(G, full), "button ◇ Mark as key for T", `G, full ${full}`);
-    assert.equal(key(H, full), "button ◆ Key for T", `H, full ${full}`);
-    assert.equal(key(T, full), null, "the target is key without a mark");
-    assert.equal(key(K, full), null, "what its review does not hold");
-  }
-  // another focus: its own review's
+  const key = (i: number) => {
+    const k = read(box.html(i, true));
+    assert.equal(read(box.html(i, false)), k, g.nodes[i].name);
+    return k;
+  };
+  assert.equal(key(G), "button ◇ Mark as key for T");
+  assert.equal(key(H), "button ◆ Key for T");
+  assert.equal(key(T), null, "the target is key without a mark");
+  assert.equal(key(K), null, "what its TCB does not hold");
+  assert.equal(key(P), null, "a proof's helper: not in the TCB");
+  // trusted, in the project or outside it: key all the same (the owner's decision of 2026-10-19)
+  assert.equal(key(L), "button ◇ Mark as key for T", "a trusted layer of the project");
+  assert.equal(key(Xe), "button ◇ Mark as key for T", "an outside declaration, trusted by default");
+  // another focus: its own TCB's
   focus = U;
-  assert.equal(key(K, false), "button ◇ Mark as key for U");
-  assert.equal(key(G, false), null);
+  assert.equal(key(K), "button ◇ Mark as key for U");
+  assert.equal(key(G), null);
   // no focus: no toggle anywhere
   focus = null;
-  for (const i of [G, H, K]) for (const full of [true, false]) assert.equal(key(i, full), null);
+  for (const i of [G, H, K, L, Xe]) assert.equal(key(i), null);
   // who may not mark (a snapshot, a past build, a read-only reader; a log that cannot be read) sees
   // only what is marked
   focus = T;
   for (const s of [{ readOnly: true, blocked: null }, { readOnly: false, blocked: "Your review log …" }]) {
     state = s;
-    for (const full of [true, false]) {
-      assert.equal(key(H, full), "tag ◆ Key for T");
-      assert.equal(key(G, full), null);
-    }
+    assert.equal(key(H), "tag ◆ Key for T");
+    assert.equal(key(G), null);
   }
   // a press on a window's toggle marks that window's declaration, whatever else the reader looks at
   state = { readOnly: false, blocked: null };
   const toggle = { closest: (s: string) => (s === "[data-rv-key]" ? toggle : null) } as unknown as HTMLElement;
-  assert.equal(box.click(toggle, G, { querySelector: () => null } as unknown as HTMLElement), true);
+  assert.equal(box.click(toggle, L, { querySelector: () => null } as unknown as HTMLElement), true);
   return new Promise<void>((done) =>
     setImmediate(() => {
-      assert.deepEqual(sent, [{ op: "key", target: "T", name: "G", on: true }]);
+      assert.deepEqual(sent, [{ op: "key", target: "T", name: "L", on: true }]);
       done();
     }),
   );
@@ -442,10 +458,104 @@ test("support reaches through a trusted layer of the project, and a proof's axio
   assert.ok(a.q.order.includes(ax));
   assert.deepEqual(a.kg.viaProof.map((i) => g.nodes[i].name), ["Ax"]);
   assert.deepEqual(a.supportersOf("Ax"), ["T"]);
-  // a mark on what has left the review counts for nothing, and is kept
+  // a mark on what is trusted since stays a key, trusted (the owner's decision of 2026-10-19)
   record(d, { op: "trust", prefix: "U", by: "Alice", on: true }, "tc", at(21));
-  assert.deepEqual(analyse(g, d).keyNames, ["T"]);
+  const b = analyse(g, d);
+  assert.deepEqual(b.keyNames, ["U", "T"]);
+  assert.deepEqual(b.kg.trusted.map((i) => g.nodes[i].name), ["U"]);
+  assert.deepEqual(b.edges, ["T>U"]);
+  assert.deepEqual(keyCounts(g, d, b.kg), { total: 1, approved: 0, commented: 0, stale: 0, unreviewed: 1, trusted: 1 });
+  // one on what has left the TCB counts for nothing, and is kept
+  const g2 = graph(["T>L", "T~P", "P~Ax", "L~U"], { Ax: "axiom" });
+  assert.deepEqual(analyse(g2, d).keyNames, ["T"]);
   assert.deepEqual(keyMarks(d, "T"), ["U"]);
+});
+
+test("trusted key declarations, in the project and outside it: read first, counted apart, their walks through the trusted world", () => {
+  // T → A → X.r (outside, trusted by default) → X.s → X.k; A → B; X.k is key, and the trusted layer
+  // Q of the project (T → Q → C) is key too
+  const g = graph(["T>A", "A=X.r", "X.r>X.s", "X.s=X.k", "A>B", "T>Q", "Q=C", "C>X.k"]);
+  const d = reviewWith(["X.k", "Q", "B"]);
+  record(d, { op: "trust", prefix: "Q", by: "Alice", on: true }, "tc", at(20));
+  const a = analyse(g, d);
+  // the trusted ones first, in dependency order among themselves; then the review's in review order;
+  // the target last
+  assert.deepEqual(a.keyNames, ["Q", "X.k", "B", "T"]);
+  assert.deepEqual(a.kg.trusted.map((i) => g.nodes[i].name), ["Q", "X.k"]);
+  // the key graph reaches X.k through the outside world, and Q's support is C, which needs review
+  assert.deepEqual(a.edges, ["Q>X.k", "T>B", "T>Q", "T>X.k"]);
+  assert.deepEqual(a.supportOf("Q"), ["C"]);
+  assert.deepEqual(a.supportOf("X.k"), [], "the outside world never uses the project");
+  assert.deepEqual(a.supportOf("T"), ["A"]);
+  // every member is supported, trusted members are never in a support
+  for (const i of a.q.order) if (!a.kg.keys.includes(i)) assert.ok(a.kg.supporters.get(i)?.length, g.nodes[i].name);
+  for (const s of a.kg.support) for (const i of s) assert.ok(a.q.order.includes(i));
+  // K counts what needs review — B and the target — the trusted apart; never "not yet reviewed"
+  record(d, { op: "opinion", name: "B", by: "Alice", verdict: "approve", hash: "h-B" }, "tc", at(21));
+  assert.deepEqual(keyCounts(g, d, a.kg), { total: 2, approved: 1, commented: 0, stale: 0, unreviewed: 1, trusted: 2 });
+  // listed key first: the trusted ones, then the review's in review order, then the rest
+  assert.deepEqual(keyFirst(a.q.order, a.kg.keys).map((i) => g.nodes[i].name), ["Q", "X.k", "B", "T", "A", "C"]);
+  // key(T) holds them, trusted or not: the Keys pick and the exported Key view
+  const s = evaluate(parseQuery("key(T)"), { g, review: d });
+  assert.deepEqual(g.nodes.filter((_, i) => s[i]).map((v) => v.name).sort(), ["B", "Q", "T", "X.k"]);
+  // the target trusted itself: still last, counted apart
+  record(d, { op: "trust", prefix: "T", by: "Alice", on: true }, "tc", at(22));
+  const root = g.byName.get("T")!;
+  const kg = keyGraph(g, d, root, reviewQueue(g, d, root, inTargets(g, [root])).order);
+  assert.equal(kg.keys.at(-1), root);
+  assert.ok(kg.trusted.includes(root));
+});
+
+test("the page's review with a trusted key declaration: what can be marked, the key progress, the ◆ Key list and the strip tell it apart", () => {
+  // T → A; T → Q, trusted by name, → X.e outside; T's proof uses P. A and Q are key.
+  const g = graph(["T>A", "T>Q", "Q=X.e", "T~P"]);
+  const d = reviewWith(["A", "Q"]);
+  record(d, { op: "trust", prefix: "Q", by: "Alice", on: true }, "tc", at(20));
+  const T = g.byName.get("T")!, A = g.byName.get("A")!, Q = g.byName.get("Q")!, Xe = g.byName.get("X.e")!, P = g.byName.get("P")!;
+  const flow = new ReviewFlow({ graph: () => g, review: () => d, reader: () => "Alice" });
+  // what the key control is offered for: the TCB, trusted or not, but never the target or a proof's
+  assert.deepEqual([A, Q, Xe, P, T].map((i) => flow.keyable(T, i)), [true, true, true, false, false]);
+  assert.deepEqual([flow.isKey(T, Q), flow.isTrustedKey(T, Q), flow.isTrustedKey(T, A)], [true, true, false]);
+  // key progress: A and T need review, Q is told apart; what is left for the reader is never Q
+  assert.deepEqual(flow.keyProgress(T), { total: 2, approved: 0, commented: 0, stale: 0, unreviewed: 2, trusted: 1 });
+  assert.equal(flow.keysLeft(T), 2);
+  record(d, { op: "opinion", name: "A", by: "Alice", verdict: "approve", hash: "h-A" }, "tc", at(21));
+  record(d, { op: "opinion", name: "T", by: "Alice", verdict: "approve", hash: "h-T" }, "tc", at(22));
+  assert.equal(flow.keysLeft(T), 0, "Q needs no review");
+  assert.deepEqual(flow.keyProgress(T), { total: 2, approved: 2, commented: 0, stale: 0, unreviewed: 0, trusted: 1 });
+  // the ◆ Key list: Q first, marked trusted and unnumbered, then A and T numbered in review order
+  const list = flow.listHtml(T, true);
+  const rows = [...list.matchAll(/<button class="([^"]*)" data-walk="(\d+)"[^>]*><span class="q-n( q-trusted)?"[^>]*>(\d*)/g)].map((m) => [g.nodes[Number(m[2])].name, m[4], m[1].includes("rv-trusted"), !!m[3]]);
+  assert.deepEqual(rows, [["Q", "", true, true], ["A", "1", false, false], ["T", "2", false, false]]);
+  assert.match(list, /Q<span class="muted"> · trusted<\/span>/);
+  assert.match(list.replace(/<[^>]*>/g, ""), /The key declarations, ◆, 1 trusted first, needing no review, then the rest in review order: 2 of 2 approved, 0 not yet reviewed by you\./);
+  assert.doesNotMatch(flow.listHtml(T), /data-walk="${Q}"/, "the full review list holds what needs review alone");
+  // the strip: ◆ approved / K, then +1 trusted
+  const el = () => ({ innerHTML: "", title: "", hidden: false });
+  const strip: Record<string, ReturnType<typeof el>> = { "#lens-title": el(), "#lens-meta": el() };
+  const doc = globalThis as unknown as { document?: unknown };
+  const was = doc.document;
+  doc.document = { querySelector: (sel: string) => strip[sel] ?? null };
+  try {
+    flow.renderStrip(T);
+  } finally {
+    doc.document = was;
+  }
+  assert.match(strip["#lens-meta"].innerHTML.replace(/<[^>]*>/g, ""), /^· ◆2 \/ 2 \+1 trusted · 2 \/ 2 approved/);
+});
+
+test("what can be key for a target: its TCB, trusted or not, and its review set — no trust changes it", () => {
+  // T's statement uses G; G's body the outside X.m; T's proof uses P, which rests on the axiom Ax
+  const g = graph(["T>G", "G=X.m", "T~P", "P~Ax"], { Ax: "axiom" });
+  const d = reviewWith([]);
+  const names = () => {
+    const s = keyableSet(g, d, g.byName.get("T")!);
+    return g.nodes.filter((_, i) => s[i]).map((v) => v.name).sort();
+  };
+  assert.deepEqual(names(), ["Ax", "G", "T", "X.m"], "the TCB, and the axiom its review holds through a proof");
+  record(d, { op: "trust", prefix: "G", by: "Alice", on: true }, "tc", at(5));
+  record(d, { op: "trust", prefix: "@external", by: "Alice", on: true }, "tc", at(6));
+  assert.deepEqual(names(), ["Ax", "G", "T", "X.m"]);
 });
 
 test("support counts by review status, and the key level of progress", () => {
@@ -487,15 +597,14 @@ test("key first: the key declarations in review order, then the rest, as the age
   const root = g.byName.get("T")!;
   const q = reviewQueue(g, d, root, inTargets(g, [root]));
   const kg = keyGraph(g, d, root, q.order);
-  const isKey = new Set(kg.keys);
-  const order = keyFirst(q.order, (i) => isKey.has(i));
+  const order = keyFirst(q.order, kg.keys);
   // bottom-up within each: B, D, T first; then C, A
   assert.deepEqual(order.map((i) => g.nodes[i].name), ["B", "D", "T", "C", "A"]);
 });
 
 // ------------------------------------------------------------------- key(T)
 
-test("key(T) holds the target and its key declarations still in its review", () => {
+test("key(T) holds the target and its key declarations still in its TCB, trusted or not", () => {
   const g = graph(["T>A", "A>B", "T>C", "U>C"]);
   const d = reviewWith(["A", "B"]);
   record(d, { op: "target", name: "U", by: "Bob", on: true }, "tc", at(40));
@@ -510,9 +619,12 @@ test("key(T) holds the target and its key declarations still in its review", () 
   assert.deepEqual(names("key(Nope)"), []);
   assert.deepEqual(names("tcb(T) except key(T)"), ["C"]);
   assert.deepEqual(names("tcb(key(T)) and status(unreviewed)"), ["A", "B", "C", "T"]);
-  // a mark on what is now trusted is left out
+  // a mark on what is now trusted stays (the owner's decision of 2026-10-19); one on what has left
+  // the TCB is left out
   record(d, { op: "trust", prefix: "B", by: "Alice", on: true }, "tc", at(42));
-  assert.deepEqual(names("key(T)"), ["A", "T"]);
+  assert.deepEqual(names("key(T)"), ["A", "B", "T"]);
+  record(d, { op: "key", target: "T", name: "U", by: "Alice", on: true }, "tc", at(43));
+  assert.deepEqual(names("key(T)"), ["A", "B", "T"], "U is not in T's TCB");
   // printed and read back the same; it reads the review; bounded
   assert.equal(printQuery(parseQuery("KEY( T , \"a b\" )")), 'key(T, "a b")');
   assert.equal(readsReview(parseQuery("all except key(T)")), true);
@@ -521,8 +633,8 @@ test("key(T) holds the target and its key declarations still in its review", () 
   // its JSON form, as an agent may send it
   const s = evaluate({ op: "key", of: ["T"] }, { g, review: d });
   assert.equal(s[g.byName.get("A")!], 1);
-  // the key set as the page and the export read it, in review order
+  // the key set as the page and the export read it: the trusted first, then in review order
   const root = g.byName.get("T")!;
   const q = reviewQueue(g, d, root, inTargets(g, [root]));
-  assert.deepEqual(keySet(g, d, root, q.order).map((i) => g.nodes[i].name), ["A", "T"]);
+  assert.deepEqual(keySet(g, d, root, q.order).map((i) => g.nodes[i].name), ["B", "A", "T"]);
 });

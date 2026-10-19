@@ -24,8 +24,8 @@ export type MenuTarget =
       name: string;
       /** outside the project */
       ext: boolean;
-      /** where the review has a focus: whether it is marked key for that target; null where that
-       *  review does not hold it, or it is the target */
+      /** where the review has a focus: whether it is marked key for that target; null where its TCB
+       *  does not hold it (ExportSpec decision 1), or it is the target */
       key: boolean | null;
       /** it is a target */
       target: boolean;

@@ -11,13 +11,13 @@ full). Terms: [Words](words.md). MCP: `review` (`targets`, `tcb`, `keys`, `why`)
 {"targets": [{"name": "Hilbert91", "markedBy": "Bob", "at": "…", "inGraph": true,
    "counts": {"needReview": 16, "approved": 1, "commented": 0, "stale": 0, "unreviewed": 15,
               "advised": 2, "agentComments": 0, "advisedByYou": 2,
-              "key": {"total": 4, "approved": 1, "commented": 0, "stale": 0, "unreviewed": 3}}},
+              "key": {"total": 4, "approved": 1, "commented": 0, "stale": 0, "unreviewed": 3, "trusted": 0}}},
   {"name": "FltRegular.caseI", "markedBy": "Alice's AI", "markedByAgent": true, …}, …]}
 ```
 
 `approved` … `unreviewed`: people's statuses, summing to `needReview`. `advised`, `agentComments`,
 `advisedByYou`: agents' advice on present versions, counted apart. `key`: the second level of
-progress, the target's key declarations (the target among them).
+progress, the key declarations needing review (the target among them), `trusted` the others.
 
 ## `GET /api/agent/tcb?target=&include=&todo=&key=&offset=&limit=`
 
@@ -28,7 +28,7 @@ the end.
 | parameter | effect |
 |---|---|
 | `todo=1` | only members you have not advised on in their present version (to resume a pre-review); with `include=review` only; 400 if you do not say who you are |
-| `key=first`, `key=only` | key declarations first, then the rest; or key declarations alone (the review list's ◆ Key); each in review order |
+| `key=first`, `key=only` | key declarations first, then the rest; or alone (the review list's ◆ Key); trusted keys first (`trusted: true`), then review order |
 | `include` | `review` (default); `trusted`: the trusted members; `all`: those needing review, then the trusted, `position` counting within each |
 
 ```json
@@ -39,12 +39,12 @@ the end.
              {"position": 7, …, "advice": [{"by": "Claude", "verdict": "approve"}], "youAdvised": true}, …]}
 ```
 
-- `position`: place in the whole review order (also with `todo`, `key`); `total`: what the filter
-  keeps. The target comes last. `counts.key` counts the `key: true` members by status.
+- `position`: place in the whole review order (also with `todo`, `key`; a trusted one's, in the
+  trusted list); `total`: what the filter keeps. The target comes last.
 - No "next to review", for people or agents: the review set is read as a list.
-- `axioms`: every axiom beyond the three standard ones the target rests on, through statements,
-  bodies or proofs, as `#print axioms` finds them (`sorryAx` included); each
-  `{name, inGraph, status, usedIn}`, `usedIn` the declarations using it. They need review whatever
+- `axioms`: every non-standard axiom the target rests on, through statements, bodies or proofs,
+  as `#print axioms` finds them (`sorryAx` included); each `{name, inGraph, status, usedIn}`,
+  `usedIn` its users. They need review whatever
   is trusted, come first, count in `needReview`; `why` answers `inTcb: false, inReview: true` and
   `usedIn` for them.
 - `include=trusted`: each member's `trustedBy`, the prefixes covering it (`"@external"`: the whole
@@ -55,8 +55,9 @@ the end.
 
 A target's key declarations top-down: the target, then each a layer below every key declaration
 resting on it (within a layer, later in review order first). Each with `doc`, `restsOn` (the key
-declarations it rests on directly) and its `support` (members it reaches through non-key members)
-by status; plus the key graph's `edges`. `members=0`: support counts only, no names.
+declarations it rests on directly), its `support` (members needing review it reaches through
+non-key members) by status, and `status` or, trusted, `trustedBy`; plus the key graph's `edges`.
+`members=0`: support counts only, no names.
 
 ```json
 {"target": "Hilbert91", "isTarget": true, "order": "top-down: …", "note": "…",
@@ -68,8 +69,8 @@ by status; plus the key graph's `edges`. `members=0`: support counts only, no na
 ```
 
 `viaProof`: non-standard axioms the target rests on through proofs alone (no statement or body
-reaches them), part of its support. `marksOutsideReview`, when any: marks on declarations the review
-no longer holds (trusted since, or out of the TCB), kept, counted for nothing.
+reaches them), part of its support. `marksOutsideTcb`, when any: marks on what left the TCB, kept,
+counted for nothing.
 
 ## `GET /api/agent/why?target=&name=`
 
@@ -112,17 +113,17 @@ expansion emits.
 
 ## Marking targets and keys, and trust (level full)
 
-At level full you do what a person can through the page; below it, 403 saying which level refused.
-Each is checked as the page's requests are and recorded under your name in your own review log,
-`"agent": true`, with your mark in the timeline.
+At level full you do what a person can in the page; below it, 403 naming the level. Each is
+checked as the page's requests are and recorded under your name in your review log, `"agent":
+true`, marked in the timeline.
 
-Names resolve as everywhere (`didYouMean`, folded names). `on` defaults to true. The answer says
-whether anything `changed` (`recorded`: the event written); where it was so already, nothing is.
+Names resolve as everywhere (`didYouMean`, folded names); `on` defaults to true. `changed` says
+whether anything did (`recorded`: the event written); where it was so already, nothing is.
 
 | request | what |
 |---|---|
 | `POST /api/agent/target {name, on}` | mark a project declaration as a target (☆ Target) or take it off. Marking makes no view: `view` (its linked view) is `null` after marking; `next`: the request that puts you on its view, a temporary view of its TCB where it has none. Taken off, its view (if any) stays, unlinked; marked again, nothing relinks it |
-| `POST /api/agent/key {target, name, on}` or `{target, names: […], on}` | mark or unmark key declarations of a target's review; `names` up to 100, each answered on its own (`results`, with `status`). 409 if `target` is not a target; the name must be in its review (`tcb?target=` lists it); the target is always key (400) |
+| `POST /api/agent/key {target, name, on}` or `{target, names: […], on}` | mark or unmark key declarations of a target's TCB, trusted ones too; `names` up to 100, each answered on its own (`results`, with `status`). 409 if `target` is not a target, or the name not in its TCB; the target is always key (400) |
 | `POST /api/agent/trust {prefix, on}` | trust without review, or stop trusting (a default too): a module or namespace, a whole dotted component, or `@external` (everything outside the project). Answers `covers` (`{project, outside}`) and `trusted`, the list after |
 
 ```json

@@ -245,7 +245,7 @@ export class Panel {
       queue === null
         ? `<span class="muted">— reached from the statement, proofs skipped</span>`
         : `<span class="seg mini"><button data-tcb-order="review" class="${inOrder && !keyOnly ? "on" : ""}" title="Bottom-up: what a declaration uses before it">Review order</button>` +
-          `<button data-tcb-order="key" class="${keyOnly ? "on" : ""}" title="The key declarations alone, in review order">◆ Key</button>` +
+          `<button data-tcb-order="key" class="${keyOnly ? "on" : ""}" title="The key declarations alone: the trusted ones first, then in review order">◆ Key</button>` +
           `<button data-tcb-order="kind" class="${inOrder ? "" : "on"}" title="Grouped by kind, by name">By kind</button></span>`;
 
     // a part that folds: its heading, saying what is in it, and its body while open; beside the

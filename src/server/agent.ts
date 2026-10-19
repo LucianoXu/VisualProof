@@ -55,7 +55,7 @@ import { evaluate, parseQuery, printQuery, QueryError } from "../shared/query.ts
 import { advice, adviceOf, covers, current, fresh, keyFor, STANDARD_AXIOMS, statusOf, trustedBy } from "../shared/review.ts";
 import type { Opinion, ReviewData } from "../shared/review.ts";
 import { fileOf, linkOf } from "../shared/library.ts";
-import { keyFirst, keyGraph, statusCounts, topDown } from "../shared/keys.ts";
+import { keyCounts, keyFirst, keyGraph, keyParts, statusCounts, topDown } from "../shared/keys.ts";
 import { authorLine, authorsOf, reviewTraces, viewTraces } from "../shared/doc/authors.ts";
 import { itemsShownOn } from "../shared/noteplace.ts";
 import { buildDoc, DocInputError, docNotes } from "../shared/doc/build.ts";
@@ -659,7 +659,7 @@ export class AgentApi {
     };
   }
 
-  /** `root`'s key graph over its review (shared/keys.ts). */
+  /** `root`'s key graph over its TCB (shared/keys.ts). */
   private keys(v: View, root: number): KeyGraph {
     return keyGraph(v.g, this.world.review.data, root, v.order(root, this.world.review.data).order);
   }
@@ -1781,7 +1781,8 @@ export class AgentApi {
 
   /** How far a target's review has come, people's (as the page counts it) and agents' apart: every
    *  member of its queue, the axioms the graph has no declaration for included; and its key
-   *  declarations alone (ExportSpec decision 4), the target among them. */
+   *  declarations alone (ExportSpec decision 4), those that need review, the target among them, the
+   *  trusted ones counted apart. */
   private counts(v: View, root: number, q: Queue, me: Caller) {
     const d = this.world.review.data;
     const c = { needReview: 0, approved: 0, commented: 0, stale: 0, unreviewed: 0, advised: 0, agentComments: 0, advisedByYou: 0 };
@@ -1799,7 +1800,8 @@ export class AgentApi {
     };
     for (const i of q.order) count(v.g.nodes[i].name, v.g.nodes[i].hash);
     for (const x of offBoard(q)) count(x.name, undefined);
-    return { ...c, key: statusCounts(v.g, d, this.keys(v, root).keys) };
+    // the key declarations counted, without the key graph's walk (every target's, in `targets`)
+    return { ...c, key: keyCounts(v.g, d, keyParts(v.g, d, root, q.order, v.tcb(root))) };
   }
 
   private tcb(a: Ask): Answer {
@@ -1816,8 +1818,8 @@ export class AgentApi {
       return fail(400, `include is review, trusted or all, not ${include}.`, "review (the default): the members that need review, in review order; trusted: the members trusted without review; all: both, review's first.");
     const keyParam = a.query.get("key")?.trim() || null;
     if (keyParam !== null && keyParam !== "first" && keyParam !== "only")
-      return fail(400, `key is first or only, not ${keyParam}.`, "first: the key declarations first, then the rest, each in review order; only: the key declarations alone.");
-    if (keyParam && include !== "review") return fail(400, "key orders what needs review; the trusted members are not reviewed.", "Leave key out with include=trusted or all.");
+      return fail(400, `key is first or only, not ${keyParam}.`, "first: the key declarations first (the trusted ones first), then the rest in review order; only: the key declarations alone.");
+    if (keyParam && include !== "review") return fail(400, "key lists the key declarations with what needs review, the trusted ones among them, marked trusted.", "Leave include out with key.");
     const kg = this.keys(v, root);
     const isKey = new Set(kg.keys);
     const todo = flag(a.query.get("todo"));
@@ -1842,11 +1844,15 @@ export class AgentApi {
       if (!g.isExt(r.i)) ownTrusted++;
     }
     type Row = { review: true; i: number; k: number } | { review: false; i: number; k: number; by: string[] };
-    // the key declarations first (or alone): positions are still those of the review order
-    const listed = keyParam === "only" ? order.filter((i) => isKey.has(i)) : keyParam === "first" ? keyFirst(order, (i) => isKey.has(i)) : order;
+    // the key declarations first (or alone), the trusted ones among them (ExportSpec decision 1):
+    // positions are still those of the review order, a trusted one's that of the trusted list
+    const listed = keyParam === "only" ? kg.keys : keyParam === "first" ? keyFirst(order, kg.keys) : order;
     const at = new Map(order.map((i, k) => [i, k]));
+    const trustedAt = new Map(trustedRows.map((r, k) => [r.i, k]));
+    const row = (i: number): Row => (at.has(i) ? { review: true, i, k: at.get(i)! } : { review: false, i, k: trustedAt.get(i) ?? 0, by: this.trust(v, i).trustedBy });
     const rows: Row[] = [
-      ...(include === "trusted" ? [] : listed.map((i) => ({ review: true as const, i, k: at.get(i)! })).filter((r) => !todo || !this.advised(v, r.i, a.caller))),
+      // a trusted key declaration needs no review: not among what todo=1 leaves to advise on
+      ...(include === "trusted" ? [] : listed.map(row).filter((r) => !todo || (r.review && !this.advised(v, r.i, a.caller)))),
       ...(include === "review" ? [] : trustedRows.map((r, k) => ({ review: false as const, i: r.i, k, by: r.by }))),
     ];
     const offset = clampInt(a.query.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
@@ -1858,7 +1864,11 @@ export class AgentApi {
       order:
         include === "trusted"
           ? "trusted: the project's own first, then by the prefix that trusts them, then by name"
-          : (keyParam === "only" ? "the key declarations alone, in review order; " : keyParam === "first" ? "the key declarations first, then the rest, each in review order; " : "") +
+          : (keyParam === "only"
+              ? "the key declarations alone, the trusted ones first (by the trusted list's position), then in review order; "
+              : keyParam === "first"
+                ? "the key declarations first, the trusted ones first (by the trusted list's position), then the rest, each in review order; "
+                : "") +
             "review: the target's review set — the non-standard axioms it rests on first; then bottom-up: what a declaration uses comes before it; declarations that use each other together; then what more targets rest on; then by name" +
             (include === "all" ? ". Then the trusted members: the project's own first, then by the prefix that trusts them, then by name" : ""),
       counts: this.counts(v, root, q, a.caller),
@@ -1881,7 +1891,7 @@ export class AgentApi {
       next: offset + limit < rows.length ? offset + limit : null,
       members: page.map((r) => {
         const n = g.nodes[r.i];
-        if (!r.review) return { position: r.k + 1, ...this.brief(v, r.i), trusted: true, trustedBy: r.by };
+        if (!r.review) return { position: r.k + 1, ...this.brief(v, r.i), ...(isKey.has(r.i) ? { key: true } : {}), trusted: true, trustedBy: r.by };
         return {
           position: r.k + 1,
           ...this.brief(v, r.i),
@@ -1898,7 +1908,8 @@ export class AgentApi {
 
   /** A target's key declarations (ExportSpec decisions 1 and 3), top-down: each with what it rests
    *  on beyond itself — its support, by review status, and the key declarations it rests on — and
-   *  the key graph's edges. */
+   *  the key graph's edges. A trusted one (the owner's decision of 2026-10-19) says what trusts it,
+   *  and has no status: it needs no review. */
   private keysGet(a: Ask): Answer {
     const v = this.graph();
     if (!(v instanceof View)) return v;
@@ -1916,16 +1927,16 @@ export class AgentApi {
     for (const [x, y] of kg.edges) rests[x].push(y);
     const top = topDown(kg);
     const rank = new Map(top.map((j, k) => [j, k]));
-    // marks on what the review no longer holds (trusted since, or gone from the TCB): kept, counted
-    // for nothing until it is back
+    // marks on what the TCB no longer holds: kept, counted for nothing until it is back
     const inKeys = new Set(kg.keys.map((i) => g.nodes[i].name));
     const outside = marks ? Object.keys(marks).filter((x) => !inKeys.has(x)).sort() : [];
+    const trusted = new Set(kg.trusted);
     return ok({
       target,
       isTarget: Object.hasOwn(d.targets, target),
       order: "top-down: the target, then each key declaration a layer below every key declaration that rests on it; within a layer, later in review order first",
-      note: "A member that is not key is supported by a key declaration when a chain of statement and body references leads to it from there through members that are not key; the key graph has an edge from one key declaration to another reached that way. A non-standard axiom the target rests on through proofs alone is the target's support (viaProof).",
-      counts: { key: statusCounts(g, d, kg.keys), all: statusCounts(g, d, q.order), offBoardAxioms: offBoard(q).length },
+      note: "A member that is not key is supported by a key declaration when a chain of statement and body references leads to it from there through members of the TCB that are not key, trusted ones too; a support counts the members that need review. The key graph has an edge from one key declaration to another reached that way. A non-standard axiom the target rests on through proofs alone is the target's support (viaProof). A trusted key declaration needs no review: counts.key counts the others, its trusted apart.",
+      counts: { key: keyCounts(g, d, kg), all: statusCounts(g, d, q.order), offBoardAxioms: offBoard(q).length },
       keys: top.map((j) => {
         const i = kg.keys[j];
         const n = g.nodes[i];
@@ -1933,7 +1944,7 @@ export class AgentApi {
         return {
           ...this.brief(v, i),
           ...(i === root ? { target: true } : { markedBy: mark?.by ?? null, ...(mark?.agent ? { markedByAgent: true } : {}), markedAt: mark?.at ?? null }),
-          status: statusOf(d, n.name, n.hash),
+          ...(trusted.has(i) ? { trusted: true, trustedBy: this.trust(v, i).trustedBy } : { status: statusOf(d, n.name, n.hash) }),
           doc: n.doc ?? null,
           restsOn: rests[j].sort((p, r) => rank.get(p)! - rank.get(r)!).map(name),
           support: { ...statusCounts(g, d, kg.support[j]), ...(members ? { members: kg.support[j].map((m) => g.nodes[m].name) } : {}) },
@@ -1941,7 +1952,7 @@ export class AgentApi {
       }),
       edges: kg.edges.map(([x, y]) => [name(x), name(y)]),
       viaProof: kg.viaProof.map((i) => g.nodes[i].name),
-      ...(outside.length ? { marksOutsideReview: outside } : {}),
+      ...(outside.length ? { marksOutsideTcb: outside } : {}),
     });
   }
 
@@ -2415,7 +2426,7 @@ export class AgentApi {
         if (typeof i !== "number") return i;
         name = v.g.nodes[i].name;
       }
-      return this.record(a.caller, { op: "key", target, name, on }, (s) => (s === 409 ? `A key declaration is one of what its target's review holds: GET /api/agent/tcb?target=${target} lists them.` : null));
+      return this.record(a.caller, { op: "key", target, name, on }, (s) => (s === 409 ? `A key declaration is one of its target's TCB, trusted or not: GET /api/agent/tcb?target=${target}&include=all lists it.` : null));
     };
     if (b.names === undefined) return one(b.name);
     if (!Array.isArray(b.names) || !b.names.length || b.names.length > MAX_OPINIONS)
@@ -2925,19 +2936,19 @@ export class AgentApi {
       {
         method: "GET", path: "/api/agent/targets", brief: "the targets, and how far each review has come", about: "The targets people review, each with how far its review has come.",
         params: {},
-        returns: "{targets: [{name, markedBy, markedByAgent?, at, inGraph, counts: {needReview, approved, commented, stale, unreviewed, advised, agentComments, advisedByYou, key: {total, approved, commented, stale, unreviewed}}}]}",
+        returns: "{targets: [{name, markedBy, markedByAgent?, at, inGraph, counts: {needReview, approved, commented, stale, unreviewed, advised, agentComments, advisedByYou, key: {total, approved, commented, stale, unreviewed, trusted}}}]}",
         run: (a) => this.targets(a),
       },
       {
         method: "GET", path: "/api/agent/tcb", brief: "a target's review set, in review order", about: "What a target's review holds, its review set: its TCB without what is trusted (an untrusted outside declaration included), and every non-standard axiom it rests on, through proofs too — in review order (the axioms first, then bottom-up), each with people's status, the agents' advice on its present version, and whether you advised on it; or (include) the members trusted without review, each with what trusts it. Paged.",
-        params: { target: name, include: "review (default) | trusted: the trusted members, each with the prefix that covers it or \"standard axiom\" | all: both, review's first", todo: "1: only those you have not advised on (present version); with include=review", key: "optional, with include=review: first — the key declarations first, then the rest, each in review order; only — the key declarations alone", offset: "default 0", limit: "default 50, at most 500" },
-        returns: "{target, isTarget, order, counts: {needReview, approved, commented, stale, unreviewed, advised, agentComments, advisedByYou, key: {total, approved, commented, stale, unreviewed}}, trustedNotCounted, axioms: [{name, inGraph, status, usedIn}] (counted in counts; one not inGraph is advised on by its name), trusted?: {project, external, byPrefix}, include, offset, limit, total, next, members: [{position, name, kind, module, external?, key?: true, status, advice: [{by, verdict}], youAdvised} | {position, name, kind, module, external?, trusted: true, trustedBy}]}",
+        params: { target: name, include: "review (default) | trusted: the trusted members, each with the prefix that covers it or \"standard axiom\" | all: both, review's first", todo: "1: only those you have not advised on (present version); with include=review", key: "optional, with include=review: first — the key declarations first (the trusted ones first, marked trusted), then the rest in review order; only — the key declarations alone", offset: "default 0", limit: "default 50, at most 500" },
+        returns: "{target, isTarget, order, counts: {needReview, approved, commented, stale, unreviewed, advised, agentComments, advisedByYou, key: {total, approved, commented, stale, unreviewed, trusted}}, trustedNotCounted, axioms: [{name, inGraph, status, usedIn}] (counted in counts; one not inGraph is advised on by its name), trusted?: {project, external, byPrefix}, include, offset, limit, total, next, members: [{position, name, kind, module, external?, key?: true, status, advice: [{by, verdict}], youAdvised} | {position, name, kind, module, external?, key?: true, trusted: true, trustedBy}]}",
         run: (a) => this.tcb(a),
       },
       {
-        method: "GET", path: "/api/agent/keys", brief: "its key declarations, and what each rests on", about: "A target's key declarations (marked by people, or by agents at level full; the target is always one), top-down, each with its docstring, what it rests on beyond itself — its support, the members of the review it reaches through members that are not key, by review status — and the key declarations it rests on; and the key graph's edges.",
+        method: "GET", path: "/api/agent/keys", brief: "its key declarations, and what each rests on", about: "A target's key declarations (members of its TCB, trusted ones too, marked by people, or by agents at level full; the target is always one), top-down, each with its docstring, what it rests on beyond itself — its support, the members of the review it reaches through members that are not key, by review status — and the key declarations it rests on; and the key graph's edges.",
         params: { target: name, members: "1 (default): list each key declaration's support by name; 0: counts only" },
-        returns: "{target, isTarget, order, note, counts: {key, all: {total, approved, commented, stale, unreviewed}, offBoardAxioms}, keys: [{name, kind, module, external?, target? | markedBy, markedByAgent?, markedAt, status, doc, restsOn: [names], support: {total, approved, commented, stale, unreviewed, members?: [names]}}], edges: [[from, to]], viaProof: [names], marksOutsideReview?}",
+        returns: "{target, isTarget, order, note, counts: {key, all: {total, approved, commented, stale, unreviewed}, offBoardAxioms}, keys: [{name, kind, module, external?, target? | markedBy, markedByAgent?, markedAt, status | trusted: true, trustedBy, doc, restsOn: [names], support: {total, approved, commented, stale, unreviewed, members?: [names]}}], edges: [[from, to]], viaProof: [names], marksOutsideTcb?}",
         run: (a) => this.keysGet(a),
       },
       {
@@ -3037,8 +3048,8 @@ export class AgentApi {
         run: (a) => this.targetPost(a),
       },
       {
-        method: "POST", path: "/api/agent/key", needs: "full", about: `Mark declarations of a target's review as key for it — what matters for reading it: the central definitions, the main theorem (ExportSpec decision 1) — or unmark them. One (name) or up to ${MAX_OPINIONS} at once (names), each answered on its own. The target itself is always key. Recorded in your review log, marked as an agent's.`,
-        params: { target: "a target's full name", name: "a declaration of its review (GET /api/agent/tcb?target=… lists them) — or —", names: `[full names], at most ${MAX_OPINIONS}`, on: "true (default): mark; false: unmark" },
+        method: "POST", path: "/api/agent/key", needs: "full", about: `Mark declarations of a target's TCB, trusted ones too, as key for it — what matters for reading it: the central definitions, the main theorem (ExportSpec decision 1) — or unmark them. One (name) or up to ${MAX_OPINIONS} at once (names), each answered on its own. The target itself is always key. Recorded in your review log, marked as an agent's.`,
+        params: { target: "a target's full name", name: "a declaration of its TCB (GET /api/agent/tcb?target=…&include=all lists them) — or —", names: `[full names], at most ${MAX_OPINIONS}`, on: "true (default): mark; false: unmark" },
         returns: "{ok, changed, recorded?} for one; {ok, target, on, changed, unchanged, refused, results: [{index, name, status, changed?, recorded? | error, hint, didYouMean?}]} for names",
         run: (a) => this.keyPost(a),
       },

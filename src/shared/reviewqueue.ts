@@ -19,7 +19,7 @@ import { current, fresh, STANDARD_AXIOMS, statusOf, trusted } from "./review.ts"
 import type { Progress, ReviewData } from "./review.ts";
 import { ALL_SITES } from "./viewgraph.ts";
 import type { Graph } from "./viewgraph.ts";
-import { evaluate, reviewScope } from "./query.ts";
+import { evaluate, keyScope, reviewScope } from "./query.ts";
 
 /** The references a TCB follows: in statements and bodies, never inside a proof. */
 export const TCB_SITES = SITE_STMT | SITE_BODY;
@@ -62,6 +62,12 @@ export function trustSplit(g: Graph, d: ReviewData, s: Uint8Array, skip = -1): {
 /** What `root`'s review holds, its review set (`reviewScope`), in the graph's numbering. */
 export function reviewSet(g: Graph, d: ReviewData, root: number): Uint8Array {
   return evaluate(reviewScope(g.nodes[root].name), { g, review: d });
+}
+
+/** What can be key for `root` (`keyScope`, ExportSpec decision 1): its TCB, trusted members
+ *  included, and its review set, in the graph's numbering. No trust changes it. */
+export function keyableSet(g: Graph, d: ReviewData, root: number): Uint8Array {
+  return evaluate(keyScope(g.nodes[root].name), { g, review: d });
 }
 
 /** A non-standard axiom a target rests on. */

@@ -5,7 +5,7 @@
 // decision of 2026-10-11). The review is the same on every board, so the list is too. It folds away,
 // as the filter does; which of them are folded is the reader's own (web/src/store.ts).
 
-import type { StatusCounts } from "../../shared/keys.ts";
+import type { KeyCounts } from "../../shared/keys.ts";
 import type { Progress } from "../../shared/review.ts";
 import type { ViewSummary } from "../../shared/views.ts";
 import { escapeHtml } from "./highlight.ts";
@@ -21,7 +21,7 @@ export interface TargetListHooks {
   /** how far a target's review has come, and that of its key declarations; null when it is not in
    *  the graph */
   progress(target: string): Progress | null;
-  keyProgress(target: string): StatusCounts | null;
+  keyProgress(target: string): KeyCounts | null;
   /** open a target's view (`id`), the target selected there; null for a target with no view, which
    *  is given a view nobody keeps of its TCB */
   open(id: string | null, target: string): void;
@@ -98,7 +98,7 @@ export class TargetList {
                 (p
                   ? // with no view, that is said where the bar is, so that the name keeps its room
                     (v ? `<span class="rv-bar"><i class="ok" style="width:${pct(p.approved)}%"></i><i class="commented" style="width:${pct(p.commented)}%"></i><i class="stale" style="width:${pct(p.stale)}%"></i></span>` : `<span class="tg-noview">no view</span>`) +
-                    (k ? `<span class="tg-key" title="${escapeHtml(`Key declarations: ${k.approved} of ${k.total} approved, the target among them`)}"><span class="key-mark">◆</span>${k.approved}/${k.total}</span>` : "") +
+                    (k ? `<span class="tg-key" title="${escapeHtml(`Key declarations that need review: ${k.approved} of ${k.total} approved, the target among them${k.trusted ? `; ${k.trusted} more trusted, in need of no review` : ""}`)}"><span class="key-mark">◆</span>${k.approved}/${k.total}</span>` : "") +
                     `<span class="tg-n" title="${escapeHtml(`All it rests on: ${p.approved} of ${p.total} approved`)}">${p.approved}/${p.total}</span>`
                   : `<span class="muted tg-gone">not in the graph now${v ? "" : ", no view"}</span>`) +
                 `</button>`
