@@ -13,8 +13,9 @@ into the latest release only.
   the usage pass elaborates each module again, which runs the project's macros and elaborators.
   Serve only a project you would build yourself.
 - **Whoever can push to a branch it follows.** `visualproof serve <git URL>` builds each new commit
-  of that branch itself (SPEC/DeploySpec.md): `lake exe cache get` where the project is on Mathlib,
-  then `lake build`. **Whoever can push to that branch runs code on this machine**, with the
+  of that branch itself (SPEC/DeploySpec.md): `lake exe cache get` where the project is on Mathlib
+  (with `--mathlib-cache own`, then `lake exe cache clean` in the deployment's own cache, never the
+  user's), then `lake build`. **Whoever can push to that branch runs code on this machine**, with the
   server's user's rights: the lakefile, the dependencies' lakefiles, Mathlib's cache program, and
   whatever elaboration runs (macros, elaborators, `#eval`, `initialize`). That code can read and
   write what the server's user can — the site's folder with its tokens and links, the access key's

@@ -486,6 +486,24 @@ export function onMathlib(root: string): boolean {
   }
 }
 
+/** Whether the Mathlib checked out in the project reads `MATHLIB_CACHE_DIR` (since February 2025,
+ *  #21480; every supported toolchain's does): its cache program's source says so (`Cache/IO.lean`,
+ *  `CACHEDIR`). One before keeps its cache by `XDG_CACHE_HOME` alone: the user's. */
+export function mathlibReadsCacheDir(root: string): boolean {
+  let packages = join(".lake", "packages");
+  try {
+    const m = JSON.parse(readFileSync(join(root, "lake-manifest.json"), "utf8")) as { packagesDir?: unknown };
+    if (typeof m.packagesDir === "string" && m.packagesDir) packages = m.packagesDir;
+  } catch {
+    // Lake's default
+  }
+  try {
+    return readFileSync(join(root, packages, "mathlib", "Cache", "IO.lean"), "utf8").includes('"MATHLIB_CACHE_DIR"');
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------- a build's log
 
 /** A build's log: everything its programs wrote, in `logs/<commit>.log` of the deployment (a build
@@ -898,7 +916,10 @@ export class Deployment {
           // the deployment's own cache, beside the clone in its folder (DeploySpec decision 2)
           log.say(`$ ${this.o.mathlibCache === "own" ? `MATHLIB_CACHE_DIR=${relative(this.folder.checkout, this.folder.mathlib)} ` : ""}lake exe cache get`);
           const c = await run(lake, ["exe", "cache", "get"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
-          if (c.code === 0) break;
+          if (c.code === 0) {
+            await this.cleanMathlibCache(lake, log);
+            break;
+          }
           // Lake builds what the cache did not give
           log.say(`Mathlib's cache could not be had (${c.error ?? (c.timedOut ? "it took too long" : `exit ${c.code}`)})${n === 1 ? ": trying again" : ": lake build builds what it lacks"}`);
         }
@@ -943,6 +964,22 @@ export class Deployment {
       log.close();
       this.log = null;
     }
+  }
+
+  /** The deployment's own Mathlib cache keeps the version checked out alone (DeploySpec decision 2,
+   *  the owner's decision of 2026-10-19): after each `lake exe cache get` that succeeded, `lake exe
+   *  cache clean` deletes the files (`<hash>.ltar`) the Mathlib checked out does not link, which
+   *  are what `get` fetches. Never the user's cache: only where the deployment has its own, and the
+   *  Mathlib checked out reads it (one before February 2025 would clean the user's). */
+  private async cleanMathlibCache(lake: string, log: BuildLog): Promise<void> {
+    if (this.o.mathlibCache !== "own" || this.lakeEnv.MATHLIB_CACHE_DIR !== this.folder.mathlib) return;
+    if (!mathlibReadsCacheDir(this.folder.checkout)) {
+      log.say("Mathlib's cache is not cleaned: this Mathlib does not read MATHLIB_CACHE_DIR (it is older than February 2025), and keeps its cache with the user's");
+      return;
+    }
+    log.say(`$ MATHLIB_CACHE_DIR=${relative(this.folder.checkout, this.folder.mathlib)} lake exe cache clean`);
+    const k = await run(lake, ["exe", "cache", "clean"], { cwd: this.folder.checkout, env: this.lakeEnv, timeoutMs: CACHE_MS, onText: (t) => log.text(t) });
+    if (k.code !== 0) log.say(`Mathlib's cache could not be cleaned (${k.error ?? (k.timedOut ? "it took too long" : `exit ${k.code}`)}): what it holds of other versions stays until the next build`);
   }
 
   /** Whether the clone has `commit`. */

@@ -54,13 +54,26 @@ otherwise).
      (`~/.cache/mathlib`, or wherever the server's environment says: `MATHLIB_CACHE_DIR`,
      `XDG_CACHE_HOME`), shared, so that a deployment fetches only what they have not.
      `--mathlib-cache own` gives the deployment its own, in its folder of the cache
-     (`<cache>/deploy/<repo>-<hash>/mathlib-cache/`), so that removing that folder removes it too:
-     about 0.45 GB per version of Mathlib (8,684 files for Mathlib of August 2026), each bump of
-     Mathlib on the branch fetching nearly the whole again (a file's hash changes with its
-     imports'), the versions before kept until the folder is removed; and
-     apart from the user's builds (before Mathlib of August 2026, #42752, two `lake exe cache get`
-     at once in one folder could leave a corrupt file there). What the cache's files unpack into,
-     the build of Mathlib in the clone's `.lake` (about 8 GB), is there either way.
+     (`<cache>/deploy/<repo>-<hash>/mathlib-cache/`), so that removing that folder removes it too,
+     and apart from the user's builds (before Mathlib of August 2026, #42752, two `lake exe cache
+     get` at once in one folder could leave a corrupt file there). What the cache's files unpack
+     into, the build of Mathlib in the clone's `.lake` (about 8 GB), is there either way.
+   - **The deployment's own Mathlib cache keeps one version** (the owner's decision of 2026-10-19):
+     after each `lake exe cache get` that succeeded, `lake exe cache clean`, so that it holds the
+     version of Mathlib checked out alone, about 0.45 GB (8,684 files for Mathlib of August 2026),
+     and a bump of Mathlib on the branch, which fetches nearly the whole again (a file's hash
+     changes with its imports'), leaves the version before deleted rather than kept. It never runs
+     on the shared cache.
+     - *Proposed*: what `clean` deletes, as Mathlib's cache program says it (`Cache/Main.lean`,
+       `cleanCache` in `Cache/IO.lean`; the same in the Mathlib of February, August and September
+       2026, Lean v4.28 to v4.34, read): every `.ltar` of the cache folder that the hash map of the
+       Mathlib checked out (from `Mathlib.lean`, its dependencies with it) does not name — which is
+       what `get` fetches, so nothing the checked-out Mathlib needs — and nothing else. It runs only
+       with `--mathlib-cache own`, and only where the Mathlib checked out reads `MATHLIB_CACHE_DIR`
+       (its `Cache/IO.lean` says so: since February 2025): one before keeps its cache with the
+       user's, and would clean theirs. A `clean` that fails is said in the build's log, and the next
+       build's cleans. Measured: a bump from Mathlib of August 2026 (8,684 files, 440 MB) to
+       September's (8,908, 449 MB) left 8,908 files, none of August's (17,592 without it).
      - *Proposed*: `--mathlib-cache shared|own`, a word as `--updates` and `--agents` take, rather
        than a folder: the deployment's own cache is in its folder of the cache, where nothing else
        writes (a folder of one's own choosing is `MATHLIB_CACHE_DIR` in the server's environment,
@@ -280,8 +293,9 @@ otherwise).
   …`, `$ lake build`); a build done again writes it again; the newest 30 kept. `0600`.
 - `<repo>-<hash>/.lock`: the server that follows the branch with this cache.
 - `<repo>-<hash>/mathlib-cache/`: Mathlib's cache, with `--mathlib-cache own` (decision 2): the
-  files `lake exe cache get` fetched (`<hash>.ltar`), of every version of Mathlib the branch built
-  since the folder was made.
+  files `lake exe cache get` fetched (`<hash>.ltar`) for the version of Mathlib the last build got,
+  `lake exe cache clean` deleting the others after each `get` (`cleanMathlibCache`, where
+  `mathlibReadsCacheDir`).
 
 ### What pages and agents are told (shared/deploy.ts)
 

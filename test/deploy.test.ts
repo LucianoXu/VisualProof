@@ -11,7 +11,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { askRemote, branchProblem, branchToFollow, buildEnv, BuildLog, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, limitInWords, lockDeployment, noPrompts, gitEnv, parseBuildHours, parseRemote, recordedDefault, sharedMathlibCache } from "../src/server/deploy.ts";
+import { askRemote, branchProblem, branchToFollow, buildEnv, BuildLog, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, limitInWords, lockDeployment, mathlibReadsCacheDir, noPrompts, gitEnv, parseBuildHours, parseRemote, recordedDefault, sharedMathlibCache } from "../src/server/deploy.ts";
 import type { DeploymentOptions, Remote } from "../src/server/deploy.ts";
 import { openProject } from "../src/server/project.ts";
 import { stopChildren } from "../src/server/children.ts";
@@ -55,7 +55,9 @@ function repo(name = "remote") {
   return { dir, url: `file://${bare}`, commit };
 }
 
-/** The test's Lake: it says what it was asked, and Mathlib's cache where it was asked to keep it; a
+/** The test's Lake: it says what it was asked, and Mathlib's cache where it was asked to keep it; its
+ *  `cache get` fails where the commit has a NO_CACHE file, and checks Mathlib out as one that reads
+ *  `MATHLIB_CACHE_DIR` unless it has an OLD_MATHLIB file; its `cache clean` says where it cleans. A
  *  build fails at once, writing nothing, where BUILD says `broken` (a lakefile that does not
  *  elaborate); else it waits while the commit has a SLOW file until GO is there (a minute at most),
  *  writes an `.olean`, and fails where BUILD says so, naming its file by its path on this machine. */
@@ -68,7 +70,13 @@ writeFileSync(
   LAKE,
   `#!/bin/sh
 echo "lake $*" >> "${LAKE_LOG}"
-if [ "$1" = "exe" ]; then echo "cache: 3 files in \${MATHLIB_CACHE_DIR:-the shared cache}"; exit 0; fi
+if [ "$1" = "exe" ] && [ "$3" = "clean" ]; then echo "cache clean in \${MATHLIB_CACHE_DIR:-the shared cache}"; exit 0; fi
+if [ "$1" = "exe" ] && [ -f NO_CACHE ]; then echo "cache: the server cannot be reached" >&2; exit 1; fi
+if [ "$1" = "exe" ]; then
+  mkdir -p .lake/packages/mathlib/Cache
+  if [ -f OLD_MATHLIB ]; then echo 'IO.getEnv "XDG_CACHE_HOME"'; else echo 'IO.getEnv "MATHLIB_CACHE_DIR"'; fi > .lake/packages/mathlib/Cache/IO.lean
+  echo "cache: 3 files in \${MATHLIB_CACHE_DIR:-the shared cache}"; exit 0
+fi
 if grep -q broken BUILD 2>/dev/null; then echo "error: lakefile.toml: broken" >&2; exit 1; fi
 n=0
 if [ -f SLOW ]; then while [ ! -f "${GO}" ] && [ $n -lt 1200 ]; do sleep 0.05; n=$((n+1)); done; fi
@@ -618,6 +626,9 @@ test("Mathlib's cache: the deployment's own in its folder with --mathlib-cache o
   assert.match(said, /^\$ MATHLIB_CACHE_DIR=\.\.\/\.\.\/mathlib-cache lake exe cache get$/m);
   assert.ok(said.includes(`cache: 3 files in ${own.folder.mathlib}\n`), said);
   assert.equal(join(own.folder.checkout, "..", "..", "mathlib-cache"), own.folder.mathlib);
+  // then cleaned, keeping the version checked out alone (the owner's decision of 2026-10-19)
+  assert.match(said, /^\$ MATHLIB_CACHE_DIR=\.\.\/\.\.\/mathlib-cache lake exe cache get\ncache: .*\n\$ MATHLIB_CACHE_DIR=\.\.\/\.\.\/mathlib-cache lake exe cache clean\ncache clean in /m);
+  assert.ok(said.includes(`cache clean in ${own.folder.mathlib}\n`), said);
   // the default: the user's, as the server's environment says
   const r2 = repo();
   const b = r2.commit({ ...PROJECT, "lake-manifest.json": manifest });
@@ -627,6 +638,44 @@ test("Mathlib's cache: the deployment's own in its folder with --mathlib-cache o
   const log = readFileSync(join(shared.folder.logs, `${b}.log`), "utf8");
   assert.match(log, /^\$ lake exe cache get$/m);
   assert.ok(log.includes(`cache: 3 files in ${process.env.MATHLIB_CACHE_DIR || "the shared cache"}\n`), log);
+  // the user's is never cleaned
+  assert.doesNotMatch(log, /cache clean/);
+});
+
+test("the deployment's own Mathlib cache is cleaned only after a cache got, and only by a Mathlib that reads it", async () => {
+  const manifest = JSON.stringify({ version: "1.1.0", packages: [{ name: "mathlib", type: "git" }] });
+  // a Mathlib before February 2025 keeps its cache with the user's: cleaning it would clean theirs
+  const r = repo();
+  const a = r.commit({ ...PROJECT, "lake-manifest.json": manifest, OLD_MATHLIB: "" });
+  const old = await deployment(r, { mathlibCache: "own" });
+  await old.d.poll();
+  await old.d.settled();
+  assert.equal(old.d.status(true).built, a);
+  const said = readFileSync(join(old.folder.logs, `${a}.log`), "utf8");
+  assert.doesNotMatch(said, /\$ .*lake exe cache clean/);
+  assert.match(said, /not cleaned: this Mathlib does not read MATHLIB_CACHE_DIR/);
+  // a cache that could not be had is not cleaned
+  const b = r.commit({ OLD_MATHLIB: null, NO_CACHE: "" });
+  await old.d.poll();
+  await old.d.settled();
+  const failed = readFileSync(join(old.folder.logs, `${b}.log`), "utf8");
+  assert.equal(failed.match(/lake exe cache get/g)?.length, 2);
+  assert.doesNotMatch(failed, /cache clean/);
+  assert.equal(old.d.status(true).built, b);
+});
+
+test("whether the Mathlib checked out reads MATHLIB_CACHE_DIR: its cache program says so, where the manifest puts the packages", () => {
+  const dir = join(ROOT, "reads-cache-dir");
+  mkdirSync(join(dir, "deps", "mathlib", "Cache"), { recursive: true });
+  writeFileSync(join(dir, "lake-manifest.json"), JSON.stringify({ packagesDir: "deps", packages: [] }));
+  assert.equal(mathlibReadsCacheDir(dir), false);
+  writeFileSync(join(dir, "deps", "mathlib", "Cache", "IO.lean"), 'initialize CACHEDIR : FilePath ← do\n  match ← IO.getEnv "MATHLIB_CACHE_DIR" with');
+  assert.equal(mathlibReadsCacheDir(dir), true);
+  writeFileSync(join(dir, "deps", "mathlib", "Cache", "IO.lean"), 'match ← IO.getEnv "XDG_CACHE_HOME" with');
+  assert.equal(mathlibReadsCacheDir(dir), false);
+  // no manifest: Lake's own place
+  rmSync(join(dir, "lake-manifest.json"));
+  assert.equal(mathlibReadsCacheDir(dir), false);
 });
 
 test("a commit that changes the toolchain: the project and Lean follow it", async () => {

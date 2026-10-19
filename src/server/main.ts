@@ -161,8 +161,8 @@ function usage(code = 2): never {
   --mathlib-cache  where \`lake exe cache get\` keeps Mathlib's files: shared (the default) — the
            user's, as their own builds' (~/.cache/mathlib, or MATHLIB_CACHE_DIR), so that a build
            fetches only what they have not; own — the deployment's, in its folder of the cache
-           (deploy/<repo>-<hash>/mathlib-cache/): about 0.45 GB per version of Mathlib the branch
-           builds, kept until that folder is removed
+           (deploy/<repo>-<hash>/mathlib-cache/): about 0.45 GB, the version of Mathlib checked
+           out alone (\`lake exe cache clean\` after each fetch), removed with that folder
 
   --root   what to read: a library of the lakefile (the modules Lake builds of it) or a module;
            repeatable. By default the lakefile's default targets.

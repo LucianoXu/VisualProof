@@ -302,12 +302,14 @@ to a team. It needs git, besides elan.
   default: the user's, as their own builds (`~/.cache/mathlib`, or `MATHLIB_CACHE_DIR` in the
   server's environment), so that a deployment fetches only what they have not. `own`: the
   deployment's, in its folder of the cache, `<cache root>/deploy/<repo>-<hash>/mathlib-cache/`,
-  apart from the user's builds. It costs about 0.45 GB per version of Mathlib the branch builds
-  (8,684 files for Mathlib of August 2026: a small project's first build on it, Mathlib cloned
-  and its cache fetched whole, took 75 s on a fast connection); a bump of Mathlib fetches
-  nearly all of it again, and the versions before stay until the folder is removed: remove
-  `mathlib-cache/` (the next build fetches what it needs again) or the deployment's whole folder,
-  the clone with it. Either way, Mathlib's build unpacked in the clone's `.lake` takes about 8 GB.
+  apart from the user's builds. It holds one version of Mathlib, about 0.45 GB (8,684 files for
+  Mathlib of August 2026: a small project's first build on it, Mathlib cloned and its cache
+  fetched whole, took 75 s on a fast connection): after each `lake exe cache get`, `lake exe cache
+  clean` deletes what the version checked out does not use, so that a bump of Mathlib, which
+  fetches nearly all of it again, leaves the version before deleted (the user's cache is never
+  cleaned). Removing `mathlib-cache/` frees it (the next build fetches what it needs again), the
+  deployment's whole folder the clone with it. Either way, Mathlib's build unpacked in the clone's
+  `.lake` takes about 8 GB.
 - **Meanwhile the board keeps answering**, showing the last build: the pill says the build's step
   (`Fetching a1b2c3d`, `Mathlib's cache · a1b2c3d`, `Building 12 / 40 · …`), and once it is read,
   the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
