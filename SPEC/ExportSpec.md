@@ -6,20 +6,30 @@ document is its Key view, `key(T)`, exported.
 
 ## Key declarations
 
-1. **A key declaration of a target** is a member of its review set that matters for understanding the
-   formalization (the central definitions, the structures they are built on, the main theorem).
-   People and agents at level full (AgentSpec decision 9) mark them **per target**; a declaration can
-   be key for several targets; the target itself is always key. Marks are events of the review's logs
-   (ReviewSpec decision 5) under the marker's name, like targets.
+1. **A key declaration of a target** is a member of its TCB that matters for understanding the
+   formalization (the central definitions, the structures they are built on, the main theorem),
+   **trusted members included**, in the project or outside it (the owner's decision of 2026-10-19):
+   trust says a declaration needs no review, key that it is needed to read the target, and the two
+   are independent. A non-standard axiom its review holds through proofs alone (ReviewSpec decision
+   3) may be key too. People and agents at level full (AgentSpec decision 9) mark them **per
+   target**; a declaration can be key for several targets; the target itself is always key. A mark
+   holds while the TCB holds what it marks, whatever is trusted since. Marks are events of the
+   review's logs (ReviewSpec decision 5) under the marker's name, like targets.
+   - **A trusted key declaration needs no review**: it is read and printed as any key one is
+     (decision 12), and listed with them, marked trusted; it is never *not yet reviewed*.
 2. *Withdrawn:* explanations. A declaration's docstring says what it is.
-3. **Support and the key graph.** For a target T with key set K, a non-key member x is *supported by*
-   k ∈ K when x is reachable from k through non-key members (along the edges the TCB follows); k's
-   *support* is all such x. The *key graph* has an edge k₁ → k₂ when k₂ is reachable from k₁ through
-   non-key members. Every member is supported by some key declaration, since T reaches all of them.
+3. **Support and the key graph**, over the TCB. For a target T with key set K, a non-key member x of
+   its TCB or review set is *supported by* k ∈ K when x is reachable from k through non-key members
+   (along the edges the TCB follows, through trusted members too); k's *support* is all such x that
+   need review, the trusted being passed through, never counted (TCBSpec decision 7). The *key graph*
+   has an edge k₁ → k₂ when k₂ is reachable from k₁ through non-key members. Every member is supported
+   by some key declaration, since T reaches all of them.
 4. **Key declarations are read first** (nothing walks a review for the reader: ReviewSpec, "Reviewing
-   a target"): the review list shows them alone (◆ Key), agents get them first (`key=first`), each in
-   review order. Progress has two levels: key (approved of K) and all. They are marked on the canvas,
-   and the query language has `key(T)`.
+   a target"): the review list shows them alone (◆ Key), agents get them first (`key=first`), the
+   trusted ones first (they have no place in the review order), then the rest in review order.
+   Progress has two levels: key (approved of K) and all. **K counts the key declarations that need
+   review**, the trusted told apart beside it as "+N trusted", as a TCB's size does (TCBSpec decision
+   7). They are marked on the canvas, and the query language has `key(T)`.
 
 ## Export
 
@@ -397,13 +407,18 @@ Numbers missing below are withdrawn decisions.
 - **Events**: `key {target, name, on, by, at}` in the writer's log (an agent's marked `agent`); the
   replay keeps per target the first mark standing. Old `explain` lines (decision 2) are skipped
   without being reported as unreadable. The server binds a mark only where the target is one and the
-  name a member of its review set, never the target itself; unmarking needs nothing of the graph. A
-  mark on what has left the review is kept and counts for nothing until it is back.
+  name a member of its TCB or its review set (`tcb(T) or (uses(T) and kind(axiom) and nonstandard)`,
+  shared/query.ts `keyScope`, which no trust changes), never the target itself; unmarking needs
+  nothing of the graph. A mark on what has left the TCB is kept and counts for nothing until it is
+  back; one on what is trusted since stays a key, trusted.
 - **The key graph**: one walk from each key declaration over statement and body edges through the
-  review set, stopping at key declarations (the review queue's set and edges). To keep "every member
-  is supported" true, a project declaration in the TCB that is not a member (trusted) is passed
-  through as a non-key member, and a non-standard axiom reached through proofs alone is the target's
-  support (`viaProof`).
+  TCB, stopping at key declarations (the review queue's edges). The walk passes through the trusted
+  members — the project's always, the outside world's only where something outside is key or needs
+  review (nothing outside uses the project) — and a support lists only members of the review set. A
+  non-standard axiom reached through proofs alone is the target's support (`viaProof`).
+- **The order of the key declarations**: the trusted ones first, in dependency order among
+  themselves (what one refers to before it, ties by name: shared/reviewqueue.ts, dependencyOrder),
+  then those of the review set in review order, the target last.
 - `key(T, …)` counts each target as a closure in QUERY_LIMITS.
 
 ### Export

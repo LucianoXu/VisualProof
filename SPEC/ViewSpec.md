@@ -103,9 +103,10 @@ of invisible clusters" is the view's hidden levels (decision 24).
     - The bar: *Selection | Rests on | Used by* (keys `1`–`3`), with a Uses / TCB / Keys / Direct switch while
       Rests on is on. `2` again steps TCB → Keys → Uses → Direct. Entering Rests on resumes the last step (a
       reading preference; TCB by default).
-    - **Keys** selects X and the key declarations in its TCB: of the focus target (decision 28); with
-      no focus, of every target, but a target clicked takes its own. The pick is `tcb(X) and (key(T…)
-      or decl(X))` (written so a selection's `or`s never split it), `key(targets)` for every target.
+    - **Keys** selects X and the key declarations in its TCB, trusted ones too: of the focus target
+      (decision 28); with no focus, of every target, but a target clicked takes its own. The pick is
+      `tcb(X) and (key(T…) or decl(X))` (written so a selection's `or`s never split it),
+      `key(targets)` for every target.
     - Under Keys, the canvas draws the key graph's edges among what is lit (the focus target's, else
       the union), dashed (CanvasSpec, "Edges"): A → B means A rests on B through non-key declarations.
 
@@ -282,8 +283,9 @@ name    := a word without whitespace, "(", ")", "," or '"'  |  a JSON string
   roots and what they refer to directly (statement, body, proof: one step); `ns(P)` names under
   P; `file(P)` modules under P; `external` outside the project; `sorry` rests on `sorryAx`;
   `nonstandard` rests on a non-standard axiom; `status`, `advice` (AgentSpec decision 2) of the
-  present version; `key(T, …)` each target and its key marks still in its review set; `key(targets)`
-  every target at evaluation. Unknown names stand for nothing.
+  present version; `key(T, …)` each target and its key marks its TCB or review set still holds,
+  trusted or not (ExportSpec decision 1); `key(targets)` every target at evaluation. Unknown names
+  stand for nothing.
 - `QUERY_LIMITS`, the same for both forms: text 20,000 characters, nesting 32, 1,000 parts, 2,000
   names (each at most 2,000 characters), 64 closures (each `key` target one, `key(targets)` one).
 
