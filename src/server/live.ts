@@ -42,6 +42,8 @@ import type { ReviewData, ReviewRev } from "../shared/review.ts";
 import { BuildTracker, compiling, importable, outputsOf, probeAll, scanModules, stampOf } from "./status.ts";
 import { BuildWatch, moduleDirs, shouldLook } from "./buildwatch.ts";
 import type { BuildStatus, ModuleInfo } from "./status.ts";
+import { buildChanges } from "../shared/build.ts";
+import type { BuildDelta, BuildRev } from "../shared/build.ts";
 import { Views } from "./views.ts";
 import type { ViewPlaces } from "./views.ts";
 import { graphOf, memoryProblem, titleContext } from "./agentviews.ts";
@@ -88,6 +90,13 @@ export const MAX_STREAMS_PER_SESSION = 4;
 export const MAX_BUFFERED = 4 << 20;
 /** the list of who is here goes out at most this often: a burst of heartbeats is one event */
 const PRESENCE_EVERY = 500;
+/** A change of the build status larger than this, and than this part of the whole (about what the
+ *  whole takes compressed: 42 KB of NavierStokesAndEuler's 362), goes out as its revision alone
+ *  (`build-rev`), which every page reads compressed (GET /api/build) rather than take it uncompressed
+ *  on its stream: the first look, an edit or a build that starts or fails under much of a large
+ *  project. A smaller one is no saving worth a request. */
+export const BUILD_DELTA_MAX = 64 << 10;
+export const BUILD_DELTA_PART = 1 / 8;
 
 /** The graph's modules and their files (meta.modules), per graph read (agentviews.ts, graphOf). */
 const moduleFiles = new WeakMap<ViewMeta, Map<string, string | null>>();
@@ -111,11 +120,15 @@ interface Stream {
    *  read-only reader nor an agent */
   toldAll: boolean;
   /** what may wait to be sent before it is closed (push): MAX_BUFFERED beyond its hello, which a
-   *  page reads first however large it is (the views, every file's build status: 0.4 MB on
-   *  NavierStokesAndEuler); MAX_BUFFERED once the hello is read */
+   *  page reads first however large it is (the views; to a page from before 0.6.0, every file's
+   *  build status: 0.4 MB on NavierStokesAndEuler); MAX_BUFFERED once the hello is read */
   room: number;
   /** what was written to it since its hello, while that is not all read */
   after: number;
+  /** its page takes the build status as changes (`build-rev`, `build-delta`: the owner's decision of
+   *  2026-10-19), as it says when it opens the stream; a page from before 0.6.0, left open across the
+   *  server's update (UpdateSpec decision 8), is sent it whole at every change (`build`) */
+  buildDeltas: boolean;
 }
 
 export interface GraphInfo {
@@ -168,6 +181,12 @@ export class Live {
   private lastLook = 0;
   private lastRunning = "";
   private buildText = "";
+  /** the build status's revision (`build-rev`, `build-delta`), counted from 0, before the first look,
+   *  in this server's process; each file's status as last sent, as JSON, by module; and the whole as
+   *  GET /api/build answers it, made when first asked */
+  private buildRev = 0;
+  private buildFiles = new Map<string, string>();
+  private buildWholeText: string | null = null;
 
   build: BuildStatus | null = null;
   graph: (GraphInfo & { prep: Prepared }) | null = null;
@@ -469,6 +488,42 @@ export class Live {
     this.lostChanged();
   }
 
+  /** The build status a look found (the live loop's tick): where it changed, every page is told the
+   *  files whose status changed, with the new revision (`build-delta`), which it applies to the
+   *  status it holds; a large change (BUILD_DELTA_MAX) goes out as the revision alone (`build-rev`),
+   *  at which each page reads the whole (GET /api/build). A page from before 0.6.0 is sent the
+   *  whole (`build`), as it was. */
+  buildFound(build: BuildStatus): void {
+    const text = JSON.stringify(build);
+    this.build = build;
+    if (text === this.buildText) return;
+    this.buildText = text;
+    this.buildWholeText = null;
+    const base = this.buildRev++;
+    const { files, gone, texts } = buildChanges(this.buildFiles, build);
+    this.buildFiles = texts;
+    if (this.streams.size) {
+      const delta: BuildDelta = { epoch: this.instance, base, rev: this.buildRev, active: build.active, progress: build.progress, counts: build.counts, files, gone };
+      const d = JSON.stringify(delta);
+      const news = d.length > Math.max(BUILD_DELTA_MAX, text.length * BUILD_DELTA_PART) ? `event: build-rev\ndata: ${JSON.stringify(this.buildRevNow())}\n\n` : `event: build-delta\ndata: ${d}\n\n`;
+      let whole: string | null = null;
+      for (const st of [...this.streams.values()]) this.push(st, st.buildDeltas ? news : (whole ??= `event: build\ndata: ${text}\n\n`));
+    }
+    this.timeline.buildStatus(build);
+  }
+
+  /** Which build status the server holds (`build-rev`): its process and its revision. */
+  private buildRevNow(): BuildRev {
+    return { epoch: this.instance, rev: this.buildRev };
+  }
+
+  /** The whole build status as GET /api/build answers it, with its revision, and the tag of that
+   *  revision: written once a revision, whoever asks. */
+  buildWhole(): { tag: string; text: string } {
+    this.buildWholeText ??= `{"epoch":${JSON.stringify(this.instance)},"rev":${this.buildRev},"status":${this.buildText || "null"}}`;
+    return { tag: `"b${this.instance}.${this.buildRev}"`, text: this.buildWholeText };
+  }
+
   say(line: string): void {
     this.log.push(line);
     if (this.log.length > 200) this.log.shift();
@@ -581,13 +636,7 @@ export class Live {
     // (DeploySpec decision 6)
     const d = this.deploy;
     if (d && d.busy && !build.active) build = { ...build, active: true };
-    const text = JSON.stringify(build);
-    this.build = build;
-    if (text !== this.buildText) {
-      this.buildText = text;
-      this.send("build", build);
-      this.timeline.buildStatus(build);
-    }
+    this.buildFound(build);
     // and its builds, beside the files: the one going on, the newest commit waiting, the last
     if (d) {
       const now = JSON.stringify(d.status(true));
@@ -1212,8 +1261,10 @@ export class Live {
     }
   }
 
-  /** What /api/status says: enough for the loader and for a page that just connected. */
-  status(): object {
+  /** What /api/status says: enough for the loader and for a page that just connected. `brief`: the
+   *  build status without its files (the page's loader, which reads them by GET /api/build). */
+  status(brief = false): object {
+    const b = this.build;
     return {
       state: this.graph ? "ready" : this.extractError ? "error" : "extracting",
       error: this.graph ? undefined : this.extractError ?? undefined,
@@ -1223,7 +1274,7 @@ export class Live {
       graph: this.graphInfo(),
       // the usage pass: how far it is, and the modules it could not elaborate
       usage: this.usage.status,
-      build: this.build,
+      build: brief && b ? { active: b.active, progress: b.progress, counts: b.counts } : b,
       // the branch followed, where the server builds what it shows (DeploySpec)
       ...(this.deploy ? { deploy: this.deploy.status(true) } : {}),
       live: !this.saved,
@@ -1235,10 +1286,11 @@ export class Live {
   }
 
   /** A page's event stream; `session` is what the page calls itself (its streams are kept few by
-   *  it), `person` the personal link it came by. The stream is named by the server: the page is
-   *  told its id, which everyone sees, and a secret for its heartbeats (`hello`); it is gone from
-   *  presence when its stream closes. */
-  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null): void {
+   *  it), `person` the personal link it came by, `buildDeltas` whether it takes the build status as
+   *  changes (a page of 0.6.0 or later). The stream is named by the server: the page is told its id,
+   *  which everyone sees, and a secret for its heartbeats (`hello`); it is gone from presence when
+   *  its stream closes. */
+  subscribe(res: ServerResponse, session: string | null = null, person: string | null = null, readOnly: string | null = null, toldAll = readOnly === null, buildDeltas = false): void {
     if (session) {
       // a page that opens one more than a page needs (a reload whose old stream lingers) loses
       // its oldest
@@ -1257,7 +1309,7 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll, room: Infinity, after: 0 };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, toldAll, room: Infinity, after: 0, buildDeltas };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
@@ -1270,7 +1322,10 @@ export class Live {
     // the views as they are: a page that was away (a restart, a lost connection) catches up, and
     // reads again the boards it has open
     this.write(res, "views", { views: this.views.list(), changes: [], all: true });
-    if (this.build) this.write(res, "build", this.build);
+    // the build status's revision: a page that holds another reads the whole (GET /api/build); what
+    // changes after comes as deltas. A page from before 0.6.0 is sent it whole.
+    if (buildDeltas) this.write(res, "build-rev", this.buildRevNow());
+    else if (this.build) this.write(res, "build", this.build);
     if (this.deploy) this.write(res, "deploy", this.deploy.status(readOnly === null));
     // the review's revision: a page that holds another reads the whole review (GET /api/review);
     // what changes after comes as deltas

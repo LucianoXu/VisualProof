@@ -20,6 +20,8 @@ import { openProject } from "../src/server/project.ts";
 import { ReviewStore } from "../src/server/review.ts";
 import { lakeTextHash } from "../src/server/status.ts";
 import type { Peer, StreamHello } from "../src/shared/collab.ts";
+import { applyBuildDelta } from "../src/shared/build.ts";
+import type { BuildStatus, BuildWhole } from "../src/shared/build.ts";
 import type { ClusterMode, Layout, ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { LAYOUT_VERSION, SITE_STMT } from "../src/shared/graph.ts";
 import { computeLayout } from "../src/shared/layout.ts";
@@ -229,8 +231,8 @@ test("event streams: at most MAX_STREAMS, a few per page, and one that does not 
 test("a stream's hello, however large, is read before it counts as not reading; past it, MAX_BUFFERED as for any", async () => {
   const S = await site();
   try {
-    // the build's status of every file, which the hello carries, on a project of thousands of
-    // modules: twice MAX_BUFFERED
+    // the build's status of every file, which the hello carries to a page from before 0.6.0, on a
+    // project of thousands of modules: twice MAX_BUFFERED
     S.live.build = { active: false, progress: null, files: [], counts: {}, pad: "x".repeat(2 * MAX_BUFFERED) } as unknown as typeof S.live.build;
     /** a page's stream whose page reads `read(n)` characters at a time, or nothing */
     const open = () => {
@@ -334,6 +336,90 @@ test("the event stream says the review's revision, never the whole review; GET /
     assert.deepEqual(said(a, "review-rev").at(-1), { epoch: review.epoch, rev: review.rev });
     assert.deepEqual(said(a, "review"), []);
     assert.equal((await S.ask("GET", "/api/review", undefined, { ...gz, "if-none-match": review.tag() })).status, 304);
+  } finally {
+    await S.close();
+  }
+});
+
+test("the event stream says the build status's revision and then its changes, the files whose status changed; GET /api/build is tagged with it, 304 to a page that has it, and compressed once a revision", async () => {
+  const S = await site();
+  try {
+    const live = S.live;
+    // a project of 1,000 files: 0.1 MB of JSON, which compresses
+    const files = Array.from({ length: 1000 }, (_, k) => ({ module: `P.File${k}`, file: `P/File${k}.lean`, state: "ok" as const, warnings: 0, builtAt: 1_700_000_000_000 + k }));
+    const counts = { ok: 1000, sorry: 0, failed: 0, unbuilt: 0, building: 0, queued: 0, stale: 0, blocked: 0 };
+    const at = (files: BuildStatus["files"], active = false): BuildStatus => ({ active, progress: active ? { done: 0, total: files.length, current: [] } : null, files, counts: { ...counts } });
+    const open = (deltas: boolean) => {
+      const r = fakeResponse();
+      live.subscribe(r as unknown as ServerResponse, null, null, null, true, deltas);
+      return r;
+    };
+    const said = (r: ReturnType<typeof fakeResponse>, event: string) => r.written.filter((t) => t.startsWith(`event: ${event}\n`)).map((t) => JSON.parse(t.slice(`event: ${event}\ndata: `.length)));
+    // before the first look: revision 0, no status
+    const early = open(true);
+    assert.deepEqual(said(early, "build-rev"), [{ epoch: live.instance, rev: 0 }]);
+    assert.deepEqual((await S.ask("GET", "/api/build")).json, { epoch: live.instance, rev: 0, status: null });
+    // the first look: the whole is no change worth sending, the revision alone
+    const first = at(files);
+    live.buildFound(first);
+    assert.deepEqual(said(early, "build-rev").at(-1), { epoch: live.instance, rev: 1 });
+    // a page of 0.6.0 is told the revision, never the whole; a page from before is sent the whole
+    const [page, old] = [open(true), open(false)];
+    assert.deepEqual(said(page, "build-rev"), [{ epoch: live.instance, rev: 1 }]);
+    assert.deepEqual(said(page, "build"), [], "never the whole");
+    assert.ok(page.written.join("").length < 4000, "the hello is small");
+    assert.deepEqual(said(old, "build"), [first]);
+    // the page reads it: compressed, tagged with the server's process and the revision
+    const gz = { "accept-encoding": "gzip" };
+    const whole = await S.ask("GET", "/api/build", undefined, gz);
+    const tag = whole.headers.get("etag")!;
+    assert.equal(whole.status, 200);
+    assert.equal(tag, `"b${live.instance}.1"`);
+    assert.equal(whole.headers.get("content-encoding"), "gzip");
+    assert.match(whole.headers.get("cache-control") ?? "", /no-cache/);
+    assert.deepEqual(whole.json, { epoch: live.instance, rev: 1, status: first });
+    // a page that has it (a reload): 304
+    assert.equal((await S.ask("GET", "/api/build", undefined, { ...gz, "if-none-match": tag })).status, 304);
+    // a build starts: two files change, and only they go, with the revision before and after
+    const second = at(files.map((f, k) => (k === 3 ? { ...f, state: "building" as const } : k === 7 ? { ...f, state: "queued" as const, because: ["P.File3"] } : f)), true);
+    live.buildFound(second);
+    const d = said(page, "build-delta");
+    assert.equal(d.length, 1);
+    assert.deepEqual({ ...d[0], files: d[0].files.map((f: { module: string }) => f.module) }, { epoch: live.instance, base: 1, rev: 2, active: true, progress: second.progress, counts: second.counts, files: ["P.File3", "P.File7"], gone: [] });
+    assert.ok(page.written.at(-1)!.length < 1000, "a change of two files is small");
+    assert.deepEqual(said(old, "build").at(-1), second, "a page from before is sent the whole");
+    // applied to what the page read, it is the server's status
+    assert.deepEqual(applyBuildDelta(whole.json as BuildWhole, d[0])!.status, second);
+    // a look that finds the same: nothing sent
+    const n = page.written.length;
+    live.buildFound(at(second.files, true));
+    assert.equal(page.written.length, n);
+    // a file gone: named
+    live.buildFound(at(second.files.slice(1), true));
+    assert.deepEqual(said(page, "build-delta").at(-1).gone, ["P.File0"]);
+    // a change of most files (a build that fails under them): the revision alone, which the page
+    // reads compressed
+    const third = at(second.files.map((f) => ({ ...f, state: "blocked" as const, because: ["P.File3", "P.File7"] })));
+    live.buildFound(third);
+    assert.equal(said(page, "build-delta").length, 2);
+    assert.deepEqual(said(page, "build-rev").at(-1), { epoch: live.instance, rev: 4 });
+    const after = await S.ask("GET", "/api/build", undefined, { ...gz, "if-none-match": tag });
+    assert.equal(after.status, 200, "an older tag is sent the status as it is now");
+    assert.deepEqual(after.json, { epoch: live.instance, rev: 4, status: third });
+    // GET /api/status: the status whole, as agents read it; ?brief, without the files (the page's
+    // loader)
+    assert.deepEqual((await S.ask("GET", "/api/status")).json!.build, third);
+    assert.deepEqual((await S.ask("GET", "/api/status?brief")).json!.build, { active: false, progress: null, counts: third.counts });
+    // the page's stream, as main.ts opens it: build=delta
+    const es = stream(S.port, "/api/events?session=aaaaaaaa1111&build=delta");
+    await es.until(() => !!es.last("hello"));
+    assert.deepEqual(es.last("build-rev"), { epoch: live.instance, rev: 4 });
+    assert.equal(es.last("build"), undefined);
+    es.close();
+    const legacy = stream(S.port, "/api/events?session=aaaaaaaa2222");
+    await legacy.until(() => !!legacy.last("hello"));
+    assert.deepEqual(legacy.last("build"), third);
+    legacy.close();
   } finally {
     await S.close();
   }

@@ -19,7 +19,7 @@
 // than the view's own it is a preview, which nothing arranges (`frozen`), and which Export prints at
 // the build on show.
 
-import type { BuildStatus } from "../../shared/build.ts";
+import type { BuildDelta, BuildRev, BuildStatus } from "../../shared/build.ts";
 import type { ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../../shared/collab.ts";
 import { artNameId } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout, ViewMeta } from "../../shared/graph.ts";
@@ -51,6 +51,7 @@ import type { MenuContext, MenuTarget, TrustTo } from "./ctxmenu.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
 import { dataSource } from "./data.ts";
 import { WholeReview } from "./reviewread.ts";
+import { LiveBuild } from "./buildread.ts";
 import type { DataSource, ReviewState, ViewAnswer } from "./data.ts";
 import { exactContext, judgedText } from "../../shared/context.ts";
 import type { ModuleContexts } from "../../shared/context.ts";
@@ -221,8 +222,12 @@ async function boot(): Promise<void> {
   const data = dataSource();
   const ready = await waitReady(data);
   let graphInfo = ready.graph;
-  // the graph's two parts, and the review, at once: a page far from the server waits on each
+  // the graph's two parts, the review and the build status, at once: a page far from the server
+  // waits on each
   const reviewing = data.review().catch((): ReviewState => ({ epoch: "", rev: 0, data: emptyReview(), problems: [], error: "The review could not be loaded." }));
+  /** the build status, read as the page loads (web/src/buildread.ts): shown once the first board is */
+  let firstBuild = data.snapshot ? null : data.build();
+  firstBuild?.catch(() => {});
   const [meta0, edges0] = await Promise.all([data.meta(graphInfo?.version, graphInfo?.instance), data.edges(graphInfo?.version, graphInfo?.instance)]);
   let meta: ViewMeta = meta0;
   /** the graph on show: the latest build's */
@@ -3230,11 +3235,36 @@ async function boot(): Promise<void> {
     },
     true,
   );
+  /** The build status the page now holds, shown: the pill, the Status colours, the outline, the
+   *  panel's banners. */
+  const takeBuild = (status: BuildStatus | null) => {
+    build = status;
+    fileIndex = files();
+    canvas.setBuild(pastShown() ? null : build?.files ?? null);
+    syncStatus();
+    outline.render();
+    renderBuild();
+    // a file may have been edited: what was read of the sources, and what was known of them, goes
+    data.forget();
+    edits.clear();
+    served.clear();
+    servedContexts.clear();
+    sources.redraw((name) => g.byName.get(name));
+    showSelected();
+  };
+  // the first reading is the one made as the page loaded
+  const liveBuild = new LiveBuild(() => {
+    const first = firstBuild;
+    firstBuild = null;
+    return first ?? data.build();
+  }, takeBuild);
   const listen = () => {
     if (data.snapshot) return;
+    // the build status read as the page loaded, shown now that a board is
+    if (firstBuild) void liveBuild.fetch();
     // the server names the stream, and tells this page alone the secret its heartbeats carry: the
-    // others see the page go when it closes
-    const es = new EventSource(`/api/events?session=${people.session}`);
+    // others see the page go when it closes; it takes the build status as changes
+    const es = new EventSource(`/api/events?session=${people.session}&build=delta`);
     es.addEventListener("hello", (e) => {
       const hello = JSON.parse((e as MessageEvent).data) as StreamHello;
       people.connected(hello);
@@ -3310,21 +3340,12 @@ async function boot(): Promise<void> {
           .then((r) => (r.status === 410 ? location.reload() : setTimeout(listen, 10_000)))
           .catch(() => setTimeout(listen, 10_000));
     };
-    es.addEventListener("build", (e) => {
-      build = JSON.parse((e as MessageEvent).data);
-      fileIndex = files();
-      canvas.setBuild(pastShown() ? null : build!.files);
-      syncStatus();
-      outline.render();
-      renderBuild();
-      // a file may have been edited: what was read of the sources, and what was known of them, goes
-      data.forget();
-      edits.clear();
-      served.clear();
-      servedContexts.clear();
-      sources.redraw((name) => g.byName.get(name));
-      showSelected();
-    });
+    // the build status (web/src/buildread.ts): which revision the server holds, as the stream opens
+    // and at a change sent as no delta; each change after as the files whose status changed; a
+    // server from before 0.6.0 sends it whole
+    es.addEventListener("build-rev", (e) => liveBuild.told(JSON.parse((e as MessageEvent).data) as BuildRev));
+    es.addEventListener("build-delta", (e) => liveBuild.delta(JSON.parse((e as MessageEvent).data) as BuildDelta));
+    es.addEventListener("build", (e) => liveBuild.whole(JSON.parse((e as MessageEvent).data) as BuildStatus));
     // a build read: the Time Machine's timeline has a tick more (HistorySpec, the snapshots)
     es.addEventListener("history", () => void tm.historyChanged());
     // which review the server holds (as the stream opens, and at a change that is no delta): read
