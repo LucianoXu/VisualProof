@@ -85,7 +85,7 @@ export const TOUR: Chapter[] = [
   {
     id: "source",
     title: "Read the source",
-    text: "<kbd>Space</kbd> opens the source, following the selection. Rest on a name for what Lean says it is; click it to go there.",
+    text: "<kbd>Space</kbd> opens the source, following the selection, with the panel's review box. Rest on a name for what Lean says it is; click it to go there.",
     about: [".sw-win", "key:Space"],
     showMe: "open-source",
     manual: "review",
@@ -120,7 +120,7 @@ export const TOUR: Chapter[] = [
   {
     id: "review",
     title: "Comment and approve",
-    text: "Comment or approve each declaration you read: an opinion holds for the version it judged, and the target's progress counts it.",
+    text: "Comment or approve each declaration you read: an opinion holds for the version it judged, and the target's progress counts it. <b>Withdraw</b> takes yours back.",
     about: ["#panel [data-rv=approve]", "#panel [data-rv=comment]", "#targets"],
     showMe: "ring-review",
     manual: "review",
@@ -143,7 +143,7 @@ export const TOUR: Chapter[] = [
   {
     id: "agent",
     title: "Work with an agent",
-    text: "Follow your agent and talk with it (its menu → <b>Talk</b>): it reads the codebase through the API, looks where it explains, and answers. It gives advice; approving stays with people.",
+    text: "Talk with your agent (its menu → <b>Talk</b>), in a channel no one else reads: it reads the codebase through the API and answers, its links going where it explains. It gives advice; approving stays with people.",
     about: ["#share-pop [data-tab=agent]", "#peers", "#convo"],
     showMe: "share-agent",
     manual: "together",

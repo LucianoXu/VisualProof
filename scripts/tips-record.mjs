@@ -474,7 +474,7 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
   };
 
   // the agent of the film: its token read from the page, its API driven from here, between frames
-  const agent = { token: null, inbox: [], stop: null, busy: false };
+  const agent = { token: null, inbox: [], stop: null, busy: false, link: null };
   const agentApi = async (method, path, body) => {
     const r = await fetch(`${url}/api/agent/${path}`, { method, headers: { authorization: `Bearer ${agent.token}`, "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}), signal: agent.stop?.signal });
     const j = await r.json().catch(() => ({}));
@@ -772,8 +772,9 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
     },
     /** The agent of the film (an AI agent's token made on the page, its API driven from here):
      *  `join` takes the token the page shows and starts listening; `await` waits for what a person
-     *  wrote to it; `status`, `view`, `reply` are its requests (`body` or `text`). Each is done
-     *  between two frames, and what the server pushes for it reaches the page before the next. */
+     *  wrote to it; `status`, `view`, `view/link`, `reply` are its requests (`body` or `text`), a
+     *  `{link}` in a text being the link `view/link` made last. Each is done between two frames, and
+     *  what the server pushes for it reaches the page before the next. */
     async agent(s) {
       if (s.agent === "join") {
         agent.token = await page.evaluate(() => {
@@ -814,7 +815,8 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
         await sleep(600);
       } else {
         const seen = await pushed(s.expect ?? [], s.within ?? 3000);
-        await agentApi("POST", s.agent, s.body ?? { text: s.text });
+        const r = await agentApi("POST", s.agent, s.body ?? { text: s.text.replaceAll("{link}", agent.link ?? "") });
+        if (s.agent === "view/link") agent.link = r.link;
         if (s.agent === "reply") agent.busy = false;
         await seen();
         // what the server says of it a moment later (its presence, at most every 500 ms), given to
