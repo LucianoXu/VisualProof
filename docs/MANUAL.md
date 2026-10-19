@@ -10,8 +10,8 @@ proof uses, what it reaches outside the project being assumed ([Concepts](#conce
 is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/CanvasSpec.md),
 [ReviewSpec.md](../SPEC/ReviewSpec.md), [CollabSpec.md](../SPEC/CollabSpec.md), [AgentSpec.md](../SPEC/AgentSpec.md),
 [ViewSpec.md](../SPEC/ViewSpec.md), [TCBSpec.md](../SPEC/TCBSpec.md), [ExportSpec.md](../SPEC/ExportSpec.md),
-[HistorySpec.md](../SPEC/HistorySpec.md), [AttachmentSpec.md](../SPEC/AttachmentSpec.md) and
-[PhoneSpec.md](../SPEC/PhoneSpec.md).
+[HistorySpec.md](../SPEC/HistorySpec.md), [AttachmentSpec.md](../SPEC/AttachmentSpec.md),
+[PhoneSpec.md](../SPEC/PhoneSpec.md) and [DeploySpec.md](../SPEC/DeploySpec.md).
 
 ## Start here
 
@@ -20,7 +20,9 @@ is [SPEC.md](../SPEC/SPEC.md); the decisions are in [CanvasSpec.md](../SPEC/Canv
 2. **Build, then serve**: `lake build` in the project (VisualProof never builds it; on Mathlib,
    `lake exe cache get` first), then `visualproof serve <project>`, and open
    http://127.0.0.1:4173/. The first visit starts a short
-   tour on the project itself; `?` holds the tips and every key.
+   tour on the project itself; `?` holds the tips and every key. Or serve a branch of a git
+   repository, `visualproof serve https://github.com/<owner>/<repo>`, which the server builds
+   itself at each commit ([Following a branch](#following-a-branch)).
 3. **Review a theorem**, in five minutes:
    1. Find it (`/` searches names, statements and docstrings), click it, and **☆ Mark as target**
       in its panel: from now on its review is counted, in the Targets list at the top of the side
@@ -69,7 +71,7 @@ The words used here are the next part's; the rest of the manual is the reference
   `Classical.choice`, `Quot.sound`). A part of the project, or the whole outside world, can be
   trusted too, and a part of the outside world no longer trusted, its leaves then read as the
   project's definitions are ([Review](#review)). Trusted declarations stay in the TCB, light green
-  on the board, but need no opinion and are not counted — **nor in a TCB's size**: for flt_regular
+  on the board (a dim green in the dark theme), but need no opinion and are not counted — **nor in a TCB's size**: for flt_regular
   above, the selection bar says *8 lit · +11 trusted*, it and the 7 to read, then what is assumed,
   and the panel's Counts *7 in TCB*, *+11 trusted* beneath. The rest of the TCB, with every
   non-standard axiom the theorem reaches, is its **review set**, what its review counts. "Trusted"
@@ -111,7 +113,8 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - The project must have been built: VisualProof reads what `lake build` left in `.lake/` and
   never builds the project. A build in progress or a broken one is shown as such (see Live), with
   the last graph that could be read. It writes nothing into the project: what it keeps is in the
-  site's folder and the cache (below).
+  site's folder and the cache (below). A git URL in its place follows a branch instead, which the
+  server builds itself (Following a branch, below).
 - Modules to read come from the default targets: `defaultTargets` in `lakefile.toml`, or the
   libraries marked `@[default_target]` in `lakefile.lean` (read as text, never run). A library
   stands for the modules Lake builds of it: its `globs` (`A`, `A.+` its submodules, `A.*` both),
@@ -166,6 +169,11 @@ The README says how to install the `visualproof` command. A checkout also runs a
   touched 11 of them: 8 s; one of Sphere-Packing-Lean that changed a module 80 others import: those 81 in
   24 s, the merged graph served 51 s after the build), and a restart without a build serves the
   merged graph at once (under a second).
+  On Mathlib a worker can hold several GB (the showcase's pass at 6 jobs peaked at 39 GB resident,
+  15 GB of it the `.olean` files mapped once): `serve` and `doctor` say where the default `--jobs`
+  may take more than the machine has available, and which `--jobs` fits. While less than a twentieth
+  of the memory (2 GB at least) is available, the pass starts no worker until another ends, and says
+  so in its log.
   Progress is in `GET /api/status` (`usage`) and the log; a module that cannot be elaborated is
   reported there and keeps the text-based context and no notation edges.
 - `--graph <saved.json>` serves a saved extraction instead of reading the build.
@@ -182,7 +190,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
   <file>` then lets in only those given the link `http://<host>:<port>/k/<key>` (the key is what the
   file holds; one is made there if there is none). The link leaves a cookie in the browser and goes
   on to the page; agents send `Authorization: Bearer <key>`, or a token of their own that Share made
-  (`vpa_…`, which reaches `/api/agent` only); everything else is answered 404. One key for everyone:
+  (`vpa_…`, which reaches `/api/agent` only); everything else is answered 404 — but a browser
+  opening a page without the link, which is shown one saying the site is private and to open it
+  with the link (a link that no longer opens it, a key replaced or a personal or read-only link
+  revoked, says so and to ask for a new one), and nothing of the project. One key for everyone:
   taking someone out means a new key — or invite people one by one with a personal link from Share
   (`/i/vpp_…`, see Together), which lets in only its holder and is revoked on its own; to show the
   project without letting anyone change it, a read-only link (`/r/vpr_…`, see Together). Over plain
@@ -190,7 +201,7 @@ The README says how to install the `visualproof` command. A checkout also runs a
   (`visualproof_access_<12 hex>`, `visualproof_person_<12 hex>`, `visualproof_readonly_<12 hex>`),
   so two servers on one host keep theirs apart.
 - `--public`, with `--access-key-file`: whoever comes without the key or a link of their own is let
-  in read-only (CollabSpec decision 11) instead of answered 404 — the way to put a showcase online.
+  in read-only (CollabSpec decision 11) instead of turned away — the way to put a showcase online.
   They see what a guest sees, change nothing that is shared, and are seen by nobody; agents are
   still let in only by the key or a token of their own. Without it, no address shows the project
   to someone not given a link, so no reader can make a private project public. Not with
@@ -200,8 +211,9 @@ The README says how to install the `visualproof` command. A checkout also runs a
   address. Without it, the prompt carries the address the person's browser used.
 - `--allowed-host <name>` (repeatable): without `--access-key-file`, a server answers only requests
   for an IP address, `localhost` (and the names under it, `vp.localhost`), `--public-url`'s host
-  and the names given here; any other name is answered 403, so that a web page cannot reach it by
-  making its own name resolve to this machine (DNS rebinding, [SECURITY.md](../SECURITY.md)). Give
+  and the names given here; any other name is answered 403 (a browser is shown a page that says
+  so, and these options), so that a web page cannot reach it by making its own name resolve to
+  this machine (DNS rebinding, [SECURITY.md](../SECURITY.md)). Give
   the names a proxy in front of it forwards, or this machine's own name if people use it
   (`--allowed-host lab-server.local`); the server's log says each name it refused once. With a key,
   every name is answered, the key keeping everyone else out.
@@ -215,8 +227,10 @@ The README says how to install the `visualproof` command. A checkout also runs a
 - Pages far from the server wait on bytes, so the page's files and the graph are sent gzipped with
   a tag of their content: a browser that has them is answered 304 and loads in a second (14 KB
   instead of 727 KB for flt-regular, most of which is the page's own code). The edges go packed (shared/edgecodec.ts, a quarter of the
-  bytes); JSON answers over 2 KB go gzipped. Brotli would be smaller still, but browsers take it
-  only over HTTPS.
+  bytes); JSON answers over 2 KB go gzipped. The review goes gzipped too, tagged with its revision:
+  the event stream says only which revision the server holds and what changes, so a page reads the
+  whole review as it loads, and again only where it missed a change (a reload of an unchanged
+  review is answered 304). Brotli would be smaller still, but browsers take it only over HTTPS.
 - `docs/deploy/visualproof.service.example` is an example systemd user unit that serves a project this
   way: copy it and fill in its placeholders (it says how).
 - `visualproof export <path> -o page.html` writes one self-contained HTML file (page, data
@@ -242,6 +256,70 @@ The README says how to install the `visualproof` command. A checkout also runs a
   bands, in 2 GB at most but three times as long (16,384 pixels a side: 3½ minutes). Notes are not
   drawn yet. A poster step by step, the recipe's choices explained: [A poster from the command
   line](#a-poster-from-the-command-line).
+
+### Following a branch
+
+```bash
+visualproof serve https://github.com/<owner>/<repo>               # its default branch
+visualproof serve git@github.com:<owner>/<repo>.git --branch main --poll 5
+```
+
+With a git URL where the project goes, the server follows that branch of the repository and builds
+what it shows itself ([SPEC/DeploySpec.md](../SPEC/DeploySpec.md)): the board shows what is on the
+branch, one build per commit, never someone's half-edited working tree — the way to serve a project
+to a team. It needs git, besides elan.
+
+- **The address**: `https://host/owner/repo`, `ssh://…`, git's `git@host:owner/repo.git`, or
+  `file:///path/to/repo.git` for a repository on this machine. Never `http://` or `git://`, and
+  never a user name, password or token in the address: the credentials are git's own (an SSH key, a
+  deploy key, a credential helper), and VisualProof keeps none. Nothing ever waits on a prompt: a
+  credential git cannot find, or an SSH host whose key is not in `known_hosts`, is a failure, said
+  as such.
+- **`--branch <name>`**: the branch followed, by default the remote's default branch (asked at each
+  start, and remembered for a start without the network). Only that branch is ever fetched: never a
+  pull request's or a fork's.
+- **Its own clone**, in the cache: `<cache root>/deploy/<repo>-<hash>/<repo>/`, one per URL and
+  branch, made at the first start; never your workspace. The site is the URL's and the branch's
+  (`~/.local/share/visualproof/sites/<repo>-<hash>/`) unless `--site` says otherwise. One server
+  follows a branch with a cache at a time. The other commands (`export`, `artwork`, `doctor`,
+  `purge-file`) take the clone's folder, which the server names as it starts (`clone:`).
+- **`--poll <minutes>`** (default 2): how often the remote is asked for the branch's head (`git
+  ls-remote`). Each new head is built: fetched, checked out detached, `lake exe cache get` where the
+  project is on Mathlib, then `lake build` (of what `--root` names, else the default targets) —
+  **one build at a time**; heads pushed meanwhile are not queued: **only the newest is built after
+  it**. A commit is built once, whatever came of it; one that could not be fetched is tried again at
+  the next look.
+- **Meanwhile the board keeps answering**, showing the last build: the pill says the build's step
+  (`Fetching a1b2c3d`, `Mathlib's cache · a1b2c3d`, `Building 12 / 40 · …`), and once it is read,
+  the new graph comes as any new build's does (see Live). The build-status popover (`b`) says, under
+  its buttons, the branch and the remote, when it was last asked, the build going on and what it
+  says now, the newest commit waiting, and the last build that ended: when, how long, and — where it
+  failed — why, with the end of its log (to those let in fully: never a read-only reader). A failed
+  build shows its failed files as any failed build does, in the Status colours and the popover, the
+  board reading what could be; `Build failed · a1b2c3d` where no file says it (a lakefile that does
+  not elaborate). The history keeps each build's commit, on the branch, so that the Time Machine's
+  ruler has a long tick per commit; a failing commit whose build compiled nothing new is no new
+  build. Each build's whole log is in `<cache root>/deploy/<repo>-<hash>/logs/<commit>.log`.
+- **The first start** clones the branch (the terminal says it), then builds its head; until a build
+  can be read, the page says what is being done (`The first build of github.com/A/B (main) at
+  a1b2c3d: lake build, 3 of 8 files…`), and where it failed, why and what comes next, with the end
+  of the log. It never stops waiting: the board appears as soon as a build can be read.
+- **Restarts**: the clone and what is built stay in the cache. A build going on holds the updater's
+  restart into a patch (see Updates) until it ends; one cut short anyway (or by a stop) is done
+  again by the next server, Lake keeping what it had finished. A server whose last build is whole
+  shows it at once.
+- **Open on GitHub**: where the remote is github.com, the source window links each declaration to
+  its lines in the build's commit (`blob/<commit>/<file>#L12-L17`), where the text shown is that
+  commit's; the popover links the branch and each commit.
+- **Safety** ([SECURITY.md](../SECURITY.md)): **whoever can push to that branch runs code on this
+  machine** — the lakefile, and what elaboration runs — as the server's user. Run it as a user of
+  its own, give that user a deploy key that only reads the repository, and protect the branch.
+  There is no sandbox yet. `docs/deploy/visualproof-branch.service.example` is a systemd unit for it.
+- Times, on a machine with a fast connection: [quote4](https://github.com/leanprover-community/quote4)
+  (14 modules, no dependency) cloned in 1 s, its first build 25 s (elan fetching its toolchain), its
+  board 35 s after the start; [flt-regular](https://github.com/leanprover-community/flt-regular)
+  (27 modules on Mathlib) cloned in 1 s, Mathlib's cache (9,055 files) and its build 1 min 12 s, its
+  board with notation 1 min 50 s after the start; a restart, its board in a second.
 
 ### Updates
 
@@ -318,14 +396,18 @@ for the sphere packing formalization (the showcase before it), stays the floor.
 
 ## Live
 
-While `serve` runs, it follows the builds you run yourself:
+While `serve` runs, it follows the builds you run yourself (and, following a branch, those it runs
+itself: Following a branch):
 
 - **Build status, every second.** The pill beside the project name says `Built`,
   `Building 12 / 40 · <file>`, `2 failed · 5 blocked`, `3 out of date` or `Built · 4 with sorry`
   (`Offline` when the server cannot be reached), followed by ` · reading…` while a new graph is
   read, ` · partial graph` while some modules are missing from it, or ` · reading notation…` while
   the usage pass runs; click it (or press `b`) for the list of files and why, and click a file to
-  fly to it.
+  fly to it. At rest this costs next to nothing: the server watches the folders of the project's
+  files and the compiles running, and looks at the files when something moves (and every 30 s
+  besides). On a network or FUSE filesystem, which does not tell of changes made elsewhere, it looks
+  at them every second instead, as its log says (`watch: …`).
 - **A new graph when a build settles**, swapped into the open page: same camera, same folds, same
   selection. Nodes that existed keep their place; new ones are fitted in beside their cluster.
   `Re-layout` (⚙ Board, over the side panel's tree) starts the board afresh: its pins are dropped, other boards keep theirs.
@@ -353,7 +435,7 @@ While `serve` runs, it follows the builds you run yourself:
 
 | State | Meaning | On the canvas, in the Status colours |
 |---|---|---|
-| failed | its last build failed (Lake deleted the `.olean`), or it was never built | its declarations dark grey, the file's outline too |
+| failed | its last build failed (Lake deleted the `.olean`), or it was never built | its declarations dark grey (near white in the dark theme), the file's outline too |
 | blocked | something it imports failed; shown as last built | as last built (by review) |
 | out of date | its source changed since it was built, or something under it did | as last built (by review) |
 | building | being compiled now | its declarations sky blue, the file's outline too |
@@ -490,7 +572,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   going back, or to another tab, gives the new view up.
 - **Colours**: by kind, or by **status** — one colour per declaration for where it stands, the
   most urgent winning: being compiled, build failed, contains `sorry`, commented, stale, approved,
-  not yet reviewed (hollow), trusted (CanvasSpec, "Colour schemes"). A view where the review has a
+  not yet reviewed, trusted (CanvasSpec, "Colour schemes"). A view where the review has a
   focus opens in Status, every other view in Kind; switching (`c`, or the legend) is the reader's own, kept per kind of view (and
   seen by whoever follows you). In
   Status each cluster's outline shows its review's progress, an arc for what is approved and one
@@ -554,6 +636,8 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   release you last saw, are kept in this browser for every project: when the server runs a newer one, the page says **What's new** once, and the tips new
   in it are marked.
 - **Light or dark**: behind ⋯ under the zoom buttons — light (the default), dark, or as the system is.
+- **Reduced motion** (the system's setting) is followed on the whole page: nothing glides, fades or
+  pulses — the camera, the linear form, the windows and menus are where they go at once.
 - An edge runs from orange, at the declaration that uses, to blue, at the one it uses.
 
 ### On a phone
@@ -769,8 +853,8 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   found by name, under a warning, and opinions wait until the file is compiled again: the graph,
   and an opinion's hash, are about the compiled version.
 - On the canvas, the Status colours say what reviewers said about the present version (bluish
-  green approved, a calm cobalt blue commented, orange stale, hollow grey nobody yet, very light green
-  trusted without review); the rows of a TCB list carry a dot of the same meaning. A target carries
+  green approved, a calm cobalt blue commented, orange stale, mid grey nobody yet, very light green
+  trusted without review — in the dark theme a dim green, the quietest); the rows of a TCB list carry a dot of the same meaning. A target carries
   a gold star. While you type in a field, the shortcut keys are just text.
 - **Renames** ([HistorySpec.md](../SPEC/HistorySpec.md)): at each build the declarations that vanished are
   paired with those that appeared. A rename of high confidence — the same version once names are
@@ -1134,7 +1218,8 @@ what each one looks at stays their own.
   force — who made each and when, when it was last used, **Show link** (or a click on it), and
   **Revoke** (pressed twice, under your name), which closes every page it opened at once — then the
   personal links in force — for whom, who made each and when, when it was last used, **Revoke**
-  (pressed twice), which cuts it off at once — then the agents' tokens in force: who made each and when, when it expires,
+  (pressed twice), which cuts it off at once (their page then says the link no longer opens the
+  site, naming nobody; a browser that has the guest link too stays, as a guest) — then the agents' tokens in force: who made each and when, when it expires,
   when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy,
   and **Revoke** (pressed twice).
 - **Your name**, at the top right: opinions, pins and re-layouts are recorded under it. A click
@@ -1336,7 +1421,9 @@ as a 1 V battery; each cluster solves the network of its children (declarations 
 a dependency counting where its two ends meet) with everything outside the cluster held at 0 V,
 and places its children by potential, the highest on top: sub-clusters at the free spot nearest
 their height, declarations packed tightly and handed their places from the top down. Nothing
-overlaps and the same graph always gives the same picture. On a large project about nine in ten of the
+overlaps and the same graph always gives the same picture, on the server and in every browser alike:
+the layout computes its sines, logarithms and lengths itself (`shared/libm.ts`), where engines would
+each round the last digit their own way. On a large project about nine in ten of the
 dependencies inside the project point downwards where their two ends meet (on Sphere-Packing-Lean, 90% of
 them by namespace, 87% by module; on flt-regular, 73% and 87%). Between rebuilds what survived keeps
 its place, unless its height in its cluster moved by more than a tenth of the radius; newcomers
@@ -1369,7 +1456,7 @@ to it; `test/`, `docs/` and `SPEC/` are at the root.
 | `shared/query.ts`, `shared/board.ts`, `shared/views.ts`, `server/views.ts` | the query language of scopes and the selection, what a scope makes of the graph, the views and their store (ViewSpec) |
 | `server/agent.ts`, `server/agentviews.ts`, `server/agentdocs.ts`, `docs/agent-api/` | the JSON API for agents (AgentSpec), its endpoints about views, and its documentation in topics |
 | `server/tokens.ts`, `server/prompt.ts`, `server/talk.ts`, `server/mcptools.ts`, `mcp/visualproof-mcp.mjs` | agents' tokens and the prompt Share makes; conversations with agents, their inboxes and states; VisualProof's MCP server and the tools it offers |
-| `shared/layout.ts`, `shared/separate.ts` | the layout, on the server for the project and on the page for a board's own scope |
+| `shared/layout.ts`, `shared/separate.ts`, `shared/libm.ts` | the layout, on the server for the project and on the page for a board's own scope; the separation of a cluster's children, found through grids; the transcendental functions the layout computes alike on every engine |
 | `shared/keys.ts` | key declarations: what each supports, the key graph, the key-first order (ExportSpec) |
 | `shared/doc/`, `shared/lexer.ts`, `shared/palette.ts` | the exported document: its model, settings, plan of a view's sections (`sections.ts`), author line from the traces left on a view (`authors.ts`), builder (with proofs left out, `proof.ts`), docstrings read as Markdown (`markdown.ts`) and LaTeX renderer; the Lean tokenizer the page and the document highlight with; the colours they share |
 | `server/export.ts`, `server/pastdoc.ts`, `assets/latex/visualproof.sty`, `assets/fonts/` | typesetting on the server (XeLaTeX, cache, the sources zip); the past builds a view of a past build is printed from, kept for the next export; the style file; JuliaMono (SIL OFL) |

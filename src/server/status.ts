@@ -12,7 +12,7 @@
 
 import { execFile } from "node:child_process";
 import { tracked } from "./children.ts";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { BuildStatus, FileState, FileStatus } from "../shared/build.ts";
 import type { Project } from "./project.ts";
@@ -91,25 +91,80 @@ export function scanModules(p: Project): Map<string, ModuleInfo> {
   return mods;
 }
 
-/** Modules a lean process is compiling right now, for this project's build directory. */
+/** Modules a lean process is compiling right now, for this project's build directory: a process
+ *  `lean <src> -o <libDir>/Foo.olean …` (docs/LAKE.md). Asked every second the server runs. */
 export function compiling(p: Project): Promise<Set<string>> {
+  const fromProc = commandsInProc();
+  if (fromProc) return Promise.resolve(compiledBy(p, fromProc));
   return new Promise((resolve) => {
     tracked(
       execFile("ps", ["axo", "command"], { maxBuffer: 16 << 20 }, (err, stdout) => {
-        const out = new Set<string>();
-        if (err) return resolve(out);
-        const marker = ` -o ${p.libDir}/`;
-        for (const line of stdout.split("\n")) {
-          const at = line.indexOf(marker);
-          if (at < 0) continue;
-          const rest = line.slice(at + marker.length);
-          const path = rest.slice(0, rest.indexOf(".olean"));
-          if (path) out.add(path.split("/").join("."));
-        }
-        resolve(out);
+        if (err) return resolve(new Set());
+        resolve(compiledBy(p, stdout.split("\n")));
       }),
     );
   });
+}
+
+/** The modules the command lines `cmds` compile into the project's build directory. */
+function compiledBy(p: Project, cmds: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  const marker = ` -o ${p.libDir}/`;
+  for (const line of cmds) {
+    const at = line.indexOf(marker);
+    if (at < 0) continue;
+    const rest = line.slice(at + marker.length);
+    const path = rest.slice(0, rest.indexOf(".olean"));
+    if (path) out.add(path.split("/").join("."));
+  }
+  return out;
+}
+
+/** The processes /proc lists, by pid: when each was first seen, and its command line where it
+ *  could be a compile (one with ` -o `), else "". */
+const procs = new Map<number, { seen: number; cmd: string }>();
+/** a process this young is read again: one forked a moment ago may not have run its program yet */
+const YOUNG_MS = 2500;
+/** whether /proc can be read here (Linux): null until tried */
+let procOk: boolean | null = null;
+
+/** The command lines of the processes running, from /proc, where there is one (Linux): a listing
+ *  of it, and the command line of each process new since the last look, rather than `ps` every
+ *  second — which read every process's files, in a process of its own, 1.5 % of a core with 600
+ *  processes running. Null where there is no /proc. */
+export function commandsInProc(now = Date.now()): string[] | null {
+  if (procOk === false) return null;
+  let names: string[];
+  try {
+    names = readdirSync("/proc");
+  } catch {
+    procOk = false;
+    return null;
+  }
+  const alive = new Set<number>();
+  const cmds: string[] = [];
+  for (const n of names) {
+    const c = n.charCodeAt(0);
+    if (c < 48 || c > 57) continue;
+    const pid = Number(n);
+    alive.add(pid);
+    let e = procs.get(pid);
+    if (!e || now - e.seen < YOUNG_MS) {
+      let cmd = "";
+      try {
+        // NUL between its arguments, as ps prints them: spaces
+        cmd = readFileSync(`/proc/${n}/cmdline`, "utf8").replace(/\0+$/, "").replaceAll("\0", " ");
+      } catch {
+        // gone meanwhile, or not ours to read
+      }
+      e = { seen: e?.seen ?? now, cmd: cmd.includes(" -o ") ? cmd : "" };
+      procs.set(pid, e);
+    }
+    if (e.cmd) cmds.push(e.cmd);
+  }
+  for (const pid of procs.keys()) if (!alive.has(pid)) procs.delete(pid);
+  if (procOk === null) procOk = alive.size > 0;
+  return procOk ? cmds : null;
 }
 
 const M = 0xc6a4a7935bd1e995n;
@@ -155,16 +210,17 @@ export function lakeTextHash(text: string): string {
 
 const srcHashCache = new Map<string, { key: string; hash: string }>();
 
-/** The Lake hash of a source file, recomputed only when its mtime or size moves. */
-function sourceHash(file: string): string | null {
+/** The Lake hash of a source file, recomputed only when its mtime or size moves, and its mtime. */
+function sourceHash(file: string): { hash: string; at: number } | null {
   try {
-    const st = statSync(file);
+    const st = statSync(file, { throwIfNoEntry: false });
+    if (!st) return null;
     const key = `${st.mtimeMs}:${st.size}`;
     const hit = srcHashCache.get(file);
-    if (hit && hit.key === key) return hit.hash;
+    if (hit && hit.key === key) return { hash: hit.hash, at: st.mtimeMs };
     const hash = lakeTextHash(readFileSync(file, "utf8"));
     srcHashCache.set(file, { key, hash });
-    return hash;
+    return { hash, at: st.mtimeMs };
   } catch {
     return null;
   }
@@ -172,7 +228,7 @@ function sourceHash(file: string): string | null {
 
 function mtime(f: string): number | null {
   try {
-    return statSync(f).mtimeMs;
+    return statSync(f, { throwIfNoEntry: false })?.mtimeMs ?? null;
   } catch {
     return null;
   }
@@ -185,11 +241,14 @@ interface TraceInfo {
   builtFrom: string | null;
 }
 
-interface Probe extends TraceInfo {
+/** What a look finds of a module's files: its outputs' times, its source's time and Lake hash, and
+ *  what its trace says. */
+export interface Probe extends TraceInfo {
   olean: number | null;
   trace: number | null;
-  /** the Lake hash of the source as it is now */
+  /** the Lake hash of the source as it is now, and its time */
   source: string | null;
+  sourceAt: number | null;
 }
 
 const traceCache = new Map<string, TraceInfo & { mtime: number }>();
@@ -218,7 +277,31 @@ function probe(p: Project, m: ModuleInfo): Probe {
   const base = join(p.libDir, ...m.name.split("."));
   const trace = mtime(base + ".trace");
   const t = trace !== null ? readTrace(base + ".trace", trace, "/" + m.file) : { warnings: 0, sorry: false, builtFrom: null };
-  return { olean: mtime(base + ".olean"), trace, source: sourceHash(join(p.root, m.file)), ...t };
+  const src = sourceHash(join(p.root, m.file));
+  return { olean: mtime(base + ".olean"), trace, source: src?.hash ?? null, sourceAt: src?.at ?? null, ...t };
+}
+
+/** A look at every module's files: three times each (its outputs', its source's), read once. */
+export function probeAll(p: Project, mods: Map<string, ModuleInfo>): Map<string, Probe> {
+  const out = new Map<string, Probe>();
+  for (const m of mods.values()) out.set(m.name, probe(p, m));
+  return out;
+}
+
+/** A fingerprint of what a look found of the outputs and the sources: an edit is not a build, but it
+ *  changes what the status says. */
+export function stampOf(probes: Map<string, Probe>): string {
+  const parts: string[] = [];
+  for (const [name, pr] of probes) parts.push(`${name}:${pr.olean}:${pr.trace}:${pr.sourceAt}`);
+  return parts.join("|");
+}
+
+/** The same of the outputs alone: what a build wrote, which is all a followed branch's tree is read
+ *  for (DeploySpec decision 5). */
+export function outputsOf(probes: Map<string, Probe>): string {
+  const parts: string[] = [];
+  for (const [name, pr] of probes) parts.push(`${name}:${pr.olean}:${pr.trace}`);
+  return parts.join("|");
 }
 
 /** The Lake hash of the text a module's present build was compiled from, if it has a build: what
@@ -229,23 +312,6 @@ export function compiledTextHash(p: Project, module: string, file: string): stri
   const trace = mtime(base + ".trace");
   if (trace === null || mtime(base + ".olean") === null) return null;
   return readTrace(base + ".trace", trace, "/" + file).builtFrom;
-}
-
-/** A fingerprint of the build outputs, cheap enough to take every second. */
-export function outputStamp(p: Project, mods: Map<string, ModuleInfo>): string {
-  const parts: string[] = [];
-  for (const m of mods.values()) {
-    const base = join(p.libDir, ...m.name.split("."));
-    parts.push(`${m.name}:${mtime(base + ".olean")}:${mtime(base + ".trace")}`);
-  }
-  return parts.join("|");
-}
-
-/** The same for the sources: an edit is not a build, but it changes what the status says. */
-export function sourceStamp(p: Project, mods: Map<string, ModuleInfo>): string {
-  const parts: string[] = [];
-  for (const m of mods.values()) parts.push(`${m.name}:${mtime(join(p.root, m.file))}`);
-  return parts.join("|");
 }
 
 export class BuildTracker {
@@ -262,15 +328,16 @@ export class BuildTracker {
     this.p = p;
   }
 
-  async status(mods: Map<string, ModuleInfo>): Promise<BuildStatus> {
+  /** The status of every module: from a look at their files (`probes`, made now where not given)
+   *  and the compiles running (`running`, asked now where not given). */
+  async status(mods: Map<string, ModuleInfo>, probes: Map<string, Probe> = probeAll(this.p, mods), running?: Set<string>): Promise<BuildStatus> {
     const p = this.p;
+    running ??= await compiling(p);
+    // a module the look did not find (one the list gained since): looked at now
+    for (const m of mods.values()) if (!probes.has(m.name)) probes.set(m.name, probe(p, m));
     const now = Date.now();
-    const running = await compiling(p);
-    if (this.outputsMoved(mods, now)) this.lastChange = now;
+    if (this.outputsMoved(mods, now, probes)) this.lastChange = now;
     const active = running.size > 0 || now - this.lastChange < 2500;
-
-    const probes = new Map<string, Probe>();
-    for (const m of mods.values()) probes.set(m.name, probe(p, m));
 
     // own state first, then what imports say about it
     const own = new Map<string, FileState>();
@@ -356,14 +423,13 @@ export class BuildTracker {
    *  An edit to a source is not one, nor a file the project gains or loses while nothing is written
    *  (an import added of a file not built yet, one taken out): a module new to the list moved only
    *  where what it has was written since the last look. The first look is no change. */
-  private outputsMoved(mods: Map<string, ModuleInfo>, now: number): boolean {
+  private outputsMoved(mods: Map<string, ModuleInfo>, now: number, probes: Map<string, Probe>): boolean {
     const was = this.seen;
     const since = this.seenAt;
     const next = new Map<string, string>();
     let moved = false;
     for (const m of mods.values()) {
-      const base = join(this.p.libDir, ...m.name.split("."));
-      const olean = mtime(base + ".olean"), trace = mtime(base + ".trace");
+      const { olean, trace } = probes.get(m.name)!;
       const s = `${olean}:${trace}`;
       next.set(m.name, s);
       if (!was) continue;

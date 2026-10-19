@@ -12,6 +12,18 @@ into the latest release only.
   extractor and the usage pass import its modules, which runs their `initialize` declarations, and
   the usage pass elaborates each module again, which runs the project's macros and elaborators.
   Serve only a project you would build yourself.
+- **Whoever can push to a branch it follows.** `visualproof serve <git URL>` builds each new commit
+  of that branch itself (SPEC/DeploySpec.md): `lake exe cache get` where the project is on Mathlib,
+  then `lake build`. **Whoever can push to that branch runs code on this machine**, with the
+  server's user's rights: the lakefile, the dependencies' lakefiles, Mathlib's cache program, and
+  whatever elaboration runs (macros, elaborators, `#eval`, `initialize`). That code can read and
+  write what the server's user can — the site's folder with its tokens and links, the access key's
+  file, the user's SSH keys and git credentials — and reach the network. So: run such a server as a
+  user of its own, which holds nothing else; give it a deploy key that reads that repository alone
+  (or a credential helper scoped to it), never a key that can push; and protect the branch on the
+  forge (pull requests reviewed before they land, no force-push), since a push to it is a deploy.
+  There is no sandbox yet: the build runs as the server's user, in programs of its own. Only that
+  branch is ever fetched: never a pull request's ref nor a fork's.
 - **The project's toolchain**, which elan installs, and Lean's own kernel and language server.
 - **The npm registry and VisualProof's publisher**, as at the first install, and unattended: with
   `--updates auto` (the default) a server downloads the patch releases of the version it runs,
@@ -31,14 +43,24 @@ into the latest release only.
   (`/k/<key>`) or a personal link made in Share (`/i/vpp_…`, revoked on its own), and answers
   everything else 404; or put an authenticating proxy in front. Agents send the key, or a token
   made in Share (`vpa_…`), which reaches the agents' API alone and lasts a few days.
+- **Who is not let in.** A browser asking for a page (GET or HEAD, accepting HTML, not the API nor a
+  file, no `Authorization: Bearer`) is shown, rather than the 404, a page saying the site is private
+  — or that its link no longer opens it, alike for a key replaced and for a personal or read-only
+  link revoked or never made, naming nobody — 403. It is the same page on every server, made of
+  nothing the site holds: whoever comes learns that a VisualProof server is there, and nothing else —
+  not the project, the version, the people or how many there are. No script, nothing fetched, a CSP
+  of `default-src 'none'`, never cached. A browser the key lets in is still told who revoked a link
+  and when; so is what does not ask for a page (a 410), as before.
 - **Web pages on this machine.** Without `--access-key-file`, whoever reaches the port is in, and a
   web page a browser here opens could reach it too, by DNS rebinding: its own name made to resolve
   to this machine, its scripts would then read and write the server as their own site. So a server
   without a key answers a request only for an IP address (IPv6 in brackets), `localhost` and the
   names under it, `--public-url`'s host and the names given with `--allowed-host`, at any port; any
-  other name, and a request without one, is answered 403, whatever it asks. A page reaches an
-  address only as that address, and browsers resolve `localhost` themselves, so neither can be a
-  name the page chose. With a key, the key keeps out whoever was not given it, by any name.
+  other name, and a request without one, is answered 403, whatever it asks — to a browser asking
+  for a page, a page for whoever runs the server, which names the options and does not repeat the
+  name. A page reaches an address only as that address, and browsers resolve `localhost`
+  themselves, so neither can be a name the page chose. With a key, the key keeps out whoever was
+  not given it, by any name.
 - **Read-only readers.** Anyone let in can make a read-only link in Share (`/r/vpr_…`): it lets
   whoever holds it read what a guest reads — the graph, the sources, the review, the history, the
   library's files — and nothing else. The server refuses every other request from them (403)
@@ -55,7 +77,24 @@ into the latest release only.
   address and the commit checked out, read when a page asks (`GET /api/git`; an artwork's foot shows
   them): the host and path alone,
   never a user name, password or token written into the remote's URL, and nothing for a remote that
-  is a path on the machine. Git is only asked, never written to.
+  is a path on the machine. Git is only asked, never written to. A branch the server follows: the
+  commit of the build on show, on that branch.
+- **A branch it follows** (SPEC/DeploySpec.md). The credentials are git's own — an SSH key, a deploy
+  key, a credential helper: VisualProof stores none, and refuses an address with a user name,
+  password or token in it. It follows `https://`, `ssh://` and git's scp-like `git@host:path`, and
+  `file://` (a repository on this machine); never `http://`, `git://`, `ext::` or any other scheme,
+  and git is held to the address's protocol (`GIT_ALLOW_PROTOCOL`) whatever a redirect or a
+  configuration says. The branch is checked by git (`git check-ref-format --branch`); git and Lake
+  are run with argument arrays, never through a shell, as process groups of their own, without the
+  server's `VISUALPROOF_*` variables or anything that points git at another repository; nothing
+  they start waits on a prompt (`GIT_TERMINAL_PROMPT=0`, no askpass, ssh in batch mode: an unknown
+  host key fails, so add it to `known_hosts` first). The remote is asked every `--poll` minutes
+  (`git ls-remote` of the branch's ref alone). What the build writes is in the deployment's folder
+  of the cache, and where the build tools write for any build: elan's toolchains (`~/.elan`) and
+  Mathlib's cache (`~/.cache/mathlib`). The pages are told the branch, the remote (host and path),
+  the build going on, the commit waiting and why a build failed; the end of a build's log, its paths
+  written from the clone's folder (`.`) and the home (`~`), goes to those let in fully and to
+  agents, never to a read-only reader.
 - **Links that save a picture.** A link to an artwork (ExportSpec decision 20) carries its recipe
   after `#`, unsigned: anyone who can send a reader a link — not only an agent the server answered —
   can make it, and make the reader's browser save the picture the page draws of the board, PNG or
@@ -122,11 +161,14 @@ a server downloaded, which the supervisor runs: it is code, as the installed pac
 `media/` the tips' tour film, checked against the package's sha256 (refused, as `versions/` is,
 where another may write the folder). `versions/`
 is made `0700`; a folder in it that another user owns, or that its group or others may write, is
-refused and its patch never run. Keep the caches' root the server's user's alone, as the site.
+refused and its patch never run. Keep the caches' root the server's user's alone, as the site. A branch the server follows is
+cloned and built in `deploy/` of the caches' root: the clone, its build's outputs and its
+dependencies, which the server's Lean programs import; and each build's log.
 
 ## Deploying
 
-- Run the server as an unprivileged user, never as root.
+- Run the server as an unprivileged user, never as root. A server that follows a branch, as a user
+  of its own (above: whoever can push to the branch runs code as that user).
 - Give it `--access-key-file`, or an authenticating proxy that is the only way in; `--public` only
   for a project meant to be public.
 - Put TLS in front of anything that leaves a trusted network.

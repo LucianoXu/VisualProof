@@ -53,8 +53,10 @@ export const FILM = {
   keyEvery: 2,
   // the time the page believes it is when a film begins
   now: "2026-10-16T09:00:00Z",
-  // the pointer's pace, px a second, and a caption's: characters a second, the least seconds shown
+  // the pointer's pace, px a second; the typing's, characters a second; and a caption's: characters
+  // a second, the least seconds shown
   pace: 600,
+  typing: 24,
   reading: 15,
   shownAtLeast: 2,
   // a film larger than this is said to be
@@ -619,13 +621,15 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
       keyT = 0;
       await run(s.ms ?? 500);
     },
-    /** Text typed at a pace that can be read along (`cps` characters a second, 12 unless said;
-     *  `every`: frames a character instead). */
+    /** Text typed at a typist's pace (`cps` characters a second, FILM.typing unless said; `every`:
+     *  frames a character instead), each character at the frame of its time: a pace the frame rate
+     *  does not divide (24 at 30 frames a second) is kept to on average, a frame at least each. */
     async type(s) {
-      const every = s.every ?? Math.max(1, Math.round(fps / (s.cps ?? 12)));
-      for (const ch of s.type) {
+      const every = s.every ?? fps / (s.cps ?? FILM.typing);
+      let n = 0;
+      for (const [i, ch] of [...s.type].entries()) {
         await page.keyboard.type(ch);
-        for (let i = 0; i < every; i++) await frame();
+        for (const end = Math.max(n + 1, Math.round((i + 1) * every)); n < end; n++) await frame();
       }
       await run(s.ms ?? 300);
     },

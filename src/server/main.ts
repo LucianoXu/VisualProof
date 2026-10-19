@@ -9,8 +9,8 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
-import { gunzipSync, gzip, gzipSync } from "node:zlib";
+import { freemem, tmpdir } from "node:os";
+import { gunzip, gunzipSync, gzip, gzipSync } from "node:zlib";
 import { WEB, WEBFONTS, bundleDir, bundleDirIn, ensureBundle, prepare, useBundleDir } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
 import { makeArtwork, pngOf, projectView } from "./artcmd.ts";
@@ -30,6 +30,7 @@ import { lakeTextHash } from "./status.ts";
 import { invalidTemplate } from "../shared/editor.ts";
 import { packEdges } from "../shared/edgecodec.ts";
 import { Access, hostAllowed, KEY_PATH, loadKey, urlHost } from "./access.ts";
+import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
@@ -37,7 +38,7 @@ import { AgentTokens, bearerOf, DEFAULT_DAYS, invalidAgentName, looksLikeToken, 
 import type { TokenRecord } from "./tokens.ts";
 import { agentPrompt } from "./prompt.ts";
 import { MAX_PERSON } from "./talk.ts";
-import { DEFAULT_JOBS, UsagePass, mergeUsage, saveMerged } from "./usage.ts";
+import { DEFAULT_JOBS, inGB, jobsAdvice, memoryFloor, onMathlib, UsagePass, mergeUsage, saveMerged, WORKER_PEAK } from "./usage.ts";
 import { extract } from "./extract.ts";
 import type { AgentLevel, Answer } from "./agent.ts";
 import { Exporter } from "./export.ts";
@@ -56,6 +57,10 @@ import { RESTART_STATUS, supervise } from "./supervise.ts";
 import { stopChildren } from "./children.ts";
 import { filmStatus, serveFilm, useFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
+import { branchProblem, branchToFollow, DEFAULT_POLL_MINUTES, DeployBusy, deployFolder, Deployment, deploySite, ensureClone, isGitAddress, lockDeployment, MIN_POLL_MINUTES, parseRemote, recordedDefault } from "./deploy.ts";
+import type { DeployFolder, Remote } from "./deploy.ts";
+import { shortCommit, slimDeploy } from "../shared/deploy.ts";
+import type { DeployStatus } from "../shared/deploy.ts";
 
 interface Options {
   cmd: "serve" | "export" | "purge-file" | "doctor" | "artwork";
@@ -90,7 +95,7 @@ interface Options {
   /** the most the library's files may take, in bytes (AttachmentSpec, "Implementation notes") */
   libraryLimit: number;
   /** --public: whoever comes without the key or a link of their own is a read-only reader
-   *  (CollabSpec decision 11), where they would be answered 404 */
+   *  (CollabSpec decision 11), where they would be turned away (decision 7) */
   publicRead: boolean;
   /** purge-file: the file whose bytes go */
   sha: string | null;
@@ -103,12 +108,19 @@ interface Options {
   /** serve: what the server does with VisualProof's own releases (UpdateSpec decision 2): takes a
    *  patch of its minor by itself, tells of a newer one, or neither */
   updates: UpdateMode;
+  /** serve: a git address where the project goes (DeploySpec decision 1): the remote whose branch
+   *  the server follows and builds; null for a folder */
+  remote: Remote | null;
+  /** --branch: the branch followed; null: the remote's default branch */
+  branch: string | null;
+  /** --poll: how often the remote is asked, in minutes; null: DEFAULT_POLL_MINUTES */
+  poll: number | null;
 }
 
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
  *  to stdout with status 0. */
 function usage(code = 2): never {
-  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project> [--root Name]... [--port 4173] [--host 127.0.0.1]
+  (code === 0 ? console.log : console.error)(`usage: visualproof serve  <lean-project | git URL> [--branch name] [--poll ${DEFAULT_POLL_MINUTES}] [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
                                          [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
@@ -124,6 +136,18 @@ function usage(code = 2): never {
 
   Reads what \`lake build\` left in <lean-project>/.lake. It never builds the project, and writes
   nothing into it.
+
+  A git URL where the project goes (https://github.com/owner/repo, ssh://…, git@host:owner/repo, or
+  file:///path for a repository on this machine): the server follows that branch of the repository
+  in a clone of its own in the cache, never a workspace, and builds each new commit itself —
+  \`lake exe cache get\` where the project is on Mathlib, then \`lake build\` — one at a time, the
+  newest commit pushed meanwhile the only one built after it; the board shows the last build
+  meanwhile. Git's own credentials (an SSH key, a deploy key, a credential helper): VisualProof keeps
+  none, and nothing waits on a prompt. Whoever can push to the branch runs code on this machine, as
+  the server's user (SECURITY.md): run it as a user of its own, and protect the branch.
+  --branch the branch followed (default: the remote's default branch); never a pull request's or
+           a fork's
+  --poll   how often the remote is asked for the branch's head, in minutes (default ${DEFAULT_POLL_MINUTES})
 
   --root   what to read: a library of the lakefile (the modules Lake builds of it) or a module;
            repeatable. By default the lakefile's default targets.
@@ -176,20 +200,24 @@ function usage(code = 2): never {
   --jobs  how many modules the usage pass elaborates at once (default ${DEFAULT_JOBS}; 0: no pass). The
            pass finds which notation each declaration is written in and the exact context it is
            written in (TCBSpec.md, decisions 2 and 4); its findings follow the extractor's graph
-           as its next version. Each worker takes about 400 MB of its own and the import of a
-           module is bound by memory bandwidth: past about a quarter of the cores it gains little.
+           as its next version. Each worker takes about 400 MB of its own, several GB on a large
+           project on Mathlib (serve and doctor say which --jobs the memory fits); with memory
+           short, fewer run at a time. The import of a module is bound by memory bandwidth: past
+           about a quarter of the cores it gains little.
 
   --access-key-file  let in only those given the link http://<host>:<port>/k/<key>, the key being
            what the file holds (one is made there, readable by its owner alone, if there is none).
            The link leaves a cookie in the browser; agents send Authorization: Bearer <key>.
-           Anything else is answered 404. Over plain HTTP the key crosses the network in the
-           clear: it keeps out who was not given the link, not who can watch the traffic.
+           Anything else is answered 404, but a browser asking for a page, which is shown one
+           that says the site is private and nothing of it. Over plain HTTP the key crosses the
+           network in the clear: it keeps out who was not given the link, not who can watch the
+           traffic.
            Share also gives an AI agent a token of its own (vpa_…), which reaches /api/agent only,
            and a person a link of their own (/i/vpp_…), which lets them in and says who they are,
            and anyone a read-only link (/r/vpr_…), which lets them see and change nothing shared.
 
   --public  with --access-key-file: whoever comes without the key or a link of their own is let
-           in read-only, rather than answered 404: they see the project, its review and its
+           in read-only, rather than turned away: they see the project, its review and its
            history, change nothing that is shared, and are seen by nobody. For a project anyone
            may read (a showcase); never for a private one.
 
@@ -239,7 +267,7 @@ function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto" };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -290,6 +318,17 @@ function parseArgs(argv: string[]): Options {
       if (!Number.isInteger(n) || n < 0 || n > 256) usage();
       o.jobs = n;
     }
+    else if (a === "--branch" && cmd === "serve") o.branch = val();
+    else if (a === "--poll" && cmd === "serve") {
+      const v = val();
+      const m = Number(v);
+      // said in a line, as --screen is
+      if (!/^\d+(\.\d+)?$/.test(v) || m < MIN_POLL_MINUTES || m > 1440) {
+        console.error(`visualproof: --poll ${v}: say how often the remote is asked, in minutes, from ${MIN_POLL_MINUTES} to 1440 (a day)`);
+        process.exit(2);
+      }
+      o.poll = m;
+    }
     else if (a === "--updates" && cmd === "serve") {
       const mode = val();
       if (!UPDATE_MODES.includes(mode as UpdateMode)) usage();
@@ -311,6 +350,32 @@ function parseArgs(argv: string[]): Options {
     else usage();
   }
   if ((!o.path && cmd !== "doctor") || (cmd === "export" && !o.out) || (cmd === "artwork" && !o.recipe)) usage();
+  // a git address where the project goes: the branch followed and built (DeploySpec decisions 1,
+  // 10 and 11), its address and branch checked before anything is run
+  if (o.path && isGitAddress(o.path)) {
+    if (cmd !== "serve") {
+      console.error(`visualproof ${cmd}: ${o.path.slice(0, 200)} is a git address: only serve follows a branch. Give the folder of its clone, which serve names as it starts (its "clone:" line).`);
+      process.exit(2);
+    }
+    const r = parseRemote(o.path);
+    if ("error" in r) {
+      console.error(`visualproof: ${r.error}`);
+      process.exit(2);
+    }
+    if (o.graph) {
+      console.error("visualproof: --graph does not go with a git address: the server builds what it shows");
+      process.exit(2);
+    }
+    const why = o.branch === null ? null : branchProblem(o.branch);
+    if (why) {
+      console.error(`visualproof: --branch ${why}`);
+      process.exit(2);
+    }
+    o.remote = r;
+  } else if (o.branch !== null || o.poll !== null) {
+    console.error("visualproof: --branch and --poll go with a git address (serve https://github.com/owner/repo): a folder is read as its owner's builds leave it");
+    process.exit(2);
+  }
   // read-only for whoever comes, beside those the key or a link lets in: without a key, everyone is in
   // already; behind a sign-in, there is nobody else
   if (o.publicRead && (!o.accessKeyFile || o.identityHeader)) {
@@ -679,13 +744,16 @@ export class App {
   /** A personal link opened (CollabSpec decision 9): the browser is given the cookie that lets its
    *  holder in, as who the link says, and goes on to the page — the token leaves the address, and a
    *  place after it (a fragment) comes along. A revoked link says so; anything else is answered as
-   *  any address nobody was given. */
-  private enter(req: IncomingMessage, res: ServerResponse, token: string): void {
+   *  any address nobody was given. On a server with a key, a browser is shown the page of a link
+   *  that does not open the site instead (CollabSpec decision 7), which says neither which it was
+   *  nor who revoked it — unless the key or a link of its own lets it in, and it may be told. */
+  private enter(req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
     const c = this.ids.header ? null : this.live.invites.check(token);
     if (c && "ok" in c) {
       res.writeHead(303, { location: "/", "set-cookie": this.live.invites.cookie(c.ok), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
+    if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
     if (c) return sendText(req, res, revokedWords(c.record, "personal") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
   }
@@ -693,15 +761,23 @@ export class App {
   /** A read-only link opened (CollabSpec decision 11): the browser is given the cookie that lets
    *  its holder read, and goes on to the page — the token leaves the address, and a place after it
    *  (a fragment) comes along. A revoked link says so; anything else, and any link on a server
-   *  open to all or behind a sign-in, which have none, is answered as an address nobody was given. */
-  private enterReadOnly(req: IncomingMessage, res: ServerResponse, token: string): void {
+   *  open to all or behind a sign-in, which have none, is answered as an address nobody was given;
+   *  to a browser, on a server with a key, as a personal link's (enter). */
+  private enterReadOnly(req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
     const c = this.access && !this.ids.header ? this.live.readOnly.check(token) : null;
     if (c && "ok" in c) {
       res.writeHead(303, { location: "/", "set-cookie": this.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
       return void res.end();
     }
+    if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
     if (c) return sendText(req, res, revokedWords(c.link, "read-only") + "\n", "text/plain; charset=utf-8", 410);
     sendJson(res, { error: "not found" }, 404);
+  }
+
+  /** Whether the key's cookie or a personal link in force lets a request in: someone who sees the
+   *  site's people, and may be told who revoked a link. */
+  private letIn(req: IncomingMessage): boolean {
+    return !!this.ids.person(req) || this.access?.admit(req, "/") === "in";
   }
 
   /** Who the reader is (POST /api/identity {name}): the name someone invited by a personal link goes
@@ -734,8 +810,10 @@ export class App {
 
   /** A request for a name this server without a key does not answer (CollabSpec decision 12): 403,
    *  saying which option lets the name in; and, once per name, the server's console says it too,
-   *  for whoever runs it behind a proxy that forwards the name people reach it by. */
-  private refuseHost(req: IncomingMessage, res: ServerResponse): void {
+   *  for whoever runs it behind a proxy that forwards the name people reach it by. A browser asking
+   *  for a page is shown a page that says so (the owner's decision of 2026-10-18), which does not
+   *  repeat the name: it is the requester's, any text at all. */
+  private refuseHost(req: IncomingMessage, res: ServerResponse, path: string): void {
     const raw = req.headers.host ?? "";
     const name = /^\[/.test(raw) ? raw : raw.replace(/:\d{1,5}$/, "");
     const shown = /^[A-Za-z0-9._\-[\]:]{1,253}$/.test(name) ? name : null;
@@ -743,6 +821,7 @@ export class App {
       this.refusedHosts.add(shown.toLowerCase());
       console.error(`refused a request for ${shown}: without an access key this server answers only its addresses, localhost, --public-url's host and the --allowed-host names; --allowed-host ${shown} lets this one in`);
     }
+    if (asksForPage(req, path)) return sendAccessPage(res, "host");
     sendText(req, res, `This server answers only the names it is meant to be reached by${shown ? `, and ${shown} is not one of them` : ""}. Whoever runs it can let a name in with --allowed-host${shown ? ` ${shown}` : " <name>"}.\n`, "text/plain; charset=utf-8", 403);
   }
 
@@ -832,7 +911,7 @@ export class App {
     // decision of 2026-10-18): a page whose own name was made to resolve to this machine (DNS
     // rebinding) is refused whatever it asks — the page, its data, the event stream, the agents'
     // API, the MCP server's file
-    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res);
+    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res, path);
     // every route; whatever one throws, handle() answers
     {
       // an agent's own token (server/tokens.ts) lets it into its API alone: the page and the page's
@@ -852,10 +931,10 @@ export class App {
       // a personal link (CollabSpec decision 9, server/invites.ts): it lets its holder in, as who
       // it says, and its cookie does from then on; a revoked one's cookie is forgotten, and lets
       // nobody in
-      if (path.startsWith(INVITE_PATH)) return this.enter(req, res, path.slice(INVITE_PATH.length));
+      if (path.startsWith(INVITE_PATH)) return this.enter(req, res, path.slice(INVITE_PATH.length), path);
       // a read-only link (CollabSpec decision 11, server/readonly.ts): its cookie lets its holder
       // read, where nothing else lets them in
-      if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length));
+      if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length), path);
       const link = this.ids.link(req);
       const cookies: string[] = link && "ended" in link ? [live.invites.forget()] : [];
       const ro = this.access && !this.ids.header ? live.readOnly.ofCookie(req.headers.cookie) : null;
@@ -867,18 +946,35 @@ export class App {
           const reader = ro && "ok" in ro ? ro.ok.id : this.publicRead && !this.ids.header ? "public" : null;
           // a page whose link was revoked, which nothing else lets in, is told so (CollabSpec
           // decisions 9 and 11): its requests are answered 410 with who revoked it and when, and the
-          // page, reloaded, says it in words; the cookie is forgotten there, once it has been said
+          // page, reloaded, says the link no longer opens the site (decision 7: to a browser, the
+          // page of a link that does not, which names nobody); the cookie is forgotten there, once
+          // it has been said
           const revoked = reader === null && this.ids.kind(req) !== "agent" ? (link && "ended" in link ? revokedWords(link.record, "personal") : ro && "ended" in ro ? revokedWords(ro.link, "read-only") : null) : null;
           if (revoked) {
+            if (asksForPage(req, path)) {
+              res.setHeader("set-cookie", cookies);
+              return sendAccessPage(res, "link");
+            }
             if (path === "/" || path === "/index.html") {
               res.setHeader("set-cookie", cookies);
               return sendText(req, res, revoked + "\n", "text/plain; charset=utf-8", 410);
             }
             return sendJson(res, { error: revoked, revoked: true }, 410);
           }
+          // nothing lets them in: a browser asking for a page is told the site is private, or that
+          // its link (`/k/…`, a key replaced) does not open it (CollabSpec decision 7, the owner's
+          // decision of 2026-10-18); anything else is answered as if there were nothing here
           if (reader === null || this.ids.kind(req) === "agent") {
             if (cookies.length) res.setHeader("set-cookie", cookies);
+            if (asksForPage(req, path)) return sendAccessPage(res, path.startsWith(KEY_PATH) ? "link" : "private");
             return sendJson(res, { error: "not found" }, 404);
+          }
+          // a link of the key's that is not the key, opened where the address, or a read-only link,
+          // lets them read: the page of a link that does not open the site, which says whether the
+          // address alone does (--public)
+          if (path.startsWith(KEY_PATH) && asksForPage(req, path)) {
+            if (cookies.length) res.setHeader("set-cookie", cookies);
+            return sendAccessPage(res, "link", this.publicRead);
           }
           this.readOnlyOf.set(req, reader);
           // the page renews a read-only link's cookie, as a personal link's
@@ -931,6 +1027,8 @@ export class App {
         if (this.readOnlyOf.get(req) !== undefined) {
           delete st.log;
           st.review = { ...(st.review as object), folder: undefined };
+          // a branch's build log is not a read-only reader's (DeploySpec decision 11)
+          if (st.deploy) st.deploy = slimDeploy(st.deploy as DeployStatus);
         }
         return sendJson(res, st);
       }
@@ -968,7 +1066,7 @@ export class App {
         // name — a private reader's too (CollabSpec decision 8) — with the personal link of someone
         // invited by one, whose moves go to their link's log (decision 9); by an agent at level full
         const person = this.ids.person(req)?.id;
-        const a = historyAnswer(live, { method: req.method ?? "GET", path, query: url.searchParams, body, caller: { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person } : {}) } }, (q) =>
+        const a = await historyAnswer(live, { method: req.method ?? "GET", path, query: url.searchParams, body, caller: { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person } : {}) } }, (q) =>
           q.caller.kind === "agent" ? refusal(this.agents.level, "full") : null,
         );
         // a snapshot's graph in parts, as the Time Machine takes it: compressed once, and tagged
@@ -991,8 +1089,8 @@ export class App {
       // an agent may use the page's own endpoints too: the same rules hold there (AgentSpec)
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
-      // logs that cannot be read
-      if (path === "/api/review" && req.method === "GET") return sendJsonText(res, live.review.wholeText());
+      // logs that cannot be read; tagged with its revision, compressed once a revision
+      if (path === "/api/review" && req.method === "GET") return sendReview(req, res, live.review);
       if (path === "/api/review" && req.method === "POST") {
         // an opinion, a target, a trusted prefix or a key declaration is recorded under the
         // reader's name (CollabSpec decision 3), not one in the body; what it is about is
@@ -1071,6 +1169,10 @@ export class App {
       // the project's git source and commit as git says them now, not as the build was read (an
       // artwork's foot, ExportSpec decision 19; the owner's decision of 2026-10-15)
       if (path === "/api/git") {
+        // following a branch, the commit of the build on show, on that branch: what is checked out
+        // meanwhile is the build going on (DeploySpec decision 12)
+        const shown = live.shownCommit();
+        if (shown !== undefined) return sendJson(res, { git: shown && { source: live.deploy!.status(false).source, commit: shown.hash, branch: shown.branch } });
         if (!this.gitRead || Date.now() - this.gitRead.at >= this.gitFreshMs) this.gitRead = { git: gitSource(live.project.root), at: Date.now() };
         return sendJson(res, { git: this.gitRead.git });
       }
@@ -1298,7 +1400,7 @@ export function sendJson(res: ServerResponse, body: unknown, code = 200, headers
   sendJsonText(res, JSON.stringify(body), code, headers);
 }
 
-/** The same, of an answer written as JSON already (the whole review, server/review.ts). */
+/** The same, of an answer written as JSON already. */
 function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Record<string, string> = {}): void {
   if (res.headersSent || res.writableEnded || refused.has(res)) return;
   // a small answer is not worth compressing; a status with its build log, a source file, are; a
@@ -1310,6 +1412,43 @@ function sendJsonText(res: ServerResponse, text: string, code = 200, headers: Re
   }
   res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store", ...headers });
   res.end(text);
+}
+
+/** the whole review compressed, under the tag of the revision it is of, per review */
+const reviewGz = new WeakMap<ReviewStore, { tag: string; gz: Promise<Buffer> }>();
+
+/** The whole review (GET /api/review), tagged with its run and its revision (server/review.ts): a
+ *  page that has it is answered 304, which a reload is, and one whose review fell behind is sent it
+ *  compressed — once a revision, off the server's thread when it is large, the same bytes for every
+ *  page (a review of 5,000 opinions on Sphere-Packing-Lean: 8.5 MB of JSON, 1.1 MB sent). */
+function sendReview(req: IncomingMessage, res: ServerResponse, review: ReviewStore): void {
+  if (res.headersSent || res.writableEnded || refused.has(res)) return;
+  const tag = review.tag();
+  const head = { "content-type": "application/json", "cache-control": "private, no-cache", etag: tag, vary: "accept-encoding" };
+  if (fresh(req, tag)) {
+    res.writeHead(304, head);
+    return void res.end();
+  }
+  const text = review.wholeText();
+  if (text.length <= JSON_GZIP_FROM || !acceptsGzip(req)) {
+    res.writeHead(200, head);
+    return void res.end(text);
+  }
+  let c = reviewGz.get(review);
+  if (c?.tag !== tag) {
+    const gz = text.length < JSON_GZIP_AWAY_FROM ? Promise.resolve(gzipSync(text)) : new Promise<Buffer>((ok, fail) => gzip(text, (e, b) => (e ? fail(e) : ok(b))));
+    reviewGz.set(review, (c = { tag, gz }));
+    // a compression that failed is tried again by the next page that asks
+    gz.catch(() => reviewGz.get(review)?.gz === gz && reviewGz.delete(review));
+  }
+  c.gz.then(
+    (gz) => {
+      if (res.headersSent || res.destroyed) return;
+      res.writeHead(200, { ...head, "content-encoding": "gzip" });
+      res.end(gz);
+    },
+    (e: Error) => res.destroy(e),
+  );
 }
 
 /** Send a text that is not JSON (the agents' documentation, the MCP server's file), compressed
@@ -1360,16 +1499,23 @@ export const JSON_GZIP_AWAY_FROM = 1 << 20;
 /** the graph's parts as sent, each tagged once (a graph's buffers live as long as it does) */
 const gzTags = new WeakMap<Buffer, string>();
 
-/** A part of the graph, gzipped already: tagged, so that a page that has it gets 304. */
+/** A part of the graph, gzipped already: tagged, so that a page that has it gets 304; a client that
+ *  does not take gzip (an agent's) is sent it as it is, made so off the server's thread. */
 function sendGz(req: IncomingMessage, res: ServerResponse, gz: Buffer, type: string): void {
   if (refused.has(res)) return;
   let etag = gzTags.get(gz);
   if (!etag) gzTags.set(gz, (etag = tagOf(gz)));
-  const head = { "content-type": type, "cache-control": "private, no-cache", etag };
+  const head = { "content-type": type, "cache-control": "private, no-cache", etag, vary: "accept-encoding" };
   if (fresh(req, etag)) {
     res.writeHead(304, head);
     return void res.end();
   }
+  if (!acceptsGzip(req))
+    return void gunzip(gz, (e, plain) => {
+      if (e) return res.destroy(e);
+      res.writeHead(200, head);
+      res.end(plain);
+    });
   res.writeHead(200, { ...head, "content-encoding": "gzip" });
   res.end(gz);
 }
@@ -1400,7 +1546,7 @@ async function main(): Promise<void> {
   // an installed package's server runs under the supervisor, which stays while it restarts into
   // another version (UpdateSpec decision 5); `--updates off`, and a checkout, run it as they are
   if (o.cmd === "serve" && FROM_PACKAGE && o.updates !== "off" && process.env.VISUALPROOF_SUPERVISED !== "1") {
-    const site = projectDirs(resolve(o.path), o.site, o.cache).site;
+    const site = o.remote ? deploySiteOf(o) : projectDirs(resolve(o.path), o.site, o.cache).site;
     process.exit(await supervise({ installedRoot: PACKAGE_ROOT, cacheRoot: o.cache ? resolve(o.cache) : cacheHome(), argv: process.argv.slice(2), site, mode: o.updates }));
   }
   // a stop asked before the server can stop gracefully (it reads the project, takes the site) ends
@@ -1414,19 +1560,24 @@ async function main(): Promise<void> {
   // a live server outlives any one failed task: log it and keep serving (a picture is no server:
   // whatever fails ends it, with status 1)
   if (o.cmd !== "artwork") process.on("unhandledRejection", (e) => console.error("unhandled:", e instanceof Error ? e.message : e));
+  // following a branch (DeploySpec): its clone in the cache, made at the first start, is the project
+  const deploy = o.remote ? await openDeployment(o) : null;
+  if (o.remote && !deploy) return;
   let project: Project;
   try {
-    project = openProject(o.path, o.roots, o.graph === null);
+    // a branch's clone is read before its build: the server builds it
+    project = openProject(deploy ? deploy.folder.checkout : o.path, o.roots, !deploy && o.graph === null);
   } catch (e) {
     if (e instanceof ProjectError) {
-      console.error(`visualproof: ${e.message}`);
+      console.error(`visualproof: ${deploy ? `${deploy.branch} of ${deploy.remote.source ?? deploy.remote.url}, at ${shortCommit(deploy.head)}: ` : ""}${e.message}`);
       return endNotTheCode(1);
     }
     throw e;
   }
   // a picture: the site read, never made, locked or written (ExportSpec decision 21)
   if (o.cmd === "artwork") return artworkCommand(project, o);
-  const dirs = projectDirs(project.root, o.site, o.cache);
+  // a branch's site is the address's and the branch's, wherever the cache is
+  const dirs = { ...projectDirs(project.root, o.site, o.cache), ...(deploy && o.site === null ? { site: deploySite(deploy.remote, deploy.branch) } : {}) };
   openSite(dirs.site);
   mkdirSync(dirs.cache, { recursive: true });
   // one server at a time writes a site; an export only reads it
@@ -1500,6 +1651,29 @@ async function main(): Promise<void> {
     live.invites.close();
     live.readOnly.close();
   });
+  // the branch followed: asked every --poll minutes, each new head built in turn (DeploySpec)
+  const deployment = deploy
+    ? new Deployment({
+        remote: deploy.remote,
+        branch: deploy.branch,
+        folder: deploy.folder,
+        project,
+        roots: o.roots,
+        everyMs: (o.poll ?? DEFAULT_POLL_MINUTES) * 60_000,
+        head: deploy.head,
+        hooks: {
+          reading: () => live.reading,
+          // the usage pass of the build before is cut short: what it finished is kept
+          starting: () => live.usage.cancel(),
+          toolchainChanged: () => hover.toolchainChanged(),
+          // the pages are told at the live loop's next look, within a second
+          changed: () => live.lookSoon(),
+          log: (l) => live.say(l),
+          ended: () => live.reread(),
+        },
+      })
+    : null;
+  live.deploy = deployment;
   const exporter = new Exporter(dirs.cache);
   const app = new App(live, hover, ids, new AgentApi(live, hover, o.agents), key ? new Access(key.key) : null, exporter, o.publicUrl, o.publicRead, o.allowedHosts);
   const server = createServer((req, res) => app.handle(req, res));
@@ -1522,6 +1696,8 @@ async function main(): Promise<void> {
     stopping = true;
     exitStatus = status;
     updates.stop();
+    // a build going on is stopped with the programs, and done again at the next start
+    deployment?.stop();
     server.close();
     live.end(why);
     hover.stop();
@@ -1578,15 +1754,68 @@ async function main(): Promise<void> {
     console.log(`  editor: ${o.editor ?? "no link unless a reader sets one"}`);
     console.log(`  agents: ${o.agents} — their API is http://${o.host}:${o.port}/api/agent`);
     console.log(`  usage pass: ${o.graph ? "none for a saved graph" : o.jobs > 0 ? `${o.jobs} module(s) at a time` : "off (--jobs 0)"}`);
+    // what the pass's workers may hold on a project on Mathlib, against what the machine has
+    const memory = o.graph || o.jobs <= 0 ? null : jobsAdvice(o.jobs, onMathlib(project.root));
+    if (memory)
+      console.log(
+        `  memory: ${inGB(freemem())} available; on Mathlib the pass's workers may hold up to ${inGB(WORKER_PEAK)} each, ${inGB(memory.need)} at ${o.jobs}: ` +
+          `--jobs ${memory.fits} if memory runs short (it starts fewer while less than ${inGB(memoryFloor())} is available)`,
+      );
     console.log(
       `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : `anyone who reaches the port, by its address, localhost${[...(o.publicUrl ? [urlHost(o.publicUrl)] : []), ...o.allowedHosts].map((n) => `, ${n}`).join("")} (other names are refused: --allowed-host)`}`,
     );
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
+    if (deployment) {
+      const d = deployment.status(true);
+      console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min`);
+      console.log(`  clone: ${deployment.folder.checkout}`);
+      console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : `none yet: the first, of ${shortCommit(deploy!.head)}, starts now, and the page says so until it is done`}; their logs in ${deployment.folder.logs}`);
+    }
     recordVersion(live, version, supervised);
     process.send?.({ vp: "listening", version });
     updates.start();
   });
   live.start();
+  deployment?.start();
+}
+
+/** The site a branch's server keeps, as the supervisor finds it (UpdateSpec decision 7): `--site`,
+ *  else the address's and the branch's — the default branch as it was last asked, without the network;
+ *  null at a first start without --branch, which the server alone resolves. */
+function deploySiteOf(o: Options): string | null {
+  if (o.site !== null) return resolve(o.site);
+  const branch = o.branch ?? recordedDefault(o.cache ? resolve(o.cache) : cacheHome(), o.remote!.url);
+  return branch ? deploySite(o.remote!, branch) : null;
+}
+
+/** A branch's deployment as the server starts (DeploySpec decisions 1–2): the branch (the remote's
+ *  default where none is given), its folder in the cache taken for this server, its clone made at
+ *  the first start. Null where it cannot be had: said, and the server ends, which is not its code. */
+async function openDeployment(o: Options): Promise<{ remote: Remote; branch: string; folder: DeployFolder; head: string } | null> {
+  const remote = o.remote!;
+  const cacheRoot = o.cache ? resolve(o.cache) : cacheHome();
+  const branch = await branchToFollow(remote, o.branch, cacheRoot);
+  if (typeof branch !== "string") {
+    console.error(`visualproof: ${remote.source ?? remote.url}: ${branch.error}`);
+    endNotTheCode(1);
+    return null;
+  }
+  const folder = deployFolder(cacheRoot, remote, branch);
+  try {
+    process.on("exit", lockDeployment(folder, remote, branch));
+  } catch (e) {
+    if (!(e instanceof DeployBusy)) throw e;
+    console.error(`visualproof: ${e.message}`);
+    endNotTheCode(1);
+    return null;
+  }
+  const c = await ensureClone(remote, branch, folder, (l) => console.log(l));
+  if ("error" in c) {
+    console.error(`visualproof: ${c.error}`);
+    endNotTheCode(1);
+    return null;
+  }
+  return { remote, branch, folder, head: c.commit };
 }
 
 /** What the server does with its releases, for its first lines (UpdateSpec decisions 2–4, 13). */

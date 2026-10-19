@@ -14,6 +14,7 @@ on:
       - src/server/status.ts
       - src/server/hover.ts
       - src/server/children.ts
+      - src/server/deploy.ts
       - test/fixture/**
       - test/golden/**
       - test/toolchains.json
@@ -23,6 +24,7 @@ on:
       - test/usage.test.ts
       - test/hover.test.ts
       - test/status.test.ts
+      - test/deploylive.test.ts
       - .github/workflows/toolchains.yml
   schedule:
     - cron: "0 4 * * 1"

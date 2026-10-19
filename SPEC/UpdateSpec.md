@@ -159,7 +159,7 @@ The owner's decisions of 2026-10-16.
 ### The tour film
 
 14. **The tips' tour film is fetched by the server, on its first play** (the owner's decision of
-    2026-10-17): 3½–4 minutes at 2560×1600, too large for the package and for git, it is an asset
+    2026-10-17): about 3½ minutes at 2560×1600, too large for the package and for git, it is an asset
     of the repository's GitHub prerelease `tour-1`, and the package pins it
     (`assets/tips/tour.json`: its file, size and sha256). The first `GET /tips/tour.mp4` starts the
     one download, which every request shares and outlives the request that started it; meanwhile

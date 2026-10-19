@@ -1,4 +1,4 @@
-// The tips' tour film (UpdateSpec decision 14, the owner's of 2026-10-17): 3½–4 minutes at
+// The tips' tour film (UpdateSpec decision 14, the owner's of 2026-10-17): about 3½ minutes at
 // 2560×1600, too large for the package and for git, so it is an asset of the repository's GitHub
 // prerelease `tour-1`, and the package pins it (assets/tips/tour.json: its file, sha256 and size).
 // The server fetches it the first time a page asks for it (GET /tips/tour.mp4), one download for

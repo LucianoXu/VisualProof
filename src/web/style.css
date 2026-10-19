@@ -25,6 +25,19 @@
    it on screen after it was hidden) */
 [hidden] { display: none !important; }
 
+/* reduced motion (the system's setting; web/src/theme.ts, reducedMotion, for what moves by itself):
+   nothing on the page slides, fades, pulses or spins — what changes is there at once, every
+   transition and animation over within a millisecond, so that whatever waits for one to end still
+   hears it. Where an animation says something, it says it still: a flash that shows where a line
+   is holds a moment (.rv-flash), the export's progress bar stands */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0s !important; transition-delay: 0s !important;
+    animation-duration: 1ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 :root {
   /* the camera's easing (web/src/canvas.ts, animate), for what moves with it */
   --art-ease: cubic-bezier(0.65, 0, 0.35, 1);
@@ -35,9 +48,12 @@
   --surface: rgba(255, 255, 255, 0.78);
   --surface-solid: #ffffff;
   --line: rgba(0, 0, 0, 0.08);
+  /* the text, at least 4.5:1 on every surface it is written on (WCAG AA; the owner's QA of 0.4.4
+     found the third at 2.5:1, #a1a1a6): the second 5.8:1 on the ground and 6.4:1 on a solid
+     surface, the third 4.5:1 and 4.9:1, a step apart (L* 40 and 47; #6e6e73 the second before) */
   --text: #1d1d1f;
-  --text-2: #6e6e73;
-  --text-3: #a1a1a6;
+  --text-2: #5f5f64;
+  --text-3: #707075;
   --disc: rgba(0, 0, 0, 0.022);
   --disc-line: rgba(0, 0, 0, 0.07);
   --label: rgba(29, 29, 31, 0.55);
@@ -49,13 +65,20 @@
   --grad-tcb: linear-gradient(100deg, #5e5ce6, #bf5af2);
   --grad-dep: linear-gradient(100deg, #0a84ff, #64d2ff);
   --grad-app: linear-gradient(100deg, #ff9f0a, #ff375f);
-  --accent: #7d5cf0;
+  /* the accent, also the colour of links and of what is lit: 4.5:1 on the ground (#7d5cf0 before,
+     4.1:1) */
+  --accent: #7655e9;
   /* the mark of someone invited by a personal link (CollabSpec decision 9): the accent, apart from
      every colour of the review's status */
   --verified: #6a4be0;
-  /* an edge runs from the declaration that uses (from) to the one it uses (to) */
+  /* an edge runs from the declaration that uses (from) to the one it uses (to); the overview's
+     edges take only their hue, at opacities of their own (web/src/overview.ts, looksOf) */
   --edge-from: rgba(240, 110, 20, 0.85);
   --edge-to: rgba(59, 91, 219, 0.85);
+  /* how much fainter each edge is drawn as more are drawn at once, beyond what the board does in
+     every theme (web/src/canvas.ts, crowdFade): none on the light ground, where edges that cross
+     add up to ink */
+  --edge-crowd: 0;
 
   --k-def: #0a84ff;
   --k-abbrev: #40c8e0;
@@ -72,8 +95,11 @@
 
   /* the Status scheme (decided 2026-10-08, CanvasSpec "Colour schemes"): one colour per point, the
      most urgent state winning; Okabe and Ito's palette, which colour-blind readers tell apart, the
-     quiet states set apart by lightness and hue (not yet reviewed a light grey, trusted a pale
-     green, failed a dark grey; 2026-10-09). Commented is a calm
+     quiet states set apart by lightness and hue (not yet reviewed a mid grey, trusted a pale green,
+     failed a dark grey; 2026-10-09). Not yet reviewed was a light grey (#c7c7cc), too close to the
+     clusters' discs and lines to read as a point (the owner's report of 2026-10-18): a mid grey now,
+     L* 67, far from failed's L* 33 and from the clusters' lines, and a little warm — a neutral grey
+     that dark is, to a deuteranope, sorry's reddish purple (ΔE2000 3.9; 10.5 warm). Commented is a calm
      cobalt blue (2026-10-09), darker than building's sky blue and bluer than sorry's purple, so
      that it stays apart from both, and from failed's grey, for every kind of colour blindness */
   --status-failed: #4d4d52;
@@ -82,7 +108,7 @@
   --status-commented: #2a62c0;
   --status-stale: #e69f00;
   --status-approved: #009e73;
-  --status-unreviewed: #c7c7cc;
+  --status-unreviewed: #a6a29c;
   --status-trusted: #b3e2c2;
 
   --st-failed: #ff3b30;
@@ -146,44 +172,70 @@
   --tm-renamed: #0f97ab;
 }
 
-/* dark: chosen, or following the system (web/src/theme.ts sets data-theme before the first paint) */
+/* dark: chosen, or following the system (web/src/theme.ts sets data-theme before the first paint).
+   Midnight (the owner's decision of 2026-10-18, chosen against a graphite and the neutral black
+   #0b0b0d before it): a blue-black ground, its surfaces, lines and discs tinted the same blue, its
+   text a cool white. Every colour the dark theme changes is in this one block; what it leaves out
+   is the light theme's. The artwork command reads the same two blocks (web/src/artwork.ts,
+   cssTheme), so a selector of its own here would be missed there. */
 :root { color-scheme: light; }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  /* the ground, the surfaces over it, and the text on them */
+  --canvas: #0d1017;
+  --surface: rgba(23, 27, 37, 0.84);
+  --surface-solid: #181c26;
+  --line: rgba(170, 185, 255, 0.11);
+  /* the text at least 4.5:1 wherever it is written, a code block's tint included (the third 4.5:1
+     there, 5.1:1 on a solid surface; #6e6e73 before, 3.4:1); the accent 6.2:1 (it had no dark value,
+     3.8:1) */
+  --text: #eef0f6;
+  --text-2: #a4a9ba;
+  --text-3: #878d9f;
+  --accent: #a08cff;
   --verified: #ab97ff;
-  --canvas: #0b0b0d;
-  --surface: rgba(28, 28, 30, 0.78);
-  --surface-solid: #1c1c1e;
-  --line: rgba(255, 255, 255, 0.09);
-  --text: #f5f5f7;
-  --text-2: #a1a1a6;
-  --text-3: #6e6e73;
-  --disc: rgba(255, 255, 255, 0.025);
-  --disc-line: rgba(255, 255, 255, 0.08);
-  --label: rgba(245, 245, 247, 0.5);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.4), 0 22px 60px rgba(0, 0, 0, 0.6);
-  --code-bg: rgba(255, 255, 255, 0.05);
-  --edge-from: rgba(255, 169, 77, 0.7);
-  --edge-to: rgba(116, 143, 252, 0.7);
+  --code-bg: rgba(160, 178, 255, 0.07);
+  /* the board: the clusters' discs and lines, the names, the edges */
+  --disc: rgba(150, 170, 255, 0.045);
+  --disc-line: rgba(160, 178, 255, 0.15);
+  --label: rgba(226, 231, 246, 0.62);
+  /* the edges: on the dark ground the edges that cross add up to light, a dense bundle of orange
+     and blue a pink-white haze. Their ends are deeper and more saturated than the light theme's,
+     so that where many cross they mix into a colour rather than into white, and they step back as
+     they grow many: (from / n)^0.6 past a hundred of a selection's, past the overview's 400 */
+  --edge-from: rgba(255, 116, 38, 0.55);
+  --edge-to: rgba(90, 112, 255, 0.62);
+  --edge-crowd: 0.6;
   --target-star-edge: rgba(0, 0, 0, 0.55);
+  --k-theorem: #8b7fd0;
+  --k-notation: #b89b74;
+  --k-external: #5f6578;
+  /* the Status scheme's quiet states, the other way round from the light theme's (the owner's
+     decision of 2026-10-18): the quieter a state, the closer to the ground — trusted a dim green,
+     not yet reviewed a mid grey, failed the brightest, near white, as the light theme's failed is
+     its darkest. Not yet reviewed is L* 47, between trusted's 39 and the states that ask for a
+     look: at the L* 60 first tried it was, to a deuteranope, sorry's reddish purple (ΔE2000 3.6;
+     15.4 here, and no two states under 10.7 under any of the three simulations). Commented's blue
+     is a step lighter than the light theme's, so that it stands out of a dark cluster as the other
+     states do, and still darker than building's sky blue */
+  --status-failed: #e9ecf5;
+  --status-commented: #4a84e8;
+  --status-unreviewed: #6c6f7a;
+  --status-trusted: #35664f;
+  /* the review, the banners, the code, a past graph's marks, the notes' dots */
+  /* commented's blue and what goes wrong, written as text (a count, an error): 4.7:1 and 5.0:1 on a
+     surface (3.8:1 and 4.3:1 as the light theme has them); the Comment button over it still takes
+     its white text at 4.5:1 */
+  --rv-commented: #5085e0;
+  --bad: #ec5a5f;
   --rv-trusted: #7f9cbf;
   --rv-advice-approve: rgba(80, 200, 130, 0.55);
   --rv-advice-comment: #8aaef0;
-  --k-theorem: #8b7fd0;
-  --k-notation: #b89b74;
   --banner-bad: #ff7b72;
   --banner-warn: #ffc56b;
   --banner-info: #7ab8ff;
-  --k-external: #636366;
-  /* on the dark canvas the failed grey is lighter, so that it still shows, and the very light green
-     of trusted lighter still; not yet reviewed is a dim grey, darker than failed's, so that the two
-     greys never meet in lightness. Commented's blue is a step lighter too, so that it stands out of a dark cluster as
-     the other states do, and still darker than building's sky blue */
-  --status-failed: #77777c;
-  --status-commented: #3570d0;
-  --status-unreviewed: #4c4c52;
-  --status-trusted: rgba(170, 222, 187, 0.82);
   --tk-keyword: #ff7ab2;
   --tk-type: #6bdfff;
   --tk-comment: #7f8c98;
@@ -398,7 +450,7 @@ body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn,
 /* a quoted opinion gone to, and quoted lines opened: flashed in the accent, then as they were */
 @keyframes vp-flash { from { background-color: color-mix(in srgb, var(--accent) 24%, transparent); } to { background-color: transparent; } }
 .rv-flash, .sw-win .ln.ln-flash { animation: vp-flash 2.4s ease-out; border-radius: 6px; }
-@media (prefers-reduced-motion: reduce) { .rv-flash, .sw-win .ln.ln-flash { animation-duration: 4s; animation-timing-function: steps(1, end); } }
+@media (prefers-reduced-motion: reduce) { .rv-flash, .sw-win .ln.ln-flash { animation-duration: 4s !important; animation-timing-function: steps(1, end); } }
 /* what changed since a stale opinion: under it, unfaded, removed lines red and added lines green
    in both themes (a tint of the review colours over the surface, the marks mixed with the text) */
 .rv-changes { margin: -2px 0 2px 14px; font-size: 12px; }
@@ -957,6 +1009,7 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .ex-bar { position: relative; flex: 0 0 120px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .ex-bar i { position: absolute; inset: 0 auto 0 0; width: 40%; border-radius: 2px; background: var(--accent); animation: ex-slide 1.1s ease-in-out infinite; }
 @keyframes ex-slide { from { left: -40%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .ex-bar i { animation: none !important; left: 0; width: 100%; opacity: 0.45; } }
 .ex-done { font-size: 12.5px; display: flex; flex-direction: column; gap: 8px; }
 .ex-dl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ex-dl a.rv-btn { text-decoration: none; }
@@ -1441,8 +1494,19 @@ details.lf-archived > summary { cursor: pointer; }
 .bp-when { min-width: 104px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .bp-notes { margin-left: auto; color: var(--text-3); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the history above, the graph on show and its files below */
-.bp-build + .pop-h, .bp-btns + .pop-h { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.bp-build + .pop-h, .bp-btns + .pop-h, .bp-deploy + .pop-h { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .pop-ok { padding: 4px; }
+/* a branch the server follows and builds (DeploySpec): under the head, its builds */
+.bp-deploy { margin: 0 4px 10px; font-size: 12px; line-height: 1.45; }
+.bp-deploy .mono { font: 11.5px var(--mono); }
+.bp-deploy a { color: var(--accent); text-decoration: none; }
+.bp-deploy a:hover { text-decoration: underline; }
+.bp-follow, .bp-next, .bp-last { color: var(--text-2); margin: 0 0 8px; }
+.bp-deploy .banner { margin: 0 0 8px; }
+.bp-log {
+  margin: 0 0 8px; max-height: 14em; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--code-bg);
+  font: 10.5px/1.45 var(--mono); color: var(--text-2); white-space: pre-wrap; word-break: break-word;
+}
 .pf {
   display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: transparent; text-align: left;
   padding: 4px 6px; border-radius: 7px; font-size: 12px;
@@ -2064,7 +2128,7 @@ kbd {
 .film-stage { outline: none; border-radius: 12px; }
 .film-stage:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
 .film-frame { position: relative; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: #f5f5f7; border: 1px solid var(--line); box-shadow: var(--shadow); }
-:root[data-theme="dark"] .film-frame { border: 6px solid #2c2c2e; box-shadow: 0 0 0 1px var(--line), var(--shadow); }
+:root[data-theme="dark"] .film-frame { border: 6px solid #262b38; box-shadow: 0 0 0 1px var(--line), var(--shadow); }
 :root[data-theme="dark"] .film-video, :root[data-theme="dark"] .film-still { filter: brightness(0.92); }
 .film-video, .film-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
 /* the controls over the film: play, captions, larger — light, as the film is */
@@ -2328,6 +2392,9 @@ kbd {
 .sk-att-cap { display: block; padding: 2px 7px 3px; font-size: 11px; color: var(--note-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-top: 1px solid var(--note-edge); }
 .sk-att-pdf { display: flex; align-items: flex-start; gap: 8px; padding: 5px; }
 .sk-att-page { flex: none; width: 64px; height: auto; max-height: 96px; object-fit: contain; object-position: top; background: #fff; box-shadow: 0 0 0 1px var(--note-edge); border-radius: 2px; }
+/* a PDF's white page, whole or clipped, glares in a dark note: dimmed a little, never inverted (a
+   page is read as it is printed); an image as it is */
+:root[data-theme="dark"] .sk-att-page, :root[data-theme="dark"] .sk-att-clip .sk-att-pic { filter: brightness(0.82); }
 .sk-att-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sk-att-title { font-weight: 600; font-size: 12px; line-height: 1.3; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .sk-att-meta { font-size: 11px; color: var(--note-mute); }

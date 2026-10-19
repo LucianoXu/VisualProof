@@ -9,7 +9,8 @@ runs the server. The package holds compiled JavaScript: Node does not run TypeSc
 - Node 22.18 or later in 22, or 24.2 or later (the versions that run TypeScript as it is and
   have `import.meta.main`);
 - elan, which installs each project's Lean toolchain. The project must have been built with
-  `lake build`: VisualProof never builds it;
+  `lake build`: VisualProof never builds it — but a branch it follows (`serve <git URL>`,
+  SPEC/DeploySpec.md), which it builds itself, in its own clone, and which needs git;
 - Poppler (`pdfinfo`, `pdftotext`, `pdftoppm`), which reads the library's PDFs;
 - optionally XeLaTeX, which typesets the exported document.
 
@@ -38,6 +39,9 @@ it is packed. Pack it, then install the file.
 
 - Tests that need `lake` or XeLaTeX skip without them. Install elan: without `lake`, the tests of
   the extraction, the usage pass, the build status and Lean's hovers all skip.
+- `test/engines.test.ts` lays the fixture and the flt-regular showcase out in Chromium, and in
+  Firefox and WebKit where Playwright has them, and checks that every engine gives Node's layout to
+  the last bit. It needs Playwright (as below, "Real projects"), and skips without it.
 - Tests write only into the system's temporary directory, never into the repository, your site
   folders or your cache.
 - To try a change on a real project, point `--site` and `--cache` at scratch folders, so that
@@ -81,6 +85,17 @@ Concepts): each is a recipe the script holds, drawn by this checkout's `visualpr
 copy of the flt-regular showcase's site, on the build it serves (`showcase/flt-regular/setup.sh`),
 then written as WebP by ImageMagick. The same build, site and recipes make the same files.
 
+`node scripts/readme-figures.mjs --sphere-packing <dir> --flt-regular <dir> --prime-numbers <dir>
+--navier-stokes <dir> --cedar <dir> --showcase <dir> [--cache dir] [--only name,…]` makes the
+README's pictures again. The five posters (`docs/images/artwork-*.webp`) are each a recipe the
+script holds, drawn by this checkout's `visualproof artwork` without a site from a project of the
+table above, built at its commit (`--cedar` is cedar-spec's checkout, whose `cedar-lean` is drawn),
+then 640 pixels wide. The board (`docs/images/board.webp`) is the flt-regular showcase served by this
+checkout on a copy of its site (`--showcase`, its build at `b8a5f23`), Alice's page in the middle of
+the review taken in a headless Chromium, 1440 × 900 at twice the pixels; its dates are the page's,
+on the real clock. Only the pictures asked for need their checkouts; the board needs Playwright, as
+above, and every picture ImageMagick. The same builds, recipes and ImageMagick make the same files.
+
 The tips' films (GuideSpec) are made by
 `npm run tips:record -- --sphere <dir> --showcase <dir> --film <dir> [--cache <dir>] [<id>…]`: each
 storyboard (`scripts/tips/storyboards/`) played on a server of this checkout, in a headless Chromium
@@ -106,7 +121,8 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
 
 - A change to the extractor (`src/extractor/`), or to how the server runs Lean
   (`server/extract.ts`, `server/usage.ts`, `server/status.ts`, `server/hover.ts`,
-  `server/children.ts`), passes `npm run test:toolchains` on all of them. CI runs the toolchains on
+  `server/children.ts`, and `server/deploy.ts`, which builds a branch the server follows), passes
+  `npm run test:toolchains` on all of them. CI runs the toolchains on
   a pull request that touches those files, the fixture or its golden (`toolchains.yml` lists them),
   and every week; the suite (`test.yml`) runs once per pull request and once on `main` as a merge
   lands, which is what a release then checks. The newest Lean release and release candidate run
@@ -147,8 +163,9 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   A patch found broken is withdrawn by the owner with `npm deprecate visualproof@<version> "<why>"`:
   servers neither take nor tell of a deprecated release (one that took it already sets it aside only
   if it fails), and the next patch replaces it.
-- Before a release, the documentation's figures are made again where the board's drawing or the
-  showcase changed (`node scripts/docs-figures.mjs`, "Real projects" above), and committed.
+- Before a release, the documentation's figures and the README's pictures are made again where the
+  board's drawing, the page or the showcase changed (`node scripts/docs-figures.mjs` and
+  `node scripts/readme-figures.mjs`, "Real projects" above), and committed.
 - Before a release, the tips' films are recorded again when a part of the page they show changed
   (`npm run tips:record -- <id>…`, above), so that what they show is what the page does.
 - Releasing, by the owner: one pull request carries the release — its work, the `CHANGELOG.md`

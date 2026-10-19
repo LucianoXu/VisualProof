@@ -26,9 +26,11 @@ The tool is in `src/`; paths of code in its comments and in `SPEC/` are relative
 
 ## Invariants
 
-- It never builds the codebase it shows, and writes nothing into it nor into this repository. What
-  it writes goes in the site folder (`--site`: the review and what the site accumulates) and the
-  cache (`--cache`).
+- It never builds a workspace it shows (`serve <path>`), and writes nothing into it nor into this
+  repository. A branch of a git repository it follows (`serve <git URL>`, `SPEC/DeploySpec.md`) it
+  builds itself, in a clone of its own in the cache, never anyone's workspace. What it writes goes in
+  the site folder (`--site`: the review and what the site accumulates) and the cache (`--cache`, a
+  followed branch's clone and builds among it).
 - Lean's language server (hovers, and the agents' `describe` and `print`; `server/hover.ts`) is
   `lean --server` with the project's `LEAN_PATH`:
   - started in the project's `lean-server/` folder of the cache, which holds no lakefile, so it
@@ -40,6 +42,8 @@ The tool is in `src/`; paths of code in its comments and in `SPEC/` are relative
 - A change to the extractor or to how the server runs Lean passes `npm run test:toolchains`
   (`CONTRIBUTING.md`, Lean versions).
 - A change to access, fetching by URL, uploads or how Lean is run keeps `SECURITY.md` true.
+- A change to how a branch is followed or built (`server/deploy.ts`) keeps `SECURITY.md` true and
+  passes `npm run test:toolchains`.
 - `docs/agent-api/` is served to agents (`GET /api/agent/docs`, each topic as
   `GET /api/agent/docs/<topic>`; the topics are listed in `server/agentdocs.ts`): a change to the
   agents' API or to the MCP server's tools updates it in the same change, within the budgets

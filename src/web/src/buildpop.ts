@@ -2,12 +2,16 @@
 // opens it. It says when the build on show finished and the commit it was built from, lists the
 // recent builds the history keeps (GET /api/history), and has the two ways into the history: the
 // Time Machine, and the lost-and-found with the count of what it lists. Under them, what it showed
-// before: the graph on show, what could not be read, and the files in trouble.
+// before: the graph on show, what could not be read, and the files in trouble. A server that follows
+// a branch of a git repository (DeploySpec) says so under the buttons: the build going on, the newest
+// commit waiting for it, the last build that ended, with the end of its log where it failed.
 //
 // What it holds is a pure function of what the page knows (`popHtml`), tested in
 // test/buildpop.test.ts; web/src/main.ts draws it and does what its buttons say.
 
 import type { FileStatus } from "../../shared/build.ts";
+import type { DeployStatus } from "../../shared/deploy.ts";
+import { githubCommit, githubTree, shortCommit, STEP_WORDS } from "../../shared/deploy.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { escapeHtml } from "./highlight.ts";
 
@@ -28,6 +32,8 @@ export interface PopState {
   /** how many entries the lost-and-found lists, and of them how many are lost things (the rest are
    *  migrations); null before the server said */
   lost: { count: number; lost: number } | null;
+  /** the branch the server follows and builds (DeploySpec), where it follows one */
+  deploy?: DeployStatus | null;
   /** now, for "today" and "yesterday" */
   now?: Date;
 }
@@ -64,6 +70,87 @@ export function commitHtml(c: BuildLine["commit"]): string {
   );
 }
 
+/** How long something took, in words: "0.7 s", "3 min 12 s", "1 h 4 min". */
+export function took(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
+  const m = Math.floor(ms / 60_000);
+  return m < 60 ? `${m} min ${Math.round((ms % 60_000) / 1000)} s` : `${Math.floor(m / 60)} h ${m % 60} min`;
+}
+
+/** What a build of a branch the server follows came to, in words: why it failed. */
+export function failedWhy(l: NonNullable<DeployStatus["last"]>): string {
+  return l.error ?? (l.exit === null ? "lake build was stopped" : `lake build exited with ${l.exit}`);
+}
+
+/** What the popover says of the branch the server follows (DeploySpec decision 6): where it comes
+ *  from and how often it is asked, the build going on, the newest commit waiting for it, and the
+ *  last build that ended — where it failed, why, and the end of its log (to those let in fully). A
+ *  commit links to GitHub where the remote is there. */
+export function deployHtml(d: DeployStatus, now = new Date()): string {
+  const gh = d.github;
+  const commit = (c: string) =>
+    gh
+      ? `<a class="mono" href="${escapeHtml(githubCommit(gh, c))}" target="_blank" rel="noopener" title="${escapeHtml(c)}: open the commit on GitHub">${escapeHtml(shortCommit(c))}</a>`
+      : `<span class="mono" title="${escapeHtml(c)}">${escapeHtml(shortCommit(c))}</span>`;
+  const from = d.source ? (gh ? `<a href="${escapeHtml(githubTree(gh, d.branch))}" target="_blank" rel="noopener">${escapeHtml(d.source)}</a>` : escapeHtml(d.source)) : "a repository on this machine";
+  const every = d.every >= 60 ? `${Math.round(d.every / 6) / 10} min` : `${d.every} s`;
+  let html =
+    `<div class="bp-deploy"><div class="bp-follow">Following <b>${escapeHtml(d.branch)}</b> of ${from}: each new commit is built here, ` +
+    `the remote asked every ${every}${d.asked ? `, last ${escapeHtml(stamp(d.asked.at, now))}` : ""}.</div>`;
+  if (d.asked?.error) html += `<div class="banner bad">The remote could not be asked: ${escapeHtml(d.asked.error)}</div>`;
+  if (d.building)
+    html +=
+      `<div class="banner info">Building ${commit(d.building.commit)} since ${escapeHtml(stamp(d.building.since, now))}: ${STEP_WORDS[d.building.step]}.</div>` +
+      (d.building.tail ? `<pre class="bp-log" aria-label="What the build says now">${escapeHtml(d.building.tail)}</pre>` : "");
+  if (d.next) html += `<div class="bp-next">Then ${commit(d.next)}, the newest commit pushed meanwhile: commits pushed before it are not built.</div>`;
+  const l = d.last;
+  if (l) {
+    html += l.ok
+      ? `<div class="bp-last">Last built ${commit(l.commit)} ${escapeHtml(stamp(l.at, now))}, in ${took(l.ms)}.</div>`
+      : `<div class="banner bad">The build of ${commit(l.commit)} ${l.retry ? "could not be made" : "failed"} ${escapeHtml(stamp(l.at, now))}, after ${took(l.ms)}: ${escapeHtml(failedWhy(l))}.` +
+        `${l.retry ? " It is tried again at the next look at the remote." : d.built === l.commit ? " The board shows what could be read of it." : ` The board shows the build of ${d.built ? commit(d.built) : "nothing yet"}.`}</div>` +
+        (l.tail ? `<pre class="bp-log" aria-label="The end of the build's log">${escapeHtml(l.tail)}</pre>` : "");
+  } else if (!d.building) html += `<div class="muted">No build yet.</div>`;
+  return html + `</div>`;
+}
+
+/** What the loading page says while a server that follows a branch has no graph to show yet
+ *  (DeploySpec decision 7) — never a dead end: what is being done, what failed and why, what comes
+ *  next. `st` is what /api/status says besides: whether the build could be read, and how far
+ *  `lake build` is. The title, and the log shown under it (null: the server's own). */
+export function deployWaiting(d: DeployStatus, st: { state: string; error?: string; progress?: { done: number; total: number } | null }): { title: string; log: string | null } {
+  const where = `${d.source ?? "the repository"} (${d.branch})`;
+  const every = d.every >= 60 ? `${Math.round(d.every / 6) / 10} min` : `${d.every} s`;
+  if (d.building) {
+    const p = d.building.step === "build" && st.progress?.total ? `, ${st.progress.done} of ${st.progress.total} files` : "";
+    return { title: `${d.built ? "Building" : "The first build of"} ${where} at ${shortCommit(d.building.commit)}: ${STEP_WORDS[d.building.step]}${p}… The board appears once it is done.`, log: d.building.tail ?? null };
+  }
+  const l = d.last;
+  if (!d.built) {
+    if (l && !l.ok)
+      return {
+        title:
+          `The first build of ${where} at ${shortCommit(l.commit)} ${l.retry ? "could not be made" : "failed"}: ${failedWhy(l)}. ` +
+          (l.retry ? `It is tried again at the next look at the remote, every ${every}.` : `The next commit pushed to ${d.branch} is built: the remote is asked every ${every}.`),
+        log: l.tail ?? null,
+      };
+    if (d.asked?.error) return { title: `The remote could not be asked: ${d.asked.error}. It is asked again every ${every}.`, log: null };
+    return { title: `Waiting for the first build of ${where}…`, log: null };
+  }
+  if (st.state === "error")
+    return {
+      title: `The build of ${where} at ${shortCommit(d.built)} left nothing that can be read${l && !l.ok ? `: ${failedWhy(l)}` : ""}. The next commit pushed to ${d.branch} is built: the remote is asked every ${every}.`,
+      log: l?.tail ?? st.error ?? null,
+    };
+  return { title: `Reading the build of ${where} at ${shortCommit(d.built)}…`, log: null };
+}
+
+/** What the build pill says of a step of a build going on, where Lake's progress does not say it. */
+export function stepPill(b: NonNullable<DeployStatus["building"]>): string {
+  const what = { fetch: "Fetching", checkout: "Checking out", cache: "Mathlib's cache", build: "Building" }[b.step];
+  return `${what} ${shortCommit(b.commit)}`;
+}
+
 /** What the popover holds. */
 export function popHtml(s: PopState): string {
   const now = s.now ?? new Date();
@@ -87,6 +174,9 @@ export function popHtml(s: PopState): string {
       `<button class="bp-btn" data-bp="lost" title="What was said of declarations the graph no longer has, and what moved to a new name${what ? `: ${what}` : ""}"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2.5 6h11v7.5h-11zM4 3.5h8L13.5 6h-11z"/><path d="M6.5 8.5h3"/></svg>Lost-and-found` +
       (lost && lost.count ? `<span class="bp-count${lost.lost ? " lost" : ""}">${lost.count > 999 ? "999+" : lost.count}</span>` : "") +
       `</button></div>`;
+    // the branch followed, under the ways into the history: the keyboard still lands on the Time
+    // Machine first
+    if (s.deploy) html += deployHtml(s.deploy, now);
     // the newest first: each opens the Time Machine there
     const recent = list.slice(-RECENT_BUILDS).reverse();
     if (recent.length) {

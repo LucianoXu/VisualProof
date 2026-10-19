@@ -224,9 +224,12 @@ agent's ends `.agent.jsonl`; an invited person's is the link's id, `3f2a9c1b07.p
   did not make the folder). Every event is checked: sizes bounded, a comment needs text, `by`,
   `agent` and `person` are those of who asks; only the server writes its own lines.
 - `log/` is polled every second, also when serving a saved graph; a file is reread only when its
-  size, time or inode changed, from where the last read stopped when it only grew. A page gets the
-  whole review on connecting (`review`), then new events (`review-delta`), or the whole again when
-  older events came in.
+  size, time or inode changed, from where the last read stopped when it only grew. A page reads the
+  whole review as it loads (`GET /api/review`: gzipped, tagged with the server's run and revision,
+  304 to a page that has it); its event stream says which revision the server holds as it opens and
+  whenever older events came in (`review-rev`), and a page holding another reads it again; new events
+  come as `review-delta`; a replay whole that comes to the same review is a delta of no events (the
+  owner's decision of 2026-10-19).
 - `POST /api/review` records the page's events and answers with the change; a request that changes
   nothing (a target marked again, a prefix trusted again, a standing key mark) writes nothing.
 - An opinion recorded without its text has no What changed: the page says the text was not recorded.

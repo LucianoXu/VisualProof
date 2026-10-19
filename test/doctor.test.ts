@@ -139,10 +139,12 @@ test("the machine: what is missing fails, warns or is only said, each with what 
 });
 
 test("a project: its toolchain, its build, its site; ready only when nothing failed", () => {
+  // a machine with memory enough for the usage pass on Mathlib (the memory is its own test's)
+  const plenty = { available: 64 * 2 ** 30, total: 64 * 2 ** 30 };
   const site = join(tmp, "site");
   const cache = join(tmp, "cache");
   const unbuilt = project("Unbuilt", "leanprover/lean4:v4.33.1", false);
-  const r = doctor({ path: unbuilt, roots: [], site, cache, run: full, node: "24.15.0" });
+  const r = doctor({ path: unbuilt, roots: [], site, cache, run: full, node: "24.15.0", memory: plenty });
   const build = r.checks.find((c) => /built/.test(c.what))!;
   assert.equal(build.level, "fail");
   assert.match(build.what, /not built: Unbuilt \(\.lake\/build\/lib\/lean\/Unbuilt\.olean is missing; from lakefile\.toml\)/);
@@ -150,31 +152,57 @@ test("a project: its toolchain, its build, its site; ready only when nothing fai
   assert.equal(r.ready, null);
 
   const built = project("Built", "leanprover/lean4:v4.31.0", true);
-  const ok = doctor({ path: built, roots: [], site, cache, run: full, node: "24.15.0" });
+  const ok = doctor({ path: built, roots: [], site, cache, run: full, node: "24.15.0", memory: plenty });
   assert.deepEqual(ok.checks.filter((c) => c.level !== "ok"), []);
   assert.equal(ok.ready, `visualproof serve ${built} --site ${site} --cache ${cache}`);
   assert.match(printReport(ok, built), /\n\nReady: visualproof serve /);
 
   // a toolchain not installed: elan downloads it on first use; older than supported fails
   const fresh = project("Fresh", "leanprover/lean4:v4.34.1", true);
-  const f = doctor({ path: fresh, roots: [], site, cache, run: full, node: "24.15.0" });
+  const f = doctor({ path: fresh, roots: [], site, cache, run: full, node: "24.15.0", memory: plenty });
   assert.deepEqual(f.checks.filter((c) => c.level !== "ok").map((c) => [c.level, c.fix]), [["warn", "elan toolchain install leanprover/lean4:v4.34.1"]]);
   assert.ok(f.ready);
   const old = project("Old", "leanprover/lean4:v4.20.0", true);
-  assert.equal(doctor({ path: old, roots: [], site, cache, run: full, node: "24.15.0" }).ready, null);
+  assert.equal(doctor({ path: old, roots: [], site, cache, run: full, node: "24.15.0", memory: plenty }).ready, null);
 
   // a site a living server holds is said, and is no failure
   mkdirSync(site, { recursive: true });
   writeFileSync(join(site, ".lock"), `${process.pid}\n`);
-  const held = doctor({ path: built, roots: [], site, cache, run: full, node: "24.15.0" });
+  const held = doctor({ path: built, roots: [], site, cache, run: full, node: "24.15.0", memory: plenty });
   assert.match(held.checks.at(-1)!.what, new RegExp(`a server \\(process ${process.pid}\\) is serving it`));
   assert.ok(held.ready);
   rmSync(join(site, ".lock"));
 
   // not a project at all
-  const none = doctor({ path: tmp, roots: [], site, cache, run: full, node: "24.15.0" });
+  const none = doctor({ path: tmp, roots: [], site, cache, run: full, node: "24.15.0", memory: plenty });
   assert.match(none.checks.at(-1)!.what, /no lean-toolchain/);
   assert.equal(none.ready, null);
+});
+
+test("a project on Mathlib: the memory the usage pass's workers may hold, against what the machine has, with the --jobs that fits", () => {
+  const GB = 2 ** 30;
+  const site = join(tmp, "site-mem");
+  const cache = join(tmp, "cache-mem");
+  const built = project("Heavy", "leanprover/lean4:v4.31.0", true);
+  const at = (available: number, total = 32 * GB) => doctor({ path: built, roots: [], site, cache, run: full, node: "24.15.0", memory: { available, total } }).checks.find((c) => /^memory/.test(c.what))!;
+  const ok = at(60 * GB, 64 * GB);
+  assert.equal(ok.level, "ok");
+  assert.match(ok.what, /^memory: 60 GB available of 64 GB: enough for the usage pass at 8 at a time$/);
+  const short = at(20 * GB);
+  assert.equal(short.level, "warn");
+  assert.match(short.what, /up to 6\.0 GB each, 48 GB at 8 at a time \(the default --jobs\); it starts fewer while less than 2\.0 GB is available/);
+  assert.equal(short.fix, "serve with --jobs 3");
+  assert.equal(at(1 * GB).fix, "serve with --jobs 1");
+  // a warning, no failure: it is ready all the same
+  assert.ok(doctor({ path: built, roots: [], site, cache, run: full, node: "24.15.0", memory: { available: 20 * GB, total: 32 * GB } }).ready);
+  // off Mathlib, a worker holds little: no advice
+  const light = join(tmp, "Light");
+  mkdirSync(join(light, ".lake", "build", "lib", "lean"), { recursive: true });
+  writeFileSync(join(light, "lean-toolchain"), "leanprover/lean4:v4.31.0\n");
+  writeFileSync(join(light, "lakefile.toml"), `name = "Light"\ndefaultTargets = ["Light"]\n`);
+  writeFileSync(join(light, ".lake", "build", "lib", "lean", "Light.olean"), "");
+  const l = doctor({ path: light, roots: [], site, cache, run: full, node: "24.15.0", memory: { available: 2 * GB, total: 4 * GB } }).checks.find((c) => /^memory/.test(c.what))!;
+  assert.deepEqual([l.level, l.what], ["ok", "memory: 2.0 GB available of 4.0 GB"]);
 });
 
 test("the command: its version, its usage asked for, the doctor's status", () => {

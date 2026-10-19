@@ -4,6 +4,6 @@
  *  Enter (the first hit). The board stays the one shown. */
 export const SEARCH = (query) => [
   { key: "/", cap: "/", ms: 300 },
-  { type: query, ms: 700 },
-  { key: "Enter", cap: "↵", ms: 1200 },
+  { type: query, ms: 500 },
+  { key: "Enter", cap: "↵", ms: 900 },
 ];

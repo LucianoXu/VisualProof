@@ -19,7 +19,12 @@ https://github.com/user-attachments/assets/98e435d6-f493-437d-b342-1833819c0b77
 
 ## Try it
 
-Set up in your Lean codebase with agent prompt:
+Set it up for your team with an agent prompt, following your project's GitHub repository:
+```text
+Deploy VisualProof (https://github.com/LucianoXu/VisualProof) for my Lean project's GitHub repository, following its main branch, and give me the address to open.
+```
+
+Or on your own machine, for the code you are editing:
 ```text
 Set up VisualProof (https://github.com/LucianoXu/VisualProof) for my Lean project, and give me the address to open.
 ```
@@ -33,13 +38,16 @@ What the agent does, step by step: [A poster from the command line](docs/MANUAL.
 Set up manually:
 ```bash
 npm install --global visualproof
-cd my-lean-project && lake build
-visualproof serve .
+visualproof serve https://github.com/<owner>/<repo>
 ```
+It follows the repository's default branch and builds each new commit itself ([Following a
+branch](docs/MANUAL.md#following-a-branch)). Or, for the code you are editing:
+`cd my-lean-project && lake build && visualproof serve .`
 
-It needs Node, elan and Poppler ([Requirements](#requirements)). On the first visit the page offers
-a short tour of your own project; `?` holds the tips — a film of a review on Sphere-Packing-Lean in
-thirteen scenes, with captions, and a row for each thing it does not show — and every key.
+It needs Node, elan and Poppler, and git to follow a branch ([Requirements](#requirements)). On the
+first visit the page offers a short tour of your own project; `?` holds the tips — a film of a
+review on Sphere-Packing-Lean in thirteen scenes, with captions, and a row for each thing it does not
+show — and every key.
 
 ## See what a Lean theorem actually rests on
 
@@ -91,7 +99,8 @@ project's edge.
 - Optionally XeLaTeX, for the printed document.
 
 The project must have been built with `lake build`: VisualProof only reads what the build left,
-and never builds it.
+and never builds it. A branch of a git repository it follows (`serve <git URL>`) it builds itself,
+in a clone of its own, and needs git.
 
 ## Where it keeps things
 

@@ -3,7 +3,9 @@
 // sends it on to the page, so that the key does not stay in the address (the history, a
 // screenshot, a link copied from the bar). Every other request — the page, its data, the event
 // stream, the agents' API — needs that cookie, or the key itself as `Authorization: Bearer <key>`
-// (an agent), and is answered 404 without it, as if there were nothing here.
+// (an agent), and is answered 404 without it, as if there were nothing here; but a browser asking
+// for a page, which is shown one that says the site is private, and nothing of it (CollabSpec
+// decision 7, the owner's decision of 2026-10-18: server/accesspage.ts).
 //
 // One key for everyone: who has the link is in, and taking someone out means a new key for all.
 // Over plain HTTP the key and the cookie cross the network in the clear: this keeps out who has

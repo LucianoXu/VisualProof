@@ -1,6 +1,8 @@
 // Where the page gets its data: the live server, or a snapshot carried inside the page itself
 // (`visualproof export`), which opens from disk with no server at all.
 
+import type { BuildStatus } from "../../shared/build.ts";
+import type { DeployStatus } from "../../shared/deploy.ts";
 import type { UpdateStatus } from "./guide.ts";
 import type { Outline } from "../../shared/doc/outline.ts";
 import type { BoardMemory } from "../../shared/board.ts";
@@ -47,6 +49,10 @@ export interface Status {
   error?: string;
   /** the server's "Open in editor" template (`--editor`, shared/editor.ts); a snapshot has none */
   editor?: string | null;
+  /** the build status of the project's files, and how far a build going on is */
+  build?: BuildStatus | null;
+  /** the branch the server follows and builds itself (DeploySpec): the loading page says what it does */
+  deploy?: DeployStatus;
 }
 
 export interface Source {
@@ -131,7 +137,8 @@ export interface DataSource {
   /** a module's text at a past build, the snapshot `snapshot`'s (GET /api/history/source), or why
    *  it is not kept; a snapshot of the page keeps no history */
   pastSource(snapshot: number, module: string): Promise<PastSource | PastSourceMissing>;
-  /** the review (ReviewSpec.md), whole */
+  /** the review (ReviewSpec.md), whole: tagged with its revision, which the browser keeps, so that
+   *  a page that has it (a reload) is answered 304 */
   review(): Promise<ReviewState>;
   /** record an opinion, a target, a trusted prefix, a key declaration; resolves to what changed
    *  (null: nothing did, it was so already), rejects with the reason it was refused */

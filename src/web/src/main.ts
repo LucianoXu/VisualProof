@@ -31,7 +31,7 @@ import { litKeyEdges } from "../../shared/keys.ts";
 import { keyMarked, keyMarks, under, validPrefix } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
-import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest } from "../../shared/review.ts";
+import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewRev } from "../../shared/review.ts";
 import { reviewCount, trustSplit } from "../../shared/reviewqueue.ts";
 import { scopeWith, scopeWithout } from "../../shared/scopeedit.ts";
 import { newNoteId, noteExcerpt, withCarry } from "../../shared/sticky.ts";
@@ -49,7 +49,8 @@ import type { Target, VisitorPoint } from "./canvas.ts";
 import { ContextMenu, menuItems } from "./ctxmenu.ts";
 import type { MenuContext, MenuTarget, TrustTo } from "./ctxmenu.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
-import { dataSource, reviewState } from "./data.ts";
+import { dataSource } from "./data.ts";
+import { WholeReview } from "./reviewread.ts";
 import type { DataSource, ReviewState, ViewAnswer } from "./data.ts";
 import { exactContext, judgedText } from "../../shared/context.ts";
 import type { ModuleContexts } from "../../shared/context.ts";
@@ -71,7 +72,9 @@ import { applyOwn, followedOf, presenceOf } from "./surfaces.ts";
 import type { PageParts } from "./surfaces.ts";
 import { Activity } from "./activity.ts";
 import { LostAndFound } from "./lostfound.ts";
-import { popHtml, stamp } from "./buildpop.ts";
+import { deployWaiting, popHtml, stamp, stepPill } from "./buildpop.ts";
+import type { DeployStatus } from "../../shared/deploy.ts";
+import { githubBlob } from "../../shared/deploy.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
 import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
@@ -81,7 +84,7 @@ import { reducedMotion } from "./tipcards.ts";
 import { kindDot, ringed } from "./axiomring.ts";
 import { keepFocus } from "./keepfocus.ts";
 import { Legend } from "./legend.ts";
-import { applyTheme, themeChoices } from "./theme.ts";
+import { applyTheme, holdTheme, themeChoices } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
@@ -175,6 +178,8 @@ interface GraphInfo {
   missing: string[];
   /** the usage pass on this graph's build (server/live.ts) */
   usage?: { state: "pending" | "done" | "off"; failed: number };
+  /** following a branch (DeploySpec): the commit whose build the graph was read from */
+  commit?: string;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -184,6 +189,15 @@ async function waitReady(data: DataSource): Promise<{ graph: GraphInfo | null; e
     const st = await data.status();
     log.textContent = (st.log ?? []).slice(-8).join("\n");
     if (st.state === "ready") return { graph: (st as { graph?: GraphInfo }).graph ?? null, editor: st.editor ?? null };
+    // a server that builds what it shows (DeploySpec decision 7) says what it is doing, and what
+    // failed, until a build can be read: never a dead end
+    if (st.deploy) {
+      const w = deployWaiting(st.deploy, { state: st.state, error: st.error, progress: st.build?.progress ?? null });
+      $("#loader-title").textContent = w.title;
+      if (w.log !== null) log.textContent = w.log;
+      await new Promise((r) => setTimeout(r, 1000));
+      continue;
+    }
     if (st.state === "error") {
       $("#loader-title").textContent = "Could not read the project";
       log.textContent = st.error ?? "";
@@ -263,6 +277,9 @@ async function boot(): Promise<void> {
   /** while something is said where the hint is (`say`), until it goes */
   let saying: ReturnType<typeof setTimeout> | null = null;
   let build: BuildStatus | null = null;
+  /** the branch the server follows and builds itself (DeploySpec), as it last said; null for a
+   *  workspace */
+  let deploy: DeployStatus | null = null;
   let updating = false;
   let extractError: string | null = null;
   let offline = false;
@@ -855,6 +872,9 @@ async function boot(): Promise<void> {
     forward: () => history.forward(),
     steps: () => steps,
     editorLink: (G, i, at) => editor.href(G, i, at),
+    // following a branch on GitHub (DeploySpec decision 13): the build's lines there
+    githubLink: (file, commit, from, to) => (deploy?.github ? githubBlob(deploy.github, commit, file, from, to) : null),
+    builtCommit: () => graphInfo?.commit ?? null,
     pinned: () => sources.pinned.map((p) => p.rect()),
     top: () => pairTop(),
     say: (text) => say(text),
@@ -1198,10 +1218,8 @@ async function boot(): Promise<void> {
     if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
     else delete document.body.dataset.artStyle;
     artReach();
-    if (a) {
-      linear.hide("reader", "followed");
-      document.documentElement.dataset.theme = a.style === "board" ? a.theme : "dark";
-    } else applyTheme();
+    if (a) linear.hide("reader", "followed");
+    holdTheme(a ? (a.style === "board" ? a.theme : "dark") : null);
     canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
     applyScheme();
     syncEdges();
@@ -2264,13 +2282,17 @@ async function boot(): Promise<void> {
     stickies.render();
     if (followed) selectionFollowed();
   };
-  /** The whole review (on connecting, or where events came in between): taken unless this page
-   *  holds that revision already. */
+  /** The whole review (where this page holds another revision than the server's, or events came in
+   *  between): taken unless this page holds that revision already. */
   const takeWhole = (st: ReviewState) => {
     if (st.epoch === review.epoch && st.rev <= review.rev) return;
     review = st;
     reviewChanged();
   };
+  /** The whole review read again (GET /api/review, which a page holding it is answered 304): where
+   *  the event stream says the server holds another revision, and where a change cannot be applied;
+   *  one reading out at a time (web/src/reviewread.ts). */
+  const wholeReview = new WholeReview(data.review, takeWhole, () => review);
   /** A change of the review (shared/review.ts, ReviewChange): its events applied to the review this
    *  page holds when it is the one they follow; once only, whether it came as the answer to this
    *  page's request or as the event every page gets. Anything else — a change missed, another run
@@ -2285,12 +2307,14 @@ async function boot(): Promise<void> {
     };
     const events = c.epoch === review.epoch && c.base === review.rev && c.events ? c.events.map(read).filter((e) => e !== null) : null;
     if (!events || events.some((e) => typeof e === "string")) {
-      void data.review().then(takeWhole, () => {});
+      void wholeReview.fetch();
       return;
     }
+    // a replay that changed nothing (a new graph's reading, server/review.ts): the revision moves on
+    const same = !events.length && JSON.stringify(c.problems) === JSON.stringify(review.problems);
     for (const e of events as ReviewEvent[]) applyEvent(review.data, e);
     review = { ...review, rev: c.rev, problems: c.problems, error: problemsText(c.problems) };
-    reviewChanged();
+    if (!same) reviewChanged();
   };
 
   /** How many are lit on the board as the selection bar counts them: what is not trusted, the
@@ -3060,11 +3084,16 @@ async function boot(): Promise<void> {
     } else if (build?.active) {
       cls = "building";
       const p = build.progress;
-      text = p ? `Building ${p.done} / ${p.total}` : "Building";
+      // a branch's build: its step, where Lake says nothing of its progress (DeploySpec)
+      text = p ? `Building ${p.done} / ${p.total}` : deploy?.building ? stepPill(deploy.building) : "Building";
       if (p?.current.length) text += ` · ${shortName(p.current[0])}${p.current.length > 1 ? ` +${p.current.length - 1}` : ""}`;
     } else if (c && c.failed + c.unbuilt > 0) {
       cls = "bad";
       text = `${c.failed + c.unbuilt} failed` + (c.blocked ? ` · ${c.blocked} blocked` : "");
+    } else if (deploy?.last && !deploy.last.ok) {
+      // a branch's build that failed with no file to show it (its lakefile, a fetch)
+      cls = "bad";
+      text = `${deploy.last.retry ? "Not built" : "Build failed"} · ${deploy.last.commit.slice(0, 7)}`;
     } else if (c && c.stale > 0) {
       cls = "stale";
       text = `${c.stale} out of date`;
@@ -3105,9 +3134,12 @@ async function boot(): Promise<void> {
       stateLabel: STATE_LABEL,
       builds: data.lost ? builds : null,
       lost: lostDrawer.counts,
+      deploy,
     });
     // drawn again as the build goes on: the keyboard keeps its place in it
     keepFocus(pop, () => (pop.innerHTML = html));
+    // a build's log is read from its end, where it says what failed
+    for (const l of pop.querySelectorAll<HTMLElement>(".bp-log")) l.scrollTop = l.scrollHeight;
   };
 
   /** Show a file: its cluster where the board clusters by file, else its first declaration. The
@@ -3272,7 +3304,7 @@ async function boot(): Promise<void> {
       // refused rather than lost (a server with as many pages open as it serves): the browser does
       // not try again by itself, so the page does, a while later — unless the link this page came by
       // was revoked (CollabSpec decisions 9 and 11), which the server says (410): the page is
-      // reloaded, and says by whom
+      // reloaded, and the server's page says the link no longer opens the site (decision 7)
       if (es.readyState === EventSource.CLOSED)
         void fetch("/api/identity")
           .then((r) => (r.status === 410 ? location.reload() : setTimeout(listen, 10_000)))
@@ -3295,7 +3327,14 @@ async function boot(): Promise<void> {
     });
     // a build read: the Time Machine's timeline has a tick more (HistorySpec, the snapshots)
     es.addEventListener("history", () => void tm.historyChanged());
-    es.addEventListener("review", (e) => takeWhole(reviewState(JSON.parse((e as MessageEvent).data))));
+    // which review the server holds (as the stream opens, and at a change that is no delta): read
+    // again where this page holds another; what changes comes as deltas
+    es.addEventListener("review-rev", (e) => wholeReview.told(JSON.parse((e as MessageEvent).data) as ReviewRev));
+    // the branch's builds (DeploySpec): the pill and the popover say them
+    es.addEventListener("deploy", (e) => {
+      deploy = JSON.parse((e as MessageEvent).data);
+      renderBuild();
+    });
     es.addEventListener("review-delta", (e) => takeChange(JSON.parse((e as MessageEvent).data)));
     es.addEventListener("extracting", () => {
       updating = true;

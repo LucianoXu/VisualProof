@@ -644,7 +644,14 @@ export interface ReviewChange {
   problems: LogProblem[];
 }
 
-/** The whole review, as a page takes it on (GET /api/review, and on connecting). */
+/** Which review the server holds, as a page's event stream says it (`review-rev`: on connecting,
+ *  and at a change that is no delta): a page holding another reads the whole review. */
+export interface ReviewRev {
+  epoch: string;
+  rev: number;
+}
+
+/** The whole review, as a page takes it on (GET /api/review). */
 export interface ReviewWhole {
   epoch: string;
   rev: number;

@@ -47,6 +47,7 @@ import type { Graph } from "../../shared/viewgraph.ts";
 import { boardOrder } from "../../shared/doc/order.ts";
 import type { GraphCanvas, OrderBody, PinMove } from "./canvas.ts";
 import { LEAF_R } from "./scene.ts";
+import { onThemeChange, reducedMotion } from "./theme.ts";
 
 export interface LinearHooks {
   /** the outline of the board on show, or why there is none */
@@ -220,6 +221,8 @@ export class LinearForm {
     el.addEventListener("contextmenu", (e) => this.context(e));
     el.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
     window.addEventListener("resize", () => this.request());
+    // what it drew is in the theme's colours, read as it draws: drawn again in the new theme's
+    onThemeChange(() => this.request());
   }
 
   get shown(): boolean {
@@ -478,6 +481,8 @@ export class LinearForm {
 
   private ease(to: number): void {
     this.target = to;
+    // with reduced motion it comes and goes at once (theme.ts, reducedMotion)
+    if (reducedMotion()) this.t = to;
     this.last = performance.now();
     this.el.hidden = false;
     this.request();
@@ -495,7 +500,7 @@ export class LinearForm {
     this.last = now;
     // rows making room, or settling, ease to where they go
     if (this.off.size) {
-      const a = 1 - Math.exp(-dt / SLIDE_MS);
+      const a = reducedMotion() ? 1 : 1 - Math.exp(-dt / SLIDE_MS);
       let moving = false;
       for (const [key, o] of this.off) {
         o.dy += (o.ty - o.dy) * a;

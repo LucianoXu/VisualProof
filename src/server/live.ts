@@ -4,7 +4,9 @@
 // Two speeds, on purpose. Build status is cheap (a few stats and hashes) and goes out every
 // second it changes, so a page shows "building 12 / 40" while Lean works. The graph is expensive
 // and only meaningful between builds, so it is re-extracted once the outputs stop moving; until
-// then the page keeps the last good graph and says how old it is.
+// then the page keeps the last good graph and says how old it is. With nothing happening, the
+// loop asks which compiles run, and looks at the files only when a watch says something moved
+// (server/buildwatch.ts): a server at rest costs next to nothing.
 //
 // The extractor's graph is served as soon as it is ready; the usage pass (server/usage.ts) then
 // elaborates the modules whose result is not cached, and its findings — the notation each unit is
@@ -36,8 +38,9 @@ import { ReadOnlyLinks } from "./readonly.ts";
 import { Talk } from "./talk.ts";
 import { Asks } from "./askfollow.ts";
 import type { ReviewChange, ReviewStore } from "./review.ts";
-import type { ReviewData } from "../shared/review.ts";
-import { BuildTracker, importable, outputStamp, scanModules, sourceStamp } from "./status.ts";
+import type { ReviewData, ReviewRev } from "../shared/review.ts";
+import { BuildTracker, compiling, importable, outputsOf, probeAll, scanModules, stampOf } from "./status.ts";
+import { BuildWatch, moduleDirs, shouldLook } from "./buildwatch.ts";
 import type { BuildStatus, ModuleInfo } from "./status.ts";
 import { Views } from "./views.ts";
 import type { ViewPlaces } from "./views.ts";
@@ -63,10 +66,14 @@ import { packageVersion } from "./version.ts";
 import type { UpdateStatus } from "./updates.ts";
 import { withoutReasons } from "../shared/timeline.ts";
 import type { StoredEvent } from "../shared/timeline.ts";
+import type { DeployStatus } from "../shared/deploy.ts";
 
 const TICK = 1000;
 /** outputs quiet this long, and no compile running: the build is over */
 const SETTLE = 2500;
+/** how long a watch's news of a change a look found may take before the look counts as one it
+ *  missed (server/buildwatch.ts) */
+const MISS_GRACE_MS = 500;
 const PING = 15000;
 /** Event streams, which every change goes to: at most this many open at once, and this many per
  *  page (`session`: a reload, a lost connection coming back), its oldest closed for a new one. */
@@ -104,8 +111,8 @@ interface Stream {
    *  read-only reader nor an agent */
   toldAll: boolean;
   /** what may wait to be sent before it is closed (push): MAX_BUFFERED beyond its hello, which a
-   *  page reads first however large it is (the whole review: megabytes, with thousands of opinions);
-   *  MAX_BUFFERED once the hello is read */
+   *  page reads first however large it is (the views, every file's build status: 0.4 MB on
+   *  NavierStokesAndEuler); MAX_BUFFERED once the hello is read */
   room: number;
   /** what was written to it since its hello, while that is not all read */
   after: number;
@@ -124,6 +131,23 @@ export interface GraphInfo {
    *  version brings its findings; `done` when they are in (`failed` modules without them); `off`
    *  when there is no pass (a saved graph, `--jobs 0`) */
   usage?: { state: "pending" | "done" | "off"; failed: number };
+  /** following a branch (DeploySpec): the commit whose build the graph was read from */
+  commit?: string;
+}
+
+/** A branch the server follows and builds itself (server/deploy.ts, DeploySpec), as the live loop
+ *  sees it. */
+export interface LiveDeploy {
+  /** the tree is being changed or built, a build of it was cut short, or none was ever made:
+   *  nothing is read from it */
+  holds(): boolean;
+  /** the commit whose build the tree holds, and the branch: each snapshot's (HistorySpec decision 4) */
+  commit(): { hash: string; branch: string } | null;
+  /** a build is going on, which a restart would cut short */
+  readonly busy: boolean;
+  /** what the pages are told: with the build's log for those let in fully, without for read-only
+   *  readers */
+  status(full: boolean): DeployStatus;
 }
 
 export class Live {
@@ -135,7 +159,15 @@ export class Live {
   private mods: Map<string, ModuleInfo> = new Map();
   private lastStamp = "";
   private extractedStamp = "";
+  /** what the last look would read: the stamp, or a followed branch's outputs alone */
+  private lastRead = "";
   private quietSince = 0;
+  /** what tells the loop to look at the files (server/buildwatch.ts) */
+  private buildWatch = new BuildWatch((l) => this.say(l));
+  /** when the files were last looked at, the compiles that ran then, and the status as last sent */
+  private lastLook = 0;
+  private lastRunning = "";
+  private buildText = "";
 
   build: BuildStatus | null = null;
   graph: (GraphInfo & { prep: Prepared }) | null = null;
@@ -152,6 +184,11 @@ export class Live {
   /** review changes not yet sent: those made in one turn of the event loop go out as one */
   private reviewPending: ReviewChange[] = [];
   private version = 0;
+  /** the branch followed (DeploySpec), where the server builds what it shows; null for a workspace,
+   *  whose builds are its owner's */
+  deploy: LiveDeploy | null = null;
+  /** graphs being made ready to serve (install): the tree is read meanwhile */
+  private installing = 0;
   /** this server's process, as its pages know it (UpdateSpec decision 8): the graph's versions are
    *  counted again by another */
   readonly instance = randomBytes(6).toString("base64url");
@@ -400,7 +437,11 @@ export class Live {
 
   /** The review changed (server/review.ts tells it): every open page gets what changed — the new
    *  events, which it applies to the review it holds (`review-delta`), or, where events came in
-   *  between, the whole review (`review`). Changes made in one turn (an agent's batch of advice)
+   *  between, the revision alone (`review-rev`), at which the page reads the whole review (GET
+   *  /api/review, compressed and tagged). The stream never carries the whole review: with thousands
+   *  of opinions it is megabytes, and it went uncompressed to every page, which read it again from
+   *  GET /api/review besides (5.4 MB to each page of a review of 5,000 opinions on
+   *  NavierStokesAndEuler, 0.7 MB compressed). Changes made in one turn (an agent's batch of advice)
    *  go out as one. A new target's TCB is where its timeline starts; it has no view until a click
    *  gives it one (ViewSpec decision 29). */
   reviewChanged(c: ReviewChange): void {
@@ -415,7 +456,7 @@ export class Live {
     const last = cs[cs.length - 1];
     const deltas = cs.every((c, k) => c.events !== null && (k === 0 || c.base === cs[k - 1].rev));
     if (deltas) this.send("review-delta", { epoch: last.epoch, base: cs[0].base, rev: last.rev, events: cs.flatMap((c) => c.events!), problems: last.problems, error: this.review.error });
-    else this.send("review", this.review.whole());
+    else this.send("review-rev", this.reviewRev());
     this.timeline.reviewChanged(this.review.data);
     // a target a move brought from another name takes that name's view over; a target unmarked is
     // unlinked from its view
@@ -448,24 +489,40 @@ export class Live {
     // background (HistorySpec decision 22): a snapshot backfilled is not looked at again
     if (this.history) void backfillSources(this.history, this.project, this.dirs.cache, (l) => this.say(l)).catch((e) => this.say(`history: the source texts could not be backfilled: ${e instanceof Error ? e.message : String(e)}`));
     // the review's logs are watched whatever the graph comes from: they may change on disk any time
-    setInterval(() => this.checkReview(), TICK);
-    setInterval(() => {
-      for (const st of [...this.streams.values()]) this.push(st, ": ping\n\n");
-    }, PING);
+    this.timers.push(setInterval(() => this.checkReview(), TICK));
+    this.timers.push(
+      setInterval(() => {
+        for (const st of [...this.streams.values()]) this.push(st, ": ping\n\n");
+      }, PING),
+    );
     if (this.saved) {
       // a saved extraction does not change: no watching of the build
       void this.extract(null);
       return;
     }
     const loop = async () => {
+      if (this.stopped) return;
       try {
         await this.tick();
       } catch (e) {
         this.say(`watch: ${e instanceof Error ? e.message : String(e)}`);
       }
-      setTimeout(loop, TICK);
+      if (!this.stopped) this.next = setTimeout(loop, TICK);
     };
     void loop();
+  }
+
+  /** the loop's timers, which `stop` clears */
+  private timers: ReturnType<typeof setInterval>[] = [];
+  private next: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
+
+  /** Nothing more is watched (a test that ran the loop, at its end). */
+  stop(): void {
+    this.stopped = true;
+    for (const t of this.timers) clearInterval(t);
+    if (this.next) clearTimeout(this.next);
+    this.timers = [];
   }
 
   /** The review's logs changed on disk (by hand, a backup restored): what changed is read, and the
@@ -479,31 +536,74 @@ export class Live {
   }
 
   private async tick(): Promise<void> {
+    const running = await compiling(this.project);
     const now = Date.now();
-    const stampOf = () => `${outputStamp(this.project, this.mods)}#${sourceStamp(this.project, this.mods)}`;
-    let st = stampOf();
+    const runs = [...running].sort().join(" ");
+    // the files are looked at only when something says to (server/buildwatch.ts)
+    const heard = this.buildWatch.dirty;
+    const look = shouldLook({
+      heard,
+      polling: this.buildWatch.polling !== null,
+      running: running.size,
+      runsChanged: runs !== this.lastRunning,
+      active: !!this.build?.active,
+      sinceMove: now - this.quietSince,
+      sinceLook: now - this.lastLook,
+      unread: this.lastRead !== this.extractedStamp,
+      settle: SETTLE,
+      tick: TICK,
+    });
+    if (!look) return;
+    this.buildWatch.dirty = false;
+    this.lastLook = now;
+    this.lastRunning = runs;
+    let probes = probeAll(this.project, this.mods);
+    let st = stampOf(probes);
+    // the first look is not a change: a project at rest is read at once
+    const moved = st !== this.lastStamp && this.lastStamp !== "";
+    // a change no watch told of, unless its news is on its way still (through the event loop; after
+    // a moment, on macOS): one more and the watches are given up
+    if (moved && !heard && this.buildWatch.polling === null) setTimeout(() => this.buildWatch.dirty || this.buildWatch.missed(), MISS_GRACE_MS).unref();
     if (st !== this.lastStamp || this.mods.size === 0) {
       // sources or outputs moved: files may have appeared, and the import graph changed
       this.project.files = indexSources(this.project.root);
       this.mods = scanModules(this.project);
-      st = stampOf();
+      probes = probeAll(this.project, this.mods);
+      st = stampOf(probes);
     }
-    // the first look is not a change: a project at rest is read at once
-    const moved = st !== this.lastStamp && this.lastStamp !== "";
+    this.buildWatch.watch(moduleDirs(this.project, this.mods), this.project.root);
     this.lastStamp = st;
     if (moved) this.quietSince = now;
 
-    const build = await this.tracker.status(this.mods);
-    const before = this.build && JSON.stringify(this.build);
+    // the status as JSON once a look, compared with what went out last
+    let build = await this.tracker.status(this.mods, probes, running);
+    // following a branch, the build going on is the server's own: active from its fetch to its end
+    // (DeploySpec decision 6)
+    const d = this.deploy;
+    if (d && d.busy && !build.active) build = { ...build, active: true };
+    const text = JSON.stringify(build);
     this.build = build;
-    if (JSON.stringify(build) !== before) {
+    if (text !== this.buildText) {
+      this.buildText = text;
       this.send("build", build);
       this.timeline.buildStatus(build);
     }
+    // and its builds, beside the files: the one going on, the newest commit waiting, the last
+    if (d) {
+      const now = JSON.stringify(d.status(true));
+      if (now !== this.deploySent) {
+        this.deploySent = now;
+        this.sendDeploy();
+      }
+    }
 
+    // a branch's tree is read only between its builds, and only where a build wrote something:
+    // its sources change only with a checkout, which a build follows (DeploySpec decision 5)
+    const read = d ? outputsOf(probes) : st;
+    this.lastRead = read;
     const settled = !build.active && now - this.quietSince >= SETTLE;
-    if (settled && !this.extracting && st !== this.extractedStamp) {
-      this.extractedStamp = st;
+    if (settled && !this.extracting && read !== this.extractedStamp && !d?.holds()) {
+      this.extractedStamp = read;
       const ok = importable(this.project, this.mods);
       const okSet = new Set(ok);
       const missing = [...this.mods.keys()].filter((m) => !okSet.has(m)).sort();
@@ -562,6 +662,17 @@ export class Live {
    *  provisional: the usage pass's graph, which `completes` that build's extraction, is laid out as
    *  the build's own (server/pipeline.ts, prepare). */
   private async install(ex: Extraction, missing: string[], usage: "pending" | "done" | "off", completes?: string): Promise<void> {
+    // the tree is read until it is served (the source texts the snapshot keeps): a branch's build
+    // waits (DeploySpec decision 5)
+    this.installing++;
+    try {
+      await this.installNow(ex, missing, usage, completes);
+    } finally {
+      this.installing--;
+    }
+  }
+
+  private async installNow(ex: Extraction, missing: string[], usage: "pending" | "done" | "off", completes?: string): Promise<void> {
     const laid = await prepare(this.project, this.dirs, null, (l) => this.say(l), { extraction: ex, provisional: usage === "pending", completes });
     if (this.graph && this.graph.fingerprint === laid.fingerprint) return;
     const failed = ex.graph.usage?.failed.length ?? 0;
@@ -572,7 +683,8 @@ export class Live {
     // versions served are made under them (HistorySpec.md)
     const renamed = this.snapshot(ex, missing);
     const prep = this.versioned(laid);
-    this.graph = { version: ++this.version, fingerprint: prep.fingerprint, at: new Date().toISOString(), missing, usage: { state: usage, failed }, prep };
+    const commit = this.deploy?.commit()?.hash;
+    this.graph = { version: ++this.version, fingerprint: prep.fingerprint, at: new Date().toISOString(), missing, usage: { state: usage, failed }, ...(commit ? { commit } : {}), prep };
     this.send("graph", this.graphInfo());
     this.lostChanged();
     // opinions recorded under the kernel's hash are bound to the versions of this graph
@@ -656,7 +768,8 @@ export class Live {
       const merged = await this.merge(ex, plan, progress);
       // a re-layout going on is let finish; a newer build supersedes the pass
       while (this.extracting && this.passFor === ex.fingerprint) await new Promise((ok) => setTimeout(ok, 200));
-      if (!merged || this.passFor !== ex.fingerprint) return;
+      // a branch's build that started meanwhile changes the tree: its graph is read once it ends
+      if (!merged || this.passFor !== ex.fingerprint || this.deploy?.holds()) return;
       this.passFor = null;
       await this.install(merged, missing, "done", ex.fingerprint);
     } catch (e) {
@@ -691,6 +804,13 @@ export class Live {
     return renamed ? (u) => identityIn(renamed, u) : ownName;
   }
 
+  /** The renames in force (to → from), which `identity` follows: what the history's worker makes it
+   *  again from (server/historythread.ts). */
+  renamed(): [string, string][] | null {
+    const renamed = this.review.data.renamed;
+    return renamed ? Object.entries(renamed) : null;
+  }
+
   /** Keep a snapshot of the graph just read (server/history.ts): a new build's, or its own again;
    *  then pair what vanished since the build before with what appeared (server/renames.ts), and
    *  migrate the renames of high confidence. The pages are told of a snapshot made or changed
@@ -700,7 +820,10 @@ export class Live {
     if (!this.history || !this.renames) return renamed;
     try {
       const t0 = Date.now();
-      const commit = commitNow(this.project.root);
+      // a branch's build is of the commit its build checked out, on the branch followed; a
+      // workspace's, of the commit checked out as it is read
+      const d = this.deploy?.commit();
+      const commit = this.deploy ? (d ? { hash: d.hash, branch: d.branch } : null) : commitNow(this.project.root);
       // the texts the build was compiled from, while its files are most likely still those
       // (HistorySpec decision 21): only the files that changed since any build are written
       let written = 0;
@@ -1007,7 +1130,55 @@ export class Live {
   /** Whether the server is working on the build (an extraction, a re-layout, the usage pass):
    *  no moment to restart in (UpdateSpec decision 6). */
   get busy(): boolean {
-    return this.extracting || this.usage.status.state === "running";
+    return this.extracting || this.usage.status.state === "running" || !!this.deploy?.busy;
+  }
+
+  /** Whether the tree is being read: an extraction, a re-layout, a graph made ready to serve. A
+   *  branch's build changes the tree only after (DeploySpec decision 5). */
+  get reading(): boolean {
+    return this.extracting || this.installing > 0;
+  }
+
+  /** Following a branch, the commit of the graph on show and the branch (an exported document's
+   *  build, GET /api/git): null before a build was read; undefined for a workspace, whose commit git
+   *  says as it is now. */
+  shownCommit(): { hash: string; branch: string } | null | undefined {
+    const d = this.deploy;
+    if (!d) return undefined;
+    const c = this.graph?.commit ?? d.commit()?.hash;
+    return c ? { hash: c, branch: d.status(false).branch } : null;
+  }
+
+  /** The branch followed and its builds, as agents are told them (GET /api/agent/history); null
+   *  for a workspace. */
+  following(): DeployStatus | null {
+    return this.deploy?.status(true) ?? null;
+  }
+
+  /** A branch's build ended (DeploySpec decision 5): the tree is read again once it settles,
+   *  whatever the build wrote — a usage pass it cut short is done then, from what it finished. */
+  reread(): void {
+    this.extractedStamp = "";
+  }
+
+  /** A branch's builds changed (one started, a step, a newer commit waiting): the loop looks at its
+   *  next turn, as it does when a watch tells of a change (server/buildwatch.ts), and the pages are
+   *  told then. */
+  lookSoon(): void {
+    this.buildWatch.dirty = true;
+  }
+
+  /** The branch's builds as the pages were last told them (`deploy`). */
+  private deploySent = "";
+
+  /** The branch's builds, to every page (`deploy`): a read-only reader's without the build's log
+   *  (DeploySpec decision 11). */
+  private sendDeploy(): void {
+    const d = this.deploy;
+    if (!d || !this.streams.size) return;
+    const full = `event: deploy\ndata: ${JSON.stringify(d.status(true))}\n\n`;
+    const slim = `event: deploy\ndata: ${JSON.stringify(d.status(false))}\n\n`;
+    for (const st of [...this.streams.values()]) this.push(st, st.readOnly === null ? full : slim);
   }
 
   /** What happened, to every page: a version set aside, without why, to those not told all
@@ -1053,6 +1224,8 @@ export class Live {
       // the usage pass: how far it is, and the modules it could not elaborate
       usage: this.usage.status,
       build: this.build,
+      // the branch followed, where the server builds what it shows (DeploySpec)
+      ...(this.deploy ? { deploy: this.deploy.status(true) } : {}),
       live: !this.saved,
       editor: this.editor,
       streams: { open: this.streams.size, max: MAX_STREAMS, readOnly: this.readOnlyStreams(), maxReadOnly: MAX_READONLY_STREAMS, closedForNotReading: this.dropped, agentsListening: this.talk.count },
@@ -1098,8 +1271,10 @@ export class Live {
     // reads again the boards it has open
     this.write(res, "views", { views: this.views.list(), changes: [], all: true });
     if (this.build) this.write(res, "build", this.build);
-    // the whole review once; what changes after comes as deltas
-    this.push(st, this.reviewHello());
+    if (this.deploy) this.write(res, "deploy", this.deploy.status(readOnly === null));
+    // the review's revision: a page that holds another reads the whole review (GET /api/review);
+    // what changes after comes as deltas
+    this.write(res, "review-rev", this.reviewRev());
     const g = this.graphInfo();
     if (g) this.write(res, "graph", g);
     if (this.extracting) this.write(res, "extracting", {});
@@ -1111,14 +1286,9 @@ export class Live {
     st.after = 0;
   }
 
-  /** the whole review as a stream's hello says it, in bytes, and the text it was made from */
-  private reviewBytes: { text: string; bytes: Buffer } | null = null;
-  /** The whole review as every stream's hello says it: made into bytes once a revision, not once a
-   *  stream (a hundred pages opening at once, a review of 7.6 MB, had the server 5 s encoding it). */
-  private reviewHello(): Buffer {
-    const text = this.review.wholeText();
-    if (this.reviewBytes?.text !== text) this.reviewBytes = { text, bytes: Buffer.from(`event: review\ndata: ${text}\n\n`) };
-    return this.reviewBytes.bytes;
+  /** Which review the server holds (`review-rev`): its run and its revision. */
+  private reviewRev(): ReviewRev {
+    return { epoch: this.review.epoch, rev: this.review.rev };
   }
 
   private write(res: ServerResponse, event: string, data: unknown): void {
@@ -1135,9 +1305,10 @@ export class Live {
   }
 
   /** Write to a stream, unless what it has not read yet passed MAX_BUFFERED beyond its hello (`room`):
-   *  then it is closed instead, and its page reconnects to the present state. A review of 5,000
-   *  opinions on Sphere-Packing-Lean is 7 MB: counted against MAX_BUFFERED, it closed every page's
-   *  stream as it opened, and the pages reconnected every two seconds, never live. */
+   *  then it is closed instead, and its page reconnects to the present state. A hello counted against
+   *  MAX_BUFFERED (in 0.4.3 it carried the whole review, 7 MB for 5,000 opinions on
+   *  Sphere-Packing-Lean) closed every page's stream as it opened, and the pages reconnected every two
+   *  seconds, never live. */
   private push(st: Stream, text: string | Buffer): void {
     const waiting = st.res.writableLength;
     // all that waits was written since the hello: the hello is read
