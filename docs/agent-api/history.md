@@ -71,7 +71,9 @@ A snapshot's graph (latest without `id`), as the page reads the graph on show, n
 `projectCount` nodes are the project's, `{name, kind, module, ax, type, doc?, range?, also?, flags?,
 leanName?, display?, hash, kernel?}` (`hash`: its version under the renames in force, comparable
 with opinions' and the graph on show's; `kernel`: the kernel hash read with); then outside ones,
-`{name, kind, module, ax, ext: true}`. `ax` indexes `axiomSets`, whose entries index `axioms`;
+`{name, kind, module, ax, ext: true, range?}`. A snapshot's `packages`: `{revs: {<package>: <rev>},
+from: "read" | "commit"}`, the lake-manifest's revisions then (`commit`: from the build's commit,
+for one read before 0.7.0); outside sources are shown only where those are the revisions now. `ax` indexes `axiomSets`, whose entries index `axioms`;
 `edges`: flat `src, dst, sites` triples (sites as in `uses`).
 
 Large (flt-regular's: 0.8 MB of JSON, 139 KB gzipped; an 8,000-declaration project's: 14 MB, 2.6 MB gzipped):

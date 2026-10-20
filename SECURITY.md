@@ -11,7 +11,8 @@ into the latest release only.
 - **The project it serves.** Reading a project runs its Lean code, as building it does: the
   extractor and the usage pass import its modules, which runs their `initialize` declarations, and
   the usage pass elaborates each module again, which runs the project's macros and elaborators.
-  Serve only a project you would build yourself.
+  Its dependencies are trusted with it: Lean's hovers on a package's file (below) elaborate that
+  file, as building the package does. Serve only a project you would build yourself.
 - **Whoever can push to a branch it follows.** `visualproof serve <git URL>` builds each new commit
   of that branch itself (SPEC/DeploySpec.md): `lake exe cache get` where the project is on Mathlib
   (with `--mathlib-cache own`, then `lake exe cache clean` in the deployment's own cache, never the
@@ -142,7 +143,19 @@ into the latest release only.
 - **Lean, on the server.** Hovers and the agents' `describe` and `print` write `#check` and `#print`
   of a name into a scratch file Lean's language server elaborates, in the cache directory. Only a
   name that passes `isDeclName` (a dotted Lean name) is ever written there: no Lean source from a
-  page or an agent reaches Lean.
+  page or an agent reaches Lean. A file outside the project is elaborated by the same server, started
+  in the same folder, which holds no lakefile: nothing is built.
+- **The sources outside the project.** The source window and the agents' `source` show the source
+  of a declaration from outside the project too — a package's of the project's lake-manifest, or
+  Lean's core's, from the toolchain's `src/lean/` — to whoever may read the project's sources,
+  read-only readers included, with Lean's hovers within the same bounds. Only the `.lean` file of a
+  module an outside declaration of the graph on show is in is read (of a past build's, of that
+  build's): found as Lake lays the package out — the package whose build holds the module's `.olean`,
+  its lakefile's `srcDir` read as text, never elaborated — and resolved, with its symbolic links,
+  inside that package's folder or the toolchain's sources. No path a request gives reaches the disk,
+  and a module name is checked part by part before it is made a path. A page is told the package's
+  name and revision and its repository's address on GitHub, as the lake-manifest has them; never
+  where the packages or the toolchain are on this machine.
 - **Fetching by URL.** Whoever can write a note can make the server fetch an address for the
   library. It fetches `http` and `https` only, never an address that is loopback, private,
   link-local, reserved or the server's own, checked on every address the name resolves to, on the

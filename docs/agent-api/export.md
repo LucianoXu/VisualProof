@@ -69,10 +69,10 @@ In `head`, the view's:
 
 ## `GET /api/agent/export?view=&settings=&version=`
 
-The model, `version` 10: the PDF's content as JSON.
+The model, `version` 11: the PDF's content as JSON.
 
 ```json
-{ "version": 10, "settings": { "paper": "a4", "margin": 22, "fontSize": 11, "codeSize": 8.5, "contents": true },
+{ "version": 11, "settings": { "paper": "a4", "margin": 22, "fontSize": 11, "codeSize": 8.5, "contents": true },
   "view": { "id": "vus09c41", "scope": "key(Hilbert91)", … }, "head": { "title": "Keys of Hilbert91", "author": "Bob and Alice", … },
   "items": [ { "t": "decl", "decl": { "name": "Hilbert91", "code": { "proofElided": true, "from": "source", "lines": [ [ [ "keyword", "theorem" ], … ], … ] }, … } },
              { "t": "section", "section": { "key": "systemOfUnits", "level": 1, "items": [ … ], … } } ],
@@ -80,8 +80,11 @@ The model, `version` 10: the PDF's content as JSON.
 ```
 
 - Also: `head` `project`, `roots`, `fingerprint`, `commit`, `toolchain`, `past`, `trusted`
-  (`prefixes`, `standardAxioms`), `outside` (`count`, `by`); `decl` `id`, `short`, `kind`,
-  `module`, `file`, `line`, `doc`; section `id`, `title`; `view` `title`, `clustering`, `hidden`.
+  (`prefixes`, `standardAxioms`), `outside` (`count`, `by`: what is not printed); `decl` `id`,
+  `short`, `kind`, `module`, `file`, `line`, `doc`; section `id`, `title`; `view` `title`,
+  `clustering`, `hidden`. An outside declaration key for a target is printed, from its package's
+  source: `external: true`, `package` (`Lean` for the core) where its source was found, `file` in
+  the package.
 - Top-level `items`: the unheaded start (no cluster, or a hidden top level); a section's: its
   declarations, notes and sections, in board order. `level`: 1–3 numbered, 4+ paragraph-level.
 - `doc`: null or `[{"t": "p", "inl": [{"t": "text", "s": "…"}]}]`. Code: lines of `[kind, text]`,
@@ -90,7 +93,7 @@ The model, `version` 10: the PDF's content as JSON.
 - Proofs: a theorem's cut after its statement (`proofElided`), a definition's shown `…`
   (`proofsCut`: how many), where the usage pass found them. Where it has not read the text
   (`textCut`: `edited`, file changed since compiled; `unread`, pass off, running or failed on the
-  module; `past`, a past build's), reading the text finds them: every `by` block of the value,
+  module; `past`, a past build's; `outside`, from outside the project), reading the text finds them: every `by` block of the value,
   `decreasing_by`'s tactics; it also cuts a `by` block building data, and keeps a proof written as
   a term.
 
