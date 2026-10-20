@@ -13,7 +13,7 @@ import type { AddressInfo } from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { App } from "../src/server/main.ts";
+import { App } from "../src/server/app.ts";
 import { AgentApi } from "../src/server/agent.ts";
 import { deployFolder, Deployment, ensureClone, parseRemote } from "../src/server/deploy.ts";
 import type { Remote } from "../src/server/deploy.ts";

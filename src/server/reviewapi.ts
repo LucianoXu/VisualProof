@@ -36,7 +36,7 @@ import type { Graph } from "../shared/viewgraph.ts";
 import type { AppendResult, ReviewStore, Writer } from "./review.ts";
 import { lakeTextHash } from "./status.ts";
 
-/** The graph on show, as the review reads it: the agents' API keeps it (server/agent.ts, View). */
+/** The graph on show, as the review reads it: the agents' API keeps it (server/agentgraph.ts, View). */
 export interface GraphView {
   g: Graph;
   meta: ViewMeta;

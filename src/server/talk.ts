@@ -15,7 +15,7 @@
 //
 // The state each agent is shown in comes from what it does, not from what it says: *listening*
 // while a wait is open; *thinking* from the moment messages were handed to it until it replies, with
-// what its requests show it doing (server/agent.ts, doingOf) and the line it may set itself;
+// what its requests show it doing (server/agenttalk.ts, doingOf) and the line it may set itself;
 // *working* when it makes requests with nothing to answer; *offline* once it has had no wait open
 // and made no request for its longest wait plus a minute — the time an agent that listens takes at
 // most to come back. An offline agent's private channel cannot be written to (409); a mention of it
@@ -27,7 +27,7 @@
 // many a minute. A person's message in the public channel keeps the tokens of the agents it is handed
 // to (`to`, the agents it mentions that were listed as it was written), which is told to nobody.
 // Revoking a token, or its expiry, ends its wait at once. Who may read and write which channel is
-// server/main.ts's to check (shared/collab.ts, madeBy), and which page is sent which message
+// server/apptalk.ts's to check (shared/collab.ts, madeBy), and which page is sent which message
 // server/live.ts's.
 //
 // A session that replaces another knows nothing of what the page still shows (the owner's decisions
@@ -80,7 +80,7 @@ export interface TalkTiming {
 }
 const TIMING: TalkTiming = { slackMs: 60_000, graceMs: 15_000, tickMs: 1000 };
 
-/** Where someone was when they wrote, in words and as the page tells it (server/agent.ts, placeOf). */
+/** Where someone was when they wrote, in words and as the page tells it (server/agentfollow.ts, placeOf). */
 export type Where = NonNullable<ChatMessage["where"]>;
 
 /** One message of a channel (shared/collab.ts). */

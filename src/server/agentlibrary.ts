@@ -19,10 +19,10 @@ import { graphOf } from "./agentviews.ts";
 import { libraryApiOf } from "./library.ts";
 import type { Asker, LibAnswer, LibraryApi } from "./library.ts";
 
-/** Where an agent uploads a file's bytes: main.ts reads the body of this one as bytes, not JSON. */
+/** Where an agent uploads a file's bytes: appagent.ts reads the body of this one as bytes, not JSON. */
 export const UPLOAD_PATH = "/api/agent/library/upload";
 
-/** The body main.ts gives the upload endpoint: the bytes as they came. */
+/** The body appagent.ts gives the upload endpoint: the bytes as they came. */
 export interface UploadBody {
   bytes: Buffer;
 }

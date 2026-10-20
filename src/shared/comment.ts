@@ -17,7 +17,7 @@
 // text being written; tested in test/comment.test.ts.
 
 /** the longest comment, in UTF-16 units, as the server takes it (server/reviewapi.ts,
- *  server/agent.ts, `invalid` in shared/review.ts) */
+ *  server/agentadvice.ts, `invalid` in shared/review.ts) */
 export const MAX_COMMENT = 10000;
 /** a quote of an opinion keeps at most this many lines of its comment, and this many characters */
 export const QUOTE_LINES = 4;

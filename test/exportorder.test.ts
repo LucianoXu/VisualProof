@@ -40,6 +40,7 @@ import { memoryOf } from "../src/shared/layout.ts";
 import type { ViewData } from "../src/shared/views.ts";
 import { AgentApi } from "../src/server/agent.ts";
 import type { Caller, World } from "../src/server/agent.ts";
+import { exportOutline } from "../src/server/agentexport.ts";
 import { boardSpots } from "../src/server/boardspots.ts";
 import { crc32, Exporter } from "../src/server/export.ts";
 import { docFiles, figureFiles, figureNotes, imageTool } from "../src/server/figures.ts";
@@ -619,14 +620,14 @@ test("the server gives the outline of a view as the page's linear form asks for 
     } as unknown as World;
     const api = new AgentApi(w, null, "read");
     const a = await api.handle({ method: "GET", path: "/api/agent/export", query: new URLSearchParams({ view: v.id }), body: null, caller: { name: "Claude", kind: "agent" } });
-    const o = api.exportOutline(v.id);
+    const o = exportOutline(api, v.id);
     assert.equal(o.status, 200, JSON.stringify(o.body));
     const body = o.body as { view: string; outline: Outline };
     assert.equal(body.view, v.id);
     assert.deepEqual(outlineSeq(body.outline.items), docSeq((a.body as DocModel).items));
     assert.ok(JSON.stringify(body.outline).includes('"np"'), "the note in C is in it");
-    assert.equal(api.exportOutline("nope").status, 404);
-    assert.equal(api.exportOutline(v.id, "abc").status, 400);
+    assert.equal(exportOutline(api, "nope").status, 404);
+    assert.equal(exportOutline(api, v.id, "abc").status, 400);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

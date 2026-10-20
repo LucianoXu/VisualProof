@@ -1,4 +1,4 @@
-// The server as a client meets it (server/main.ts, server/live.ts): bodies too large answered and
+// The server as a client meets it (server/app.ts, server/live.ts): bodies too large answered and
 // the connection closed, a fault answered 500, event streams bounded and closed when they do not
 // read, presence that only a page's own stream can speak for, only the graph's modules served, and
 // the access cookie named per instance; what a page has already not sent again, and what it is
@@ -26,7 +26,7 @@ import type { ClusterMode, Layout, ViewMeta, ViewNode } from "../src/shared/grap
 import { LAYOUT_VERSION, SITE_STMT } from "../src/shared/graph.ts";
 import { computeLayout } from "../src/shared/layout.ts";
 import { isPackedEdges, unpackEdges } from "../src/shared/edgecodec.ts";
-import { JSON_GZIP_AWAY_FROM, sendJson } from "../src/server/main.ts";
+import { JSON_GZIP_AWAY_FROM, sendJson } from "../src/server/send.ts";
 import { site, SOURCE, stream } from "./site.ts";
 import type { Json } from "./site.ts";
 

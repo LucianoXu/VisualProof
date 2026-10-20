@@ -287,7 +287,7 @@ export const validVersion = (x: unknown): x is number => typeof x === "number" &
 
 /** Who dropped a pin: a name (null where a page gave none), whether an agent did, and when. The
  *  server keeps it beside each view's pins, so that an agent laying out can be told whose pins it
- *  would crowd (server/agent.ts, `place`); the pages are not sent it. The shape server/places.ts
+ *  would crowd (server/agentplaces.ts, `place`); the pages are not sent it. The shape server/places.ts
  *  gives it. */
 export interface PinAuthor {
   by: string | null;

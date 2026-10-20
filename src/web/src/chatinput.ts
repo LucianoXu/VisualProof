@@ -159,13 +159,24 @@ export class ChatInput {
     r.deleteContents();
     const last = nodes[nodes.length - 1];
     for (const n of nodes.reverse()) r.insertNode(n);
+    // the caret in text, after what was put: at an element's edge beside an uneditable chip the
+    // browser draws it before the chip, so a chip with no words after it is given a space to stand on
     const after = document.createRange();
-    after.setStartAfter(last);
+    // inserting into words splits them, and may leave an empty text node after what was put: no words
+    const next = last.nextSibling;
+    const place = caretAfter(last instanceof Text ? "text" : isChip(last) ? "chip" : "other", next instanceof Text && next.length > 0);
+    if (place === "end") after.setStart(last, (last as Text).length);
+    else if (place === "next") after.setStart(next as Text, 0);
+    else if (place === "space") {
+      const space = document.createTextNode(" ");
+      (last as ChildNode).after(space);
+      after.setStart(space, 1);
+    } else after.setStartAfter(last);
     after.collapse(true);
-    setSelection(after);
     // inserting split a text node, leaving an empty one: gone, the words beside joined again (the
-    // caret, a live range, keeps its place)
+    // caret, a live range, keeps its place in what they become)
     this.el.normalize();
+    setSelection(after);
     // a line break last in the box shows no line of its own: one more, which says nothing, lets the
     // caret stand on the new line
     if (last.nodeName === "BR" && last.isConnected && !last.nextSibling) {
@@ -282,6 +293,18 @@ export class ChatInput {
 }
 
 /** A chip in the box: what the link leads to, standing for it. */
+/** Where the caret goes after what was put in the box, by what came last and whether words follow:
+ *  the end of the words put (`end`); the start of the words after a chip (`next`); after a space
+ *  given to a chip that ends the box or comes before a line break (`space`); else after the node
+ *  (`after`: a line break). */
+export function caretAfter(last: "text" | "chip" | "other", wordsNext: boolean): "end" | "next" | "space" | "after" {
+  if (last === "text") return "end";
+  if (last === "chip") return wordsNext ? "next" : "space";
+  return "after";
+}
+
+const isChip = (n: Node): boolean => n instanceof HTMLElement && n.classList.contains("cv-chip");
+
 function chipNode(url: string, html: string): HTMLElement {
   const el = document.createElement("span");
   el.className = "cv-chip in-box";

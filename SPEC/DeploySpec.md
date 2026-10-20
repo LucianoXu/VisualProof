@@ -279,10 +279,11 @@ otherwise).
   build status's `active` include a build going on; `reading` is an extraction or a graph being
   served (`installing`); the snapshot's commit is `deploy.commit()`; `shownCommit()`,
   `following()`; `stop()` ends the loop (a test's end).
-- server/main.ts: `--branch`, `--poll`, `--build-timeout`, `--mathlib-cache`, the checks before
-  anything runs (a folder with any of them is refused, naming them), `openDeployment` before
-  the project is read, the supervisor's site (`deploySiteOf`, without the network), the terminal's
-  lines, `GET /api/git`, the read-only reader's `GET /api/status`.
+- server/options.ts: `--branch`, `--poll`, `--build-timeout`, `--mathlib-cache`, the checks before
+  anything runs (a folder with any of them is refused, naming them); server/main.ts:
+  `openDeployment` before the project is read, the supervisor's site (`deploySiteOf`, without the
+  network), the terminal's lines; server/appgraph.ts: `GET /api/git`, the read-only reader's
+  `GET /api/status`.
 
 ### On disk (`<cache>/deploy/`)
 
@@ -318,8 +319,8 @@ otherwise).
   /api/status` `deploy`; `GraphInfo.commit`; `GET /api/agent/history` `following` (agents; the
   page's `GET /api/history` has none).
 - The page: web/src/buildpop.ts (`deployHtml`, the popover's part; `deployWaiting`, the loading
-  page; `stepPill`), web/src/main.ts (the pill, the loader, the `deploy` event), web/src/sourcewin.ts
-  ("Open on GitHub", `githubLink` and `builtCommit` hooks).
+  page; `stepPill`), web/src/pagelive.ts (the pill, the `deploy` event), web/src/main.ts (the loader),
+  web/src/sourcewin.ts ("Open on GitHub", `githubLink` and `builtCommit` hooks).
 
 ### Known limits, left as they are
 
