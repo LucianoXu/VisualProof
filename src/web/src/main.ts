@@ -37,14 +37,14 @@ import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole 
 import { reviewCount } from "../../shared/reviewqueue.ts";
 import { noteExcerpt } from "../../shared/sticky.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
+import { fixedScope, focusFrom, PROJECT, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
 import { dataSource } from "./data.ts";
 import { WholeReview } from "./reviewread.ts";
-import type { DataSource, ReviewState, ViewAnswer } from "./data.ts";
+import type { DataSource, ReviewState } from "./data.ts";
 import { exactContext, judgedText } from "../../shared/context.ts";
 import type { ModuleContexts } from "../../shared/context.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
@@ -65,7 +65,7 @@ import type { PageParts } from "./surfaces.ts";
 import { deployWaiting } from "./buildpop.ts";
 import { githubBlob } from "../../shared/deploy.ts";
 import { Editor } from "./editor.ts";
-import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
+import { keptFocus, readerFocus } from "./focus.ts";
 import { kindDot, ringed } from "./axiomring.ts";
 import { Legend } from "./legend.ts";
 import { holdTheme } from "./theme.ts";
@@ -87,7 +87,6 @@ import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut } from
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES, statusCodes } from "./status.ts";
 import type { Scheme } from "./status.ts";
-import { Tabs } from "./tabs.ts";
 import { excerpt, ownAgents, PUBLIC, stateWords, Talk } from "./talk.ts";
 import { ChatWindow, keepStripClear } from "./chatwin.ts";
 import { chipOf, copyLink, noteIn, siteLink, siteOrigins, withoutKeys } from "./chatlinks.ts";
@@ -98,7 +97,6 @@ import { MonitorLayout, monitorInsets } from "./monitor.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import { sourceLine, titleOf, untilStill } from "./artwork.ts";
-import { TargetList, targetStep } from "./targetlist.ts";
 import { SHIELD, Trust } from "./trust.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
 import { Store } from "./store.ts";
@@ -117,6 +115,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { tabsPart } from "./pagetabs.ts";
 import { sharePart } from "./pageshare.ts";
 import { timelinePart } from "./pagetimeline.ts";
 import { selectionPart } from "./pageselection.ts";
@@ -150,8 +149,12 @@ export interface MainPart {
   servedContexts: Map<string, { contexts: ModuleContexts | null; hash: string | null }>;
   submit: (op: ReviewRequest) => Promise<string | null>;
   flow: ReviewFlow;
+  flowNow: ReviewFlow;
   blocked: () => string | null;
   isTarget: (name: string) => boolean;
+  heldTargets: () => string[];
+  linkedTargets: () => string[];
+  viewFocusName: () => string | null;
   reviewName: () => string | null;
   reviewRoot: () => number | null;
   keysFor: (r: Root, target?: string | null) => KeysOf;
@@ -176,11 +179,14 @@ export interface MainPart {
   linear: LinearForm;
   ART_KEYS: Set<string>;
   art: ArtFrame;
+  shut: (section: string) => boolean;
+  toggleSection: (section: string) => void;
   trust: Trust;
   boardPop: Popover;
   trustPop: Popover;
   files: () => Map<string, FileStatus>;
   outline: Outline;
+  boardPanel: BoardPanel;
   sync: BoardSync;
   hideLevel: (key: string) => void;
   syncInsets: () => void;
@@ -197,18 +203,12 @@ export interface MainPart {
   asking: Asking;
   openSnapshot: (text: string) => Promise<void>;
   openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
-  made: (r: ViewAnswer) => Promise<string | null>;
-  named: () => Promise<string | null>;
-  tabs: Tabs;
-  focusMenu: FocusMenu;
-  openView: (id: string) => Promise<void>;
   timeMachine: (at?: TimeMachineAt) => void;
   wholeReview: WholeReview<ReviewWhole>;
   takeChange: (c: ReviewChange) => void;
   say: (text: string) => void;
   noSwitch: () => boolean;
   openTimeMachine: (at?: TimeMachineAt) => Promise<boolean>;
-  reviewTarget: (i: number) => void;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -348,7 +348,7 @@ async function boot(): Promise<void> {
   /** the layouts running or waiting, by the view each is of: while the step on its way waits for
    *  one, the tabs' busy mark, as the Time Machine's bar has its own */
   const awaited = new Map<Promise<Layout>, string>();
-  const syncBusy = () => tabs.busy(nav.aimed !== null && [...awaited.values()].includes(nav.aimed));
+  const syncBusy = () => page.tabs.busy(nav.aimed !== null && [...awaited.values()].includes(nav.aimed));
   const layOutBoard = (id: string, ask: Parameters<LayoutQueue["lay"]>[1]): Promise<Layout> => {
     const p = boardQueue.lay(boardTag(id), ask);
     awaited.set(p, id);
@@ -398,7 +398,7 @@ async function boot(): Promise<void> {
     // the address is written by the step that showed the view (one entry), or replaced after
     changed: () => {
       syncBusy();
-      renderTabs();
+      page.renderTabs();
       people.report();
     },
   });
@@ -437,7 +437,7 @@ async function boot(): Promise<void> {
       if (reader) return READ_ONLY;
       if (!(await people.ensureLayout())) return "Keeping a build in a view is recorded under your name: give one first.";
       const why = await sync.keepVersion(snapshot);
-      renderTabs();
+      page.renderTabs();
       return why;
     },
     saveAs: (snapshot) => saveVersion(snapshot),
@@ -484,7 +484,7 @@ async function boot(): Promise<void> {
     // view it is made from
     const r = await tm.leaveFor(() => nav.open(scope, to, { version, ...(clustering ? { clustering } : {}), ...(focus !== null ? { focus } : {}) }));
     // the tabs were hidden while it was shown: drawn again now, its tab brought into sight
-    if (leaving && r === true) renderTabs();
+    if (leaving && r === true) page.renderTabs();
     return r;
   };
   page.openDerived = openDerived;
@@ -553,6 +553,7 @@ async function boot(): Promise<void> {
   /** The same on the graph on show, whatever build the board shows: how far each target's review has
    *  come is the review's now (the targets list, the views menu) */
   const flowNow = new ReviewFlow({ graph: () => page.present, review: () => page.review.data, reader: () => people.name });
+  page.flowNow = flowNow;
   /** Why this reader's opinions are refused until their log is fixed by hand (a line of it cannot
    *  be read, server/review.ts), or null. */
   const blocked = (): string | null => {
@@ -574,10 +575,13 @@ async function boot(): Promise<void> {
         return i !== undefined && toView(i) >= 0;
       })
       .sort();
+  page.heldTargets = heldTargets;
   /** The targets linked to the view on show (ViewSpec decision 29), in the order they were linked. */
   const linkedTargets = (): string[] => (nav.board?.rec.targets ?? []).filter(isTarget);
+  page.linkedTargets = linkedTargets;
   /** The view's own focus, everyone's (shared/views.ts, viewFocus). */
   const viewFocusName = (): string | null => (nav.board ? viewFocus(nav.board.rec, isTarget, heldTargets) : null);
+  page.viewFocusName = viewFocusName;
   /** The target the review is on for this reader (ViewSpec decision 28): their own focus where they
    *  chose one, else the view's; null where there is none, and the review strip and its keys stand
    *  aside. */
@@ -637,16 +641,16 @@ async function boot(): Promise<void> {
     said: (text) => say(text),
     queue: (i) => flow.queue(i),
     progress: (i) => flow.progress(i),
-    reviewLens: (i) => reviewTarget(i),
+    reviewLens: (i) => page.reviewTarget(i),
     // the view the target is linked to (ViewSpec decision 29), or none, and linking it to the view
     // on show
     targetView: (i) => {
       const name = declNow(i);
       if (!isTarget(name)) return null;
       const id = views.linkedTo(name);
-      return { title: id === undefined ? null : views.title(id), here: id === nav.board.id, why: linkWhy(name) };
+      return { title: id === undefined ? null : views.title(id), here: id === nav.board.id, why: page.linkWhy(name) };
     },
-    linkHere: (i) => void linkTo(declNow(i)).then((why) => why && say(why)),
+    linkHere: (i) => void page.linkTo(declNow(i)).then((why) => why && say(why)),
     editedNow,
     edited,
     textNow,
@@ -1307,11 +1311,13 @@ async function boot(): Promise<void> {
   // the sections a reader folds away: the targets, and the board's filter (folded until the reader
   // opens it)
   const shut = (section: string) => store.isShut(section);
+  page.shut = shut;
   const toggleSection = (section: string) => {
     store.toggleShut(section);
-    if (section === "targets") targetList.render();
+    if (section === "targets") page.targetList.render();
     else boardPanel.render();
   };
+  page.toggleSection = toggleSection;
 
   // what is trusted without review, in a popover from the side panel (web/src/trust.ts)
   const trust = new Trust($("#trust-list"), $("#trust-pop"), {
@@ -1388,6 +1394,7 @@ async function boot(): Promise<void> {
     shut,
     toggle: toggleSection,
   });
+  page.boardPanel = boardPanel;
 
   // the board on show, shared: this page's changes out, the others' in (web/src/boardsync.ts)
   const sync: BoardSync = new BoardSync(views, nav, {
@@ -1400,7 +1407,7 @@ async function boot(): Promise<void> {
     me: () => people.name,
     colorOf: (name) => people.colorOf({ name }),
     lost: () => people.lost(),
-    tabsChanged: () => renderTabs(),
+    tabsChanged: () => page.renderTabs(),
     notesChanged: () => stickies.render(),
     boardChanged: () => linear.refresh(),
     levelChanged: () => page.showLevel(),
@@ -1534,7 +1541,7 @@ async function boot(): Promise<void> {
       syncStatus();
       applyScheme();
     }
-    focusMenu.render();
+    page.focusMenu.render();
   };
   page.syncFocus = syncFocus;
 
@@ -2008,147 +2015,7 @@ async function boot(): Promise<void> {
     canvas.setPeers(marks);
     panel.refreshAlsoHere();
   };
-
-  // ---------------------------------------------------------------- the tabs
-  //
-  // The views this reader has open, and the views menu (web/src/tabs.ts).
-
-  /** A new view or a copy, under the reader's name (it is recorded), shown in a tab. */
-  const made = async (r: ViewAnswer): Promise<string | null> => {
-    if (r.who) people.lost();
-    if (!r.view) return r.error ?? "The view could not be made.";
-    if (tm.active) await tm.close();
-    await views.load();
-    if (await nav.show(r.view.id, null)) page.commit();
-    sync.afterPost();
-    return null;
-  };
-  page.made = made;
-  // a private reader's view is made without their name, and needs none (CollabSpec decision 8)
-  const named = async (): Promise<string | null> => (reader ? READ_ONLY : data.snapshot || (await people.ensureLayout()) ? null : "A view is made under your name: give one first.");
-  page.named = named;
-  const tabs = new Tabs($("#tabs"), $("#views-btn"), $("#views-menu"), {
-    tabs: () => nav.tabs,
-    active: () => nav.board?.id ?? null,
-    // a tab of a view the server forgot is called by its query, at the build it shows
-    title: (id) => {
-      const t = !views.summary(id) && !views.rec(id) ? nav.tabs.find((x) => x.id === id) : undefined;
-      return t?.q ? titleOfScope(t.q, views.titles(), t.at) : views.title(id);
-    },
-    tip: (id) => views.tip(id, nav.tabs.find((x) => x.id === id)?.q),
-    summary: (id) => views.summary(id),
-    list: () => views.summaries,
-    select: (id) => void openView(id),
-    close: (id) => void nav.close(id).then(() => page.writeAddress(false)),
-    create: async (name) => (await named()) ?? made(await views.post("create", { name })),
-    duplicate: async (name) => (await named()) ?? made(await views.post("create", { name, from: nav.board.id })),
-    rename: async (name) => {
-      const why = await named();
-      if (why) return why;
-      const r = await sync.change("rename", { name });
-      if (r.error) return r.error;
-      nav.board.rec.name = name;
-      nav.board.rec.kept = true;
-      renderTabs();
-      boardPanel.render();
-      return null;
-    },
-    remove: async () => {
-      const why = await named();
-      if (why) return why;
-      const id = nav.board.id;
-      const r = await sync.change("delete", {});
-      if (r.error) return r.error;
-      await nav.close(id);
-      page.writeAddress(false);
-      return null;
-    },
-    readOnly: () => !!data.snapshot || !!reader,
-    frozen: () => (reader ? READ_ONLY : null),
-    build: (id) => {
-      const s = tm.snaps.find((x) => x.id === id);
-      return s ? `${buildWhen(s.at)}${s.commit ? ` · ${s.commit.hash.slice(0, 7)}` : ""}` : null;
-    },
-    short: (t) => views.titles().names?.decl(t) ?? short(t),
-    // the reader's focus, where its view is another than this one (ViewSpec decision 29)
-    linkable: () => {
-      const t = nav.board ? reviewName() : null;
-      if (t === null || views.linkedTo(t) === nav.board.id) return null;
-      return { target: t, why: linkWhy(t) };
-    },
-    link: (t) => linkTo(t),
-  });
-  page.tabs = tabs;
-
-  // the review's focus on the board on show, in the view's header (ViewSpec decision 28;
-  // web/src/focus.ts): the view's own, everyone's, or the reader's, theirs as the camera is
-  const focusMenu = new FocusMenu($("#focus-btn"), $("#focus-menu"), {
-    state: () => (nav.board ? { view: viewFocusName(), mine: page.mine, focus: reviewName(), linked: linkedTargets(), held: heldTargets() } : null),
-    short: (name) => views.titles().names?.decl(name) ?? short(name),
-    choose: (f) => {
-      page.mine = f;
-      page.apply();
-      page.writeAddress(false);
-    },
-    setView: async (f) => {
-      if (frozen()) return frozenWhy();
-      const why = await named();
-      if (why) return why.replace("A view is made", "The view's focus is set");
-      const r = await sync.change("focus", { focus: f });
-      if (r.error) return r.error;
-      nav.board.rec.focus = f;
-      // the reader's focus is the view's now: nothing of their own is left
-      page.mine = undefined;
-      page.apply();
-      page.writeAddress(false);
-      return null;
-    },
-    canSet: () => !frozen(),
-  });
-  page.focusMenu = focusMenu;
-
-  // the targets at the top of the side panel, each opening its view (web/src/targetlist.ts)
-  const targetList = new TargetList($("#targets"), {
-    readOnly: () => !!data.snapshot || !!reader,
-    list: () => views.summaries,
-    targets: () => Object.keys(page.review.data.targets),
-    active: () => nav.board?.id ?? null,
-    progress: (t) => {
-      const i = page.present.byName.get(t);
-      return i === undefined ? null : flowNow.progress(i);
-    },
-    keyProgress: (t) => {
-      const i = page.present.byName.get(t);
-      return i === undefined ? null : flowNow.keyProgress(i);
-    },
-    open: (id, target) => openTarget(id, target),
-    title: (id) => views.title(id),
-    shut,
-    toggle: toggleSection,
-  });
-  /** The tabs, and the targets beside them: both follow the views and how far each review has come. */
-  function renderTabs(): void {
-    tabs.render();
-    targetList.render();
-  }
-
-  /** Open a view (a tab, a row of the menu, an event of the timeline): one step in the history. */
-  const openView = async (id: string) => {
-    if (id === nav.board.id) return stay();
-    if (noSwitch()) return;
-    if (await nav.select(id)) page.commit();
-  };
-  page.openView = openView;
-  /** A target, from the targets list: its view, on the target, or, with none (`id` null), a view
-   *  nobody keeps of its TCB, linked to it (see reviewTarget); a target no longer in the graph opens
-   *  its view alone, and with none has nowhere to go. */
-  const openTarget = (id: string | null, target: string) => {
-    if (id !== null && id !== nav.board.id && noSwitch()) return;
-    const i = page.g.byName.get(target);
-    if (i !== undefined) reviewTarget(i);
-    else if (id !== null) void openView(id);
-    else say(`★${short(target)} is not in the graph now, and has no view.`);
-  };
+  Object.assign(page, tabsPart(page));
   Object.assign(page, sharePart(page));
   Object.assign(page, timelinePart(page));
 
@@ -2186,7 +2053,7 @@ async function boot(): Promise<void> {
     }
     page.activity.changed();
     boardPanel.render();
-    renderTabs();
+    page.renderTabs();
     papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
     stickies.render();
@@ -2317,7 +2184,7 @@ async function boot(): Promise<void> {
    *  with the camera and the selection carried over, before the Time Machine is left — no board of
    *  now comes between, and the copy's layout of that build is the one on show (they lay out alike). */
   const saveVersion = async (snapshot: number): Promise<string | null> => {
-    const why = await named();
+    const why = await page.named();
     if (why) return why;
     const s = tm.snaps.find((x) => x.id === snapshot);
     const taken = new Set(views.summaries.map((v) => views.title(v.id)));
@@ -2333,7 +2200,7 @@ async function boot(): Promise<void> {
     sync.afterPost();
     if (!ok) return `“${name}” is made, kept at that build: it is in Views.`;
     // the tabs were hidden while it was shown: drawn again now, its tab brought into sight
-    renderTabs();
+    page.renderTabs();
     page.commit();
     return null;
   };
@@ -2379,78 +2246,6 @@ async function boot(): Promise<void> {
     page.apply();
     syncPast();
   };
-
-  /** Open a target's view (ViewSpec decision 29): the view it is linked to, with a click on the
-   *  target there under the Selection tool and the view brought to it, as going to a declaration
-   *  does (`place`); on its view already, the target is gone to. A target with no view (marking makes
-   *  none) is given one, as the owner decided on 2026-10-11: the view Zoom in on it under Rests on →
-   *  TCB makes from the Project, `tcb(T)` at the latest build, nobody keeping it, linked to it and
-   *  focused on it (shared/views.ts, `openTarget`) — opened as its view is, and its view for as long
-   *  as it lasts. */
-  const reviewTarget = (i: number) => {
-    // a target renamed since: its view is linked to its name now
-    const name = declNow(i);
-    const linked = views.linkedTo(name);
-    // a target's view opens with the target selected alone under the tool the reader has (the
-    // owner's decision of 2026-10-12: the tool is never changed for them), and the target the
-    // reader's focus there, whatever the view's own focus is (ViewSpec decisions 15 and 29); a
-    // read-only reader, who opens no view (CollabSpec decision 11), goes to a target with none on
-    // the board on show
-    if ((linked !== undefined && targetStep(linked, nav.board.id) === null) || (linked === undefined && reader)) {
-      page.mine = name;
-      page.go(i);
-      page.writeAddress(false);
-      return;
-    }
-    if (noSwitch()) return;
-    const p = pickDecl(name, name);
-    const to: Place = { mode: S.mode, picks: selectionText([p]), shown: shownOf(p), cam: null, focus: name };
-    if (linked !== undefined) {
-      void nav.select(linked, to).then((ok) => {
-        if (ok) page.commit();
-        // its view deleted meanwhile: the target on the board on show
-        else page.go(i);
-      });
-      return;
-    }
-    void (async () => {
-      const v = await views.openTarget(name);
-      if (typeof v === "string") return say(v);
-      // the list holds the link before the server's word comes: the next click finds it there
-      await views.load();
-      renderTabs();
-      if (!(await nav.select(v.id, to))) return;
-      page.commit();
-      if (!v.kept) say(`★${short(name)} had no view: this view of its TCB is its view while it lasts. Pin, fold or name it to keep it, and its link with it.`);
-    })();
-  };
-  page.reviewTarget = reviewTarget;
-  /** Why target `name` cannot be linked to the view on show now, or null (ViewSpec decision 29). */
-  const linkWhy = (name: string): string | null => {
-    if (data.snapshot) return null;
-    if (frozen()) return frozenWhy();
-    return linkRefused(nav.board.rec, name);
-  };
-  /** Link target `name` to the view on show, for everyone (ViewSpec decision 29): its clicks open this
-   *  view; the view's first target is its focus to begin with, and one linked after leaves the focus
-   *  as it is (the owner's decision of 2026-10-11); the view it was linked to keeps its scope and
-   *  arrangement. Resolves to why it was refused, or null. */
-  const linkTo = async (name: string): Promise<string | null> => {
-    const no = linkWhy(name);
-    if (no) return no;
-    const why = await named();
-    if (why) return why.replace("A view is made", "A target is linked to a view");
-    const r = await sync.change("link", { target: name });
-    if (r.error) return r.error;
-    const rec = nav.board.rec;
-    if (!rec.targets?.includes(name)) rec.targets = [...(rec.targets ?? []), name];
-    if (rec.targets.length === 1) rec.focus = name;
-    rec.kept = true;
-    page.apply();
-    renderTabs();
-    say(`★${short(name)} is linked to this view now: clicking ★${short(name)} opens it.`);
-    return null;
-  };
   Object.assign(page, addressPart(page));
   // the review strip: its target's name goes back to the target
   $("#lens-title").addEventListener("click", (e) => {
@@ -2492,7 +2287,7 @@ async function boot(): Promise<void> {
   const recipe = recipeIn(location.hash);
   if (recipe) void openRecipe(recipe);
   // the builds the history holds: the clocks of views kept at one say which
-  if (!data.snapshot) void tm.load().then(() => renderTabs());
+  if (!data.snapshot) void tm.load().then(() => page.renderTabs());
   try {
     history.replaceState({ n: 0 }, "", "#" + encodeState(page.current()));
   } catch {
