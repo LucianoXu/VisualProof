@@ -750,6 +750,18 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
    own indentation (--in, in characters) and four characters more, so that they read as the
    same line going on; its first line starts where it would anyway */
 .sw-win .ln { display: block; padding-left: calc((var(--in, 0) + 4) * 1ch); text-indent: calc((var(--in, 0) + 4) * -1ch); }
+/* the gutter (web/src/gutter.ts; the owner's decision of 2026-10-20): the file's own line numbers,
+   muted, beside the code and the context, room made for the digits of the code's last line (--gw).
+   Each number is drawn from its line's data-n at the start of the line's first row, outside the
+   text: nothing selects, copies or quotes it, and the positions Lean is asked at count in the text
+   alone. A wrapped line's continuations hang as before, past the gutter. */
+.sw-ctx, .sw-body pre.src { --gut-digit: 6.6px; --gut-pad: 14px; --gut: calc(var(--gw, 0) * var(--gut-digit) + var(--gut-pad)); }
+.sw-win .sw-ctx .ln, .sw-win .sw-body pre.src .ln { padding-left: calc(var(--gut) + (var(--in, 0) + 4) * 1ch); }
+.sw-win .sw-ctx .ln::before, .sw-win .sw-body pre.src .ln::before {
+  content: attr(data-n); display: inline-block; box-sizing: border-box; width: var(--gut); margin-left: calc(-1 * var(--gut));
+  padding-right: var(--gut-pad); text-align: right; text-indent: 0; white-space: nowrap; font: 11px/1 var(--mono);
+  font-variant-numeric: tabular-nums; color: var(--text-3); user-select: none; -webkit-user-select: none;
+}
 .sw-none { color: var(--text-2); font-size: 13px; padding: 8px 0; }
 .sw-review { border-top: 1px solid var(--line); padding: 10px 16px 12px; }
 .sw-review .sec { margin-top: 0; }
@@ -1954,12 +1966,28 @@ details.lf-archived > summary { cursor: pointer; }
 .sw-print-h { color: var(--text-3); font-size: 12px; margin-bottom: 6px; font-family: var(--mono, ui-monospace, monospace); }
 .p-decl { font-family: var(--mono); font-size: 11.5px; cursor: help; }
 /* the context a declaration is written in, above its code (shared/context.ts) */
-.sw-ctx { margin: 0 0 10px; padding: 0 0 8px; border-bottom: 1px dashed var(--line); }
+.sw-ctx { position: relative; margin: 0 0 10px; padding: 0 0 8px; --gut-break: color-mix(in srgb, var(--text-3) 60%, transparent); }
 .sw-ctx .code { font: 11.5px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: transparent; padding: 0; margin: 0; border-radius: 0; }
-.sw-ctx-l { opacity: 0.55; }
-.sw-ctx-l.used { opacity: 0.95; box-shadow: inset 2px 0 0 var(--accent); padding-left: 6px; margin-left: -8px; }
+.sw-ctx-l { position: relative; }
+.sw-ctx-l > .ln { opacity: 0.55; }
+.sw-ctx-l.used > .ln { opacity: 0.95; }
+/* a variable it uses: a bar between the line's number and its text */
+.sw-ctx-l.used::after { content: ""; position: absolute; top: 0; bottom: 0; left: calc(var(--gut) - var(--gut-pad) / 2 - 1px); width: 2px; background: var(--accent); }
 .sw-ctx:not(.open) .sw-ctx-l.fold { display: none; }
-.sw-ctx-more { font-size: 11.5px; margin-top: 2px; }
+.sw-ctx-more { font-size: 11.5px; margin: 2px 0 0 var(--gut); }
+/* where lines are left out between two rows of the gutter, a break: a little room, a dashed rule
+   across the gutter in it — as the context shows whole, and folded. Under the context, the rule
+   between it and the code crosses the gutter, as a break, only where the code does not follow its
+   last line. A line on the line before's (the elaborator's context gives each binder of a
+   `variable` apart) shows no number again. */
+.sw-ctx.open .sw-ctx-l.gap, .sw-ctx:not(.open) .sw-ctx-l.gap-f { margin-top: 7px; }
+.sw-ctx.open .sw-ctx-l.gap::before, .sw-ctx:not(.open) .sw-ctx-l.gap-f::before, .sw-ctx.open.cut::before, .sw-ctx:not(.open).cut-f::before {
+  content: ""; position: absolute; left: 0; width: calc(var(--gut) - var(--gut-pad) / 2); border-top: 1px dashed var(--gut-break);
+}
+.sw-ctx-l::before { top: -4px; }
+.sw-ctx::before { bottom: 0; }
+.sw-ctx.open .sw-ctx-l.again .ln::before, .sw-ctx:not(.open) .sw-ctx-l.again-f .ln::before { visibility: hidden; }
+.sw-ctx::after { content: ""; position: absolute; left: var(--gut); right: 0; bottom: 0; border-bottom: 1px dashed var(--line); }
 .sw-gen-row { margin: 4px 0; }
 .sw-gen-row pre.code { margin: 4px 0 10px; }
 /* what Lean's #print says wraps as the code does */
@@ -2897,6 +2925,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
     border-radius: 0 !important; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); z-index: 48;
   }
   .sw-win .fl-rz, .sw-ns, .sw-loc, .sw-acts [data-sw-collapse], .sw-pin { display: none !important; }
+  /* its gutter narrower: smaller numbers, closer to the code */
+  .sw-ctx, .sw-body pre.src { --gut-digit: 6px; --gut-pad: 9px; }
+  .sw-win .sw-ctx .ln::before, .sw-win .sw-body pre.src .ln::before { font-size: 10px; }
   /* the menu: no keys beside its items */
   #ctxmenu .cm-key { display: none; }
   /* the tree in the drawer: a row a finger can hit, an arrow wide enough to open or fold a level;

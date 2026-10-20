@@ -884,7 +884,12 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   screen), and is fitted again to each declaration it shows until you move or resize it; then it
   keeps your place and size until you close it, and the next one opens in the middle again
   (nothing of it is kept in your browser). Long lines wrap to its width, their continuations
-  indented under the line, so you only ever scroll down. Drag its title bar to move it, an edge
+  indented under the line, so you only ever scroll down. Beside the code and the context above it,
+  muted, are the file's own line numbers — of that build's text on a past build, of its package's
+  file outside the project — one per line however it wraps, with a short dashed rule across them
+  where lines are left out (between the context's commands, and before the code where it does not
+  follow them). They are not part of the text: copying, quoting lines into a comment and Lean's
+  hovers see the source alone. Drag its title bar to move it, an edge
   or a corner to resize it, and its – button or a double-click on the title bar collapses it to a
   pill with the declaration's name. Its **pin** keeps it on its declaration, a step aside: the
   next source you open (Space, Source) opens in a new window in the middle, so up to six pinned
