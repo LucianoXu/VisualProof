@@ -19,7 +19,6 @@ import { lakeTextHash } from "./status.ts";
 import { Access, fromOwnPage, hostAllowed, KEY_PATH, urlHost } from "./access.ts";
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, invalidPersonName, Invites, taken } from "./invites.ts";
-import type { InviteCheck } from "./invites.ts";
 import { AGENT_LEVELS, AgentApi, lower, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
 import { AgentTokens, bearerOf, DEFAULT_DAYS, invalidAgentName, looksLikeToken, TOKEN_DAYS } from "./tokens.ts";
@@ -42,6 +41,7 @@ import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 import { slimDeploy } from "../shared/deploy.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
 import { hostOf, packedGz, readBody, reachedAt, refused, sendDownload, sendFile, sendGz, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
+import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
 
 /** The server's answers to requests: exported so that the tests serve them as the server does. */
 export class App {
@@ -72,7 +72,7 @@ export class App {
   hostNames: string[] | null;
   /** the names refused as Host, said once each in the server's console (a few: whoever asks
    *  chooses them) */
-  private refusedHosts = new Set<string>();
+  readonly refusedHosts = new Set<string>();
   /** the read-only readers' requests, by the read-only link they came by, or "public" */
   private readOnlyOf = new WeakMap<IncomingMessage, string>();
   /** what read-only readers may cost the server: Lean's answers, their documents */
@@ -445,90 +445,6 @@ export class App {
     return sendJson(res, { made: { ...made, link: `${address}${made.path}` }, links: list() });
   }
 
-  /** A personal link opened (CollabSpec decision 9): the browser is given the cookie that lets its
-   *  holder in, as who the link says, and goes on to the page — the token leaves the address, and a
-   *  place after it (a fragment) comes along. A revoked link says so; anything else is answered as
-   *  any address nobody was given. On a server with a key, a browser is shown the page of a link
-   *  that does not open the site instead (CollabSpec decision 7), which says neither which it was
-   *  nor who revoked it — unless the key or a link of its own lets it in, and it may be told. */
-  private enter(req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
-    const c = this.ids.header ? null : this.live.invites.check(token);
-    if (c && "ok" in c) {
-      res.writeHead(303, { location: "/", "set-cookie": this.live.invites.cookie(c.ok), "cache-control": "no-store", "referrer-policy": "no-referrer" });
-      return void res.end();
-    }
-    if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
-    if (c) return sendText(req, res, endedWords(c) + "\n", "text/plain; charset=utf-8", 410);
-    sendJson(res, { error: "not found" }, 404);
-  }
-
-  /** A read-only link opened (CollabSpec decision 11): the browser is given the cookie that lets
-   *  its holder read, and goes on to the page — the token leaves the address, and a place after it
-   *  (a fragment) comes along. A revoked link says so; anything else, and any link on a server
-   *  open to all or behind a sign-in, which have none, is answered as an address nobody was given;
-   *  to a browser, on a server with a key, as a personal link's (enter). */
-  private enterReadOnly(req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
-    const c = this.access && !this.ids.header ? this.live.readOnly.check(token) : null;
-    if (c && "ok" in c) {
-      res.writeHead(303, { location: "/", "set-cookie": this.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
-      return void res.end();
-    }
-    if (this.access && asksForPage(req, path) && (!c || !this.letIn(req))) return sendAccessPage(res, "link", this.publicRead);
-    if (c) return sendText(req, res, revokedWords(c.link, "read-only") + "\n", "text/plain; charset=utf-8", 410);
-    sendJson(res, { error: "not found" }, 404);
-  }
-
-  /** Whether the key's cookie or a personal link in force lets a request in: someone who sees the
-   *  site's people, and may be told who revoked a link. */
-  private letIn(req: IncomingMessage): boolean {
-    return !!this.ids.person(req) || this.access?.admit(req, "/") === "in";
-  }
-
-  /** Who the reader is (POST /api/identity {name}): the name someone invited by a personal link goes
-   *  by from now on — kept with their link, and said in their review log, so that what they wrote
-   *  shows under it — or, for a guest, whether a name is theirs to take: one a link's holder goes
-   *  by is not (409). A guest's name is their page's own; nothing of it is kept here. */
-  private async identity(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "An agent's name is its own: its token's, or the one it sends." }, 403);
-    if (this.ids.header) return sendJson(res, { error: "Your name is the sign-in's, in front of this server: it cannot be changed here." }, 403);
-    const r = await this.json(req, 4096);
-    if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-    const name = (r.body as { name?: unknown } | null)?.name;
-    const bad = invalidPersonName(name);
-    if (bad) return sendJson(res, { error: bad }, 400);
-    const n = (name as string).trim();
-    const p = this.ids.person(req);
-    if (!p) {
-      const holder = this.live.invites.holder(n);
-      return holder ? sendJson(res, { error: taken(holder), taken: true }, 409) : sendJson(res, { ok: true, name: n });
-    }
-    const was = p.name;
-    const done = this.live.invites.rename(p.id, n);
-    if (typeof done === "string") return sendJson(res, { error: done, taken: true }, 409);
-    // their log says so, where they have one: what they wrote shows under the new name everywhere.
-    // A log that cannot be written to now (a line to mend by hand) says it with their next line,
-    // which carries the name it is written under
-    if (done.name !== was) this.live.review.named(p.id, done.name);
-    return sendJson(res, { ok: true, name: done.name, person: Invites.info(done) });
-  }
-
-  /** A request for a name this server without a key does not answer (CollabSpec decision 12): 403,
-   *  saying which option lets the name in; and, once per name, the server's console says it too,
-   *  for whoever runs it behind a proxy that forwards the name people reach it by. A browser asking
-   *  for a page is shown a page that says so (the owner's decision of 2026-10-18), which does not
-   *  repeat the name: it is the requester's, any text at all. */
-  private refuseHost(req: IncomingMessage, res: ServerResponse, path: string): void {
-    const raw = req.headers.host ?? "";
-    const name = /^\[/.test(raw) ? raw : raw.replace(/:\d{1,5}$/, "");
-    const shown = /^[A-Za-z0-9._\-[\]:]{1,253}$/.test(name) ? name : null;
-    if (shown && this.refusedHosts.size < 20 && !this.refusedHosts.has(shown.toLowerCase())) {
-      this.refusedHosts.add(shown.toLowerCase());
-      console.error(`refused a request for ${shown}: without an access key this server answers only its addresses, localhost, --public-url's host and the --allowed-host names; --allowed-host ${shown} lets this one in`);
-    }
-    if (asksForPage(req, path)) return sendAccessPage(res, "host");
-    sendText(req, res, `This server answers only the names it is meant to be reached by${shown ? `, and ${shown} is not one of them` : ""}. Whoever runs it can let a name in with --allowed-host${shown ? ` ${shown}` : " <name>"}.\n`, "text/plain; charset=utf-8", 403);
-  }
-
   /** The answer to a request that needs a name and has none: the page asks for one (`who`). Where
    *  the name the page gives is a personal link holder's, it says so, and the page asks for
    *  another. */
@@ -573,7 +489,7 @@ export class App {
    *  now, 413 (as the agents' API words its errors under /api/agent), and the connection closed
    *  after it, without reading the rest; whoever asked for the body is told `too large`, and what
    *  it answers after is not sent (sendJson). */
-  private async json(req: IncomingMessage, limit: number): Promise<{ body?: unknown; error?: string }> {
+  async json(req: IncomingMessage, limit: number): Promise<{ body?: unknown; error?: string }> {
     let text: string;
     try {
       text = await readBody(req, limit);
@@ -615,7 +531,7 @@ export class App {
     // decision of 2026-10-18): a page whose own name was made to resolve to this machine (DNS
     // rebinding) is refused whatever it asks — the page, its data, the event stream, the agents'
     // API, the MCP server's file
-    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return this.refuseHost(req, res, path);
+    if (this.hostNames && !hostAllowed(req.headers.host, this.hostNames)) return refuseHost(this, req, res, path);
     // what may write, only from a page of this server's own (server/access.ts, fromOwnPage): a page
     // of another site, or of another port of this host, would send this server's cookies with it
     if (!fromOwnPage(req.method, req.headers, this.publicUrl)) return sendJson(res, { error: "A page of another site cannot change anything here." }, 403);
@@ -638,10 +554,10 @@ export class App {
       // a personal link (CollabSpec decision 9, server/invites.ts): it lets its holder in, as who
       // it says, and its cookie does from then on; a revoked one's cookie is forgotten, and lets
       // nobody in
-      if (path.startsWith(INVITE_PATH)) return this.enter(req, res, path.slice(INVITE_PATH.length), path);
+      if (path.startsWith(INVITE_PATH)) return enter(this, req, res, path.slice(INVITE_PATH.length), path);
       // a read-only link (CollabSpec decision 11, server/readonly.ts): its cookie lets its holder
       // read, where nothing else lets them in
-      if (path.startsWith(READONLY_PATH)) return this.enterReadOnly(req, res, path.slice(READONLY_PATH.length), path);
+      if (path.startsWith(READONLY_PATH)) return enterReadOnly(this, req, res, path.slice(READONLY_PATH.length), path);
       const link = this.ids.link(req);
       // a link that ended: its cookie is forgotten as a page loads, once the page has said so. Not
       // before: the page's requests meanwhile are told (a browser the key lets in too, as a guest,
@@ -833,24 +749,8 @@ export class App {
         });
       }
       if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent, reader !== undefined);
-      // who the reader is (CollabSpec decisions 3 and 9): the name their page gives, the proxy's, or
-      // their personal link's — with the link, and whether the page's own name is a link holder's
-      // and not theirs; a link revoked says by whom, one made anew since this browser had it, when
-      if (path === "/api/identity" && req.method === "GET") {
-        const person = this.ids.person(req);
-        const holder = this.ids.taken(req);
-        const ended = link && "ended" in link ? link : null;
-        if (reader !== undefined) return sendJson(res, { mode: this.ids.mode, name: null, readOnly: { by: reader === "public" ? "public" : "link" } });
-        return sendJson(res, {
-          mode: this.ids.mode,
-          name: this.ids.who(req),
-          ...(person ? { person: Invites.info(person) } : {}),
-          ...(holder ? { taken: taken(holder) } : {}),
-          ...(ended?.ended === "revoked" ? { revoked: { by: ended.record.revokedBy, at: ended.record.revoked, name: ended.record.name } } : {}),
-          ...(ended?.ended === "replaced" ? { replaced: { at: ended.at, name: ended.record.name } } : {}),
-        });
-      }
-      if (path === "/api/identity" && req.method === "POST") return this.identity(req, res);
+      if (path === "/api/identity" && req.method === "GET") return identityGet(this, req, res, link, reader);
+      if (path === "/api/identity" && req.method === "POST") return identity(this, req, res);
       // where a reader is: the others see it (CollabSpec decision 4); of a private reader, only that
       // they are here (decision 8)
       if (path === "/api/presence" && req.method === "POST") {
@@ -998,18 +898,6 @@ export class App {
       sendJson(res, { error: "not found" }, 404);
     }
   }
-}
-
-/** What a revoked link's holder is told, opening it or on a page it had opened. */
-function revokedWords(r: { revokedBy?: string | null; revoked?: string | null }, kind: "personal" | "read-only"): string {
-  return `This ${kind} link was revoked by ${r.revokedBy} on ${(r.revoked ?? "").slice(0, 10)}. Ask whoever ${kind === "personal" ? "invited you" : "gave it to you"} for a new one.`;
-}
-
-/** What a personal link that lets nobody in any more is told (410): revoked, by whom and when, or
- *  made anew by its holder, and when (CollabSpec decision 9). */
-function endedWords(c: Extract<InviteCheck, { ended: unknown }>): string {
-  if (c.ended === "revoked") return revokedWords(c.record, "personal");
-  return `This personal link was made anew on ${c.at.slice(0, 10)}: it lets nobody in any more. Open the new one instead (My personal link, in the menu under your name where it was made anew).`;
 }
 
 /** an artwork's font file (assets/webfonts/) */
