@@ -20,7 +20,7 @@ import { createInterface } from "node:readline";
 import { test } from "node:test";
 import { doingOf } from "../src/server/agenttalk.ts";
 import type { Ask } from "../src/server/agent.ts";
-import { EARLIER_CHARS, EARLIER_MESSAGES, earlierOf, Talk } from "../src/server/talk.ts";
+import { EARLIER_CHARS, EARLIER_MESSAGES, earlierOf, PUBLIC, Talk } from "../src/server/talk.ts";
 import { renderMarkdown } from "../src/web/src/markdown.ts";
 import { stateLine, stateWords } from "../src/web/src/talk.ts";
 import type { AgentTalk, Peer } from "../src/shared/collab.ts";
@@ -1149,6 +1149,29 @@ test("a channel whose messages all expired goes on counting from its last id: an
     assert.equal(next.id, 2);
     const r = await T.wait(tok, 0);
     assert.ok("messages" in r && r.messages.some((m) => m.text === "now"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("what an agent is handed from both channels at once comes in the order it was written, in the same millisecond too", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "vp-talk-"));
+  try {
+    const T = new Talk(dir);
+    const tok = "abcdef0123";
+    // it listens, and is handed a first message: thinking
+    const first = T.wait(tok, 30_000);
+    T.post(tok, { from: "Alice", kind: "person", text: "first" });
+    assert.ok("messages" in (await first));
+    // meanwhile its maker's, a mention of it in the public channel, its maker's again, written at one
+    // moment: its next wait has them in that order
+    const t = Date.now();
+    T.post(tok, { from: "Alice", kind: "person", text: "second" }, null, t);
+    T.post(PUBLIC, { from: "Bob", kind: "person", text: "@Alice's AI third", to: [tok] }, null, t);
+    T.post(tok, { from: "Alice", kind: "person", text: "fourth" }, null, t);
+    const r = await T.wait(tok, 1000);
+    assert.ok("messages" in r);
+    assert.deepEqual(r.messages.map((m) => m.text), ["second", "@Alice's AI third", "fourth"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

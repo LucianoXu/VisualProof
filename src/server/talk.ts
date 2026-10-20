@@ -173,6 +173,10 @@ export class Talk {
   /** each channel's last id in this server's life: a channel whose messages all expired goes on
    *  counting from there, so that no agent's place in it (`read`) passes what comes next */
   private lastIds = new Map<string, number>();
+  /** the order messages were written in here, which their times (to the millisecond) may not tell:
+   *  what is handed to an agent from both channels at once is in that order (`inOrder`) */
+  private written = new WeakMap<Message, number>();
+  private writes = 0;
   private agents = new Map<string, Agent>();
   private buckets = new Map<string, { tokens: number; at: number }>();
   private ticks = 0;
@@ -397,7 +401,7 @@ export class Talk {
     const a = this.agent(token);
     const mine = this.load(token).filter((m) => m.kind !== "agent" && m.id > a.read);
     const named = this.load(PUBLIC).filter((m) => m.id > a.readPublic && m.kind === "person" && !!m.to?.includes(token));
-    return inOrder(mine, named);
+    return inOrder(mine, named, (m) => this.written.get(m) ?? 0);
   }
 
   /** What `queued` holds is the agent's from now on: what comes after it is handed next. */
@@ -419,7 +423,7 @@ export class Talk {
     const news = since.filter((m) => fresh.has(m.id));
     const told = since.filter((m) => !fresh.has(m.id));
     const missed = queued.filter((m) => m.channel === "public");
-    const earlier = earlierOf(inOrder(told, missed), news.length > 0, now);
+    const earlier = earlierOf(inOrder(told, missed, (m) => this.written.get(m) ?? 0), news.length > 0, now);
     return earlier ? [earlier, ...news.map(outward)] : news.map(outward);
   }
 
@@ -538,6 +542,7 @@ export class Talk {
     this.lastIds.set(channel, id);
     const msg: Kept = { id, at: new Date(now).toISOString(), ...rest, channel: channel === PUBLIC ? "public" : "private", ...(to?.length ? { to } : {}) };
     thread.push(msg);
+    this.written.set(msg, ++this.writes);
     if (thread.length > 2 * HELD) thread.splice(0, thread.length - HELD);
     mkdirSync(this.dir, { recursive: true });
     appendFileSync(this.file(channel), JSON.stringify(msg) + "\n");
@@ -637,11 +642,12 @@ export function forPages(m: Message): Message {
   return rest;
 }
 
-/** Two channels' messages as one list, in the order they were written. */
-function inOrder<T extends Message>(a: T[], b: T[]): T[] {
+/** Two channels' messages as one list, in the order they were written: by their times, and those of
+ *  one millisecond by `written` (what was read from disk, 0, keeps the order it is given in). */
+function inOrder<T extends Message>(a: T[], b: T[], written: (m: T) => number): T[] {
   if (!b.length) return a;
   if (!a.length) return b;
-  return [...a, ...b].sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+  return [...a, ...b].sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : written(x) - written(y)));
 }
 
 /** What came before as the entry a returning agent is handed first, or null where there is none: the
