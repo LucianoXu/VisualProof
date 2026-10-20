@@ -31,7 +31,12 @@ export const SOURCE = "namespace N\ndef a : Nat := 0\ndef b : Nat := a\nend N\n"
 
 /** A project whose graph has one module, M, beside two files that are no module of it (an old
  *  copy, a CI script); a live server on it, with a graph of its own, serving on a free port. */
-export async function site(opts: { key?: string; exporter?: boolean; agents?: AgentLevel; publicUrl?: string; publicRead?: boolean; identityHeader?: string; allowedHosts?: string[] } = {}) {
+/** What `site({outside: true})` adds: a package of the lake-manifest, `pkg`, whose module `Pkg.Lemmas`
+ *  an outside declaration of the graph, `Pkg.lemma`, is in, and its file. */
+export const PKG_SOURCE = "namespace Pkg\n\n/-- A lemma of the package. -/\ntheorem lemma : True := trivial\n\nend Pkg\n";
+export const PKG_REV = "089be84e24e41b7a26860084d1747195cf9299f3";
+
+export async function site(opts: { key?: string; exporter?: boolean; agents?: AgentLevel; publicUrl?: string; publicRead?: boolean; identityHeader?: string; allowedHosts?: string[]; outside?: boolean } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "vp-server-"));
   writeFileSync(join(dir, "lean-toolchain"), "leanprover/lean4:v4.33.1\n");
   writeFileSync(join(dir, "M.lean"), SOURCE);
@@ -39,11 +44,22 @@ export async function site(opts: { key?: string; exporter?: boolean; agents?: Ag
   writeFileSync(join(dir, "_attic", "Old.lean"), "#eval IO.println \"an old copy\"\n");
   mkdirSync(join(dir, "ci"));
   writeFileSync(join(dir, "ci", "Axioms.lean"), "import M\n#print axioms N.b\n");
+  if (opts.outside) {
+    const pkg = join(dir, ".lake", "packages", "pkg");
+    writeFileSync(join(dir, "lake-manifest.json"), JSON.stringify({ packagesDir: ".lake/packages", packages: [{ url: "https://github.com/acme/pkg.git", type: "git", rev: PKG_REV, name: "pkg", configFile: "lakefile.toml" }] }));
+    mkdirSync(join(pkg, "Pkg"), { recursive: true });
+    mkdirSync(join(pkg, ".lake", "build", "lib", "lean", "Pkg"), { recursive: true });
+    writeFileSync(join(pkg, "lakefile.toml"), `name = "pkg"\n\n[[lean_lib]]\nname = "Pkg"\n`);
+    writeFileSync(join(pkg, "Pkg", "Lemmas.lean"), PKG_SOURCE);
+    writeFileSync(join(pkg, "Pkg", "Other.lean"), "def Pkg.other := 1\n");
+    for (const m of ["Lemmas", "Other"]) writeFileSync(join(pkg, ".lake", "build", "lib", "lean", "Pkg", `${m}.olean`), "");
+  }
   const project = openProject(dir, ["M"], false);
   const nodes: ViewNode[] = [
     { name: "N.a", kind: "def", module: "M", ax: 0, hash: "ha" },
     { name: "N.b", kind: "def", module: "M", ax: 0, hash: "hb" },
     { name: "Nat", kind: "inductive", module: "Init.Prelude", ax: 0, ext: true },
+    ...(opts.outside ? [{ name: "Pkg.lemma", kind: "theorem" as const, module: "Pkg.Lemmas", ax: 0, ext: true as const, doc: "A lemma of the package.", range: [3, 0, 4, 37] as [number, number, number, number] }] : []),
   ];
   const edges = new Int32Array([1, 0, SITE_STMT, 0, 2, SITE_STMT]);
   const meta: ViewMeta = {
