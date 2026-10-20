@@ -14,7 +14,7 @@ import { isDeclName, LeanHover } from "./hover.ts";
 import { Identities, layoutAuthor } from "./identity.ts";
 import type { GitSource } from "../shared/graph.ts";
 import { MAX_MEMORY_BYTES } from "./views.ts";
-import { cleanView, madeBy, nameKey, validSession, withoutArtwork } from "../shared/collab.ts";
+import { validSession } from "../shared/collab.ts";
 import { lakeTextHash } from "./status.ts";
 import { Access, fromOwnPage, hostAllowed, KEY_PATH, urlHost } from "./access.ts";
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
@@ -23,8 +23,6 @@ import { AgentApi, needOf, refusal } from "./agent.ts";
 import type { Caller } from "./agent.ts";
 import { bearerOf, looksLikeToken } from "./tokens.ts";
 import type { TokenRecord } from "./tokens.ts";
-import { forPages, MAX_PERSON, PUBLIC, THREAD } from "./talk.ts";
-import { mentioned } from "../shared/mentions.ts";
 import type { Answer } from "./agent.ts";
 import { Exporter } from "./export.ts";
 import { libraryApiOf } from "./library.ts";
@@ -42,6 +40,7 @@ import type { DeployStatus } from "../shared/deploy.ts";
 import { hostOf, packedGz, readBody, refused, sendDownload, sendFile, sendGz, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
 import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
 import { shareAgents, sharePeople, shareReadOnly } from "./appshare.ts";
+import { ask, chat, chatNew, presence } from "./apptalk.ts";
 
 /** The server's answers to requests: exported so that the tests serve them as the server does. */
 export class App {
@@ -74,7 +73,7 @@ export class App {
    *  chooses them) */
   readonly refusedHosts = new Set<string>();
   /** the read-only readers' requests, by the read-only link they came by, or "public" */
-  private readOnlyOf = new WeakMap<IncomingMessage, string>();
+  readonly readOnlyOf = new WeakMap<IncomingMessage, string>();
   /** what read-only readers may cost the server: Lean's answers, their documents */
   readonly bounds: ReadOnlyBounds;
   /** VisualProof's own releases as this server follows them (server/updates.ts); null: the
@@ -184,127 +183,6 @@ export class App {
     if (a.file) return sendDownload(res, a.file);
     if (a.gz) return sendGz(req, res, a.gz.body, a.gz.type);
     sendJson(res, a.body, a.status, a.headers);
-  }
-
-  /** The conversations (CollabSpec decision 13, AgentSpec decision 8), for pages: a channel read
-   *  (GET ?channel=public|<agent id>&before=<id>, the newest 200 first) and a message written in it
-   *  (POST {channel, text, place}). Everyone with a name reads and writes the public channel; an
-   *  agent's private channel is its maker's alone (shared/collab.ts, madeBy: 403 to anyone else).
-   *  A read-only reader neither sees nor writes any (403), whatever the page sends; agents talk
-   *  through their API. A private channel cannot be written to while its agent is offline (409); a
-   *  mention of it in the public channel can, and is handed to it when it comes back. At most so
-   *  many messages a minute, a person's in every channel together. */
-  private async chat(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const live = this.live;
-    if (req.method !== "GET" && req.method !== "POST") return sendJson(res, { error: "/api/chat answers GET and POST." }, 405);
-    if (this.readOnlyOf.has(req)) return sendJson(res, { error: "This page is read-only.", readOnly: true }, 403);
-    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Agents talk through their API.", hint: "GET /api/agent/channel, POST /api/agent/reply." }, 403);
-    const me = this.ids.who(req);
-    if (!me) return sendJson(res, { error: "Say who you are first: the conversations are for people with a name, and a message is sent under yours.", who: true }, 401);
-    const who = { name: me, person: this.ids.person(req)?.id ?? null };
-    /** the channel a request names: the public one, or an agent's private one that is this
-     *  reader's — 404 where there is no such agent, 403 where it is someone else's */
-    const channelOf = (raw: unknown): { key: string; agent: { id: string; record: TokenRecord } | null } | Answer => {
-      if (raw === "public" || raw === undefined || raw === null || raw === "") return { key: PUBLIC, agent: null };
-      const tok = typeof raw === "string" ? live.presence.tokenOf(raw) : null;
-      const record = tok ? live.tokens.get(tok) : undefined;
-      if (!tok || !record) return { status: 404, body: { error: "There is no such channel: public, or the id of an agent with a token of its own." } };
-      if (!madeBy(record, who)) return { status: 403, body: { error: `${record.name}'s private channel is ${record.by}'s, who made its token: nobody else reads or writes it.`, private: true } };
-      return { key: tok, agent: { id: raw as string, record } };
-    };
-    if (req.method === "GET") {
-      const c = channelOf(url.searchParams.get("channel") ?? url.searchParams.get("agent"));
-      if ("status" in c) return sendJson(res, c.body, c.status);
-      const raw = url.searchParams.get("before");
-      const before = raw && /^\d{1,9}$/.test(raw) ? Number(raw) : null;
-      const messages = live.talk.thread(c.key, THREAD, before).map(forPages);
-      if (!c.agent) return sendJson(res, { channel: PUBLIC, messages });
-      return sendJson(res, { channel: c.agent.id, agent: { id: c.agent.id, name: c.agent.record.name, talk: live.talk.talk(c.key) }, messages });
-    }
-    const r = await this.json(req, 1 << 16);
-    if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-    const b = (r.body ?? {}) as { channel?: unknown; agent?: unknown; text?: unknown; place?: unknown };
-    const c = channelOf(b.channel ?? b.agent);
-    if ("status" in c) return sendJson(res, c.body, c.status);
-    if (c.agent && live.talk.state(c.key) === "offline") return sendJson(res, { error: "offline", message: `${c.agent.record.name} is offline: it can be written to once it listens again.` }, 409);
-    const text = typeof b.text === "string" ? b.text.trim() : "";
-    if (!text) return sendJson(res, { error: "The message is empty." }, 400);
-    if (text.length > MAX_PERSON) return sendJson(res, { error: `A message is at most ${MAX_PERSON.toLocaleString("en")} characters.` }, 400);
-    const wait = live.talk.allow("person", who.person ? `p:${who.person}` : `n:${nameKey(me)}`);
-    if (wait) return sendJson(res, { error: `Too many messages at once: wait ${wait} s.`, retryAfter: wait }, 429, { "retry-after": String(wait) });
-    // where the writer was, as the page says it, bounded: a selection can be a long query; a private
-    // reader's message says nothing of where they are (CollabSpec decision 8), only who wrote it
-    const view = this.ids.privateOf(req) === null ? cleanView(b.place) : null;
-    const at = view ? this.agents.placeOf(view) : null;
-    const clip = (x: string | null, n: number) => (x !== null && x.length > n ? x.slice(0, n - 1) + "…" : x);
-    const where = at ? { inWords: clip(at.inWords, 600)!, view: at.view, declaration: clip(at.declaration, 300), selection: clip(at.selection, 300) } : null;
-    // the names it mentions; in the public channel, the agents among them are handed it
-    const can = live.mentionable();
-    const mentions = mentioned(text, can.names);
-    const to = c.agent ? [] : [...new Set(mentions.flatMap((n) => can.agents.get(nameKey(n)) ?? []))];
-    const message = live.talk.post(c.key, { from: me, kind: "person", text, ...(mentions.length ? { mentions } : {}), where, to });
-    return sendJson(res, { ok: true, channel: c.agent?.id ?? PUBLIC, message: forPages(message) });
-  }
-
-  /** A new conversation in an agent's private channel (AgentSpec decision 8, the owner's decisions
-   *  of 2026-10-11 and 2026-10-19): a divider, from its maker alone, held to the rate of their
-   *  messages; an offline agent's too, so that its next session starts clean. One right after
-   *  another divides nothing: it is answered `unchanged`, and neither written nor counted. */
-  private async chatNew(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const live = this.live;
-    if (req.method !== "POST") return sendJson(res, { error: "/api/chat/new answers POST." }, 405);
-    if (this.readOnlyOf.has(req)) return sendJson(res, { error: "This page is read-only.", readOnly: true }, 403);
-    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "A new conversation is for people to start." }, 403);
-    const me = this.ids.who(req);
-    if (!me) return sendJson(res, { error: "Say who you are first: a new conversation is started under your name.", who: true }, 401);
-    const r = await this.json(req, 1 << 12);
-    if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-    const b = (r.body ?? {}) as { agent?: unknown };
-    const tok = typeof b.agent === "string" ? live.presence.tokenOf(b.agent) : null;
-    const record = tok ? live.tokens.get(tok) : undefined;
-    if (!tok || !record) return sendJson(res, { error: "There is no such agent: only an agent with a token of its own has a private channel." }, 404);
-    const person = this.ids.person(req)?.id ?? null;
-    if (!madeBy(record, { name: me, person })) return sendJson(res, { error: `Only ${record.by}, who made ${record.name}'s token, starts a new conversation with it.`, private: true }, 403);
-    if (live.talk.fresh(tok)) return sendJson(res, { ok: true, unchanged: true, divider: null, message: "Nothing was said since the conversation began: it is new already." });
-    const wait = live.talk.allow("person", person ? `p:${person}` : `n:${nameKey(me)}`);
-    if (wait) return sendJson(res, { error: `Too many at once: wait ${wait} s.`, retryAfter: wait }, 429, { "retry-after": String(wait) });
-    const divider = live.talk.restart(tok, me);
-    return sendJson(res, { ok: true, divider: divider && forPages(divider) });
-  }
-
-  /** Asking others to follow (CollabSpec decision 10, the owner's decision of 2026-10-12), for pages:
-   *  POST /api/ask {token, to?} — the page whose event stream holds `token` asks everyone on the
-   *  server, or the person whose page is listed as `to`, to follow its reader, who has a name and is
-   *  visible: a private reader cannot be followed; POST /api/ask/answer {token, id, answer} — a page
-   *  asked answers, whoever its reader is. The server relays both (server/askfollow.ts); agents ask
-   *  through their API (POST /api/agent/ask-follow). */
-  private async ask(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const live = this.live;
-    if (req.method !== "POST") return sendJson(res, { error: `${url.pathname} answers POST.` }, 405);
-    if (this.ids.kind(req) === "agent") return sendJson(res, { error: "Agents ask through their API.", hint: "POST /api/agent/ask-follow." }, 403);
-    const r = await this.json(req, 4096);
-    if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-    const b = (r.body ?? {}) as { token?: unknown; to?: unknown; id?: unknown; answer?: unknown };
-    const page = live.pageStream(b.token);
-    if (!page) return sendJson(res, { error: "This request is not from an open event stream of this page's: it is sent with the token the stream says hello with.", stream: false }, 403);
-    if (url.pathname === "/api/ask/answer") {
-      const a = live.asks.answer(b.token as string, b.id, b.answer);
-      return sendJson(res, a.body, a.status);
-    }
-    if (url.pathname !== "/api/ask") return sendJson(res, { error: "not found" }, 404);
-    const me = this.ids.who(req);
-    if (!me) return sendJson(res, this.nameless(req, "a request to follow you says who asks"), 401);
-    if (page.private || this.ids.privateOf(req) !== null) return sendJson(res, { error: "You are private: nobody can follow you. Go visible (the menu under your name) to ask." }, 409);
-    if (b.to !== undefined && b.to !== null && typeof b.to !== "string") return sendJson(res, { error: "to is a reader's id, as presence lists them; left out, everyone." }, 400);
-    const person = this.ids.person(req);
-    // one request every 30 s per person — their personal link, else their name — and per page
-    const key = person ? `p:${person.id}` : `n:${nameKey(me)}`;
-    const a = live.asks.ask({ name: me, verified: !!person, agent: false, from: page.id, stream: b.token as string, rate: [key, `s:${b.token as string}`] }, typeof b.to === "string" ? { page: b.to } : { everyone: true });
-    if ("ok" in a) {
-      const { report: _, ...sent } = a.ok;
-      return sendJson(res, { ok: true, ...sent });
-    }
-    return sendJson(res, { error: a.error, ...(a.retryAfter ? { retryAfter: a.retryAfter } : {}) }, a.status, a.retryAfter ? { "retry-after": String(a.retryAfter) } : undefined);
   }
 
   /** The answer to a request that needs a name and has none: the page asks for one (`who`). Where
@@ -541,9 +419,9 @@ export class App {
       if (path === "/api/share/readonly" || path.startsWith("/api/share/readonly/")) return shareReadOnly(this, req, res, url);
       if (path.startsWith("/api/share/agents")) return shareAgents(this, req, res, url);
       if (path === "/api/share/people" || path.startsWith("/api/share/people/")) return sharePeople(this, req, res, url);
-      if (path === "/api/chat") return this.chat(req, res, url);
-      if (path === "/api/chat/new") return this.chatNew(req, res);
-      if (path === "/api/ask" || path === "/api/ask/answer") return this.ask(req, res, url);
+      if (path === "/api/chat") return chat(this, req, res, url);
+      if (path === "/api/chat/new") return chatNew(this, req, res);
+      if (path === "/api/ask" || path === "/api/ask/answer") return ask(this, req, res, url);
       if (path === "/api/agent" || path.startsWith("/api/agent/")) return this.agent(req, res, url);
       // the views, each a shared board (ViewSpec.md)
       if (path === "/api/views" || path.startsWith("/api/views/")) return this.views(req, res, url);
@@ -613,22 +491,7 @@ export class App {
       if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent, reader !== undefined);
       if (path === "/api/identity" && req.method === "GET") return identityGet(this, req, res, link, reader);
       if (path === "/api/identity" && req.method === "POST") return identity(this, req, res);
-      // where a reader is: the others see it (CollabSpec decision 4); of a private reader, only that
-      // they are here (decision 8)
-      if (path === "/api/presence" && req.method === "POST") {
-        const r = await this.json(req, 16384);
-        if (r.error !== undefined) return sendJson(res, { error: r.error }, 400);
-        const b = (r.body ?? {}) as { token?: unknown; view?: unknown; idle?: unknown; private?: unknown };
-        // an agent is one entry by its name (server/presence.ts), never private; a page speaks for
-        // its own event stream only, by the secret the stream was given (`hello`)
-        const name = this.ids.who(req);
-        const priv = !agent && b.private === true;
-        // agents have no artwork (ExportSpec decision 19): the page draws it
-        if (agent && name) live.presence.agentBeat(name, withoutArtwork(cleanView(b.view)));
-        else if (!live.beat(b.token, priv ? null : name, priv ? null : cleanView(b.view), !priv && b.idle === true, priv, !!this.ids.person(req), name))
-          return sendJson(res, { error: "This heartbeat is not from an open event stream of this page's: it is sent with the token the stream says hello with.", stream: false }, 403);
-        return sendJson(res, { ok: true });
-      }
+      if (path === "/api/presence" && req.method === "POST") return presence(this, req, res, agent);
       if (path === "/api/events") {
         const session = url.searchParams.get("session");
         // `build=delta`: the page takes the build status as changes (a page of 0.6.0 or later)
