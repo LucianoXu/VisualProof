@@ -230,6 +230,10 @@ otherwise).
       past build, a clean one whose kept text came from its tree or its commit. The lines are those
       the window shows, from the doc comment above the declaration to its end. The popover links
       the branch and each commit there.
+    - **Outside the project** (the owner's decision of 2026-10-20), whether a branch is followed or
+      not: the package's repository at its lake-manifest `rev` (its `url`), the lines shown; Lean's
+      core, `leanprover/lean4` at the toolchain's tag (its `src/`). Where the URL is not a GitHub
+      one, or the toolchain no release, no link (shared/outside.ts, `outsideLink`).
 14. **A build that takes longer than `--build-timeout` hours is stopped** (the owner's decision of
     2026-10-19), 6 by default, and is failed (its commit is not tried again): a commit that loops
     forever does not hold the branch's later commits back for good.

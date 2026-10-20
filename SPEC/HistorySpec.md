@@ -129,6 +129,11 @@ A past build's source is static text only, no Lean queries, stored as git stores
     snapshot with that build's line numbers, its names linked on the past graph. Lean is not asked: a
     hover card shows the snapshot's statement and doc. "Its source then is not kept" only where it is
     not. Quoting into a comment stays refused. The agents' `source` takes an optional snapshot.
+24. **Outside sources are not kept per build** (the owner's decision of 2026-10-20). A past build
+    shows an outside declaration's source (ReviewSpec, "The source window") only where its package's
+    revision then — the lake-manifest's `rev`; for Lean's core, the toolchain — is the one now: the
+    package's file as it is now, at the place that build recorded. Elsewhere it says that build's
+    outside source was not kept. Each snapshot records its packages' revisions.
 
 ## Implementation notes
 
@@ -145,6 +150,13 @@ A past build's source is static text only, no Lean queries, stored as git stores
   summary); the last line of an id wins.
 - `sources/<sha256>.gz`: gzipped text, checked against its name when read. A manifest's `sources`:
   module → `{file, lake?, blob?, check?: "lake"|"places", from?: "tree"|"git:<commit>"|"kept", why?}`.
+- A snapshot's `packages` (decision 24): `{revs: {<package>: <rev>}, from: "read"|"commit"}`, the
+  lake-manifest's revisions as the build was read; its outside declarations' file keeps each one's
+  `range` (since 0.7.0).
+  - *Proposed*: a snapshot read before 0.7.0 is given its revisions once, at start, from its
+    commit's `lake-manifest.json` (`from: "commit"`; `git show`, read-only), never a guessed or
+    dirty commit's; its outside declarations recorded no places, and where a package is at the
+    same revision the place now is the place then (shared/pastgraph.ts).
 - `renames.jsonl` (`{snap, at, pairs}`), `migrations.jsonl`, `archive.jsonl`.
 - The first start imports `<cache>/extract/`: the extractor's and usage pass's graphs of one build
   (same declarations, within two minutes) are one, the merged kept; a build with no newer `.olean` has
@@ -277,3 +289,8 @@ so that the Time Machine never holds the server.
   by its name then, its name now, or a generated name.
 - A past source window sends no hover request, no `#print` and offers no editor link (the editor
   opens the file as it is now).
+- An outside module (decision 24; server/historyapi.ts, `pastOutside`): `GET /api/history/source`
+  answers its package's file now with `check: "rev"`, `from: "outside"` and `outside` (the package,
+  its revision, its place on GitHub) where the snapshot's revision is the one now, else 404 with
+  `kept: false`, `outside: true` and `why`, naming both revisions. Only a module an outside
+  declaration of that snapshot is in is looked for.
