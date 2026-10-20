@@ -10,7 +10,7 @@ import { test } from "node:test";
 import type { ChatMessage, Peer } from "../src/shared/collab.ts";
 import { chipOf, chipText, copyLink, hostOf, linksIn, noteHash, noteIn, segments, siteLink, siteOrigins, withoutKeys } from "../src/web/src/chatlinks.ts";
 import type { Namer } from "../src/web/src/chatlinks.ts";
-import { textOf } from "../src/web/src/chatinput.ts";
+import { caretAfter, textOf } from "../src/web/src/chatinput.ts";
 import type { BoxNode } from "../src/web/src/chatinput.ts";
 import { renderMarkdown } from "../src/web/src/markdown.ts";
 import { declPick, selectionText } from "../src/web/src/selection.ts";
@@ -204,4 +204,15 @@ test("the conversation window is the reader's own, whole: nothing pressed or typ
   assert.equal(pressActs(at("#windows", "#following", ".fl-strip", "button")), false);
   // the pin is gone
   assert.ok(!YOURS.some((s) => (s.id as string) === "talkPin"));
+});
+
+test("the caret after what goes into the box stands in text: after a chip, at the words that follow it or after a space given to it", () => {
+  assert.equal(caretAfter("text", false), "end");
+  assert.equal(caretAfter("text", true), "end");
+  // a link pasted before words: the caret at their start, nothing added
+  assert.equal(caretAfter("chip", true), "next");
+  // a link pasted last, or before a line break: a space to stand on, never the element's edge,
+  // where the browser draws the caret before the chip
+  assert.equal(caretAfter("chip", false), "space");
+  assert.equal(caretAfter("other", false), "after");
 });
