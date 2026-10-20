@@ -1365,6 +1365,17 @@ what each one looks at stays their own.
   with the settings it showed. On the canvas their
   selection carries a ring of their colour with their initials; the panel says who else is looking
   at a declaration.
+- **Pointers in a room** (CollabSpec decision 4): while you follow someone, or someone follows you,
+  you see the pointers of the others in your room — whom you follow, who follows you, who follows the
+  same person as you — each in its owner's colour with their initials, and they see yours, fading
+  two seconds after it stops; at most five at once. Each sits on what it points at as your page shows
+  it — the same token of a source window, the same row of a panel, the same spot of the board —
+  whatever your screen's size and however you scrolled; text selected shows highlighted in its
+  owner's colour, and a click of the person you follow as a ripple. A pointer on something your view
+  scrolled away shows as a mark at the edge ("↓ Alice"): click it to scroll there (scrolling is never
+  followed); on a phone, a pointer in the side panel shows by the drawer's button. Nothing of it ends
+  following. A private reader's pointer is never shown, nor a read-only reader's; they see the
+  others'. There is no setting to hide your pointer: going private ends being followed.
 - **Asking others to follow you** (CollabSpec decision 10), to show them something: **Ask everyone
   to follow me** in the menu under your name, or **Ask … to follow me** in a person's menu (all
   their pages), once every 30 s, with a name and visible. Each page asked shows a banner at the top,

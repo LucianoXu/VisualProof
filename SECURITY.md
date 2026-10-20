@@ -87,7 +87,9 @@ into the latest release only.
   library's files — and nothing else. The server refuses every other request from them (403)
   whatever the page sends, never lets them reach the agents' API, and bounds what they cost:
   Lean's answers at 60 a minute per address and 300 in all (429 beyond), kept per build; one
-  printed document typeset at a time for all of them; 400 event streams of their own; git, for the
+  printed document typeset at a time for all of them; 400 event streams of their own; whom they
+  follow, said on the pointers' route so as to be sent the pointers of their room (their own goes to
+  nobody); git, for the
   project's commit, run at most once every 3 seconds whoever asks; of the library's PDFs, only the
   pages and clips the notes show are drawn for them (the cache keeps each), the files themselves
   served as they are. A link lasts
@@ -203,6 +205,19 @@ into the latest release only.
   handed to agents, never sent to pages. A link copied from the page (Copy link, the conversation's
   box) carries no key, and a link that lets in (the key's, a personal or read-only link's) written
   or pasted in the box is sent without its secret: only Share's links let anyone in.
+- **Following, and the pointers of a room.** Every page let in fully is told where each visible
+  reader is — their view, selection, windows, their Export window and the document it typeset (any
+  page may fetch that document from the export's cache by its id, as it could ask for it) — and whom
+  they follow. Of a private reader the server keeps whom they follow, and tells the reader they
+  follow how many private readers do, never who. While a reader follows someone or is followed, their
+  page sends where its pointer is and what text it has selected (CollabSpec decision 4): anchored to
+  what it is over, never what the reader types, and only on what those following see anyway (never
+  over Share, a menu, the name's window or a field of the reader's own). The server relays it at
+  once to that reader's room alone — whom they follow, who follows them, who follows the same reader
+  — at most 25 a second per page, and keeps nothing of it. A private or read-only reader's pointer is
+  relayed to nobody; a read-only page tells the server whom it follows on that route alone, to be
+  sent its room's, and is counted nowhere. There is no way to hide one's pointer from those who
+  follow: whoever is followed is watched anyway; going private ends being followed.
 
 ## Secrets at rest
 

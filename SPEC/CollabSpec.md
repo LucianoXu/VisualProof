@@ -23,7 +23,7 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
    folds and the tools they open stay theirs. "Surfaces" is the authoritative list, and
    web/src/surfaces.ts its registry: presence carries exactly the followed parts, and what ends
    following derives from it. A new surface (popover, drawer, window, key) is declared in both
-   before it ships. Others' pointers are never drawn.
+   before it ships. Others' pointers are drawn only in a room (below).
    - **Starting to follow** applies the followed state at once: Activity closes or opens (with the
      followed reader's filters) as theirs is; the follower's source windows mirror theirs, at most
      six pinned on the follower's side, their own included; "My targets" becomes the followed
@@ -37,6 +37,39 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
    - **When following ends**, the follower keeps what their page shows, as their own.
    - A part the followed page does not report (an agent reports no Activity, lost-and-found,
      colouring or edges) leaves the follower's own in place.
+   - **Pointers in a room** (the owner's decisions of 2026-10-20, which reverse "others' pointers
+     are never drawn" for the room). A reader and those who follow them directly are a room: each
+     sees the pointers and text selections of the others in it — the followed reader their
+     followers', the followers the followed reader's and one another's. Only direct relations count:
+     where Carol follows Alice who follows Pat, Carol is in Alice's room and Alice in Pat's; Carol
+     sees nothing of Pat's, Pat nothing of Carol's.
+     - **Anchored to what is under the pointer**, never to the screen, so that it holds across
+       screen sizes and the reader's own scrolling (the owner's rule: relative to the panel first,
+       then to the canvas): in a source window by line and column of its text (the gutter's numbers
+       are no text); in the reference window by the page and the place on it; on a followed surface
+       (the side panel, the panel, Activity, the lost-and-found, the review strip, the Export
+       window, the artwork's panel) by the element under it — by what it is (its id, a `data-`
+       attribute, a class) else its place — and the place in it; on the linear form by its row;
+       elsewhere over the board by the board's coordinates, which the followed camera shows alike.
+       Over a surface of the reader's own (Share, a menu, the name's window), or what a page does
+       not show, it is not drawn. A text selection — in a source window, the reference window's
+       text, a panel's — is two such points, highlighted in its reader's colour.
+     - **Drawn** as a cursor in the reader's colour with their initials, which fades two seconds
+       after it stops (only while it moves, then); at most five others' at once on any page, those
+       that moved last; gone when the room is (following ends). The followed reader's clicks show as
+       a light ripple in their colour where they land (under reduced motion, a still mark that
+       fades); a follower's do not — a click mostly ends their following — but their selections do.
+     - **Out of view**: a place scrolled away in the reader's own scrolling (never followed) shows a
+       small mark at the edge of what holds it, in the other's colour ("↓ Alice"), which a click
+       scrolls there; on the board, whose camera is followed, the mark only says where. On a phone,
+       where a surface is not shown at the moment, the mark is by the nearest place that leads there
+       (the side panel's drawer button, which a click opens; a window collapsed to its pill), else
+       nothing.
+     - **Who is shown**: never a private reader's pointer (it would show them), nor a read-only
+       reader's; agents have none. A private or read-only follower sees the room's. There is no
+       setting to hide one's own: whoever is followed is watched anyway.
+     - **Nothing of it ends following**: the pointers let every press through, and the marks at an
+       edge are the reader's own.
 5. **The timeline** (Activity) records what changes the shared state: the review's events and the
    library's files and links (read from the review's logs, so the logs bring their own history);
    builds, failed and fixed files, `sorry` appearing or going; per target, a TCB change and the
@@ -233,6 +266,8 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
 
 - **Presence**: up to five initials beside the reader's name (more as "+N"), coloured by the name,
   faded after five minutes idle or with the page hidden, then the private readers as "+N private".
+- **Pointers** (decision 4): the pointers and text selections of the reader's room, in their
+  colours, with their initials.
 - **Who follows me** (the owner's decision of 2026-10-20): each page says whom it follows, so the
   reader's own name carries a mark when people follow them, with how many: the people, and the
   private readers counted only ("2 follow you: Bob, +1 private"); read-only readers never, as nobody
@@ -285,11 +320,13 @@ zoom, find and the box tool of the reference window; Share and its switch; Help 
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
 others' initials and a person's menu; the request banner; the conversation window (decision 13) and
-the following strip; hover cards; the pointer's highlight; the frame meter (`p`). A
+the following strip; hover cards; the pointer's highlight; the mark at an edge of another's pointer
+scrolled away; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.
 
 **No surface**: the frames (bars, footer, windows' layer), whose blank parts count as the canvas;
-words, tooltips and hints, the notes of others' changes, the loader.
+words, tooltips and hints, the notes of others' changes, the loader; the room's pointers, their
+selections and ripples (decision 4), which every press goes through.
 
 ### Following ends
 
@@ -474,7 +511,28 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   (server/readonlygate.ts): reads, the posts that only read (`/api/hover/open`, `/api/hover/names`)
   and `POST /api/export`; anything else is 403 `{readOnly: true}`. `/api/identity` tells the page
   `{readOnly: {by: "link" | "public"}}`, and the page offers nothing that writes, sends no
-  heartbeat, gives no name and has no conversation window; its stream carries no message.
+  heartbeat, gives no name and has no conversation window; its stream carries no message. It says
+  whom it follows on the pointers' route alone (below), so as to be sent its room's pointers: it is
+  counted nowhere, and its own pointer goes to nobody.
+- **Pointers in a room** (decision 4, the owner's decisions of 2026-10-20; shared/pointer.ts,
+  web/src/pointers.ts): a page in a room — following someone, or followed, by a person or a private
+  reader — sends `POST /api/pointer {token, at, sel, click?}` by its stream's secret, as a heartbeat
+  is sent, at most every 60 ms while followed (some 16 a second) and every 100 ms while following
+  (some 10), only when what it says changed; off a followed surface, or off the page, `at` is null.
+  The server checks every field (a place's kind, numbers in range, at most 16 steps of at most 160
+  characters each, 4 KB in all) and relays it at once as the event `pointer` (`{from, at, sel,
+  click?}`, `from` the page's public id) to the streams of its room alone — those whose reader it
+  follows (by personKey), those that follow its reader, those that follow the reader it follows —
+  at most 25 a second per page, the rest dropped, and keeps nothing: no log, no state beyond the last
+  second's count. A private or read-only page's is relayed to nobody (answered `{to: 0}`); a read-only
+  page sends `{token, following}` there instead, which its stream alone keeps; 403 for a secret no
+  open stream has. A place: `{b: [x, y]}` (the board), `{l: [row, down, right]}` (the linear form),
+  `{sw, lc: [line, column]}` (a source window's text, from its first line shown, the gutter not
+  counted), `{pw: [page, across, down]}` (the reference window), `{in, p, f}` (an element: its root —
+  an id, a source window by its declaration, the reference window —, the steps down, each `[attribute,
+  value, place]`, and where in it); a point of text the same with `o`, its offset in the element's text.
+  The page that is told checks again that the sender is of its room, and draws it each frame while it
+  shows: found again on its own layout, within what clips it.
 - **Requests to follow** (`POST /api/ask`, server/askfollow.ts): 401 without a name, 409 from a
   private page or for an agent, 404 for someone gone, 429 with `retryAfter` within 30 s, counted per
   person (link, else name) and per page. Nobody to ask makes no request and does not count. Answers:

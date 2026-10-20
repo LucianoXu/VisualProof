@@ -37,7 +37,8 @@ MCP: `companion`.
 `wait=<s>` (≤ 60) waits until someone comes, goes, goes idle or moves (view, selection,
 declaration, tool, a source window pinned, collapsed or closed, Activity, lost-and-found,
 colouring, edges, the Export window; no camera pan), then answers. Whom people follow is not said:
-you follow nobody, and your presence shows nothing of who follows you. `since=<rev>`, your last `rev`: a
+you follow nobody, and your presence shows nothing of who follows you; nor do you have a pointer
+(people in a room see one another's). `since=<rev>`, your last `rev`: a
 change you have not seen answers at once; `changed`: whether `rev` moved. To follow someone: wait,
 then `POST view` with their view and declaration.
 
