@@ -39,12 +39,7 @@ import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, 
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewRev } from "../../shared/review.ts";
 import { reviewCount, trustSplit } from "../../shared/reviewqueue.ts";
 import { scopeWith, scopeWithout } from "../../shared/scopeedit.ts";
-import { newNoteId, noteExcerpt, withCarry } from "../../shared/sticky.ts";
-import type { NoteCarry, NoteOp, StickyNote } from "../../shared/sticky.ts";
-import type { ProjectNote, ProjectNoteOp } from "../../shared/projectnotes.ts";
-import { itemOp } from "../../shared/items.ts";
-import type { ItemOp } from "../../shared/items.ts";
-import { derivesOn, existsIn } from "../../shared/noteplace.ts";
+import { noteExcerpt } from "../../shared/sticky.ts";
 import { briefWhen } from "../../shared/titles.ts";
 import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, PROJECT_SCOPE, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
@@ -66,8 +61,7 @@ import { escapeHtml } from "./highlight.ts";
 import { dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
 import { Notes } from "./notes.ts";
 import { Stickies } from "./sticky.ts";
-import type { Dropped, NoteKind } from "./sticky.ts";
-import { notesOfFiles, ProjectNotes } from "./projectnotes.ts";
+import { ProjectNotes } from "./projectnotes.ts";
 import { Outline } from "./outline.ts";
 import { Panel } from "./panel.ts";
 import { People, READ_ONLY, personKey } from "./people.ts";
@@ -104,7 +98,6 @@ import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
 import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, withSnapshot, writeSnapshot } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
-import { uploadFile } from "./library.ts";
 import { STATUS_LABEL, STATUSES, statusCodes, statusState } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { Tabs } from "./tabs.ts";
@@ -128,7 +121,7 @@ import { decodeState, encodeState, tipsIn } from "./state.ts";
 import type { ViewState } from "./state.ts";
 import { Store } from "./store.ts";
 import { typing } from "./typing.ts";
-import { nameNow, setPeople, VERIFIED } from "./verified.ts";
+import { setPeople, VERIFIED } from "./verified.ts";
 import { ViewNav } from "./viewnav.ts";
 import { readVisitors, shareVisitors, stillVisiting, visit, visitorEdges } from "./visitors.ts";
 import type { Place } from "./viewnav.ts";
@@ -142,6 +135,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, MODE_HINT, RESTS_HINT, STEP_HINT, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { notesPart } from "./pagenotes.ts";
 import { keysPart } from "./pagekeys.ts";
 import { guidePart } from "./pageguide.ts";
 
@@ -149,11 +143,16 @@ import { guidePart } from "./pageguide.ts";
 export interface MainPart {
   selected: () => number | null;
   boardReview: () => ReviewData;
+  views: Views;
+  projectNotes: ProjectNotes;
   nav: ViewNav;
   vg: () => Graph;
   toView: (i: number) => number;
+  cm: () => ClusterMode;
   tm: TimeMachine;
   pastShown: () => boolean;
+  frozen: () => boolean;
+  frozenWhy: () => string;
   isTarget: (name: string) => boolean;
   reviewRoot: () => number | null;
   keysFor: (r: Root, target?: string | null) => KeysOf;
@@ -163,21 +162,27 @@ export interface MainPart {
   litOn: (q: Query) => Lit;
   papers: Papers;
   sources: Sources<SourceWindow>;
+  shownCluster: () => number;
   showSelected: () => void;
   canvas: GraphCanvas;
+  ownOpen: Map<string, boolean>;
+  stickies: Stickies;
   linear: LinearForm;
   ART_KEYS: Set<string>;
   trust: Trust;
   boardPop: Popover;
   trustPop: Popover;
+  sync: BoardSync;
   ownScheme: () => Scheme;
   chooseScheme: (s: Scheme) => void;
   people: People;
+  named: () => Promise<string | null>;
   tabs: Tabs;
   focusMenu: FocusMenu;
   exportModal: ExportModal;
   activity: Activity;
   lostDrawer: LostAndFound;
+  takeChange: (c: ReviewChange) => void;
   apply: () => void;
   syncTool: () => void;
   say: (text: string) => void;
@@ -195,6 +200,8 @@ export interface MainPart {
   eyesPop: Popover;
   edgesBtn: HTMLElement;
   toggleLock: () => void;
+  ctxMenu: ContextMenu;
+  menuContext: (part: Query | null) => MenuContext;
   menuOnSelection: () => void;
 }
 
@@ -378,9 +385,11 @@ async function boot(): Promise<void> {
     },
     preview: (rec, past) => !data.snapshot && tm.preview(rec, past),
   });
+  page.views = views;
   await views.load();
   // the project's notes (AttachmentSpec decision 13): every one, whichever board is on show
   const projectNotes = new ProjectNotes(data.views, () => people?.stream ?? null);
+  page.projectNotes = projectNotes;
   await projectNotes.load();
   const nav = new ViewNav(views, store, {
     show: (b, L) => showBoard(b, L),
@@ -401,6 +410,7 @@ async function boot(): Promise<void> {
   const toFull = (j: number) => nav.board.toFull(j);
   /** the board's clustering */
   const cm = (): ClusterMode => nav.board.rec.clustering;
+  page.cm = cm;
 
   // ---------------------------------------------------------------- the Time Machine
   //
@@ -444,6 +454,7 @@ async function boot(): Promise<void> {
    *  `preview`): the Time Machine browsing it, or its build while that cannot be read. Nothing
    *  arranges it there: the view's own board is another. */
   const frozen = (): boolean => !!reader || (!data.snapshot && !!nav.board?.preview);
+  page.frozen = frozen;
   /** Why arranging was refused there, in words. */
   const frozenWhy = (): string =>
     reader
@@ -451,6 +462,7 @@ async function boot(): Promise<void> {
       : tm.active
       ? "The Time Machine shows this view at another build than its own: Keep this version, or Save as new view, to arrange it."
       : "This view's build could not be read: it is shown at the latest build, and is arranged once its own build shows.";
+  page.frozenWhy = frozenWhy;
   /** The build the board on show is of: the one the Time Machine shows on it, else the one its view is
    *  kept at; null for the latest. What is made from a board of a past build keeps that build (the
    *  owner's decision of 2026-10-09): Zoom in, a cluster's Zoom in, a target's key declarations. */
@@ -744,9 +756,9 @@ async function boot(): Promise<void> {
     readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : reader ? READ_ONLY : null),
     noFiles: () => (data.snapshot ? "A snapshot of the page carries the library's records and links, not its files: open it on the server." : null),
     // what notes carry (AttachmentSpec decision 12): a clip made into a note, a file attached to one
-    cannotNote: () => noteRefused(),
-    clip: (c, text) => clipToNote(c, text),
-    attach: (note, c) => attachTo(note, c),
+    cannotNote: () => page.noteRefused(),
+    clip: (c, text) => page.clipToNote(c, text),
+    attach: (note, c) => page.attachTo(note, c),
   });
   page.papers = papers;
 
@@ -946,6 +958,7 @@ async function boot(): Promise<void> {
   /** The cluster the panel tells of, in the board's layout (its key read in the board's
    *  clustering); -1 when it tells of none, or of one this board does not hold. */
   const shownCluster = (): number => (page.shown && "cluster" in page.shown && canvas.layout ? clusterIndex(canvas.layout, page.shown.cluster) : -1);
+  page.shownCluster = shownCluster;
 
   /** The panel for what was last clicked — a cluster's (web/src/clusterpanel.ts), or a
    *  declaration's with the source window following it; and once it is known whether the
@@ -1092,6 +1105,7 @@ async function boot(): Promise<void> {
    *  decision of 2026-10-16): theirs alone, over the state everyone shares, in this page and gone on
    *  reload, as their folds are */
   const ownOpen = new Map<string, boolean>(reader && kept ? kept.notes : []);
+  page.ownOpen = ownOpen;
   /** Notes as this page shows them: each open or collapsed as its reader left it, where it is theirs
    *  alone (`ownOpen`), else by its own state. */
   const asOpenHere = <T extends { id: string; open: boolean }>(ns: T[]): T[] =>
@@ -1116,18 +1130,19 @@ async function boot(): Promise<void> {
       if (i !== undefined) go(i);
     },
     moves: (h) => !frozen() && dragMoves(page.locked, h),
-    setOpen: (id, _kind, open) => setNoteOpen(id, open),
-    moved: (id, to) => void moveNote(id, to),
+    setOpen: (id, _kind, open) => page.setNoteOpen(id, open),
+    moved: (id, to) => void page.moveNote(id, to),
     // where a card hangs from its icon is shared as its state is, and is no edit
-    card: (id, kind, card) => void (kind === "project" ? projectOps([{ op: "pnote-card", id, card }]) : noteOps([{ op: "note-card", id, card }])),
-    edit: (id) => void editNote(id),
-    menu: (id, x, y) => openNoteMenu(id, x, y),
+    card: (id, kind, card) => void (kind === "project" ? page.projectOps([{ op: "pnote-card", id, card }]) : page.noteOps([{ op: "note-card", id, card }])),
+    edit: (id) => void page.editNote(id),
+    menu: (id, x, y) => page.openNoteMenu(id, x, y),
     unfold: (c) => canvas.toggleFold(c),
     // the library is the server's now, whatever build the board shows
     file: (sha) => fileOf(page.review.data, sha),
     noFiles: () => !!data.snapshot,
     openCarry: (_id, c) => papers.openCarry(c),
   });
+  page.stickies = stickies;
   canvas.onFrame = () => stickies.frame();
   // Fit to screen, and a board's first framing, hold the notes' icons too, and their cards where
   // they fit
@@ -1154,12 +1169,12 @@ async function boot(): Promise<void> {
     frozen: () => (frozen() ? frozenWhy() : null),
     edges: () => S.showEdges,
     moveNote: (id, key, world, detach) => stickies.moveInto(id, key, world, detach),
-    noteText: (id) => noteOf(id)?.note.text ?? null,
-    noteOpen: (id) => noteOpenHere(id),
-    toggleNote: (id) => setNoteOpen(id, !noteOpenHere(id)),
+    noteText: (id) => page.noteOf(id)?.note.text ?? null,
+    noteOpen: (id) => page.noteOpenHere(id),
+    toggleNote: (id) => page.setNoteOpen(id, !page.noteOpenHere(id)),
     // the board's menu on what a row is; Fold and Fit are the form's (menuAct)
     menu: (on, x, y, spot) => {
-      if (on?.kind === "note") openNoteMenu(on.id, x, y);
+      if (on?.kind === "note") page.openNoteMenu(on.id, x, y);
       else openMenu(on?.kind === "decl" ? { kind: "node", i: on.i } : on ? { kind: "cluster", c: on.c } : null, x, y, spot ?? canvas.toWorld(x, y), false, on?.kind === "cluster" ? on.folded : undefined);
       if (page.menuOn) page.menuOn.linear = true;
     },
@@ -1385,6 +1400,7 @@ async function boot(): Promise<void> {
     // a target linked elsewhere, or its view deleted: its panel says so
     linksChanged: () => showSelected(),
   });
+  page.sync = sync;
 
   /** Hide a level of the board on show by its cluster's key, for everyone on it (ViewSpec decision
    *  24): the outline's rows, a cluster's panel and the canvas's menu call it. */
@@ -1978,6 +1994,7 @@ async function boot(): Promise<void> {
   };
   // a private reader's view is made without their name, and needs none (CollabSpec decision 8)
   const named = async (): Promise<string | null> => (reader ? READ_ONLY : data.snapshot || (await people.ensureLayout()) ? null : "A view is made under your name: give one first.");
+  page.named = named;
   const tabs = new Tabs($("#tabs"), $("#views-btn"), $("#views-menu"), {
     tabs: () => nav.tabs,
     active: () => nav.board?.id ?? null,
@@ -2426,6 +2443,7 @@ async function boot(): Promise<void> {
     page.review = { ...page.review, rev: c.rev, problems: c.problems, error: problemsText(c.problems) };
     if (!same) reviewChanged();
   };
+  page.takeChange = takeChange;
 
   /** How many are lit on the board as the selection bar counts them: what is not trusted, the
    *  trusted apart (TCBSpec decision 7, ViewSpec decision 14). */
@@ -3677,6 +3695,7 @@ async function boot(): Promise<void> {
     // what it was open on was lit for it: no longer
     closed: () => canvas.preview(null),
   });
+  page.ctxMenu = ctxMenu;
   // a right click elsewhere on the page keeps the browser's menu; while this one is open, it is
   // the only one (the ContextMenu key reaches the page as a right click too)
   document.addEventListener("contextmenu", (e) => {
@@ -3734,6 +3753,7 @@ async function boot(): Promise<void> {
       link: !data.snapshot,
     };
   };
+  page.menuContext = menuContext;
   /** Open the menu on what is at a point of the window: a declaration or a cluster of the board,
    *  or the empty canvas; `keys`: from the keyboard; `folded`: a cluster folded where the menu is
    *  open (the linear form's own folds). What it is open on is lit while it is. */
@@ -3839,7 +3859,7 @@ async function boot(): Promise<void> {
     if (t.kind === "decl") hash = encodeState({ ...base, picks: selectionText([pickDecl(t.name)]), shown: { decl: t.name } });
     else if (t.kind === "cluster" && on.c !== undefined) hash = encodeState({ ...base, picks: selectionText([pickCluster(on.c)]), shown: { cluster: t.key } });
     else if (t.kind === "cluster") hash = encodeState({ ...base, picks: null, shown: { cluster: t.key } });
-    else if (t.kind === "note" && on.note) hash = noteHash(encodeState(base), on.note, noteOf(on.note)?.kind === "view");
+    else if (t.kind === "note" && on.note) hash = noteHash(encodeState(base), on.note, page.noteOf(on.note)?.kind === "view");
     else hash = await seenHash();
     const url = copyLink({ origin: site.base, pathname: location.pathname }, hash);
     const c = chipFor(url);
@@ -3885,408 +3905,7 @@ async function boot(): Promise<void> {
     sync.afterPost();
     say(`Added ${what} to “${views.title(id)}”.`);
   };
-  // ---------------------------------------------------------------- notes
-  //
-  // A note is the project's unless it is made a view's (AttachmentSpec decisions 13–19): the
-  // project's are written, edited, moved, opened or collapsed and deleted as operations on the
-  // project's notes (web/src/projectnotes.ts), a view's as the view's operations (shared/sticky.ts);
-  // both are applied here at once and sent to everyone, the server recording who wrote one as it
-  // records who dropped a pin. Writing, editing and deleting one is under the reader's name (the
-  // timeline says who); opening and moving one, as a fold and a pin, are not. Where a note goes on a
-  // board is the notes layer's (web/src/sticky.ts, placeFor).
-
-  /** Change the notes of the board on show's view, for everyone on it. */
-  const noteOps = (ops: NoteOp[]) => {
-    sync.arrange(ops);
-    stickies.render();
-  };
-  /** Change the project's notes, for everyone, from a board that can be arranged. `here`: the notes
-   *  written are written in the board on show, which they are added to (the owner's decision of
-   *  2026-10-11: what is written or dropped in a view is that view's, wherever it is put), but on the
-   *  Project, which holds every one. Resolves to why they were refused, said already, or null. */
-  const projectOps = async (ops: ProjectNoteOp[], here = false): Promise<string | null> => {
-    if (frozen()) {
-      say(frozenWhy());
-      return frozenWhy();
-    }
-    const written = here && !fixedScope(nav.board.rec) ? nav.board.id : null;
-    const added: ItemOp[] = written ? ops.flatMap((o): ItemOp[] => (o.op === "pnote" ? [{ op: "item", note: o.note.id, in: "add" }] : [])) : [];
-    const r = projectNotes.send(ops, written);
-    // the view's record takes them at once, as the server's answer does for the others
-    if (written && added.length) views.ops(written, added);
-    stickies.render();
-    const { error, who } = await r;
-    if (who) people.lost();
-    if (error) {
-      // refused: what this page applied at once is taken back, as the server holds them
-      say(error);
-      await projectNotes.load();
-      if (written && added.length) views.ops(written, added.map((o) => ({ ...o, in: null })));
-    }
-    stickies.render();
-    return error;
-  };
-  /** A note on the board on show, of either kind, by its id. */
-  const noteOf = (id: string): { kind: NoteKind; note: ProjectNote | StickyNote } | null => {
-    const v = nav.board.rec.notes?.find((n) => n.id === id);
-    if (v) return { kind: "view", note: v };
-    const p = projectNotes.get(id);
-    return p ? { kind: "project", note: p } : null;
-  };
-  /** Whether note `id` is open on this page: as its reader left it, where it is theirs alone. */
-  const noteOpenHere = (id: string): boolean => ownOpen.get(id) ?? !!noteOf(id)?.note.open;
-  /** Open note `id`, or collapse it: for everyone, as its own state; on a read-only reader's page for
-   *  them alone, which shares nothing (CollabSpec decision 11). */
-  const setNoteOpen = (id: string, open: boolean) => {
-    const n = noteOf(id);
-    if (!n) return;
-    if (reader) {
-      ownOpen.set(id, open);
-      stickies.render();
-    } else if (n.kind === "project") void projectOps([{ op: "pnote-open", id, open }]);
-    else noteOps([{ op: "note-open", id, open }]);
-  };
-  /** A note let go somewhere: attached to a declaration — its place under every clustering, its
-   *  places beside it where it falls back to — or detached from the one it was attached to and put
-   *  at its place under the board's clustering, or its view note's place (the owner's decision of
-   *  2026-10-12). */
-  const moveNote = (id: string, d: Dropped) => {
-    const had = noteOf(id)?.note.decl;
-    const attach = d.decl || had ? d.decl : undefined;
-    const to = d.to;
-    if (to?.kind === "view" || (!to && nav.board.rec.notes?.some((n) => n.id === id))) {
-      const ops: NoteOp[] = [];
-      if (attach !== undefined) ops.push({ op: "note-decl", id, decl: attach });
-      if (to?.kind === "view") ops.push({ op: "note-move", id, place: to.place });
-      if (ops.length) noteOps(ops);
-      return;
-    }
-    const ops: ProjectNoteOp[] = [];
-    if (attach !== undefined) ops.push({ op: "pnote-decl", id, decl: attach });
-    if (to) ops.push({ op: "pnote-move", id, mode: to.mode, place: to.place });
-    if (d.also) ops.push({ op: "pnote-move", id, mode: d.also.mode, place: d.also.place });
-    if (ops.length) void projectOps(ops);
-  };
-  /** Write a note at a spot of the board, in an editor at a point of the window: the project's
-   *  (Add a note here), or this view's own (Add a note for this view). */
-  const writeNote = async (kind: NoteKind, at: { x: number; y: number }, world: [number, number]) => {
-    if (frozen()) return say(frozenWhy());
-    const why = await named();
-    if (why) return say(why.replace("A view is made", "A note is written"));
-    const board = nav.board.id;
-    const label = kind === "project" ? (fixedScope(nav.board.rec) ? "A note of the project, on the Project and every view whose scope gives it" : "A note of the project, on this view, the Project and every view whose scope gives it") : `A note of “${views.title(board)}” alone`;
-    stickies.edit(at, "", label, (text) => {
-      if (text === null || nav.board.id !== board) return;
-      const to = stickies.placeFor(kind, world);
-      if (!to) return;
-      const who = { open: true, by: people.name, at: new Date().toISOString() };
-      if (to.kind === "project") void projectOps([{ op: "pnote", note: { id: newNoteId(), text, places: { [to.mode]: to.place }, ...who } }], true);
-      else noteOps([{ op: "note", note: { id: newNoteId(), text, place: to.place, ...who } }]);
-    });
-  };
-  /** Edit a note's text, in an editor over it. */
-  const editNote = async (id: string, at?: { x: number; y: number }) => {
-    const n = noteOf(id);
-    if (!n) return;
-    if (frozen()) return say(frozenWhy());
-    const why = await named();
-    if (why) return say(why.replace("A view is made", "A note is edited"));
-    const board = nav.board.id;
-    stickies.edit(stickies.screenOf(id) ?? at ?? { x: innerWidth / 2 - 150, y: innerHeight / 3 }, n.note.text, "Edit the note", (text) => {
-      if (text === null || text === n.note.text || nav.board.id !== board || !noteOf(id)) return;
-      // stamped here as the server stamps it, which it does again under the name it takes
-      const edit = { id, text, by: people.name, at: new Date().toISOString() };
-      if (n.kind === "project") void projectOps([{ op: "pnote-edit", ...edit }]);
-      else noteOps([{ op: "note-edit", ...edit }]);
-    });
-  };
-  /** Make a note the other kind, keeping its text, its author and where it is on this board: a note
-   *  of the project this view's own (Only in this view), or this view's the project's (In every
-   *  view). */
-  const switchNote = async (id: string) => {
-    const n = noteOf(id);
-    if (!n) return;
-    if (frozen()) return say(frozenWhy());
-    const why = await named();
-    if (why) return say(why.replace("A view is made", "A note is made the project's or a view's"));
-    const spot = stickies.spotOf(id);
-    const to: NoteKind = n.kind === "project" ? "view" : "project";
-    const at = spot && stickies.placeFor(to, spot);
-    if (!at) return say("That note is not on the board now: bring it into view first.");
-    // sent as no page's: the server tells every page, this one too, which applies both sides then
-    const r = await views.post("note-kind", { id: nav.board.id, note: id, to, place: at.place, mode: cm(), token: null });
-    if (r.who) people.lost();
-    if (r.error) return say(r.error);
-    // a snapshot has no stream to hear it on: both sides are read again
-    if (data.snapshot) {
-      await projectNotes.load();
-      await views.record(nav.board.id, true);
-    }
-    stickies.render();
-    say(to === "view" ? `The note is “${views.title(nav.board.id)}”'s alone now.` : "The note is the project's now: the Project, this view and every view whose scope gives it show it.");
-  };
-  // ---------------------------------------------------------------- items
-  //
-  // A note of the project is an item, and items belong to views as declarations do (the owner's
-  // decision of 2026-10-11, shared/items.ts): the Project holds every one; another view shows what
-  // its scope gives and what was added to it, less what was taken out. The note's menu adds it to
-  // another view (Add to view ▸) or takes it out of this one (Remove from this view), for everyone on
-  // that view, as Add to view and Remove from this view change a declaration's view; what is written
-  // or dropped in a view is added to it (projectOps).
-
-  /** Whether a view's scope gives a note by itself (shared/noteplace.ts, derivesOn): the board on
-   *  show as it is (a past build's, with the links as it reads them), another view by its scope on
-   *  the graph on show; null where its scope cannot be read here. */
-  const derivedIn = (v: { id: string; scope: string; clustering: ClusterMode }): ((n: ProjectNote) => boolean) | null => {
-    if (v.id === nav.board.id) return derivesOn(cm(), vg().nodes, existsIn(nav.board.full.nodes), boardReview().links, nav.board.past?.past.nowName);
-    try {
-      const set = evaluate(parseQuery(v.scope), { g: page.g, review: page.review.data });
-      return derivesOn(v.clustering, page.g.nodes.filter((_, i) => set[i]), existsIn(page.g.nodes), page.review.data.links);
-    } catch {
-      return null;
-    }
-  };
-  /** What a note of the project's menu offers of the views: every view whose scope can change but
-   *  this one, the kept ones first, each saying whether it shows the note already (✓); and whether it
-   *  can be taken out of this one (not on the Project). */
-  const noteViews = (n: ProjectNote): { views: { id: string; title: string; holds: boolean; temporary?: boolean }[]; remove: boolean } => {
-    const rec = nav.board.rec;
-    const views_ = views.summaries
-      .filter((v) => !fixedScope(v) && v.id !== rec.id)
-      .sort((a, b) => Number(b.kept) - Number(a.kept))
-      .slice(0, 40)
-      .map((v) => {
-        const listed = v.items?.add.includes(n.id) ? "add" : v.items?.remove.includes(n.id) ? "remove" : null;
-        const holds = listed !== "remove" && (listed === "add" || !!derivedIn(v)?.(n));
-        return { id: v.id, title: views.title(v.id), holds, ...(v.kept ? {} : { temporary: true }) };
-      });
-    return { views: views_, remove: !fixedScope(rec) };
-  };
-  /** Add note `id` of the project to view `to` (Add to view ▸), or take it out of the board on show
-   *  (`to` null: Remove from this view), for everyone on that view: on its add list only where its
-   *  scope does not give it, on its remove list only where it does (shared/items.ts, itemOp). */
-  const itemTo = async (id: string, to: string | null) => {
-    const n = projectNotes.get(id);
-    if (!n) return;
-    const here = to === null || to === nav.board.id;
-    const rec = nav.board.rec;
-    const v = here ? { id: rec.id, scope: printQuery(rec.scope), clustering: rec.clustering, items: rec.items } : views.summary(to!);
-    if (!v) return;
-    const gives = derivedIn(v);
-    if (!gives) return say(`The scope of “${views.title(v.id)}” cannot be read here.`);
-    const op = itemOp(here ? nav.board.rec.items : v.items, id, to === null ? "remove" : "add", gives(n));
-    const what = `the note “${noteExcerpt(n.text, 40)}”`;
-    if (!op) return say(to === null ? `This view does not show ${what}.` : `“${views.title(v.id)}” shows ${what} already.`);
-    if (here) {
-      await sync.arrange([op]);
-      stickies.render();
-      return say(`Took ${what} out of this view; the Project and every other view keep it as they had it.`);
-    }
-    const r = await views.post("arrange", { id: v.id, ops: [op] });
-    if (r.who) people.lost();
-    if (r.error) return say(r.error);
-    // a snapshot has no server to tell it: its record of the view takes it here
-    if (data.snapshot) views.ops(v.id, [op]);
-    sync.afterPost();
-    say(`Added ${what} to “${views.title(v.id)}”.`);
-  };
-
-  /** A note's menu: edit, open or collapse, the other kind, add it to a view or take it out of this
-   *  one, delete. */
-  const openNoteMenu = (id: string, x: number, y: number) => {
-    const n = noteOf(id);
-    if (!n) return;
-    const t: MenuTarget = {
-      kind: "note",
-      open: noteOpenHere(id),
-      view: n.kind === "view",
-      ...(reader ? { own: true } : {}),
-      carries: (n.note.carries ?? []).map(carryLabel),
-      attach: !data.snapshot && !reader,
-      ...(n.kind === "project" ? { items: noteViews(n.note as ProjectNote) } : {}),
-    };
-    const items = menuItems(t, menuContext(null));
-    if (!items.length) return;
-    $("#tip").hidden = true;
-    page.menuOn = { t, note: id, part: null, world: canvas.toWorld(x, y), at: { x, y } };
-    const by = n.note.by ? ` by ${nameNow(n.note.by, n.note.person)}${n.note.person ? " ✓" : ""}` : "";
-    ctxMenu.show(items, x, y, `${n.kind === "view" ? "This view's note" : "Note"}${by}`);
-  };
-
-  // ---------------------------------------------------------------- what notes carry
-  //
-  // A note carries files of the library and clips of their pages (AttachmentSpec decision 12): a
-  // file dropped on the canvas, or an image pasted, is added to the library and makes a note of the
-  // project carrying it where it was let go, its title as its text, open for editing; a box of a
-  // PDF's page is made into a note from the reference window (Clip to a note); and a note's menu
-  // attaches a file or a clip to it (Attach…) or takes one off (Detach). Changing what a note carries
-  // is an edit of the note, under the reader's name, as an edit of its text is.
-
-  /** Why no note can be made, or given what it carries, on this board: a preview of a view, which
-   *  nothing arranges, or a snapshot of the page, which has no library. Null where it can. */
-  const noteRefused = (): string | null =>
-    frozen() ? frozenWhy() : data.snapshot ? "A snapshot of the page carries no library: a note carries the files the server keeps." : null;
-
-  /** A file or a clip a note carries, in a few words: what the note's menu lists. */
-  const carryLabel = (c: NoteCarry): string => {
-    const f = fileOf(page.review.data, c.file);
-    if (!f) return "A file the library has no record of";
-    const title = f.title.length > 48 ? f.title.slice(0, 47) + "…" : f.title;
-    return f.type !== "pdf" ? title : c.region ? `A clip of ${title}, p. ${c.page}` : c.page ? `${title}, p. ${c.page}` : title;
-  };
-
-  /** Edit what note `n` carries, its text as it is: an edit of the note. Why it was refused, or null. */
-  const editCarries = async (n: { kind: NoteKind; note: ProjectNote | StickyNote }, carries: NoteCarry[]): Promise<string | null> => {
-    const edit = { id: n.note.id, text: n.note.text, carries, by: people.name, at: new Date().toISOString() };
-    if (n.kind === "project") return projectOps([{ op: "pnote-edit", ...edit }]);
-    noteOps([{ op: "note-edit", ...edit }]);
-    return null;
-  };
-
-  /** Say why something was not done; false, for what answers whether it was. */
-  const refused = (why: string): false => {
-    say(why);
-    return false;
-  };
-
-  /** Attach a file or a clip to note `id` (its menu's Attach…). Whether it was. */
-  const attachTo = async (id: string, c: NoteCarry): Promise<boolean> => {
-    const no = noteRefused();
-    if (no) return refused(no);
-    const n = noteOf(id);
-    if (!n) return refused("That note is not on this board any more.");
-    const why = await named();
-    if (why) return refused(why.replace("A view is made", "A note is edited"));
-    const next = withCarry(n.note.carries, c);
-    if (typeof next === "string") return refused(next);
-    if (await editCarries(n, next)) return false;
-    say(`Attached ${carryLabel(c)} to the note.`);
-    return true;
-  };
-
-  /** Take the `k`-th of what note `id` carries off it (its menu's Detach): the file stays in the
-   *  library. */
-  const detach = async (id: string, k: number) => {
-    const n = noteOf(id);
-    const c = n?.note.carries?.[k];
-    if (!n || !c) return;
-    const no = noteRefused();
-    if (no) return say(no);
-    const why = await named();
-    if (why) return say(why.replace("A view is made", "A note is edited"));
-    if (!(await editCarries(n, n.note.carries!.filter((_, j) => j !== k)))) say(`${carryLabel(c)} is off the note; it stays in the library.`);
-  };
-
-  /** Open note `id`'s editor once it is drawn, the view brought to it first where it does not show
-   *  or shows collapsed (a note made from the reference window, perhaps far from what is in view). */
-  const editWhenShown = (id: string, bring: boolean) => {
-    const look = stickies.lookOf(id);
-    if (bring && look !== "open") {
-      stickies.flyTo(id);
-      setTimeout(() => void editNote(id), 620);
-    } else void editNote(id);
-  };
-
-  /** Where a note made from the reference window goes (Clip to a note): beside the declaration
-   *  selected on the board, in its cluster; in the cluster selected; else on the ring, in the order
-   *  notes were written. With where that is, in words. */
-  const clipPlace = (): { places: ProjectNote["places"]; where: string } | null => {
-    const i = selected();
-    const j = i === null ? -1 : toView(i);
-    const c = shownCluster();
-    const to = j >= 0 ? stickies.placeBeside(j) : c >= 0 ? stickies.placeInCluster(c) : null;
-    if ((j >= 0 || c >= 0) && !to) return null;
-    if (!to) return { places: {}, where: "on the ring around the board" };
-    const key = "in" in to.place ? to.place.in[0][0] : null;
-    return { places: { [to.mode]: to.place }, where: key ? `in ${key.split(".").slice(-2).join(".")}` : "on the ring around the board" };
-  };
-
-  /** Clip to a note, from the reference window: a note of the project carrying the clip, with that
-   *  text, open for editing. Whether it was made. */
-  const clipToNote = async (c: NoteCarry, text: string): Promise<boolean> => {
-    const no = noteRefused();
-    if (no) return refused(no);
-    const why = await named();
-    if (why) return refused(why.replace("A view is made", "A note is written"));
-    const at = clipPlace();
-    if (!at) return refused("This board is not drawn yet.");
-    const id = newNoteId();
-    if (await projectOps([{ op: "pnote", note: { id, text, places: at.places, open: true, by: people.name, at: new Date().toISOString(), carries: [c] } }], true)) return false;
-    say(`Clipped to a note ${at.where}.`);
-    editWhenShown(id, true);
-    return true;
-  };
-
-  /** Files dropped on the canvas at a point of the window, or an image pasted: each added to the
-   *  library and made a note of the project carrying it, spaced apart from that spot, its title as
-   *  its text; one alone opens for editing. A file the library refuses says why and makes no note. */
-  const addNotesOf = async (files: File[], at: { x: number; y: number }) => {
-    const no = noteRefused();
-    if (no) return say(no);
-    // a file is added to the library under a name, as a link is made (AttachmentSpec decision 1)
-    if (!(await people.ensure())) return say("A file is added to the library under your name: give one first.");
-    const board = nav.board.id;
-    const spots = stickies.placesFor(canvas.toWorld(at.x, at.y), files.length);
-    if (!spots) return say("This board is not drawn yet.");
-    const refusals: string[] = [];
-    const made = await notesOfFiles(files, spots, {
-      upload: (f) => uploadFile(f, papers.headers()),
-      take: (c) => takeChange(c),
-      write: (note) => projectOps([{ op: "pnote", note }], true),
-      still: () => nav.board.id === board,
-      say: (text) => say(text),
-      refused: (why) => void refusals.push(why),
-      by: people.name,
-      lost: () => people.lost(),
-    });
-    if (made.length === 1) editWhenShown(made[0], false);
-    // what was refused is said with the notes made, which would otherwise say over it
-    else if (made.length) say(`${made.length} notes made, each carrying its file: double-click one to add words.${refusals.map((r) => ` ${r}`).join("")}`);
-  };
-
-  /** Whether an event is on the canvas: the board itself, a card on it, or a note — not a panel, a
-   *  bar or a window over it. */
-  const onCanvas = (t: EventTarget | null): boolean => {
-    const el = t as HTMLElement | null;
-    return !!el && (el.id === "canvas" || !!el.closest?.("#stickies, #cards"));
-  };
-  // a file dragged over the canvas is taken there, and let go it makes a note at that spot; dropped
-  // on the Library's list, it is added there alone (web/src/library.ts)
-  window.addEventListener("dragover", (e) => {
-    if (!e.dataTransfer?.types.includes("Files") || !onCanvas(e.target)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-  });
-  window.addEventListener("drop", (e) => {
-    if (e.defaultPrevented || !onCanvas(e.target)) return;
-    const files = [...(e.dataTransfer?.files ?? [])];
-    if (!files.length) return;
-    e.preventDefault();
-    void addNotesOf(files, { x: e.clientX, y: e.clientY });
-  });
-  /** where the pointer last was over the canvas: where a pasted image makes its note */
-  let pointerAt: { x: number; y: number } | null = null;
-  window.addEventListener(
-    "pointermove",
-    (e) => {
-      pointerAt = onCanvas(e.target) ? { x: e.clientX, y: e.clientY } : pointerAt;
-    },
-    { passive: true },
-  );
-  // an image pasted, anywhere but in a field, makes a note where the pointer last was on the canvas,
-  // else in the middle of what is in view; it is named by when it was pasted, as it has no name
-  document.addEventListener("paste", (e) => {
-    if (typing(e.target) || typing(document.activeElement)) return;
-    const images = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
-    if (!images.length) return;
-    e.preventDefault();
-    const d = new Date();
-    const two = (n: number) => String(n).padStart(2, "0");
-    const when = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}.${two(d.getMinutes())}`;
-    const pasted = images.map((f, k) => new File([f], `Pasted image ${when}${images.length > 1 ? ` (${k + 1})` : ""}.${f.type.split("/")[1]?.replace("jpeg", "jpg") ?? "png"}`, { type: f.type }));
-    const I = canvas.insets;
-    void addNotesOf(pasted, pointerAt ?? { x: (I.left + innerWidth - I.right) / 2, y: (I.top + innerHeight - I.bottom) / 2 });
-  });
+  Object.assign(page, notesPart(page));
 
   /** Do what was chosen in the menu. */
   const menuAct = async (act: string, name?: string) => {
@@ -4296,8 +3915,8 @@ async function boot(): Promise<void> {
     const what = menuWhat(t);
     const i = on.i;
     if (act.startsWith("add:")) return on.part && addToView(act.slice(4), on.part, what);
-    if (act.startsWith("detach:")) return on.note ? void detach(on.note, Number(act.slice(7))) : undefined;
-    if (act.startsWith("item:")) return on.note ? void itemTo(on.note, act.slice(5)) : undefined;
+    if (act.startsWith("detach:")) return on.note ? void page.detach(on.note, Number(act.slice(7))) : undefined;
+    if (act.startsWith("item:")) return on.note ? void page.itemTo(on.note, act.slice(5)) : undefined;
     switch (act) {
       case "art-name":
         if (on.artName && (t.kind === "decl" || t.kind === "cluster")) art.showName(on.artName, !t.art);
@@ -4375,34 +3994,34 @@ async function boot(): Promise<void> {
         return;
       case "note":
       case "note-view":
-        await writeNote(act === "note" ? "project" : "view", on.at, on.world);
+        await page.writeNote(act === "note" ? "project" : "view", on.at, on.world);
         return;
       case "note-edit":
-        if (on.note) await editNote(on.note, on.at);
+        if (on.note) await page.editNote(on.note, on.at);
         return;
       case "note-toggle":
-        if (on.note) setNoteOpen(on.note, !noteOpenHere(on.note));
+        if (on.note) page.setNoteOpen(on.note, !page.noteOpenHere(on.note));
         return;
       case "note-kind":
-        if (on.note) await switchNote(on.note);
+        if (on.note) await page.switchNote(on.note);
         return;
       case "item-remove":
-        if (on.note) await itemTo(on.note, null);
+        if (on.note) await page.itemTo(on.note, null);
         return;
       case "note-attach": {
-        const n = on.note ? noteOf(on.note) : null;
-        const no = noteRefused();
+        const n = on.note ? page.noteOf(on.note) : null;
+        const no = page.noteRefused();
         if (no) return say(no);
         if (n) papers.chooseToAttach(n.note.id, noteExcerpt(n.note.text, 40));
         return;
       }
       case "note-delete": {
-        const n = on.note ? noteOf(on.note) : null;
+        const n = on.note ? page.noteOf(on.note) : null;
         const where = n?.kind === "project" ? "the project, for everyone, on the Project and every view that shows it" : `“${views.title(nav.board.id)}”, for everyone on it`;
         if (!n || !confirm(`Delete this note from ${where}?\n\n${n.note.text.slice(0, 200)}`)) return;
         if (await named()) return;
-        if (n.kind === "project") void projectOps([{ op: "pnote-delete", id: n.note.id }]);
-        else noteOps([{ op: "note-delete", id: n.note.id }]);
+        if (n.kind === "project") void page.projectOps([{ op: "pnote-delete", id: n.note.id }]);
+        else page.noteOps([{ op: "note-delete", id: n.note.id }]);
         return;
       }
     }
