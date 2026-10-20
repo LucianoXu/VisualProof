@@ -2,7 +2,7 @@
 // namespaces and sections around it, the `open` commands (an `open … in` right before it
 // included), the `variable`s, `universe`s, options and section-local commands. The page reads the
 // namespaces and opens to link the short names in a declaration's source (web/src/scope.ts); the
-// agents' API answers with all of it (server/agent.ts, `context`); shared/context.ts writes it as
+// agents' API answers with all of it (server/agentread.ts, `context`); shared/context.ts writes it as
 // the block of Lean shown above a declaration's source and recorded with what an opinion judged.
 // This is the text, read without elaborating it: where Lean is running, what Lean says wins.
 
