@@ -21,6 +21,7 @@ import { cleanProjectNotes, invalidProjectNoteOps } from "../../shared/projectno
 import type { ClusterPlace, ProjectNote, ProjectNoteOp } from "../../shared/projectnotes.ts";
 import type { NotePlace } from "../../shared/sticky.ts";
 import type { PastSource, PastSourceMissing } from "./pastsource.ts";
+import type { OutsideWhere } from "../../shared/outside.ts";
 import type { AskAnswer, AskSent } from "../../shared/askfollow.ts";
 
 /** The review as the server last told it: the replay of its logs at revision `rev` of the server's
@@ -68,6 +69,9 @@ export interface Source {
   /** the contexts the usage pass read from the elaborator for this text (shared/context.ts); absent
    *  where it has not, and the context is read from the text */
   contexts?: ModuleContexts;
+  /** a module outside the project (ReviewSpec, "The source window", the owner's decision of
+   *  2026-10-20): the package its file is in, its revision, its place on GitHub (shared/outside.ts) */
+  outside?: OutsideWhere;
 }
 
 /** What the server answers about views (server/views.ts): `error`, and `who` when it wants a name. */
@@ -744,7 +748,7 @@ function serverSource(): DataSource {
             const b = (await r.json().catch(() => null)) as (PastSource & { error?: string; why?: string | null }) | null;
             if (r.ok && b && typeof b.text === "string") return b;
             past.delete(key);
-            return { missing: true as const, why: b?.why ?? b?.error ?? null, ...(b?.file ? { file: b.file } : {}) };
+            return { missing: true as const, why: b?.why ?? b?.error ?? null, ...(b?.file ? { file: b.file } : {}), ...((b as { outside?: unknown } | null)?.outside === true ? { outside: true as const } : {}) };
           })
           .catch(() => {
             past.delete(key);

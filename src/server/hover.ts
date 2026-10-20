@@ -6,7 +6,10 @@
 // lakefile in the directory it was started from. Started elsewhere with the project's LEAN_PATH,
 // it reads the `.olean` files the owner's builds left and writes nothing (SPEC.md: "No .lake
 // conflict"). It elaborates the file it is asked about once, then answers hovers in milliseconds.
-// At most two files are kept open; the server stops after ten idle minutes.
+// At most two files are kept open; the server stops after ten idle minutes. A file outside the
+// project — a package's, Lean's core's, whose source the window shows too (the owner's decision of
+// 2026-10-20; server/outside.ts) — is opened by the same Lean in the same way: elaborated against
+// the `.olean` files of what it imports, nothing built.
 //
 // A name in a hover card opens a card of its own: what Lean says about a declaration by name is
 // asked in a scratch file of VisualProof's (in the project's cache, never in the project) that
@@ -89,6 +92,12 @@ const GIVE_UP_MS = 5 * 60 * 1000;
 const FATAL = 2;
 /** questions waiting for their turn in the scratch file, at most */
 const MAX_QUEUED = 16;
+
+/** A file Lean is asked about: one of the project, by its path in it; or one outside it (a package's,
+ *  Lean's core's: server/outside.ts), by what it is called (`mathlib: Mathlib/Logic/Basic.lean`, what
+ *  the status says) and where it is, resolved. Either is elaborated the same way, by the same Lean in
+ *  the cache's `lean-server/` folder, which has no lakefile: nothing is built. */
+export type HoverFile = string | { name: string; path: string };
 
 /** A document Lean has open: a file of the project, or the scratch file. */
 interface Open {
@@ -429,10 +438,11 @@ export class LeanHover {
   }
 
   /** Have Lean elaborate a file (its present text), keeping at most KEEP_OPEN open. */
-  async open(rel: string, text: string, hash: string): Promise<Doc> {
+  async open(file: HoverFile, text: string, hash: string): Promise<Doc> {
     await this.start();
     this.touch();
-    const uri = pathToFileURL(join(this.project.root, rel)).href;
+    const rel = typeof file === "string" ? file : file.name;
+    const uri = pathToFileURL(typeof file === "string" ? join(this.project.root, file) : file.path).href;
     let doc = this.docs.get(rel);
     if (doc) this.unstall(doc, doc.processing >= 0);
     const no = this.refused(uri);
@@ -466,10 +476,10 @@ export class LeanHover {
 
   /** What is at (line, character) of the file — UTF-16 columns, as the page counts them. Waits
    *  up to `waitMs` for Lean to elaborate that far, then says how far it is. */
-  async hover(rel: string, text: string, hash: string, line: number, character: number, waitMs: number): Promise<HoverAnswer> {
+  async hover(file: HoverFile, text: string, hash: string, line: number, character: number, waitMs: number): Promise<HoverAnswer> {
     let doc: Doc;
     try {
-      doc = await this.open(rel, text, hash);
+      doc = await this.open(file, text, hash);
     } catch (e) {
       return { error: this.failure ?? (e instanceof Error ? e.message : String(e)) };
     }
@@ -484,10 +494,10 @@ export class LeanHover {
    *  hover's code — a declaration's full name where the position refers to one, a variable's name
    *  where it is one — or null where Lean has nothing to say. This is how the source window links
    *  every name to what it means, dot notation and `open`s included, as go-to-definition would. */
-  async names(rel: string, text: string, hash: string, positions: [number, number][], waitMs: number): Promise<{ heads?: (string | null)[]; pending?: HoverAnswer["pending"]; error?: string }> {
+  async names(file: HoverFile, text: string, hash: string, positions: [number, number][], waitMs: number): Promise<{ heads?: (string | null)[]; pending?: HoverAnswer["pending"]; error?: string }> {
     let doc: Doc;
     try {
-      doc = await this.open(rel, text, hash);
+      doc = await this.open(file, text, hash);
     } catch (e) {
       return { error: this.failure ?? (e instanceof Error ? e.message : String(e)) };
     }

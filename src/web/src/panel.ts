@@ -291,7 +291,7 @@ export class Panel {
       <div class="p-ns">${escapeHtml(ns)}</div>
       <div class="p-also"${this.hooks.alsoHere(i) ? "" : " hidden"}>${this.hooks.alsoHere(i)}</div>
       <div class="p-mod">${escapeHtml(v.module)}${line}
-        ${!ext && v.range ? `<button class="link" data-source title="${then === null ? "The source, with its review (Space)" : "The source at this build (Space)"}">Source</button>` : ""}
+        ${v.range ? `<button class="link" data-source title="${then === null ? (ext ? "Its source in its package, with its review (Space)" : "The source, with its review (Space)") : "The source at this build (Space)"}">Source</button>` : ""}
         ${then === null && editor ? editorAnchor(editor) : ""}
         ${this.hooks.isPinned(i) ? `<button class="link" data-unpin>Unpin</button>` : ""}
       </div>
