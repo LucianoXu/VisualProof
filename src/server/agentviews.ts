@@ -45,7 +45,7 @@ export interface AgentEndpoint {
   method: "GET" | "POST";
   path: string;
   about: string;
-  /** a line for the entry, where it names the endpoint (server/agent.ts, ENTRY) */
+  /** a line for the entry, where it names the endpoint (server/agententry.ts, ENTRY) */
   brief?: string;
   params: Record<string, string>;
   returns: string;
