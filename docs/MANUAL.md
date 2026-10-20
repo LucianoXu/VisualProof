@@ -812,6 +812,11 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   version*, and **What changed** shows the lines removed and added since (the opinion
   records the text it was given on: the context it is written in, then its source), so a
   re-review reads only the change.
+- **Nobody approves twice**: Approve says where your approval stands — **Approve**, **Approved ✓**
+  once you approved this version (under the pointer it reads *Withdraw approval*, and a click takes
+  it back), **Approve again** once the declaration changed since. Approving what you approved
+  already records nothing (an agent's advice neither), and `a` only ever approves: on what you
+  approved, it does nothing. Speaking for someone, it says theirs.
 - **Withdraw** takes your current opinion back: it stands beside it in every review box. An
   approval goes at once; a comment asks first. Afterwards you have no opinion there — every
   status, count and list is as if you had given none, and an earlier opinion of yours does not

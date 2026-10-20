@@ -127,11 +127,12 @@ test("the server finds whom an opinion is for: one's own name is one's own, an i
     assert.equal((await give("Olivia", { for: "Scout" })).status, 400, "an agent on the page");
     // an agent at the page's door, saying for: refused
     assert.equal((await give("Claude", { for: "Bob" }, { "x-visualproof-kind": "agent" })).status, 403);
-    // a guest already in the logs, written in another case: that guest
-    assert.equal((await give("Olivia", { for: "BOB" })).status, 200);
+    // a guest already in the logs, written in another case: that guest (a comment: his approval
+    // stands, and nobody approves twice, ReviewSpec decision 1)
+    assert.equal((await give("Olivia", { for: "BOB", verdict: "comment", comment: "in another case" })).status, 200);
     assert.equal(S.live.review.data.opinions["N.a"].at(-1)!.by, "Bob");
     // one's own name in another case: one's own
-    assert.equal((await give("Olivia", { for: "olivia" })).status, 200);
+    assert.equal((await give("Olivia", { for: "olivia", verdict: "comment", comment: "mine" })).status, 200);
     assert.equal(S.live.review.data.opinions["N.a"].at(-1)!.recordedBy, undefined);
   } finally {
     await S.close();

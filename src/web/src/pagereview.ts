@@ -116,12 +116,15 @@ export function reviewPart(page: Page): ReviewPart {
 
   /** Record something in the review; resolves to why it was refused, or null. The answer carries
    *  the change, applied at once (the reader sees their board follow); the event that tells every
-   *  page the same change is then known and skipped. */
+   *  page the same change is then known and skipped. An opinion that changed nothing was an approval
+   *  of the version approved already (ReviewSpec decision 1, the owner's decision of 2026-10-20),
+   *  another page's meanwhile: said, so that a comment sent with it stays in the box. */
   const submit = (op: ReviewRequest): Promise<string | null> =>
     // a past build is not reviewed: the review is given on the graph of now
     page.pastShown() ? Promise.resolve(PAST_REVIEW) : data.postReview(op).then(
       (c) => {
         if (c) takeChange(c);
+        else if (op.op === "opinion") return `${op.for ? `${op.for}'s` : "Your"} approval of this version stands already: nothing was recorded.`;
         tipsOnReview(op);
         return null;
       },

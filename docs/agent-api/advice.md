@@ -15,7 +15,10 @@ Advice (one or many at once), the comment format, and a pre-review's steps.
   as written (format below).
 - Judge what a declaration says, never a proof: for `theorem main : Claim n`, advise on `Claim`,
   and on the theorem whether it states the claim as it should.
-- Your later opinion on a declaration replaces your earlier one (all stay in the file).
+- Your later opinion on a declaration replaces your earlier one (all stay in the file). An approval
+  of the version your advice approves already records nothing, a comment with it neither:
+  `{ok, unchanged: true, note}` (`POST opinions`: counted in `unchanged`); once the declaration
+  changed, approving again is new.
 - `judged`: `source` (its context, a blank line, the source, as `GET source` gives them:
   [reading](reading.md)), or `statement` where there is no source.
 - A folded name is advised as its declaration: `recorded.name` is that, with `asked`, `foldedInto`.

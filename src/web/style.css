@@ -524,6 +524,17 @@ body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn,
 :root[data-theme="dark"] .rv-btn.approve:focus-visible { outline-color: var(--rv-approved); }
 :root[data-theme="dark"] .rv-btn.comment:focus-visible { outline-color: var(--rv-commented); }
 .rv-btn.approve:disabled, .rv-btn.comment:disabled { color: white; opacity: 0.45; }
+/* Approved ✓ (ReviewSpec decision 1, the owner's decision of 2026-10-20): the approval that stands,
+   no longer a call to act — its colour's tint, ruled in it — and under the pointer or the keyboard's
+   focus what a click does, Withdraw approval, in the colour of taking back; the two words in one
+   cell, so that the button keeps its width as they change */
+.rv-btn.approve.on { display: inline-grid; color: var(--rv-approved); background: color-mix(in srgb, var(--rv-approved) 13%, var(--surface-solid)); border-color: color-mix(in srgb, var(--rv-approved) 55%, transparent); font-weight: 600; }
+.rv-btn.approve.on > span { grid-area: 1 / 1; text-align: center; }
+.rv-btn.approve.on .rv-undo { visibility: hidden; }
+.rv-btn.approve.on:is(:hover, :focus-visible) { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, var(--surface-solid)); border-color: color-mix(in srgb, var(--bad) 50%, transparent); filter: none; }
+.rv-btn.approve.on:is(:hover, :focus-visible) .rv-is { visibility: hidden; }
+.rv-btn.approve.on:is(:hover, :focus-visible) .rv-undo { visibility: visible; }
+.rv-btn.approve.on:focus-visible { outline-color: var(--bad); }
 .rv-btn.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 .rv-tgt { align-self: flex-start; }
 .rv-tag { font-size: 12px; color: var(--accent); }

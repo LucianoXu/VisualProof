@@ -155,7 +155,7 @@ test("targets are the project's declarations; a checkpoint is no longer recorded
     assert.equal(W.post({ op: "trust", prefix: "Other", on: true }).status, 200);
     assert.deepEqual(W.events.at(-1), { kind: "trust", by: "Alice", prefix: "Other" });
     const n = W.events.length;
-    assert.deepEqual(W.post({ op: "trust", prefix: "Other", on: true }).body, { ok: true, change: null }, "so already: nothing appended");
+    assert.deepEqual(W.post({ op: "trust", prefix: "Other", on: true }).body, { ok: true, change: null, unchanged: true }, "so already: nothing appended");
     assert.equal(W.events.length, n);
     // names an object has already: declarations like any
     for (const name of ["toString", "constructor", "__proto__"]) {
