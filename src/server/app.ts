@@ -18,13 +18,9 @@ import { Access, fromOwnPage, hostAllowed, KEY_PATH, urlHost } from "./access.ts
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, taken } from "./invites.ts";
 import { AgentApi } from "./agent.ts";
-import type { Caller } from "./agent.ts";
 import { bearerOf, looksLikeToken } from "./tokens.ts";
-import type { TokenRecord } from "./tokens.ts";
-import type { Answer } from "./agent.ts";
 import { Exporter } from "./export.ts";
-import { pdfjsAsset, readUpload } from "./libraryroute.ts";
-import { UPLOAD_PATH } from "./agentlibrary.ts";
+import { pdfjsAsset } from "./libraryroute.ts";
 import { packageVersion } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
 import { sendMedia, TIP_PATH, TIPS_DIR, tipClips, tourData, tourVtt } from "./media.ts";
@@ -34,11 +30,12 @@ import { serveFilm } from "./film.ts";
 import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 import { slimDeploy } from "../shared/deploy.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
-import { hostOf, packedGz, readBody, refused, sendDownload, sendFile, sendGz, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
+import { packedGz, readBody, refused, sendFile, sendGz, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
 import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
 import { shareAgents, sharePeople, shareReadOnly } from "./appshare.ts";
 import { ask, chat, chatNew, presence } from "./apptalk.ts";
 import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsite.ts";
+import { agentRoute, exportRoute } from "./appagent.ts";
 
 /** The server's answers to requests: exported so that the tests serve them as the server does. */
 export class App {
@@ -100,87 +97,6 @@ export class App {
    *  let in fully; not a read-only reader, nor an agent. */
   private toldAll(req: IncomingMessage): boolean {
     return this.readOnlyOf.get(req) === undefined && this.ids.kind(req) !== "agent";
-  }
-
-  /** The exported document (ExportSpec decisions 5–16): POST /api/export starts typesetting the
-   *  document of a view, `{view, settings, version?}` (a build the Time Machine shows the view at;
-   *  left out, the view's own), and answers with its job at once; the page asks how the
-   *  job is doing (GET /api/export/job) and fetches the PDF and the LaTeX sources once it is done
-   *  (GET /api/export/file). The answers are the agents' API's (server/agent.ts), which has the same
-   *  routes under /api/agent/; an agent that comes here is held to its one job at a time there too.
-   *  The window shows the title and the author line the document will have (GET /api/export/head
-   *  ?view=&version=: ExportSpec decisions 14 and 15), which only the server can tell: who dropped
-   *  each pin is never sent to pages. */
-  private async export(req: IncomingMessage, res: ServerResponse, url: URL, agent: boolean, readOnly = false): Promise<void> {
-    const path = url.pathname;
-    const api = this.agents;
-    // the document's outline, which the linear form draws: nothing is typeset for it
-    if (path === "/api/export/outline") {
-      const o = api.exportOutline(url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
-      return sendJson(res, o.body, o.status, o.headers);
-    }
-    if (!this.exporter) return sendJson(res, { error: "This server does not export documents." }, 404);
-    let a: Answer;
-    if (path === "/api/export" && req.method === "POST") {
-      const caller: Caller | null = agent ? { name: this.ids.who(req), kind: "agent" } : null;
-      if (caller && !caller.name) return sendJson(res, { error: "Say who you are first.", who: true }, 401);
-      const r = await this.json(req, 1 << 20);
-      if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-      // read-only readers typeset one document at a time among them (CollabSpec decision 11): while
-      // one is being typeset, the others wait, even one the export's cache holds. The place is
-      // taken before the job starts, so that two requests at once cannot both start one.
-      if (readOnly) {
-        if (!this.bounds.mayExport()) return sendJson(res, { error: "Another document is being typeset for readers of this page: try again in a little while." }, 429, { "retry-after": "5" });
-        this.bounds.reserveExport();
-      }
-      let started: Answer | undefined;
-      try {
-        started = await api.exportStart(r.body, caller);
-      } finally {
-        if (readOnly) this.bounds.exportStarted(started?.body);
-      }
-      a = started;
-    } else if (path === "/api/export/head") a = api.exportHead(url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
-    else if (path === "/api/export/job") a = api.exportJob(url.searchParams.get("id") ?? "", false);
-    else if (path === "/api/export/file") a = api.exportFile(url.searchParams.get("id") ?? "", url.searchParams.get("what"));
-    else return sendJson(res, { error: "not found" }, 404);
-    if (a.file) return sendDownload(res, a.file);
-    // the agents' answer as it is: the page shows its error, and an agent that asked here its hint
-    sendJson(res, a.body, a.status, a.headers);
-  }
-
-  /** A request to the agents' API: read here, answered there. An agent with a token of its own is
-   *  who its token says, whatever its headers say (server/tokens.ts). */
-  private async agent(req: IncomingMessage, res: ServerResponse, url: URL, token: TokenRecord | null = null): Promise<void> {
-    const said = this.ids.who(req);
-    const caller: Caller = token
-      ? { name: token.name, kind: "agent", token: { id: token.id, by: token.by, level: token.level, expires: token.expires }, ...(said && said !== token.name ? { ignoredName: said } : {}) }
-      : { name: said, kind: this.ids.kind(req) };
-    let body: unknown = null;
-    if (req.method === "POST" && url.pathname.replace(/\/+$/, "") === UPLOAD_PATH) {
-      // a file for the library: its bytes as they come (server/agentlibrary.ts)
-      const bytes = await readUpload(req, res);
-      if (!bytes) return;
-      body = { bytes };
-    } else if (req.method === "POST") {
-      const r = await this.json(req, AGENT_BODY);
-      if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.`, hint: "Send a JSON object, with content-type: application/json." }, 400);
-      body = r.body;
-    }
-    // a request that waits (the inbox, the companion) learns that its asker went away: an agent's
-    // wait for messages ends with its connection, so that none is handed to nobody
-    const away = new AbortController();
-    res.on("close", () => {
-      if (!res.writableFinished) away.abort();
-    });
-    // the session an MCP server says it is (since 0.4.0): a wait from another is a new session's
-    const session = req.headers["x-visualproof-session"];
-    const a = await this.agents.handle({ method: req.method ?? "GET", path: url.pathname, query: url.searchParams, body, caller, base: this.publicUrl ?? `http://${hostOf(req)}`, signal: away.signal, ...(validSession(session) ? { session } : {}) });
-    if (away.signal.aborted) return;
-    if (a.text) return sendText(req, res, a.text.body, a.text.type, a.status);
-    if (a.file) return sendDownload(res, a.file);
-    if (a.gz) return sendGz(req, res, a.gz.body, a.gz.type);
-    sendJson(res, a.body, a.status, a.headers);
   }
 
   /** The answer to a request that needs a name and has none: the page asks for one (`who`). Where
@@ -255,7 +171,7 @@ export class App {
             hint: "Ask the person who shared with you for a new one (Share, then AI agent, in the page).",
           }, 401);
         if (path !== "/api/agent" && !path.startsWith("/api/agent/")) return sendJson(res, { error: "not found" }, 404);
-        return this.agent(req, res, url, t.ok);
+        return agentRoute(this, req, res, url, t.ok);
       }
       // a personal link (CollabSpec decision 9, server/invites.ts): it lets its holder in, as who
       // it says, and its cookie does from then on; a revoked one's cookie is forgotten, and lets
@@ -388,7 +304,7 @@ export class App {
       if (path === "/api/chat") return chat(this, req, res, url);
       if (path === "/api/chat/new") return chatNew(this, req, res);
       if (path === "/api/ask" || path === "/api/ask/answer") return ask(this, req, res, url);
-      if (path === "/api/agent" || path.startsWith("/api/agent/")) return this.agent(req, res, url);
+      if (path === "/api/agent" || path.startsWith("/api/agent/")) return agentRoute(this, req, res, url);
       // the views, each a shared board (ViewSpec.md)
       if (path === "/api/views" || path.startsWith("/api/views/")) return views(this, req, res, url);
       if (path === "/api/history" || path.startsWith("/api/history/")) return history(this, req, res, url);
@@ -405,7 +321,7 @@ export class App {
         return sendRevision(req, res, live, b.tag, () => b.text);
       }
       if (path === "/api/review" && req.method === "POST") return reviewPost(this, req, res, agent);
-      if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent, reader !== undefined);
+      if (path === "/api/export" || path.startsWith("/api/export/")) return exportRoute(this, req, res, url, agent, reader !== undefined);
       if (path === "/api/identity" && req.method === "GET") return identityGet(this, req, res, link, reader);
       if (path === "/api/identity" && req.method === "POST") return identity(this, req, res);
       if (path === "/api/presence" && req.method === "POST") return presence(this, req, res, agent);
@@ -532,6 +448,3 @@ export class App {
 
 /** an artwork's font file (assets/webfonts/) */
 const FONT_PATH = /^\/fonts\/(source-sans-3|source-serif-4|jost)-[a-z-]+\.woff2$/;
-
-/** the most an agent's request body may be (docs/agent-api/requests.md: 1 MB) */
-const AGENT_BODY = 1 << 20;
