@@ -135,6 +135,17 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   when no declaration is selected.
   - The code wraps, a continuation hanging four characters past its line's indentation; copying
     copies the source. Each line keeps its line break in the text, so hover positions count in it.
+  - **Line numbers** (the owner's decision of 2026-10-20): a gutter of the file's own line numbers,
+    muted, always shown, beside the code and beside the context above it (namespaces, opens,
+    variables), each at its real number — a command of the context at the line it starts on, once
+    for those Lean reads on one line; where the numbers are not contiguous, between the context and
+    the code and inside the context where lines were left out, a visible break (a dashed rule across
+    the gutter). A line that wraps is numbered on its first row only; its hanging indent stays as it
+    is. The gutter is not part of the text: copying, selecting and quoting lines into a comment give
+    the source alone, as before (a quote's header keeps its lines' numbers), and Lean's hovers and
+    positions count in the text, which the gutter is not in. A past build shows that build's
+    numbers; a declaration outside the project (Mathlib, Lean's core) its file's. The phone's window
+    shows them too, narrower. The exported document keeps none (ExportSpec: "without line numbers").
   - Each opening puts the following window in the middle, fitted to its code: at least 560 px wide
     where the screen allows, at most 92% × 88% of it, refitted per declaration until the reader
     moves or resizes it; no place is kept across openings or reloads. It moves by its title bar,

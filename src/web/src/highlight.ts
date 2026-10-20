@@ -61,15 +61,20 @@ const HANG_MAX = 24;
  *  width hangs its continuations a few characters further in (web/style.css). The text is the
  *  source's to the character, its line breaks included — each at the end of its line's element —
  *  so that offsets in it are offsets in the source (web/src/sourcewin.ts, positionAt) and copying
- *  it copies the source. A token across lines (a comment) is cut into one piece per line. */
-export function highlightLines(src: string, isRef?: (name: string, at: number) => RefAnswer): string {
+ *  it copies the source. A token across lines (a comment) is cut into one piece per line.
+ *
+ *  `first`: the line of the file the text starts at (from 1), for the source window's gutter
+ *  (web/src/gutter.ts): each line carries its number as `data-n`, which the style draws beside it,
+ *  outside the text. */
+export function highlightLines(src: string, isRef?: (name: string, at: number) => RefAnswer, first?: number): string {
   const lines = tokenLines(tokenizeLean(src));
   return src
     .split("\n")
     .map((text, k) => {
       const indent = Math.min(/^ */.exec(text)![0].length, HANG_MAX);
       const html = (lines[k] ?? []).map((t) => tokenHtml(t, isRef)).join("");
-      return `<span class="ln" style="--in:${indent}">${html}${k < lines.length - 1 ? "\n" : ""}</span>`;
+      const n = first !== undefined ? ` data-n="${first + k}"` : "";
+      return `<span class="ln"${n} style="--in:${indent}">${html}${k < lines.length - 1 ? "\n" : ""}</span>`;
     })
     .join("");
 }

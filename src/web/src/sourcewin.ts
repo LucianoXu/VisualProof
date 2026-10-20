@@ -42,6 +42,11 @@
 // excerpt means, and its answer wins — that is what links dot notation (`o.elim`) and anything
 // else only the elaborator can tell.
 //
+// Beside the code and the context, muted, are the file's own line numbers (the owner's decision of
+// 2026-10-20; web/src/gutter.ts): drawn by the style, outside the text, so that copying, quoting and
+// Lean's positions count in the source alone; a past build's are that build's, an outside file's
+// its own.
+//
 // Above the code, muted, is the context it is written in (TCBSpec.md, decision 4; shared/context.ts):
 // the namespaces, opens, variables, options in force there, as Lean, folded when long; the
 // `variable`s it seems to use are marked. An opinion records it with the text. Below the code of a
@@ -66,6 +71,7 @@ import type { Graph } from "../../shared/viewgraph.ts";
 import { outsideLink, packageWords } from "../../shared/outside.ts";
 import { cascadeRect, EDGE, FloatWindow } from "./floatwin.ts";
 import type { Rect, Size } from "./floatwin.ts";
+import { contextGutter, cutMarks, gutterDigits, rowMarks } from "./gutter.ts";
 import { escapeHtml, highlightLean, highlightLines, KEYWORDS, renderDoc, renderHover } from "./highlight.ts";
 import { genNote, interpretsHtml } from "./panel.ts";
 import type { PastGraph } from "./past.ts";
@@ -917,7 +923,7 @@ export class SourceWindow implements SourcePane {
         escapeHtml(shot.where),
         notes.join(""),
         this.contextHtml(got.text.split("\n"), shot.start, v.type ?? "", shot.text, shot.resolve, null) +
-          `<pre class="code src">${highlightLines(shot.text, (w) => shot.resolve(w))}</pre>` +
+          codeHtml(highlightLines(shot.text, (w) => shot.resolve(w), shot.start + 1), shot.start, shot.text) +
           (interpretsHtml(g, i) ? `<div class="sw-interprets">${interpretsHtml(g, i)}</div>` : "") +
           this.generatedHtml(v.name, [...(v.leanName ? [v.leanName] : []), ...(v.also ?? [])]),
       );
@@ -979,10 +985,14 @@ export class SourceWindow implements SourcePane {
     // what Lean said names the latest build's declarations, which a past graph may not hold
     const known = this.still ? undefined : this.memory.learned.get(key);
     const words: { word: string; at: number }[] = [];
-    const code = highlightLines(text, (w, off) => {
-      words.push({ word: w, at: off });
-      return known?.has(off) ? known.get(off) : resolve(w);
-    });
+    const code = highlightLines(
+      text,
+      (w, off) => {
+        words.push({ word: w, at: off });
+        return known?.has(off) ? known.get(off) : resolve(w);
+      },
+      at.start + 1,
+    );
     // Lean starts on the file now, so that the first hover finds it elaborated
     if (src.hash) {
       this.shown = { module: v.module, start: at.start, hash: src.hash };
@@ -992,7 +1002,7 @@ export class SourceWindow implements SourcePane {
       `${escapeHtml(place)}:${at.start + 1}–${at.end + 1}${edited ? " · present text" : ""}`,
       notes.join(""),
       this.contextHtml(lines, at.start, v.type ?? "", text, resolve, edited ? null : exactContext(src.contexts, v.name, src.hash)) +
-        `<pre class="code src">${code}</pre>` +
+        codeHtml(code, at.start, text) +
         // a rule beside the grammar it interprets, and the other way round
         (interpretsHtml(g, i) ? `<div class="sw-interprets">${interpretsHtml(g, i)}</div>` : "") +
         (v.gen !== undefined && !this.still ? `<div class="sw-print"><div class="sw-print-h">#print ${escapeHtml(v.name)}</div><pre class="code" data-sw-print>Asking Lean…</pre></div>` : "") +
@@ -1017,26 +1027,33 @@ export class SourceWindow implements SourcePane {
    *  its first lines and its namespaces and sections, with the `variable`s the declaration uses
    *  marked and always shown — those Lean included in it where the context is the elaborator's
    *  (`exact`, the usage pass's), else those that seem to be (a name of theirs in its statement or
-   *  its text). */
+   *  its text). Each command is numbered in the gutter at the line it is written on (its first),
+   *  a break before it where lines were left out, and under the last one where the code does not
+   *  follow it: as the context shows whole, and folded (web/src/gutter.ts). */
   private contextHtml(lines: string[], start: number, type: string, text: string, resolve: (w: string) => string | null, exact: FileContext | null): string {
     const ctx = contextLines(readContext(lines, start, exact));
     if (!ctx.length) return "";
     const used = usedVariables(ctx, [type, text], !!exact);
     const FIRST = 3, LONG = 6;
     const long = ctx.length > LONG;
+    // what is always shown: the first lines, the namespaces and sections it sits in, what it seems
+    // to use, and what holds for it alone
+    const kept = ctx.map((l, k) => !long || k < FIRST || l.kind === "namespace" || l.kind === "section" || l.kind === "mutual" || used.has(k) || / in$/.test(l.text));
+    const gutter = contextGutter(ctx.map((l) => l.line), kept, start + 1);
     let hidden = 0;
     const rows = ctx.map((l, k) => {
-      // what is always shown: the first lines, the namespaces and sections it sits in, what it
-      // seems to use, and what holds for it alone
-      const keep = !long || k < FIRST || l.kind === "namespace" || l.kind === "section" || l.kind === "mutual" || used.has(k) || / in$/.test(l.text);
+      const keep = kept[k];
       if (!keep) hidden++;
-      const cls = `sw-ctx-l${used.has(k) ? " used" : ""}${keep ? "" : " fold"}`;
+      // its gutter, as the context shows whole and folded
+      const marks = rowMarks(gutter.open[k], gutter.folded[k]);
+      const cls = `sw-ctx-l${used.has(k) ? " used" : ""}${keep ? "" : " fold"}${marks ? ` ${marks}` : ""}`;
       const tip = !used.has(k) ? "" : exact ? ` title="Lean included this variable in the declaration"` : ` title="A name it binds occurs in this declaration: Lean may include it"`;
-      return `<div class="${cls}"${tip}>${highlightLines(l.text, (w) => resolve(w))}</div>`;
+      return `<div class="${cls}"${tip}>${highlightLines(l.text, (w) => resolve(w), l.line > 0 ? l.line : undefined)}</div>`;
     });
     const more = hidden ? `${hidden} more` : "";
+    const cut = cutMarks(gutter.cut);
     return (
-      `<div class="sw-ctx${this.ctxOpen ? " open" : ""}${exact ? " exact" : ""}" aria-label="The context it is written in" title="${exact ? "The context as Lean elaborated it" : "The context, read from the file's text"}">` +
+      `<div class="sw-ctx${this.ctxOpen ? " open" : ""}${exact ? " exact" : ""}${cut ? ` ${cut}` : ""}" style="--gw:${gutterDigits(start + text.split("\n").length)}" aria-label="The context it is written in" title="${exact ? "The context as Lean elaborated it" : "The context, read from the file's text"}">` +
       `<div class="code">${rows.join("")}</div>` +
       (more ? `<button class="link sw-ctx-more" data-sw-ctx="${more}">${this.ctxOpen ? "fewer" : more}</button>` : "") +
       `</div>`
@@ -1165,7 +1182,7 @@ export class SourceWindow implements SourcePane {
     if (this.memory.learned.size > 64) this.memory.learned.delete(this.memory.learned.keys().next().value!);
     const pre = this.el.querySelector<HTMLElement>("pre.src");
     if (!pre || turn !== this.turn) return;
-    pre.innerHTML = highlightLines(text, (w, off) => (learned.has(off) ? learned.get(off) : resolve(w)));
+    pre.innerHTML = highlightLines(text, (w, off) => (learned.has(off) ? learned.get(off) : resolve(w)), start + 1);
     this.flashLines();
   }
 }
@@ -1177,6 +1194,13 @@ function offsetIn(root: Node, node: Node, off: number): number {
   r.setStart(root, 0);
   r.setEnd(node, off);
   return r.toString().length;
+}
+
+/** The code on show as the window draws it: its lines highlighted (`lines`, highlightLines from the
+ *  line after `start`, from 0, where `text` starts in its file), the gutter holding room for the
+ *  digits of its last line's number. */
+function codeHtml(lines: string, start: number, text: string): string {
+  return `<pre class="code src" style="--gw:${gutterDigits(start + text.split("\n").length)}">${lines}</pre>`;
 }
 
 /** "Open on GitHub" (DeploySpec decision 13): the declaration's lines in the build's commit, in a
