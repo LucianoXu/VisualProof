@@ -12,11 +12,21 @@
 // several parts or several declarations.
 //
 // Every handler takes a request already read (what was asked, and who asks) and gives back an
-// answer (a status, a JSON body, headers), so that the tests call it without HTTP; main.ts does the
-// HTTP. The list of endpoints below is also what GET /api/agent/endpoints says about them, and
-// what the entry (GET /api/agent) names of the most used, so the two cannot drift apart; the MCP
+// answer (a status, a JSON body, headers), so that the tests call it without HTTP; server/appagent.ts
+// does the HTTP. The list of endpoints below is also what GET /api/agent/endpoints says about them,
+// and what the entry (GET /api/agent) names of the most used, so the two cannot drift apart; the MCP
 // server's tools (server/mcptools.ts) take what each request needs from it. The documentation is
 // docs/agent-api/ (server/agentdocs.ts), served as GET /api/agent/docs.
+//
+// The handlers are by topic, as the documentation's are, each a function taking this API first:
+// what an agent reads first (server/agententry.ts), reading declarations (server/agentread.ts) and
+// what Lean says of them (server/agentlean.ts), targets and their TCB (server/agenttcb.ts), advice
+// (server/agentadvice.ts), following (server/agentfollow.ts), the Project's places and pins
+// (server/agentplaces.ts), the exported document (server/agentexport.ts), the timeline
+// (server/agentactivity.ts) and talking (server/agenttalk.ts); the graph they read is
+// server/agentgraph.ts's. Notes, views, the library, the history and asking to follow are endpoints
+// of their own modules (server/agentnotes.ts, server/agentviews.ts, server/agentlibrary.ts,
+// server/historyapi.ts, server/askfollow.ts), which the table takes as they are.
 //
 // What an agent says is advice (AgentSpec decision 2): its opinions are recorded marked `agent`,
 // and nothing that counts the review reads them (shared/review.ts), at every level. What it may
@@ -32,7 +42,6 @@ import { historyEndpoints, historyWorld } from "./historyapi.ts";
 import { PastBuilds } from "./pastdoc.ts";
 import type { LastHad, LostAnswer } from "../shared/lostfound.ts";
 import type { Identity } from "./versions.ts";
-import { withoutReasons } from "../shared/timeline.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MAX_PINNED } from "../shared/collab.ts";
@@ -56,7 +65,6 @@ import { libraryEndpoints } from "./agentlibrary.ts";
 import { askEndpoints } from "./askfollow.ts";
 import type { Asks } from "./askfollow.ts";
 import type { Library } from "./library.ts";
-import { noteNames } from "../shared/sticky.ts";
 import { viewEndpoints } from "./agentviews.ts";
 import type { ExportFile, Exporter } from "./export.ts";
 import type { HoverAnswer, PrintAnswer } from "./hover.ts";
@@ -80,6 +88,7 @@ import { keyPost, keysGet, targetPost, targets, tcb, trustPost, why } from "./ag
 import { companion, viewLink, viewPost } from "./agentfollow.ts";
 import { MAX_PINS, pins, place, undoPost } from "./agentplaces.ts";
 import { EXPORT_PARAMS, artwork, exportFileGet, exportGet, exportJob, exportPost } from "./agentexport.ts";
+import { activity } from "./agentactivity.ts";
 
 /** What agents may change on a server (`--agents`): nothing; advice and notes; or everything a
  *  person can do through the page, their opinions still advice (AgentSpec decision 9). */
@@ -117,7 +126,7 @@ export interface Answer {
   gz?: { type: string; body: Buffer };
 }
 
-/** A request as main.ts read it: the query for a GET, the JSON body for a POST. */
+/** A request as server/appagent.ts read it: the query for a GET, the JSON body for a POST. */
 export interface Ask {
   method: string;
   path: string;
@@ -256,7 +265,8 @@ interface Endpoint {
   /** its path; a last part `{name}` is any one part, read as the query parameter `name` */
   path: string;
   about: string;
-  /** a line for the entry, where it names the endpoint among the most used (server/agententry.ts, ENTRY) */
+  /** a line for the entry, where it names the endpoint among the most used (server/agententry.ts,
+   *  ENTRY) */
   brief?: string;
   /** the query parameters of a GET, the JSON fields of a POST */
   params: Record<string, string>;
@@ -458,62 +468,6 @@ export class AgentApi {
     return me.kind === "agent" && !!me.name && advice(this.world.review.data, name).some((o) => o.by === me.name && fresh(o, hash));
   }
 
-  // ---------------------------------------------------------------- reading
-
-  private activity(a: Ask): Answer {
-    const since = (a.query.get("since") ?? "").trim();
-    const limit = clampInt(a.query.get("limit"), 100, 1, 1000);
-    let after = "";
-    if (since) {
-      if (/^\d+$/.test(since)) {
-        // an event id: what came after it
-        const e = this.world.timeline.events.find((x) => x.id === Number(since));
-        after = e?.at ?? "";
-      } else if (!Number.isNaN(Date.parse(since))) after = new Date(since).toISOString();
-      else return fail(400, "since is neither a time nor an event id.", "Give since=<ISO time>, e.g. the `now` of your last answer, or an event's id.");
-    }
-    const d = this.world.review.data;
-    const out: Record<string, unknown>[] = [];
-    // what the review's logs record, as the page reads it
-    for (const [name, ops] of Object.entries(d.opinions))
-      for (const o of ops) {
-        out.push({ at: o.at, kind: "opinion", by: o.by, ...(o.recordedBy ? { recordedBy: o.recordedBy.by } : {}), agent: !!o.agent, name, verdict: o.verdict, ...(o.comment ? { comment: o.comment } : {}), ...(o.withdrawn ? { withdrawn: true } : {}) });
-        // its withdrawal (ReviewSpec decision 9): whose it was, and who typed it for them
-        const w = o.withdrawn;
-        if (w) out.push({ at: w.at, kind: "withdrawal", by: o.by, ...(w.recordedBy ? { recordedBy: w.recordedBy.by } : {}), agent: !!o.agent, name, verdict: o.verdict, of: o.at });
-      }
-    // what an agent did at level full is marked as an agent's, as its advice is
-    for (const [name, t] of Object.entries(d.targets)) out.push({ at: t.at, kind: "target", by: t.by, agent: !!t.agent, name });
-    for (const [target, marks] of Object.entries(d.keys)) for (const [name, m] of Object.entries(marks)) out.push({ at: m.at, kind: "key", by: m.by, agent: !!m.agent, target, name });
-    // the library's files and links (AttachmentSpec.md), as the review's history of them keeps
-    // them: what was done, and what to — a file by its hash and its title then, a link by its id,
-    // subject, label and file, an edit with what changed
-    const WHAT = { file: "added", "file-edit": "edited", "file-archive": "archived", "file-restore": "restored", link: "made", "link-edit": "edited", unlink: "removed" } as const;
-    for (const h of d.libraryHistory ?? []) {
-      const { op, at, by, agent, person: _person, ...rest } = h;
-      out.push({ at, kind: "sha" in h ? "file" : "link", what: WHAT[op], by, agent: !!agent, ...rest });
-    }
-    const undone = new Map<number, number>();
-    for (const e of this.world.timeline.events) if (e.kind === "undo") undone.set(e.of, e.id);
-    for (const e of this.world.timeline.events) {
-      // a note of the kind agents left about a declaration before notes were on the board: not read
-      if (e.kind === "note" && !("what" in e)) continue;
-      // what someone did says whether an agent did it
-      const who = "by" in e ? { agent: !!(e as { agent?: true }).agent } : {};
-      if (e.kind === "layout") {
-        // the operations themselves are the server's business: what moved, and whether it was undone
-        const { ops, undo: _u, ...rest } = e;
-        out.push({ ...rest, ...who, moved: ops.flatMap((o) => (o.op === "clear" ? [] : [o.key])).slice(0, 100), undoneBy: undone.get(e.id) ?? null });
-      } else out.push({ ...withoutReasons(e), ...who });
-    }
-    const about = (a.query.get("name") ?? "").trim();
-    // a note is about the declarations it names; a link, about the declaration it is on, or was on
-    // before an edit
-    const on = `decl(${about})`;
-    const kept = out.filter((e) => (!after || (e.at as string) > after) && (!about || e.name === about || e.target === about || (e.kind === "note" && typeof e.text === "string" && noteNames(e.text).includes(about)) || (e.kind === "link" && (e.subject === on || e.wasSubject === on)))).sort((x, y) => ((x.at as string) < (y.at as string) ? -1 : (x.at as string) > (y.at as string) ? 1 : 0));
-    return ok({ now: new Date().toISOString(), events: kept.slice(-limit), more: Math.max(0, kept.length - limit) });
-  }
-
   // ---------------------------------------------------------------- the table
 
   private table(): Endpoint[] {
@@ -679,7 +633,7 @@ export class AgentApi {
         method: "GET", path: "/api/agent/activity", brief: "the timeline", about: "The timeline, oldest first: opinions and advice, targets and key marks, files of the library added, retitled, archived or restored and links made, edited or removed (all from the review's logs), builds, TCB changes, targets taken off, prefixes trusted or no longer, views saved, renamed, rescoped, deleted or laid out afresh, notes added to a view or taken out of it, notes, layouts and their undoing.",
         params: { since: "an ISO time (e.g. the `now` of your last answer) or an event id: what came after", name: "optional: only what is about this declaration (opinions, advice, notes that name it, key marks, links on it; a target's own events)", limit: "default 100, at most 1000 (the newest)" },
         returns: "{now, events: [{at, kind, by?, agent?, …}] oldest first, more}; kinds: opinion, target, key (a key declaration as marked now: target, name), build, tcb, untarget, trust, untrust, view (a view saved, renamed, rescoped, deleted or laid out afresh: what, view, name, was?, scope; or a note of the project added to it or taken out of it: what items, note, text, shown), note (a note on a view written, edited or deleted: what, view, title, note, text), file (a file of the library: what is added, edited — its title, wasTitle the one before —, archived or restored; sha, title), link (what is made, edited or removed; id, subject, label, file, and an edit's changed (subject, label, place), wasSubject?, wasLabel?, auto? where VisualProof carried it with a renamed cluster), layout (with moved and undoneBy), undo, tool (the VisualProof version serving the site changed: from, to, setAside?); relayout only in a timeline kept from before views",
-        run: (a) => this.activity(a),
+        run: (a) => activity(this, a),
       },
       {
         method: "GET", path: "/api/agent/place", about: "Where a declaration or a cluster is on the Project view (for another view: GET /api/agent/views/view), in its parent cluster's coordinates (origin the parent's centre), as laid out and as pinned (and by whom); and what else is in the parent — declarations and clusters, each with its radius, where it is and whether it is pinned — nearest first, so that a pin can go where nothing is.",
