@@ -802,6 +802,11 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   advice, the comment box, **Approve**, **Comment**, **Speaking for**, **Withdraw** beside your
   opinion, the key mark, **☆ Mark as target**, and for a target its progress, its axioms outside the
   graph and its view.
+- **Fold all** / **Show all**, at the head of the opinions (*Opinions 3 · 2 earlier*), folds every
+  opinion to a line — who, approved or commented, when, *stale* — or shows them all in full, the
+  earlier and withdrawn ones under *Earlier*; the agents' advice folds with them. It is your own
+  reading preference, the same in the panel and every source window, kept in this browser. *What
+  changed* under a stale opinion opens on its own, folded or not.
 - **Approve** or **Comment** on the declaration (a comment needs text; an
   approval may carry one too); a new opinion replaces your earlier one, and the box empties once
   it is recorded. The first time, a window asks for the name your opinions are recorded
@@ -820,7 +825,7 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
 - **Withdraw** takes your current opinion back: it stands beside it in every review box. An
   approval goes at once; a comment asks first. Afterwards you have no opinion there — every
   status, count and list is as if you had given none, and an earlier opinion of yours does not
-  come back — but nothing is erased: the panel's **All opinions** keeps the opinion, faded, and the
+  come back — but nothing is erased: the opinions shown keep it under *Earlier*, faded, and the
   withdrawal at its time ("Alice withdrew their approval"), and Activity says it. Speaking for
   someone, it withdraws theirs, recorded by you. A new opinion of yours stands as any. Agents
   withdraw their own advice ([docs/agent-api](agent-api/advice.md)).

@@ -207,6 +207,9 @@ export const YOURS = [
   { id: "scroll", what: "scroll positions: the wheel off the canvas, a scrollbar" },
   { id: "sections", what: "folded sections of the side panel, the panel and the lost-and-found", where: "[data-sec], #lostfound .lf-archived > summary" },
   { id: "tcbOrder", what: "the TCB list's order", where: "[data-tcb-order]" },
+  // the review box's opinions all folded or all shown (ReviewSpec, "One review box", the owner's
+  // decision of 2026-10-20), a reading preference, and What changed under a stale one opened
+  { id: "opinions", what: "the review box's opinions, all folded or all shown, and What changed under a stale one", where: "[data-rv-fold], [data-rv-changes] > summary" },
   { id: "outline", what: "the outline's levels opened", where: "#outline .tw" },
   { id: "whatChanged", what: "\"What changed\" opened: the Time Machine's counts and the lists they open", where: "#tmbar .tm-sum, [data-tm-list], #tm-list" },
   { id: "legend", what: "the legend folded or open", where: "#legend" },

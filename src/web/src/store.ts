@@ -69,6 +69,9 @@ export interface Saved {
   scheme?: { review?: Scheme; other?: Scheme };
   /** the legend at the bottom left is open */
   legend?: boolean;
+  /** the review box's opinions folded to a line each, in every review box (ReviewSpec, "One review
+   *  box", the owner's decision of 2026-10-20); shown, each in full with the earlier ones, where absent */
+  opinionsFolded?: true;
   /** the Export window's choices last time (web/src/exportmodal.ts): the settings it sets (what a
    *  page before 2026-10-09 kept besides, its targets and preset, is not read) */
   export?: { settings?: Record<string, unknown> };

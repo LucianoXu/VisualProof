@@ -1,8 +1,10 @@
 // The review of one declaration (ReviewSpec, "What the page shows"): each reviewer's latest opinion
-// and the history behind it, the comment box and the buttons, the key mark, the target mark, and for
-// a target its progress, its view and linking it to another. It is one review box (the owner's
-// decision of 2026-10-19): the panel's and each source window's, following or pinned, are the same
-// box on their own declaration — the same controls, in the same order, under the same rules.
+// and the history behind it — all folded to a line each, or all shown, the earlier and withdrawn ones
+// too, by one toggle at their head, the reader's own (the owner's decision of 2026-10-20) —, the
+// comment box and the buttons, the key mark, the target mark, and for a target its progress, its view
+// and linking it to another. It is one review box (the owner's decision of 2026-10-19): the panel's
+// and each source window's, following or pinned, are the same box on their own declaration — the
+// same controls, in the same order, under the same rules.
 //
 // An opinion records the text the reviewer judged. Where it has gone stale, "What changed" shows
 // that text against the declaration's text now, line by line, so that a re-review reads the change
@@ -83,6 +85,12 @@ export interface ReviewHooks {
   submit(op: ReviewRequest): Promise<string | null>;
   /** tell the reader what was done, for a moment (an opinion withdrawn); else it is said in the box */
   said?(text: string): void;
+  /** whether the opinions are all shown, or all folded to a line each (ReviewSpec, "One review box",
+   *  the owner's decision of 2026-10-20): the reader's own, kept in this browser, the same in every
+   *  review box; shown where it is not kept */
+  opinionsShown?(): boolean;
+  /** show them all, or fold them all: every review box of the page is drawn again so */
+  showOpinions?(shown: boolean): void;
   /** a target's review (web/src/reviewqueue.ts): its review set, and how far it has come */
   queue(i: number): Queue;
   progress(i: number): Progress;
@@ -382,6 +390,11 @@ export class ReviewBox {
       this.hooks.linkHere?.(i);
       return true;
     }
+    // all the opinions folded, or all shown, in every review box (ReviewSpec, "One review box")
+    if (t.closest("[data-rv-fold]")) {
+      this.hooks.showOpinions?.(!this.opinionsShown());
+      return true;
+    }
     // the click opens or closes the disclosure after this: remember which way it goes
     const changes = t.closest("summary")?.parentElement;
     if (changes?.matches("details[data-rv-changes]")) {
@@ -434,6 +447,11 @@ export class ReviewBox {
     // what a target is, the server works out (server/reviewapi.ts)
     if (t.closest("[data-rv-target]")) return this.as(root, () => this.hooks.submit({ op: "target", name: v.name, on: !Object.hasOwn(R.data.targets, v.name) }));
     return false;
+  }
+
+  /** Whether the opinions are all shown (the reader's own, kept in this browser), or all folded. */
+  opinionsShown(): boolean {
+    return this.hooks.opinionsShown?.() ?? true;
   }
 
   /** Whether the review of declaration `i` compares a stale opinion with its source: drawn again
@@ -644,12 +662,14 @@ export class ReviewBox {
     // since it was quoted (CollabSpec decision 9)
     const by = findOpinion(this.hooks.review().data, this.g.nodes[j].name, r.by, r.at)?.by ?? r.by;
     this.flashing = { key: opinionRef(this.g.nodes[j].name, by, r.at), until: Date.now() + 3000, since: 0, shown: new WeakSet() };
+    // what it said is what is gone to: the opinions are shown, all of them, earlier ones too
+    if (!this.opinionsShown()) this.hooks.showOpinions?.(true);
     if (j !== i || !root) return this.hooks.go(j);
     if (!this.reveal(root)) this.told(root, `That opinion of ${r.by}'s is not in the review now.`);
   }
 
   /** Once the review is drawn in `root`: a quoted opinion being gone to flashes there — in the
-   *  history, opened, when it is not among the latest — and is scrolled to, once in each place.
+   *  history when it is not among the latest, the opinions shown — and is scrolled to, once in each place.
    *  Drawn again while it flashes, it flashes on from where it was. Whether it is there. */
   reveal(root: HTMLElement): boolean {
     const f = this.flashing;
@@ -762,16 +782,21 @@ export class ReviewBox {
       R.readOnly || R.blocked || o.agent
         ? ""
         : ` <button type="button" class="rv-quote rv-withdraw" data-rv-withdraw data-rv-by="${esc(o.by)}"${o.person ? ` data-rv-person="${esc(o.person)}"` : ""}${mine(o) ? "" : " hidden"} title="Withdraw this ${NOUN[o.verdict]}: afterwards there is no opinion of ${esc(o.by)}'s here (an earlier one is not restored); it stays in the history">Withdraw</button>`;
-    // `compare` (the latest ones): a stale opinion offers what changed since, and the reader's own
-    // can be withdrawn
+    // the opinions, all folded or all shown, by one toggle at their head, the reader's own (ReviewSpec,
+    // "One review box", the owner's decision of 2026-10-20): folded, a line for each person's current
+    // opinion — who, what, when, stale —; shown, each in full, the earlier and withdrawn ones after them
+    const shown = this.opinionsShown();
+    // `compare` (the latest ones): a stale opinion offers what changed since — a diff, not an
+    // opinion, with a toggle of its own whichever way the opinions are —, and the reader's own can
+    // be withdrawn
     const opinion = (o: Opinion, compare = false) => {
       const now = fresh(o, v.hash);
       return (
         // recorded for them by someone else: theirs, without the mark they did not give it under
         // (ReviewSpec decision 8)
-        `<div class="rv-op rv-${o.verdict}${now ? "" : " old"}${o.withdrawn ? " withdrawn" : ""}" data-rv-op="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person && !o.recordedBy ? VERIFIED : ""} ${VERB[o.verdict]}` +
-        ` <span class="muted">· ${ago(o.at)}${o.recordedBy ? ` · recorded by ${esc(o.recordedBy.by)}` : ""}${now ? "" : " · on an earlier version"}${o.withdrawn ? " · withdrawn" : ""}</span>${quote(o)}${compare ? withdraw(o) : ""}` +
-        (o.comment ? `<div class="rv-c md">${this.comment(o.comment, v.name)}</div>` : "") +
+        `<div class="rv-op rv-${o.verdict}${now ? "" : " old"}${o.withdrawn ? " withdrawn" : ""}${shown ? "" : " rv-line"}" data-rv-op="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person && !o.recordedBy ? VERIFIED : ""} ${VERB[o.verdict]}` +
+        ` <span class="muted">· ${ago(o.at)}${o.recordedBy ? ` · recorded by ${esc(o.recordedBy.by)}` : ""}${now ? "" : shown ? " · on an earlier version" : " · stale"}${o.withdrawn ? " · withdrawn" : ""}</span>${shown ? quote(o) : ""}${compare ? withdraw(o) : ""}` +
+        (shown && o.comment ? `<div class="rv-c md">${this.comment(o.comment, v.name)}</div>` : "") +
         `</div>` +
         // beside the opinion, not in it: a stale opinion is faded, what changed must read clearly
         (compare && !now ? this.changes(i, o) : "")
@@ -779,31 +804,40 @@ export class ReviewBox {
     };
     const now = current(d, v.name);
     const all = (Object.hasOwn(d.opinions, v.name) ? d.opinions[v.name] : []).filter((o) => !o.agent);
-    const ops = now.length ? now.map((o) => opinion(o, true)).join("") : `<div class="muted">${all.length ? "No opinions now." : "No opinions yet."}</div>`;
-    // the history: every opinion, and each withdrawal at its time (ReviewSpec decision 9), whose it
-    // was and, where someone spoke for them, who typed it
+    // each agent's latest advice, apart: what to look at first, not part of the review; folded and
+    // shown with the opinions
+    const adv = advice(d, v.name);
+    const earlier = all.filter((o) => !now.includes(o));
+    const gone = earlier.filter((o) => o.withdrawn).length;
+    // the head: how many opinions stand, how many came before, and the toggle — where there is
+    // something to fold
+    const toggle =
+      all.length || adv.length
+        ? `<button type="button" class="rv-fold" data-rv-fold aria-expanded="${shown}" title="${shown ? "Fold every opinion to a line — who, what, when — here and in every source window (kept in this browser)" : "Show every opinion in full, the earlier and withdrawn ones too, here and in every source window (kept in this browser)"}">${shown ? "Fold all" : "Show all"}</button>`
+        : "";
+    const ops =
+      `<div class="rv-ops-h"><span class="rv-ops-n">${now.length ? `Opinions <b>${now.length}</b>` : all.length ? "No opinions now" : "No opinions yet"}` +
+      (earlier.length ? ` <span class="muted">· ${earlier.length} earlier${gone ? `, ${gone} withdrawn` : ""}</span>` : "") +
+      `</span>${toggle}</div>` +
+      now.map((o) => opinion(o, true)).join("");
+    // shown, the history: the earlier opinions, and each withdrawal at its time (ReviewSpec decision
+    // 9), whose it was and, where someone spoke for them, who typed it
     const withdrawal = (o: Opinion) =>
       `<div class="rv-op rv-wd" data-rv-wd="${key(o)}"><span class="rv-dot"></span><b>${esc(o.by)}</b>${o.person && !o.withdrawn!.recordedBy ? VERIFIED : ""} withdrew their ${NOUN[o.verdict]}` +
       ` <span class="muted">· ${ago(o.withdrawn!.at)}${o.withdrawn!.recordedBy ? ` · recorded by ${esc(o.withdrawn!.recordedBy.by)}` : ""}</span></div>`;
-    const entries = all.flatMap((o) => [{ at: o.at, html: () => opinion(o) }, ...(o.withdrawn ? [{ at: o.withdrawn.at, html: () => withdrawal(o) }] : [])]);
+    const entries = earlier.flatMap((o) => [{ at: o.at, html: () => opinion(o) }, ...(o.withdrawn ? [{ at: o.withdrawn.at, html: () => withdrawal(o) }] : [])]);
     // in time order, an opinion before its withdrawal (a stable sort)
     entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
-    const gone = all.filter((o) => o.withdrawn).length;
-    const history =
-      all.length > now.length
-        ? `<details class="rv-hist"><summary>All ${all.length} opinions${gone ? ` · ${gone} withdrawn` : ""}</summary>${entries.map((x) => x.html()).join("")}</details>`
-        : "";
-    // each agent's latest advice, apart: what to look at first, not part of the review
-    const adv = advice(d, v.name);
+    const history = shown && entries.length ? `<div class="rv-hist"><div class="rv-hist-h">Earlier</div>${entries.map((x) => x.html()).join("")}</div>` : "";
     const advised = adv.length
       ? `<div class="rv-advice"><div class="rv-adv-h">${BOT}Advice from agents <span class="muted">· not counted</span></div>` +
         adv
           .map((o) => {
             const on = fresh(o, v.hash);
             return (
-              `<div class="rv-adv rv-adv-${o.verdict}${on ? "" : " old"}" data-rv-op="${key(o)}"><b>${esc(agentName(o.by))}</b> ${o.verdict === "approve" ? `suggests: <b class="rv-adv-v">approve</b>` : `<b class="rv-adv-v">comments</b>`}` +
-              ` <span class="muted">· ${ago(o.at)}${on ? "" : " · on an earlier version"}</span>${quote(o)}` +
-              (o.comment ? `<div class="rv-adv-c md">${this.comment(o.comment, v.name)}</div>` : "") +
+              `<div class="rv-adv rv-adv-${o.verdict}${on ? "" : " old"}${shown ? "" : " rv-line"}" data-rv-op="${key(o)}"><b>${esc(agentName(o.by))}</b> ${o.verdict === "approve" ? `suggests: <b class="rv-adv-v">approve</b>` : `<b class="rv-adv-v">comments</b>`}` +
+              ` <span class="muted">· ${ago(o.at)}${on ? "" : shown ? " · on an earlier version" : " · stale"}</span>${shown ? quote(o) : ""}` +
+              (shown && o.comment ? `<div class="rv-adv-c md">${this.comment(o.comment, v.name)}</div>` : "") +
               `</div>`
             );
           })

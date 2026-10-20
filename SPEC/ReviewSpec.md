@@ -88,12 +88,23 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   before approve is one order, `VERDICT_ORDER` (shared/review.ts), read by every status, count,
   colour and query.
 - **The review box**: each reviewer's latest opinion (stale ones marked, with What changed) and the
-  history; the agents' advice apart; the comment box, Approve (solid green, saying where the approval
+  history, all folded or all shown (below); the agents' advice apart; the comment box, Approve (solid green, saying where the approval
   stands, below) and Comment (solid blue)
   — the box empties when the opinion is taken and keeps its text when refused — and Speaking for;
   the key mark; ☆ Mark as target; for a target, its progress (key declarations, then all), the
   axioms outside the graph with their Approve and Comment, and its view (Its view, Key view, Link to
   this view: ViewSpec decision 29).
+- **The opinions fold all or nothing** (the owner's decision of 2026-10-20): one toggle at their head,
+  *Opinions N · M earlier, K withdrawn — Fold all* (or *Show all*), folds them all or shows them all,
+  in every review box at once — the panel's and each source window's —, a reading preference, the
+  reader's own (CollabSpec, "Yours"), kept in the browser; shown where none is kept.
+  - **Folded**: a line for each person's current opinion — who, approved or commented, when, *stale*
+    where it is on an earlier version, *recorded by* where someone spoke for them, Withdraw beside
+    the one the box records for — and nothing of its text; the agents' advice a line each too.
+  - **Shown**: each current opinion in full, with Quote, then *Earlier*: the opinions replaced or
+    withdrawn and each withdrawal at its time; the advice in full.
+  - **What changed** under a stale opinion is a diff, not an opinion: it keeps its own toggle,
+    closed at first, folded or shown alike. A quoted opinion gone to shows them all.
 - **Approve shows the state** (the owner's decision of 2026-10-20), wherever a review box stands, of
   the approval of whoever the box records for — the reader, or the person they speak for (decision
   8): *Approve* where they have no current approval (none, a comment, or withdrawn); *Approved ✓*,
@@ -107,8 +118,8 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   same controls, in the same order, under the same rules. Nothing of it is the panel's alone.
 - **Withdraw** (decision 9) stands beside the current opinion of whoever the box records for — the
   reader, or the person they speak for — in every review box. An approval goes at once; a comment is
-  asked about first; the page says what it did. The history lists an opinion withdrawn, faded, and
-  its withdrawal at its time ("Alice withdrew their approval"; "recorded by" the typist where they
+  asked about first; the page says what it did. The history (the opinions shown) lists an opinion
+  withdrawn, faded, and its withdrawal at its time ("Alice withdrew their approval"; "recorded by" the typist where they
   spoke for its author).
 - **The key mark** (ExportSpec decision 1): where the reader's focus is a target whose TCB holds the
   declaration — trusted or not, in the project or outside it (the owner's decision of 2026-10-19) —

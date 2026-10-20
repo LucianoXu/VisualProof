@@ -216,6 +216,14 @@ export function reviewPart(page: Page): ReviewPart {
     ensureReviewer: () => page.people.ensure(),
     submit,
     said: (text) => page.say(text),
+    // the opinions folded or shown, the reader's own, kept in this browser: every review box at once,
+    // the panel's and each source window's
+    opinionsShown: () => !store.data.opinionsFolded,
+    showOpinions: (shown) => {
+      store.data.opinionsFolded = shown ? undefined : true;
+      store.save();
+      page.showSelected();
+    },
     queue: (i) => flow.queue(i),
     progress: (i) => flow.progress(i),
     reviewLens: (i) => page.reviewTarget(i),

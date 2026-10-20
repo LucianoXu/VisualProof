@@ -160,6 +160,10 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     tall: "the sheet's TCB list (decision 20)",
     monitor: "the panel's TCB list (decision 33)",
   },
+  opinions: {
+    tall: "the review box, in the sheet and in the windows docked in its place (decisions 20, 21)",
+    monitor: "the review box, in the panel's pane and the windows' column (decisions 33, 34)",
+  },
   outline: {
     tall: "the drawer (decision 19)",
     monitor: "the side panel (decision 32)",
