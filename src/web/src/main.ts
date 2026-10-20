@@ -25,7 +25,7 @@
 // and what each part gives the others.
 
 import type { FileStatus } from "../../shared/build.ts";
-import type { ChatMessage, PresenceView } from "../../shared/collab.ts";
+import type { PresenceView } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
@@ -35,7 +35,6 @@ import type { Query } from "../../shared/query.ts";
 import { applyEvent, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole } from "../../shared/review.ts";
 import { reviewCount } from "../../shared/reviewqueue.ts";
-import { noteExcerpt } from "../../shared/sticky.ts";
 import { briefWhen } from "../../shared/titles.ts";
 import { fixedScope, focusFrom, PROJECT, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
@@ -70,7 +69,7 @@ import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
-import { clusterIndex, clusterOn, clusterPick, declPick, readSelection, remove, restsOn, selectionQuery, selectionText, shownOf, TOOLS } from "./selection.ts";
+import { clusterIndex, clusterOn, clusterPick, declPick, readSelection, remove, selectionQuery, selectionText, shownOf, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -84,10 +83,8 @@ import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut } from
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES, statusCodes } from "./status.ts";
 import type { Scheme } from "./status.ts";
-import { excerpt, PUBLIC, Talk } from "./talk.ts";
 import { ChatWindow, keepStripClear } from "./chatwin.ts";
-import { chipOf, copyLink, noteIn, siteLink, siteOrigins, withoutKeys } from "./chatlinks.ts";
-import type { Chip } from "./chatlinks.ts";
+import { noteIn, siteOrigins } from "./chatlinks.ts";
 import { LinearForm } from "./linear.ts";
 import { isPhone, isTall, Phone, tallInsets } from "./phone.ts";
 import { MonitorLayout, monitorInsets } from "./monitor.ts";
@@ -108,8 +105,9 @@ import { buildWhen, TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
 import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
-import { $, MODE_NAME, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
+import { $, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { talkPart } from "./pagetalk.ts";
 import { peoplePart } from "./pagepeople.ts";
 import { tabsPart } from "./pagetabs.ts";
 import { sharePart } from "./pageshare.ts";
@@ -187,6 +185,7 @@ export interface MainPart {
   boardPanel: BoardPanel;
   sync: BoardSync;
   hideLevel: (key: string) => void;
+  chatWin: ChatWindow;
   syncInsets: () => void;
   renderStrip: () => void;
   syncFocus: () => void;
@@ -196,8 +195,6 @@ export interface MainPart {
   legend: Legend;
   parts: PageParts;
   whereIAm: () => PresenceView;
-  talk: Talk;
-  chipFor: (url: string) => Chip | null;
   goWhere: (v: PresenceView, once: boolean) => Promise<boolean>;
   openSnapshot: (text: string) => Promise<void>;
   openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
@@ -1459,12 +1456,13 @@ async function boot(): Promise<void> {
   const chatWin = new ChatWindow($("#convo"), store, {
     // under the bars, not under the review strip, which comes and goes with the view
     insets: () => ({ left: canvas.insets.left, top: $("#viewbar").getBoundingClientRect().bottom + 8 }),
-    expanded: () => talk.expanded(),
+    expanded: () => page.talk.expanded(),
     toggled: (open) => {
       $("#talk-btn").setAttribute("aria-pressed", String(open));
       if (open) $("#talk-notice").hidden = true;
     },
   });
+  page.chatWin = chatWin;
   // the following strip steps aside from it rather than cover its box
   keepStripClear($("#following"), $("#convo"));
   // a phone: the bar's ⋯, the side panel's drawer, the panel's sheet (web/src/phone.ts)
@@ -1659,98 +1657,7 @@ async function boot(): Promise<void> {
   /** Where this page is: what the others are told, and what Share tells an agent. */
   const whereIAm = (): PresenceView => presenceOf(parts.read, nav.tabs.map((t) => t.id));
   page.whereIAm = whereIAm;
-  /** The declaration a name in an agent's message stands for: a full name, or the one declaration
-   *  whose name ends with it; null where there is none, or several. */
-  const resolveName = (name: string): string | null => {
-    if (!/^[\p{L}\p{N}_'!?.«»₀-₉]+$/u.test(name)) return null;
-    if (page.g.byName.has(name)) return name;
-    const tail = "." + name;
-    let found: string | null = null;
-    for (const n of page.g.nodes)
-      if (n.name.endsWith(tail)) {
-        if (found) return null;
-        found = n.name;
-      }
-    return found;
-  };
-  // the conversations (CollabSpec decision 13, web/src/talk.ts): Everyone and the reader's own
-  // agents, in the window the reader opens, moves, resizes and collapses (chatWin, above). A link
-  // followed from a message — a declaration, a link of this site — is the reader's own tool changing
-  // what is followed: it ends following (decision 4), and nothing else there does
-  const talk = new Talk($("#convo"), {
-    data,
-    store,
-    win: chatWin,
-    me: () => ({ name: page.people.name, person: page.people.person?.id ?? null }),
-    ensureName: () => page.people.ensure(),
-    place: whereIAm,
-    peers: () => page.people.peers,
-    resolve: resolveName,
-    go: (name) => {
-      page.people.unfollow();
-      const i = page.g.byName.get(name);
-      if (i !== undefined) page.go(i);
-    },
-    open: (hash) => {
-      page.people.unfollow();
-      page.openAddress(hash);
-    },
-    chip: (url) => chipFor(url),
-    seenLink: async () => copyLink({ origin: site.base, pathname: location.pathname }, await page.seenHash()),
-    unkeyed: (text) => withoutKeys(text, site.origins),
-    counted: (n, marked) => {
-      const badge = $("#talk-badge");
-      badge.hidden = n === 0;
-      badge.textContent = n > 99 ? "99+" : String(n);
-      $("#talk-at").hidden = !marked;
-      $("#talk-btn").title = `Conversations: everyone on this page, and your agents${n ? ` — ${n} new in Everyone` : ""}${marked ? "; you were mentioned, or an agent of yours answered" : ""}`;
-    },
-    mentioned: (channel, m) => mentionNotice(channel, m),
-  });
-  page.talk = talk;
-  if (kept) talk.restoreDrafts(kept.talk);
-  /** The conversation button: the window opened, expanded; open and expanded, closed. A read-only
-   *  reader has none (CollabSpec decision 11), nor has a snapshot. */
-  const talkBtn = $("#talk-btn");
-  talkBtn.hidden = !!reader || !!data.snapshot;
-  talkBtn.addEventListener("click", () => {
-    if (chatWin.open && !chatWin.collapsed) chatWin.close();
-    else chatWin.show(true);
-  });
-  /** A mention of the reader where they do not read: a notice under the button, which opens the
-   *  window on it, for a while. */
-  let noticeTimer: ReturnType<typeof setTimeout> | null = null;
-  let noticeOf = PUBLIC;
-  const mentionNotice = (channel: string, m: ChatMessage) => {
-    const el = $("#talk-notice");
-    noticeOf = channel;
-    el.innerHTML = `<b>${escapeHtml(m.from)}</b> mentioned you${channel === PUBLIC ? " in Everyone" : ""}: “${escapeHtml(excerpt(m.text, 90))}”`;
-    el.title = "Open the conversation";
-    el.hidden = false;
-    if (noticeTimer) clearTimeout(noticeTimer);
-    noticeTimer = setTimeout(() => (el.hidden = true), 12_000);
-  };
-  $("#talk-notice").addEventListener("click", () => {
-    $("#talk-notice").hidden = true;
-    talk.open(noticeOf);
-  });
-  // left open by the reader: open again, as they left it
-  if (store.data.chatOpen && !talkBtn.hidden) chatWin.show();
-  /** A link of this site's chip (CollabSpec decision 13, web/src/chatlinks.ts): named by what the page
-   *  knows — a view's title, a note's words; null for any other link and one it cannot read. */
-  const chipFor = (url: string): Chip | null => {
-    const l = siteLink(url, site.origins);
-    if (!l) return null;
-    return chipOf(l, {
-      view: (id) => (id === PROJECT ? "the Project" : views.summary(id) ? views.title(id) : null),
-      note: (id, ofView, view) => {
-        const text = ofView ? (view ? views.rec(view)?.notes?.find((n) => n.id === id)?.text : undefined) : projectNotes.get(id)?.text;
-        return text ? noteExcerpt(text, 40) : null;
-      },
-      tool: (t) => (restsOn(t) ? "Rests on" : MODE_NAME[t]),
-    });
-  };
-  page.chipFor = chipFor;
+  Object.assign(page, talkPart(page));
   Object.assign(page, peoplePart(page));
   /** Go where a reader's followed state says (CollabSpec decision 4): their view (a tab opened for it
    *  if need be), their tool, their selection (from before selections were queries, or from an agent
