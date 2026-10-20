@@ -24,7 +24,6 @@
 // What they share is the page (web/src/page.ts): what it is given here, the state they keep together,
 // and what each part gives the others.
 
-import type { FileStatus } from "../../shared/build.ts";
 import type { ClusterMode, GitSource, Layout } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
@@ -33,11 +32,8 @@ import { keyMarked, keyMarks } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole } from "../../shared/review.ts";
-import { reviewCount } from "../../shared/reviewqueue.ts";
 import { briefWhen } from "../../shared/titles.ts";
 import { fixedScope, PROJECT, versionName, viewFocus } from "../../shared/views.ts";
-import { BoardPanel } from "./boardpanel.ts";
-import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
 import { dataSource } from "./data.ts";
@@ -52,7 +48,6 @@ import { dragMoves } from "./drag.ts";
 import { Notes } from "./notes.ts";
 import { Stickies } from "./sticky.ts";
 import { ProjectNotes } from "./projectnotes.ts";
-import { Outline } from "./outline.ts";
 import { Panel } from "./panel.ts";
 import { READ_ONLY } from "./people.ts";
 import { deployWaiting } from "./buildpop.ts";
@@ -61,11 +56,10 @@ import { Editor } from "./editor.ts";
 import { keptFocus, readerFocus } from "./focus.ts";
 import { kindDot, ringed } from "./axiomring.ts";
 import { holdTheme } from "./theme.ts";
-import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
-import { clusterIndex, clusterOn, clusterPick, declPick, remove, selectionQuery, shownOf } from "./selection.ts";
+import { clusterIndex, clusterPick, declPick, remove, selectionQuery, shownOf } from "./selection.ts";
 import type { KeysOf, Pick, Root } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -83,7 +77,6 @@ import { LinearForm } from "./linear.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import { sourceLine, titleOf, untilStill } from "./artwork.ts";
-import { SHIELD, Trust } from "./trust.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
 import { Store } from "./store.ts";
 import { ViewNav } from "./viewnav.ts";
@@ -98,6 +91,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { sidePart } from "./pageside.ts";
 import { layoutPart } from "./pagelayout.ts";
 import { schemePart } from "./pagescheme.ts";
 import { followPart } from "./pagefollow.ts";
@@ -162,6 +156,7 @@ export interface MainPart {
   openSourceAt: (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => void;
   shownCluster: () => number;
   showSelected: () => void;
+  notes: Notes;
   canvas: GraphCanvas;
   ownOpen: Map<string, boolean>;
   stickies: Stickies;
@@ -169,16 +164,6 @@ export interface MainPart {
   ART_KEYS: Set<string>;
   art: ArtFrame;
   artReach: () => void;
-  shut: (section: string) => boolean;
-  toggleSection: (section: string) => void;
-  trust: Trust;
-  boardPop: Popover;
-  trustPop: Popover;
-  files: () => Map<string, FileStatus>;
-  outline: Outline;
-  boardPanel: BoardPanel;
-  sync: BoardSync;
-  hideLevel: (key: string) => void;
   renderStrip: () => void;
   syncFocus: () => void;
   openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
@@ -412,7 +397,7 @@ async function boot(): Promise<void> {
     keep: async (snapshot) => {
       if (reader) return READ_ONLY;
       if (!(await page.people.ensureLayout())) return "Keeping a build in a view is recorded under your name: give one first.";
-      const why = await sync.keepVersion(snapshot);
+      const why = await page.sync.keepVersion(snapshot);
       page.renderTabs();
       return why;
     },
@@ -766,7 +751,7 @@ async function boot(): Promise<void> {
     unpin: (i) => {
       if (toView(i) < 0) return;
       canvas.unpin(toView(i));
-      sync.sharePins();
+      page.sync.sharePins();
     },
     isPinned: (i) => !frozen() && toView(i) >= 0 && canvas.isPinned(toView(i)),
     close: () => {
@@ -832,9 +817,9 @@ async function boot(): Promise<void> {
     previewCluster: (c) => canvas.previewCluster(c),
     zoom: (c) => void page.zoomCluster(c),
     canZoom: (c) => !reader && page.clusterScope(c) !== null,
-    hide: (c) => hideLevel(canvas.layout.clusters[c].key),
-    trust: (c) => trust.state(canvas.layout.clusters[c], cm()),
-    trustClicked: (c, anchor) => trust.clicked(canvas.layout.clusters[c], cm(), anchor),
+    hide: (c) => page.hideLevel(canvas.layout.clusters[c].key),
+    trust: (c) => page.trust.state(canvas.layout.clusters[c], cm()),
+    trustClicked: (c, anchor) => page.trust.clicked(canvas.layout.clusters[c], cm(), anchor),
     // a past build's files are not the build status of now, and its modules are its graph's
     fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
     stateLabel: (st) => STATE_LABEL[st],
@@ -1009,6 +994,7 @@ async function boot(): Promise<void> {
   }
 
   const notes = new Notes($("#notes"));
+  page.notes = notes;
   /** What lies over the canvas, where no card goes: the bar, the tabs, the side panel, the
    *  declaration's panel while open, the strip, the eyes, the legend. */
   const covering = ["#bar", "#tabs", ".views-wrap", "#tmbar", "#tm-list", "#tm-kept", "#lightup", "#selbar", "#side", "#panel.open", "#lensbar", "#zoom", "#legend", "#activity.open", "#lostfound.open", "#board-pop", "#trust-list", "#eyes-pop"];
@@ -1082,14 +1068,14 @@ async function boot(): Promise<void> {
       tip.hidden = false;
     },
     pinsChanged: () => {
-      sync.sharePins();
+      page.sync.sharePins();
       linear.refresh();
       const i = selected();
       if (i !== null) panel.show(i);
     },
     foldChanged: () => {
-      sync.shareFolds();
-      outline.render();
+      page.sync.shareFolds();
+      page.outline.render();
       clusterPanel.refresh();
       page.showLevel();
     },
@@ -1285,152 +1271,7 @@ async function boot(): Promise<void> {
   stickies.onRender = () => linear.refresh();
   /** the board the notes were last drawn for */
   let stickiesOn = "";
-
-  // the sections a reader folds away: the targets, and the board's filter (folded until the reader
-  // opens it)
-  const shut = (section: string) => store.isShut(section);
-  page.shut = shut;
-  const toggleSection = (section: string) => {
-    store.toggleShut(section);
-    if (section === "targets") page.targetList.render();
-    else boardPanel.render();
-  };
-  page.toggleSection = toggleSection;
-
-  // what is trusted without review, in a popover from the side panel (web/src/trust.ts)
-  const trust = new Trust($("#trust-list"), $("#trust-pop"), {
-    review: () => ({ data: page.review.data, blocked: blocked(), readOnly: !!data.snapshot || pastShown() || !!reader, ...(pastShown() ? { note: PAST_REVIEW } : reader ? { note: READ_ONLY_REVIEW } : {}) }),
-    graph: () => page.g,
-    // each target counts what its review holds under the trust asked about (shared/reviewqueue.ts)
-    targets: () =>
-      Object.keys(page.review.data.targets)
-        .map((name) => ({ name, i: page.g.byName.get(name) }))
-        .filter((t): t is { name: string; i: number } => t.i !== undefined)
-        .map((t) => ({ name: t.name, count: (d) => reviewCount(page.g, d, t.i) })),
-    ensureReviewer: () => page.people.ensure(),
-    submit,
-    show: (p) => page.goToPrefix(p),
-  });
-  page.trust = trust;
-
-  // The side panel holds the targets and the cluster tree; over the tree, two buttons open the rest
-  // beside it (decided 2026-10-08, the page made simpler): the board's settings (⚙ Board: its scope,
-  // clustering, depth, Re-layout) and what is trusted (Trusted, with how many prefixes).
-  const boardPop = new Popover($("#board-btn"), $("#board-pop"), {
-    place: () => besideSide($("#board-btn"), $("#board-pop")),
-    changed: (open) => (open ? boardPanel.render() : boardPanel.reset()),
-  });
-  page.boardPop = boardPop;
-  const trustPop = new Popover($("#trusted-btn"), $("#trust-list"), {
-    place: () => besideSide($("#trusted-btn"), $("#trust-list")),
-    // the question it asks, and the name that question may ask for, are part of it
-    keep: "#trust-pop, #modal",
-    changed: (open) => open && trust.render(),
-  });
-  page.trustPop = trustPop;
-  /** The Trusted button: a shield, and how many prefixes are trusted. */
-  const renderTrusted = () => {
-    const n = page.review.data.trusted.length;
-    $("#trusted-btn").innerHTML = `<span class="tl-shield">${SHIELD}</span>Trusted <span class="side-n">${n}</span>`;
-    if (trustPop.open) trust.render();
-  };
-
-  const files = () => new Map((page.build?.files ?? []).map((f) => [f.module, f]));
-  page.files = files;
-  const outline = new Outline($("#outline"), {
-    // a row is its cluster: clicked with the tool, and gone to
-    select: (c, shift) => {
-      if (page.clickOn(pickCluster(c), shift) && shownCluster() === c) canvas.flyToCluster(c);
-    },
-    picked: (c) => page.picks.some((p) => !!p.root && clusterOn(p.root, canvas.layout, cm()) === c),
-    toggleFold: (c) => canvas.toggleFold(c),
-    isFolded: (c) => canvas.folded.has(c),
-    isCollapsed: (c) => canvas.isCollapsed(c),
-    stateOf: (c) => {
-      if (pastShown()) return "";
-      const f = page.fileIndex.get(canvas.layout.clusters[c].key);
-      return f && STATE_LABEL[f.state] ? `st-${f.state}` : "";
-    },
-    trustCell: (c) => trust.cell(canvas.layout.clusters[c], cm()),
-    trustClicked: (c, row) => trust.clicked(canvas.layout.clusters[c], cm(), row),
-    hide: (c) => hideLevel(canvas.layout.clusters[c].key),
-  });
-  page.outline = outline;
-  page.fileIndex = files();
-
-  // the board's settings, in the ⚙ Board popover: its scope as chips (web/src/boardpanel.ts)
-  const boardPanel: BoardPanel = new BoardPanel($("#board"), $("#board-note"), {
-    view: () => {
-      const b = nav.board;
-      if (!b) return null;
-      let own = 0;
-      for (let i = 0; i < page.g.projectCount; i++) own += b.bs.set[i];
-      return { rec: b.rec, title: views.title(b.id), own, outside: b.bs.count - own };
-    },
-    setScope: (q): Promise<string | null> => sync.setScope(q),
-    snapshot: () => !!data.snapshot,
-    shut,
-    toggle: toggleSection,
-  });
-  page.boardPanel = boardPanel;
-
-  // the board on show, shared: this page's changes out, the others' in (web/src/boardsync.ts)
-  const sync: BoardSync = new BoardSync(views, nav, {
-    canvas,
-    outline,
-    boardPanel,
-    notes,
-    snapshot: !!data.snapshot,
-    stream: () => page.people.stream,
-    me: () => page.people.name,
-    colorOf: (name) => page.people.colorOf({ name }),
-    lost: () => page.people.lost(),
-    tabsChanged: () => page.renderTabs(),
-    notesChanged: () => stickies.render(),
-    boardChanged: () => linear.refresh(),
-    levelChanged: () => page.showLevel(),
-    activityChanged: () => page.activity.changed(),
-    hint: (text) => page.say(text),
-    writeAddress: (push) => page.writeAddress(push),
-    // a preview of the view at another build is arranged by nobody here (web/src/views.ts); a view
-    // kept at a past build is arranged as any (the owner's decision of 2026-10-10)
-    frozen: () => (frozen() ? frozenWhy() : null),
-    // the view's own focus, or its link, changed: the review follows where the focus in force did
-    focusChanged: () => {
-      const was = page.focusWas;
-      syncFocus();
-      if (page.focusWas !== was) page.apply();
-    },
-    // a target linked elsewhere, or its view deleted: its panel says so
-    linksChanged: () => showSelected(),
-  });
-  page.sync = sync;
-
-  /** Hide a level of the board on show by its cluster's key, for everyone on it (ViewSpec decision
-   *  24): the outline's rows, a cluster's panel and the canvas's menu call it. */
-  const hideLevel = (key: string) => void sync.hideLevel(key);
-  page.hideLevel = hideLevel;
-  /** The levels the board on show hides, in ⚙ Board: how many, Show all, and each with Show. */
-  const renderHidden = () => {
-    const keys = nav.board?.rec.hidden[cm()] ?? [];
-    const list = $("#hidden-list");
-    $("#hidden-levels").innerHTML = keys.length
-      ? `Hidden levels: ${keys.length} — <button class="link" data-show-all title="Show every hidden level again, for everyone on this board">show all</button>`
-      : `<span class="muted" title="Hide a level from its row in the side panel, or from its panel: what it holds moves up into its parent">None hidden</span>`;
-    list.hidden = !keys.length;
-    list.innerHTML = keys
-      .map((k) => {
-        const name = k.replace("⟨external⟩", "External");
-        return `<div class="hl-row"><span class="hl-key" title="${escapeHtml(name)}">${escapeHtml(name)}</span><button class="link" data-show="${escapeHtml(k)}" title="Show this level again, for everyone on this board">show</button></div>`;
-      })
-      .join("");
-  };
-  $("#board-pop").addEventListener("click", (e) => {
-    const t = e.target as HTMLElement;
-    const one = t.closest<HTMLElement>("[data-show]")?.dataset.show;
-    if (one !== undefined) return void sync.setHidden([one], false);
-    if (t.closest("[data-show-all]")) void sync.setHidden([...nav.board.rec.hidden[cm()]], false);
-  });
+  Object.assign(page, sidePart(page));
   Object.assign(page, layoutPart(page));
 
   /** The review strip, wherever the review has a focus (ReviewSpec, "Reviewing a target"; ViewSpec
@@ -1517,16 +1358,16 @@ async function boot(): Promise<void> {
     const followed = page.followSelection();
     page.targetTcbs.clear();
     views.reviewChanged();
-    if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => boardPanel.render());
+    if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => page.boardPanel.render());
     page.syncStatus();
-    trust.reviewChanged();
-    renderTrusted();
+    page.trust.reviewChanged();
+    page.renderTrusted();
     // what is lit reads the review when a pick does (key declarations, trust, statuses), and the
     // key graph's edges under Keys always: lit again; else what shows the review is drawn again
     const q = selectionQuery(page.picks);
     if (followed || S.mode === "keys" || (q && readsReview(q))) page.apply();
     else {
-      outline.render();
+      page.outline.render();
       // a visitor's colour by status, and its diamond, are the review's too
       page.drawVisitors();
       renderStrip();
@@ -1534,7 +1375,7 @@ async function boot(): Promise<void> {
       page.renderSelBar();
     }
     page.activity.changed();
-    boardPanel.render();
+    page.boardPanel.render();
     page.renderTabs();
     papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
@@ -1661,7 +1502,7 @@ async function boot(): Promise<void> {
     await views.load();
     const id = r.view.id;
     const ok = await tm.leaveFor(() => nav.show(id, at));
-    sync.afterPost();
+    page.sync.afterPost();
     if (!ok) return `“${name}” is made, kept at that build: it is in Views.`;
     // the tabs were hidden while it was shown: drawn again now, its tab brought into sight
     page.renderTabs();
@@ -1694,7 +1535,7 @@ async function boot(): Promise<void> {
     if (b.id !== stickiesOn) stickies.reset();
     stickiesOn = b.id;
     stickies.render();
-    outline.setLayout(L, `${b.id}\u0000${m}`);
+    page.outline.setLayout(L, `${b.id}\u0000${m}`);
     canvas.setBuild(b.past ? null : page.build?.files ?? null);
     // the whole project's layout holds the outside world; a scope without it hides it
     canvas.setShowExternals(b.bs.whole ? b.bs.outside : true);
@@ -1705,8 +1546,8 @@ async function boot(): Promise<void> {
     page.applyScheme();
     page.showLevel();
     page.syncPeers();
-    boardPanel.render();
-    renderHidden();
+    page.boardPanel.render();
+    page.renderHidden();
     page.apply();
     syncPast();
   };
