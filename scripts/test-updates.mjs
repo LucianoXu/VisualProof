@@ -15,6 +15,7 @@ import { execFile, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -128,7 +129,14 @@ try {
   writeFileSync(join(proj, "M.lean"), "namespace N\ndef a : Nat := 0\ndef b : Nat := a\nend N\n");
   const graph = { schema: 1, roots: ["M"], modules: [{ name: "M", imports: [] }], nodes: [{ name: "N.a", kind: "def", module: "M", type: "Nat", ax: 0, hash: "ha" }, { name: "N.b", kind: "def", module: "M", type: "Nat", ax: 0, hash: "hb" }], externals: [{ name: "Nat", kind: "inductive", module: "Init.Prelude", ax: 0 }], edges: [[1, 0, 1], [0, 2, 1]], axioms: [], axiomSets: [[]], stats: { folded: 0, metaDropped: 0, ms: 1 } };
   writeFileSync(join(tmp, "graph.json"), JSON.stringify(graph));
-  const port = 4300 + Math.floor(Math.random() * 40);
+  // a port the system says is free, not one picked from a range: a machine's own services may be on
+  // any of them
+  const port = await new Promise((ok) => {
+    const s = createNetServer().listen(0, "127.0.0.1", () => {
+      const p = s.address().port;
+      s.close(() => ok(p));
+    });
+  });
   const cache = join(tmp, "cache");
   const site = join(tmp, "site");
   server = spawn(process.execPath, [main, "serve", proj, "--root", "M", "--graph", join(tmp, "graph.json"), "--port", String(port), "--site", site, "--cache", cache, "--jobs", "0"], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -158,9 +166,11 @@ try {
     tab = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
     await tab.goto(`${page}/#mode=plain&s=N.b`);
     await tab.waitForSelector("#loader.gone", { state: "attached", timeout: 60_000 });
-    // the tour of a first visit, closed
+    // the welcome of a first visit, declined where it is offered (Esc would clear the selection too:
+    // the tour is offered, never started by itself)
     await sleep(1500);
-    await tab.keyboard.press("Escape");
+    const notNow = tab.getByRole("button", { name: "Not now" });
+    if (await notNow.isVisible()) await notNow.click();
     const box = tab.locator("textarea[data-rv-comment]").first();
     await box.waitFor({ timeout: 30_000 });
     await box.fill("a comment being written");

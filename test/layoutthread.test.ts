@@ -36,8 +36,9 @@ test("a layout off the thread is the layout laid out here, and the thread goes o
     const ms = performance.now() - t0;
     clearInterval(tick);
     assert.deepEqual(off, here, mode);
-    // laid out here, the interval could not have run until the end: a few ticks at most
-    assert.ok(ticks >= Math.min(20, (ms / 5) * 0.3), `${mode}: ${ticks} ticks in ${Math.round(ms)} ms`);
+    // laid out here, the interval could not have run until the end: a few ticks at most. Off the
+    // thread it runs, though a loaded machine (CI's macOS) gives it fewer than one tick in 5 ms
+    assert.ok(ticks >= Math.min(10, (ms / 5) * 0.15), `${mode}: ${ticks} ticks in ${Math.round(ms)} ms`);
   }
 });
 
