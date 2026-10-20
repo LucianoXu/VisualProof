@@ -167,7 +167,7 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
 - **The name** is the one given, or "<maker>'s AI" (the maker's name shortened to keep within 60
   characters), numbered " 2", " 3", … while another token in force has it in any case, fixed at
   creation. With a token the name and kind headers are **ignored, not refused**.
-- **Scope** (server/main.ts): a `Bearer vpa_…` is looked at before the access key. A token above
+- **Scope** (server/app.ts): a `Bearer vpa_…` is looked at before the access key. A token above
   the server's level is refused when made (400); the level is held to `--agents` as it is now. The
   page's endpoints (`/api/share/agents`, `…/prompt`, `…/revoke`) refuse agents (403) and, but the
   list, need a name; the prompt, the token's maker (decision 7: the personal link where the record

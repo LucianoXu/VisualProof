@@ -938,7 +938,7 @@ export class Views {
 
   // ---------------------------------------------------------------- the page's endpoints
 
-  /** A request under /api/views, read by main.ts: what the page asks, under the name it gives. An
+  /** A request under /api/views, read by appsite.ts: what the page asks, under the name it gives. An
    *  agent may use them too, within what `--agents` allows (AgentSpec decision 9): opening a view
    *  is reading; everything else, deleting a view and laying one out afresh included, is level
    *  full, recorded as the agent's. A private reader's changes are recorded without a name, and

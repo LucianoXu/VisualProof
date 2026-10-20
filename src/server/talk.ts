@@ -27,7 +27,7 @@
 // many a minute. A person's message in the public channel keeps the tokens of the agents it is handed
 // to (`to`, the agents it mentions that were listed as it was written), which is told to nobody.
 // Revoking a token, or its expiry, ends its wait at once. Who may read and write which channel is
-// server/main.ts's to check (shared/collab.ts, madeBy), and which page is sent which message
+// server/apptalk.ts's to check (shared/collab.ts, madeBy), and which page is sent which message
 // server/live.ts's.
 //
 // A session that replaces another knows nothing of what the page still shows (the owner's decisions

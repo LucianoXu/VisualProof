@@ -137,7 +137,7 @@ export function headerText(s: string): string {
  *  in the agents' answers. This is where a private reader's anonymity lives: whatever arranges a
  *  board — pins, folds, re-layouts, scopes and clusterings, views made, renamed and deleted, notes
  *  left on a board — takes its author from here, through server/views.ts (`handle`, whose `me` is
- *  this) and main.ts (an undo). The review is not layout: opinions, targets, key marks and trust
+ *  this) and appsite.ts (an undo). The review is not layout: opinions, targets, key marks and trust
  *  take the caller's own name, and need one. */
 export function layoutAuthor(caller: { name: string | null; private?: unknown }): string | null {
   return caller.private ? null : caller.name;

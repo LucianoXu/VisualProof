@@ -1,6 +1,6 @@
 // Agent tokens (AgentSpec decision 7): sharing with an AI agent hands it a credential of its own,
 // never the server's key. A person makes one from Share for one agent; the token fixes the agent's
-// name and what it may do, lasts a few days, reaches the agents' API only (server/main.ts), and can
+// name and what it may do, lasts a few days, reaches the agents' API only (server/app.ts), and can
 // be revoked from Share by anyone with a name.
 //
 // A token is `vpa_<id>_<secret>`: the prefix makes one recognisable wherever it is pasted or leaks
@@ -111,7 +111,7 @@ export class AgentTokens {
   }
 
   /** Make a token for an agent: the token (for its prompt) and its record. The name and level are
-   *  checked by the caller (server/main.ts); the name is used as given, numbered when an agent in
+   *  checked by the caller (server/appshare.ts); the name is used as given, numbered when an agent in
    *  force has it already; `by` is a person's name, and `person` their personal link's id where an
    *  invited person makes it (`makerPerson`: who its maker is, AgentSpec decision 7). */
   create(o: { name: string; by: string; person?: string | null; level: AgentLevel; days: number; now?: number }): { token: string; record: TokenRecord } {
@@ -139,7 +139,7 @@ export class AgentTokens {
     return { token: tokenOf(record), record };
   }
 
-  /** A token in force, whole, for its prompt to be shown again (server/main.ts); null when there is
+  /** A token in force, whole, for its prompt to be shown again (server/appshare.ts); null when there is
    *  no such token in force — an ended one is never shown. */
   token(id: string, now = Date.now()): { token: string; record: TokenRecord } | null {
     const r = this.inForce(now).find((x) => x.id === id);

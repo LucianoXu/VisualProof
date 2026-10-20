@@ -1,4 +1,4 @@
-// The server as a client meets it (server/main.ts, server/live.ts): bodies too large answered and
+// The server as a client meets it (server/app.ts, server/live.ts): bodies too large answered and
 // the connection closed, a fault answered 500, event streams bounded and closed when they do not
 // read, presence that only a page's own stream can speak for, only the graph's modules served, and
 // the access cookie named per instance; what a page has already not sent again, and what it is

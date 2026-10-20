@@ -1,5 +1,5 @@
 // The library's routes for pages (AttachmentSpec decisions 1–11): `/api/library/…`, behind the same
-// access check as the page (main.ts lets a request get here only once it is in). What they do is
+// access check as the page (app.ts lets a request get here only once it is in). What they do is
 // server/library.ts's, which the agents' endpoints call too (server/agentlibrary.ts); here are only
 // what HTTP needs: who asks, the body — a file's bytes as they are, sent with the file's name in the
 // query, or JSON — and answers that are bytes (a file, a page, a clip), sent so that a browser never
@@ -69,13 +69,13 @@ function readBytes(req: IncomingMessage, limit: number): Promise<Buffer> {
 }
 
 /** An uploaded file's bytes, the body as it is; or null, the request answered already (413) where it
- *  is larger than a file of the library may be. The agents' upload reads its body so too (main.ts). */
+ *  is larger than a file of the library may be. The agents' upload reads its body so too (appagent.ts). */
 export async function readUpload(req: IncomingMessage, res: ServerResponse): Promise<Buffer | null> {
   try {
     return await readBytes(req, MAX_FILE);
   } catch (e) {
     if (!(e instanceof TooLarge)) throw e;
-    // the rest is read and thrown away, and the answer goes once it has all come, as main.ts's
+    // the rest is read and thrown away, and the answer goes once it has all come, as send.ts's
     // tooLarge does: a connection closed while the client still sends is reset on some systems
     let done = false;
     const answer = () => {

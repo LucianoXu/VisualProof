@@ -275,7 +275,7 @@ export function artNameId(kind: "cluster" | "decl", s: string): string {
 }
 
 /** The most an artwork's names hidden, its names shown, and its targets chosen each take in what
- *  presence carries, in bytes of their JSON: a heartbeat is at most 16 KB (server/main.ts), and the
+ *  presence carries, in bytes of their JSON: a heartbeat is at most 16 KB (server/apptalk.ts), and the
  *  rest of where a reader is has room beside them. Names by selection are kept as what differs from
  *  As shown, so that a few names hidden or added are a few names carried. */
 export const ART_NAMES_BYTES = 4000;
