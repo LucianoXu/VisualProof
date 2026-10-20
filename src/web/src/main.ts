@@ -25,7 +25,6 @@
 // and what each part gives the others.
 
 import type { FileStatus } from "../../shared/build.ts";
-import type { PresenceView } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
@@ -36,7 +35,7 @@ import { applyEvent, emptyReview, logFileName, problemsText, readEvent, validPer
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole } from "../../shared/review.ts";
 import { reviewCount } from "../../shared/reviewqueue.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { fixedScope, focusFrom, PROJECT, versionName, viewFocus } from "../../shared/views.ts";
+import { fixedScope, PROJECT, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
@@ -56,8 +55,6 @@ import { ProjectNotes } from "./projectnotes.ts";
 import { Outline } from "./outline.ts";
 import { Panel } from "./panel.ts";
 import { READ_ONLY } from "./people.ts";
-import { applyOwn, presenceOf } from "./surfaces.ts";
-import type { PageParts } from "./surfaces.ts";
 import { deployWaiting } from "./buildpop.ts";
 import { githubBlob } from "../../shared/deploy.ts";
 import { Editor } from "./editor.ts";
@@ -69,7 +66,7 @@ import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
-import { clusterIndex, clusterOn, clusterPick, declPick, readSelection, remove, selectionQuery, selectionText, shownOf, TOOLS } from "./selection.ts";
+import { clusterIndex, clusterOn, clusterPick, declPick, remove, selectionQuery, shownOf } from "./selection.ts";
 import type { KeysOf, Pick, Root, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -78,8 +75,8 @@ import { takeKept } from "./reload.ts";
 import type { Kept } from "./reload.ts";
 import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
-import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
-import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut } from "../../shared/sharesnap.ts";
+import { clusterSubject, fileOf, PAST_LINK } from "../../shared/library.ts";
+import { snapshotIn } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES, statusCodes } from "./status.ts";
 import type { Scheme } from "./status.ts";
@@ -95,7 +92,6 @@ import { SHIELD, Trust } from "./trust.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
 import { Store } from "./store.ts";
 import { ViewNav } from "./viewnav.ts";
-import { readVisitors, shareVisitors } from "./visitors.ts";
 import type { Place } from "./viewnav.ts";
 import { Views } from "./views.ts";
 import { LayoutQueue } from "./layoutqueue.ts";
@@ -107,6 +103,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { followPart } from "./pagefollow.ts";
 import { talkPart } from "./pagetalk.ts";
 import { peoplePart } from "./pagepeople.ts";
 import { tabsPart } from "./pagetabs.ts";
@@ -193,10 +190,6 @@ export interface MainPart {
   ownScheme: () => Scheme;
   chooseScheme: (s: Scheme) => void;
   legend: Legend;
-  parts: PageParts;
-  whereIAm: () => PresenceView;
-  goWhere: (v: PresenceView, once: boolean) => Promise<boolean>;
-  openSnapshot: (text: string) => Promise<void>;
   openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
   timeMachine: (at?: TimeMachineAt) => void;
   wholeReview: WholeReview<ReviewWhole>;
@@ -1607,153 +1600,9 @@ async function boot(): Promise<void> {
     keyEdges: () => S.mode === "keys",
   });
   page.legend = legend;
-  /** What those following this reader see (CollabSpec decision 4, the owner's decision of
-   *  2026-10-11: what you see is followed), part by part as web/src/surfaces.ts declares them: how
-   *  each is read into presence, and how a followed reader's is applied here — the place's parts
-   *  together (`follow`, below), the others each on its own. */
-  const parts: PageParts = {
-    read: {
-      view: () => ({ view: nav.board.id, scope: nav.query(), clusterMode: cm() }),
-      // in the Time Machine, the build browsed (HistorySpec decision 18)
-      history: () => (tm.active && tm.snapshot !== null ? { history: { snapshot: tm.snapshot } } : {}),
-      camera: () => ({ cam: { ...canvas.cam } }),
-      tool: () => ({ mode: S.mode }),
-      selection: () => ({ selection: selectionText(page.picks) }),
-      // the reader's own focus, where they chose one (ViewSpec decision 28), and their visitors
-      // (decision 27)
-      focus: () => (page.mine !== undefined ? { focus: page.mine } : {}),
-      visitors: () => (page.visitors.length ? { visitors: shareVisitors(page.visitors, (k) => canvas.visitorPos(k)) } : {}),
-      panel: () => ({ sel: page.shown && "decl" in page.shown ? page.shown.decl : null }),
-      // the source windows, the following one and those pinned (decided 2026-10-09)
-      sources: () => ({
-        source: sources.open,
-        ...(sources.following?.collapsed ? { sourceCollapsed: true } : {}),
-        ...(sources.pinned.length ? { pinned: sources.pinned.map((p) => ({ decl: p.name, collapsed: p.collapsed })) } : {}),
-      }),
-      // the reference window (AttachmentSpec decision 11)
-      paper: () => (papers.state() ? { paper: papers.state()! } : {}),
-      activity: () => ({ activity: page.activity.state() }),
-      lostFound: () => ({ lostFound: { open: page.lostDrawer.open } }),
-      // the reader's own, under an artwork's, which the artwork's part carries
-      colouring: () => ({ scheme: ownScheme() }),
-      edges: () => ({ edges: S.showEdges }),
-      linear: () => ({ linear: linear.shown }),
-      artwork: () => ({ artwork: art.view() }),
-    },
-    // what this page shows is this reader's own once following ends, so it is kept as shown: the
-    // colouring and the edges in this browser, as the reader's own choice is
-    apply: {
-      activity: (v) => page.activity.mirror(v.activity!),
-      lostFound: (v) => page.lostDrawer.toggle(v.lostFound!.open),
-      colouring: (v) => {
-        if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
-      },
-      edges: (v) => page.setEdges(v.edges!),
-      linear: (v) => (v.linear ? void linear.show("followed") : linear.hide("reader", "followed")),
-      artwork: (v) => art.follow(v.artwork ?? null),
-    },
-  };
-  page.parts = parts;
-  /** Where this page is: what the others are told, and what Share tells an agent. */
-  const whereIAm = (): PresenceView => presenceOf(parts.read, nav.tabs.map((t) => t.id));
-  page.whereIAm = whereIAm;
+  Object.assign(page, followPart(page));
   Object.assign(page, talkPart(page));
   Object.assign(page, peoplePart(page));
-  /** Go where a reader's followed state says (CollabSpec decision 4): their view (a tab opened for it
-   *  if need be), their tool, their selection (from before selections were queries, or from an agent
-   *  that does not say: what their panel tells of, under their tool), camera and source window — the
-   *  place, in one step — then the build they browse, and the other parts each that they say.
-   *  Following does it each time the followed reader moves; a link with a snapshot of what its sharer
-   *  saw does it once (`once`, the owner's decision of 2026-10-12), and the reader is free after it:
-   *  where its view is gone, the place is taken on the board on show. Resolves to whether the view
-   *  was reached. */
-  const goWhere = async (v: PresenceView, once: boolean): Promise<boolean> => {
-    const mode = TOOLS.includes(v.mode as Tool) ? (v.mode as Tool) : S.mode;
-    const { id, scope } = views.whereIs(v);
-    // under Keys, whose key declarations is the view's to say: its focus to begin with, the target
-    // linked to it first where nothing set it
-    const rec = id ? views.rec(id) : undefined;
-    const reviewed = rec ? focusFrom(rec) ?? null : null;
-    const chosen = v.selection !== undefined ? readSelection(v.selection) : v.sel ? [declPick(mode, v.sel, keysFor({ decl: v.sel }, reviewed))] : [];
-    // and their own focus, where they chose one (ViewSpec decision 28)
-    const to: Place = { mode, picks: selectionText(chosen), shown: v.sel ? { decl: v.sel } : shownOf(chosen.at(-1)), cam: v.cam, ...(v.focus !== undefined ? { focus: v.focus } : {}), visitors: readVisitors(v.visitors) };
-    // views are not switched in the Time Machine: it is left first, and opened again there
-    if (tm.active && id !== tm.view) await tm.close();
-    if (id === nav.board.id) page.place(to, false);
-    else if (!(id && (await nav.select(id, to))) && scope) await nav.open(scope, to);
-    const reached = nav.board.id === id || (scope !== null && nav.query() === scope);
-    if (once && !reached) page.place(to, false);
-    // following ended while their view was being opened (the reader's own act): nothing more of the
-    // followed reader's is taken — their build, their windows —, and the windows the reader has
-    // opened since are their own, nothing of the followed reader's closing them (CollabSpec, "What
-    // following leaves")
-    const ended = () => !once && !page.people.following;
-    // where they are in the Time Machine (HistorySpec decision 18): the same build, or none
-    if (!ended()) {
-      if (v.history) {
-        if (!tm.active) await tm.open({ snapshot: v.history.snapshot });
-        else if (tm.snapshot !== v.history.snapshot) await tm.show(v.history.snapshot);
-      } else if (tm.active) await tm.close();
-    }
-    page.writeAddress(false);
-    if (ended()) return reached;
-    // what their panels and their board show besides: Activity, the lost-and-found, the colouring,
-    // the edges — each their page says (an older one says none: this reader's stay)
-    applyOwn(v, parts.apply);
-    // their reference window, as theirs is; from a link, once the source windows are open, whose
-    // pairing would otherwise open another beside them
-    if (!once) papers.mirror(v.paper);
-    // their source windows, mirrored in this reader's, each where this page puts it: the one
-    // following their selection, and those they pinned that this page's graph has; a past build
-    // has none
-    if (!pastShown())
-      sources.mirror({
-        following: v.source ? { decl: selected(), collapsed: v.sourceCollapsed === true } : null,
-        pinned: (v.pinned ?? []).flatMap((w) => {
-          const i = page.g.byName.get(w.decl);
-          return i === undefined ? [] : [{ decl: i, collapsed: w.collapsed }];
-        }),
-      });
-    if (once) {
-      papers.mirror(v.paper);
-      // the windows are this reader's own from now on, as when following ends
-      sources.release();
-      papers.unfollowed();
-    }
-    return reached;
-  };
-  page.goWhere = goWhere;
-
-  /** Open a link's snapshot of what its sharer saw (CollabSpec decision 7, the owner's decision of
-   *  2026-10-12), on the board its address opened: what still makes sense is applied once, as
-   *  starting to follow applies it, the camera framing the region of the board the sharer framed;
-   *  one short line says what could not be shown. */
-  const openSnapshot = async (text: string) => {
-    const shot = await readSnapshot(text, canvas.screen);
-    if (!shot) return say("This link's snapshot of what its sharer saw could not be read: it opens on its view alone.");
-    // the build browsed, the reference window's file and its link, where they are still here
-    if (shot.view.history) await tm.load();
-    const { view, gone } = sortOut(shot.view, { build: (id) => tm.snaps.some((s) => s.id === id), file: (sha) => !!fileOf(page.review.data, sha), link: (id) => !!linkOf(page.review.data, id) });
-    const v: PresenceView = { mode: S.mode, sel: null, source: false, clusterMode: cm(), cam: null, view: nav.board.id, scope: null, tabs: [], ...view };
-    // a view nobody keeps was opened by the address's query, at the build it carries: the snapshot's
-    // id for it may be gone, its query is the same
-    if (v.scope && nav.query() === v.scope) v.view = nav.board.id;
-    gone.view = !(await goWhere(v, true));
-    // what the board's graph (a past build's, in the Time Machine) does not hold, and a focus on what
-    // is no target now
-    const picked = readSelection(v.selection).flatMap((p) => (p.root && "decl" in p.root ? [p.root.decl] : []));
-    Object.assign(gone, goneNames(v, picked, { decl: (n) => page.g.byName.has(n), target: (n) => Object.hasOwn(page.review.data.targets, n) }));
-    // the region framed again, now that the panels the snapshot opened leave the board its room
-    if (shot.region) {
-      syncInsets();
-      canvas.jumpTo(camOf(shot.region, canvas.screen));
-    }
-    // an artwork's frame holds what the sharer's held
-    if (v.artwork) art.follow(v.artwork);
-    const line = missingLine(gone);
-    if (line) say(line);
-  };
-  page.openSnapshot = openSnapshot;
   /** Open a link's artwork recipe (ExportSpec decision 20, shared/artrecipe.ts) on the board its
    *  address opened, the selection it carries made: resolved against this board, the artwork mode
    *  opened with what it says (not kept as this reader's settings until they change one), the whole
@@ -2053,7 +1902,7 @@ async function boot(): Promise<void> {
   if (notOpened) say(notOpened);
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
-  if (snap) await openSnapshot(snap);
+  if (snap) await page.openSnapshot(snap);
   // a link to a note (Copy link, CollabSpec decision 13): the note shown, on the board it opened
   const noteLink = noteIn(location.hash);
   if (noteLink) page.showNote(noteLink.ofView ? nav.board.id : "", noteLink.id);
