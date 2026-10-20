@@ -66,8 +66,12 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
        (the side panel's drawer button, which a click opens; a window collapsed to its pill), else
        nothing.
      - **Who is shown**: never a private reader's pointer (it would show them), nor a read-only
-       reader's; agents have none. A private or read-only follower sees the room's. There is no
-       setting to hide one's own: whoever is followed is watched anyway.
+       reader's; agents have none. A private follower sees the room's, and counts as a follower, so
+       that the followed reader's page sends its pointer. A read-only follower is seen by nobody
+       (decision 11), so it never makes a page send: it is sent the pointers of a room its followed
+       reader is in through others. *Open*: whether a page followed by read-only readers alone sends
+       its pointer, which the server would have to ask of it — telling it that someone unseen
+       follows. There is no setting to hide one's own: whoever is followed is watched anyway.
      - **Nothing of it ends following**: the pointers let every press through, and the marks at an
        edge are the reader's own.
 5. **The timeline** (Activity) records what changes the shared state: the review's events and the

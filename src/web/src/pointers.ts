@@ -312,6 +312,9 @@ function leadTo(root: Element | null, r: Root): Found | null {
   } else if (root && onScreen(root)) lead = { el: root, what: "sw" in r ? "in its source window" : "in the reference window" };
   if (!lead) return null;
   const b = lead.el.getBoundingClientRect();
+  // what covers it (a window docked over the bar) leaves nothing to point by
+  const hit = typeof document.elementFromPoint === "function" ? document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2) : lead.el;
+  if (!hit || !(hit === lead.el || lead.el.contains(hit))) return null;
   return { x: (b.left + b.right) / 2, y: b.bottom, box: { left: b.left, top: b.top, right: b.right, bottom: b.bottom }, lead };
 }
 
@@ -467,6 +470,7 @@ export class Pointers {
   private hooks: PointerHooks;
   private others = new Map<string, Other>();
   private frame = 0;
+  private later: ReturnType<typeof setTimeout> | null = null;
   /** what this page said last, and when; what it has to say next */
   private sent = { at: "null", sel: "null", when: 0 };
   private wait: ReturnType<typeof setTimeout> | null = null;
@@ -642,7 +646,7 @@ export class Pointers {
     const still = this.still?.matches ?? false;
     const shownIds = new Set(drawnOf([...this.others.values()], now));
     const latest = [...this.others.values()].filter((o) => shownIds.has(o.id));
-    let again = false;
+    let again = false, held = false;
     for (const o of this.others.values()) {
       const on = latest.includes(o);
       const age = now - o.moved;
@@ -678,9 +682,11 @@ export class Pointers {
         m.hidden = !r;
         if (r) Object.assign(m.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.right - r.left}px`, height: `${r.bottom - r.top}px` });
       });
-      if (rects.length) again = true;
+      if (rects.length) held = true;
     }
     if (again) this.request();
+    // only selections held still: drawn again a few times a second, as the reader scrolls
+    else if (held && !this.later) this.later = setTimeout(() => ((this.later = null), this.request()), 150);
   }
 
   /** The mark at the edge of what holds a place scrolled away ("↓ Alice"), while it moves; a click
