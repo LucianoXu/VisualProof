@@ -37,7 +37,7 @@ import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole 
 import { reviewCount } from "../../shared/reviewqueue.ts";
 import { noteExcerpt } from "../../shared/sticky.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
+import { fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
@@ -60,7 +60,7 @@ import { People, READ_ONLY, personKey } from "./people.ts";
 import { Asking, askMark } from "./askfollow.ts";
 import type { AskFollow } from "../../shared/askfollow.ts";
 import { PeerMenu } from "./peermenu.ts";
-import { applyOwn, followedOf, presenceOf } from "./surfaces.ts";
+import { applyOwn, presenceOf } from "./surfaces.ts";
 import type { PageParts } from "./surfaces.ts";
 import { deployWaiting } from "./buildpop.ts";
 import { githubBlob } from "../../shared/deploy.ts";
@@ -83,25 +83,21 @@ import type { Kept } from "./reload.ts";
 import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
-import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, writeSnapshot } from "../../shared/sharesnap.ts";
+import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES, statusCodes } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { Tabs } from "./tabs.ts";
-import { Share } from "./share.ts";
 import { excerpt, ownAgents, PUBLIC, stateWords, Talk } from "./talk.ts";
 import { ChatWindow, keepStripClear } from "./chatwin.ts";
 import { chipOf, copyLink, noteIn, siteLink, siteOrigins, withoutKeys } from "./chatlinks.ts";
 import type { Chip } from "./chatlinks.ts";
-import { planDoc } from "../../shared/doc/sections.ts";
-import { ExportModal } from "./exportmodal.ts";
 import { LinearForm } from "./linear.ts";
 import { isPhone, isTall, Phone, tallInsets } from "./phone.ts";
 import { MonitorLayout, monitorInsets } from "./monitor.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import { sourceLine, titleOf, untilStill } from "./artwork.ts";
-import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { SHIELD, Trust } from "./trust.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
@@ -121,6 +117,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { sharePart } from "./pageshare.ts";
 import { timelinePart } from "./pagetimeline.ts";
 import { selectionPart } from "./pageselection.ts";
 import { addressPart } from "./pageaddress.ts";
@@ -205,7 +202,6 @@ export interface MainPart {
   tabs: Tabs;
   focusMenu: FocusMenu;
   openView: (id: string) => Promise<void>;
-  exportModal: ExportModal;
   timeMachine: (at?: TimeMachineAt) => void;
   wholeReview: WholeReview<ReviewWhole>;
   takeChange: (c: ReviewChange) => void;
@@ -1199,7 +1195,7 @@ async function boot(): Promise<void> {
       if (page.menuOn) page.menuOn.linear = true;
     },
     // the Export window, at the right, beside which the line is drawn
-    beside: () => (exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
+    beside: () => (page.exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
     say: (text) => say(text),
     changed: (on) => {
       linearBtn.classList.toggle("on", on);
@@ -1789,7 +1785,7 @@ async function boot(): Promise<void> {
       sources.release();
       papers.unfollowed();
       artReach();
-      if (!people.following && linear.followed && !exportModal.isOpen) say(`The board stays in the linear form you followed: ${isPhone() ? "⋯ at the bottom → Linear form puts" : "o, or ⋯ at the bottom → Linear form, puts"} it away.`);
+      if (!people.following && linear.followed && !page.exportModal.isOpen) say(`The board stays in the linear form you followed: ${isPhone() ? "⋯ at the bottom → Linear form puts" : "o, or ⋯ at the bottom → Linear form, puts"} it away.`);
     },
     // what is left to review where the review has a focus is the reader's own; who may read which of
     // the conversations, theirs
@@ -2153,72 +2149,7 @@ async function boot(): Promise<void> {
     else if (id !== null) void openView(id);
     else say(`★${short(target)} is not in the graph now, and has no view.`);
   };
-  // a link to this view that lets whoever has it in, or a prompt for an AI agent with a token of its
-  // own (web/src/share.ts); a snapshot is shared as a file
-  new Share($("#share-btn"), $("#share-pop"), {
-    info: () => data.shareInfo(),
-    // the guest link and a read-only reader's own at the public address, as the server makes the
-    // others (CollabSpec decision 7)
-    base: () => site.base,
-    data,
-    me: () => people.name,
-    person: () => people.person?.id ?? null,
-    ensureName: () => people.ensure(),
-    // what the reader sees (the owner's decision of 2026-10-12): every followed part as the registry
-    // reads it, the camera as the region of the board it shows
-    snapshot: () => writeSnapshot(followedOf(parts.read), canvas.screen),
-    exact: {
-      get: () => S.shareExact !== false,
-      set: (on) => {
-        S.shareExact = on ? undefined : false;
-        store.save();
-      },
-    },
-  });
-  if (data.snapshot) $(".share-wrap").hidden = true;
-  // the document of the view on show, typeset on the server (ExportSpec decisions 5–16); a
-  // snapshot has no server
-  const exportModal = new ExportModal($("#export-btn"), $("#export-modal"), {
-    view: () => {
-      const b = nav.board;
-      if (!b) return null;
-      const m = b.rec.clustering;
-      // the document is of the build the board shows (ExportSpec decision 16, the owner's of
-      // 2026-10-10): a view kept at a past build is printed at it; a preview of the view at another
-      // build than its own (the Time Machine) at the build on show, which the request names
-      const past = b.past?.past ?? null;
-      const version = b.preview ? (past?.snapshot.id ?? null) : undefined;
-      const { version: _own, ...rec } = b.rec;
-      const titled = version === undefined ? b.rec : { ...rec, ...(version !== null ? { version } : {}) };
-      return {
-        id: b.id,
-        title: views.title(b.id),
-        tip: views.tip(b.id),
-        heading: docTitle(titled, views.titles()),
-        fixed: b.rec.id === PROJECT,
-        plan: planDoc(b.full, b.bs.set, m, b.rec.hidden[m]),
-        ...(version !== undefined ? { version } : {}),
-        ...(past ? { when: briefWhen(past.snapshot.at) } : {}),
-      };
-    },
-    head: (view, version) => data.exportHead(view, version),
-    saved: () => S.export as ReturnType<ExportHooks["saved"]>,
-    save: (v) => {
-      S.export = v;
-      store.save();
-    },
-    start: (body) => data.exportDoc(body),
-    poll: (id) => data.exportJob(id),
-    // the window closing, following nobody, takes with it the form following left, which nobody here
-    // asked for: the followed reader's own Export window drew it, as often as not (CollabSpec, "What
-    // following leaves")
-    shown: (open) => (open ? void linear.show("export") : people.following ? linear.hide("export") : linear.hide("export", "followed")),
-    artwork: () => art.open(),
-    artworkOnly: () => !!data.snapshot,
-  });
-  page.exportModal = exportModal;
-  // a snapshot of the page carries the links, not the library's files (they are the server's)
-  if (data.snapshot) $("#library-btn").hidden = true;
+  Object.assign(page, sharePart(page));
   Object.assign(page, timelinePart(page));
 
   // ---------------------------------------------------------------- into the Time Machine
@@ -2426,7 +2357,7 @@ async function boot(): Promise<void> {
     canvas.setLayout(L, b.rec.pins[m], b.rec.folds[m], m);
     canvas.setFrozen(frozen());
     linear.refresh();
-    exportModal.boardChanged();
+    page.exportModal.boardChanged();
     // a note being written stays while its board is drawn again (the review changed what it
     // holds); another board closes it
     if (b.id !== stickiesOn) stickies.reset();
