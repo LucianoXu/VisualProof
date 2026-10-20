@@ -66,7 +66,7 @@ import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
 import { clusterIndex, clusterOn, clusterPick, declPick, remove, selectionQuery, shownOf } from "./selection.ts";
-import type { KeysOf, Pick, Root, Tool } from "./selection.ts";
+import type { KeysOf, Pick, Root } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
 import { Sources } from "./sources.ts";
@@ -78,11 +78,8 @@ import { clusterSubject, fileOf, PAST_LINK } from "../../shared/library.ts";
 import { snapshotIn } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES } from "./status.ts";
-import { ChatWindow, keepStripClear } from "./chatwin.ts";
 import { noteIn, siteOrigins } from "./chatlinks.ts";
 import { LinearForm } from "./linear.ts";
-import { isPhone, isTall, Phone, tallInsets } from "./phone.ts";
-import { MonitorLayout, monitorInsets } from "./monitor.ts";
 import { ArtFrame } from "./artframe.ts";
 import type { ArtSettings } from "./artwork.ts";
 import { sourceLine, titleOf, untilStill } from "./artwork.ts";
@@ -99,8 +96,9 @@ import { buildWhen, TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
 import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
-import { $, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
+import { $, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { layoutPart } from "./pagelayout.ts";
 import { schemePart } from "./pagescheme.ts";
 import { followPart } from "./pagefollow.ts";
 import { talkPart } from "./pagetalk.ts";
@@ -181,15 +179,12 @@ export interface MainPart {
   boardPanel: BoardPanel;
   sync: BoardSync;
   hideLevel: (key: string) => void;
-  chatWin: ChatWindow;
-  syncInsets: () => void;
   renderStrip: () => void;
   syncFocus: () => void;
   openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
   timeMachine: (at?: TimeMachineAt) => void;
   wholeReview: WholeReview<ReviewWhole>;
   takeChange: (c: ReviewChange) => void;
-  say: (text: string) => void;
   noSwitch: () => boolean;
   openTimeMachine: (at?: TimeMachineAt) => Promise<boolean>;
 }
@@ -294,8 +289,6 @@ async function boot(): Promise<void> {
   const selected = (): number | null => (page.shown && "decl" in page.shown ? page.g.byName.get(page.shown.decl) ?? null : null);
   page.selected = selected;
   let visitorsOn = "";
-  /** while something is said where the hint is (`say`), until it goes */
-  let saying: ReturnType<typeof setTimeout> | null = null;
   /** The review as the board on show reads it, by its declarations' names: on a past graph, what was
    *  said of a declaration renamed since — kept under its name now — is read under its name then too
    *  (web/src/past.ts, reviewThen), made once per revision of the review and past graph. */
@@ -415,7 +408,7 @@ async function boot(): Promise<void> {
       syncPast();
     },
     go: (name) => page.goName(name),
-    say: (text) => say(text),
+    say: (text) => page.say(text),
     keep: async (snapshot) => {
       if (reader) return READ_ONLY;
       if (!(await page.people.ensureLayout())) return "Keeping a build in a view is recorded under your name: give one first.";
@@ -621,7 +614,7 @@ async function boot(): Promise<void> {
     }),
     ensureReviewer: () => page.people.ensure(),
     submit,
-    said: (text) => say(text),
+    said: (text) => page.say(text),
     queue: (i) => flow.queue(i),
     progress: (i) => flow.progress(i),
     reviewLens: (i) => page.reviewTarget(i),
@@ -633,7 +626,7 @@ async function boot(): Promise<void> {
       const id = views.linkedTo(name);
       return { title: id === undefined ? null : views.title(id), here: id === nav.board.id, why: page.linkWhy(name) };
     },
-    linkHere: (i) => void page.linkTo(declNow(i)).then((why) => why && say(why)),
+    linkHere: (i) => void page.linkTo(declNow(i)).then((why) => why && page.say(why)),
     editedNow,
     edited,
     textNow,
@@ -654,7 +647,7 @@ async function boot(): Promise<void> {
           keyView: (i: number) => {
             void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
               if (ok === true) page.commit();
-              else if (typeof ok === "string") say(ok);
+              else if (typeof ok === "string") page.say(ok);
             });
           },
         }),
@@ -692,13 +685,13 @@ async function boot(): Promise<void> {
   const toggleKey = (i = selected()) => {
     const r = reviewRoot();
     if (r === null || i === null || i === r || data.snapshot) return;
-    if (reader) return say(READ_ONLY);
-    if (pastShown()) return say(PAST_REVIEW);
-    if (!flow.keyable(r, i)) return say(`${page.g.short(i)} is not in ${page.g.short(r)}'s TCB: only what it holds can be key for it.`);
+    if (reader) return page.say(READ_ONLY);
+    if (pastShown()) return page.say(PAST_REVIEW);
+    if (!flow.keyable(r, i)) return page.say(`${page.g.short(i)} is not in ${page.g.short(r)}'s TCB: only what it holds can be key for it.`);
     const target = page.g.nodes[r].name;
     void page.people.ensure().then((me) => {
       if (!me) return;
-      void submit({ op: "key", target, name: page.g.nodes[i].name, on: !keyMarked(page.review.data, target, page.g.nodes[i].name) }).then((why) => why && say(why));
+      void submit({ op: "key", target, name: page.g.nodes[i].name, on: !keyMarked(page.review.data, target, page.g.nodes[i].name) }).then((why) => why && page.say(why));
     });
   };
   page.toggleKey = toggleKey;
@@ -738,20 +731,20 @@ async function boot(): Promise<void> {
     cannotLink: () => (data.snapshot ? "A snapshot of the page shows the links as they were: they are made on the server." : reader ? READ_ONLY : pastShown() ? PAST_LINK : null),
     goDecl: (name) => {
       const i = page.g.byName.get(name) ?? page.g.foldedInto.get(name);
-      if (i === undefined) say(`${name} is not in the graph on show.`);
+      if (i === undefined) page.say(`${name} is not in the graph on show.`);
       else page.go(i);
     },
     goCluster: (kind, key) => {
-      if ((kind === "file") !== (cm() === "module")) return say(`${key} is a cluster by ${kind === "file" ? "file" : "namespace"}: this board is clustered by ${cm() === "module" ? "file" : "namespace"}.`);
+      if ((kind === "file") !== (cm() === "module")) return page.say(`${key} is a cluster by ${kind === "file" ? "file" : "namespace"}: this board is clustered by ${cm() === "module" ? "file" : "namespace"}.`);
       const c = clusterIndex(canvas.layout, key);
-      if (c < 0) say(`${key} is not a cluster of this board.`);
+      if (c < 0) page.say(`${key} is not a cluster of this board.`);
       else page.goCluster(c);
     },
     headers: () => ({ "content-type": "application/json", ...(data.name ? { "x-visualproof-name": encodeURIComponent(data.name) } : {}), ...(data.privateSession ? { "x-visualproof-private": data.privateSession } : {}) }),
     ensureName: async () => (await page.people.ensure()) !== null,
     following: () => page.people.followedName,
     changed: () => page.people.report(),
-    say: (text) => say(text),
+    say: (text) => page.say(text),
     relayoutSource: () => sources.following?.relayout(),
     repaint: () => showSelected(),
     readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : reader ? READ_ONLY : null),
@@ -878,7 +871,7 @@ async function boot(): Promise<void> {
     },
     markKeys: () => {
       const m = keyMarking();
-      if (m) void reviewBox.markKeys(m.names).then((why) => why && say(why));
+      if (m) void reviewBox.markKeys(m.names).then((why) => why && page.say(why));
     },
   });
   page.selBar = selBar;
@@ -915,7 +908,7 @@ async function boot(): Promise<void> {
     builtCommit: () => page.graphInfo?.commit ?? null,
     pinned: () => sources.pinned.map((p) => p.rect()),
     top: () => pairTop(),
-    say: (text) => say(text),
+    say: (text) => page.say(text),
     pastOf: (G) => {
       const past = nav.board?.past?.past;
       return past && past.graph === G ? { past, when: buildWhen(past.snapshot.at) } : null;
@@ -926,7 +919,7 @@ async function boot(): Promise<void> {
   const memory = sourceMemory();
   const sources: Sources<SourceWindow> = new Sources({
     make: () => new SourceWindow($("#windows"), page.g, data, reviewBox, sourceHooks, memory),
-    say: (text) => say(text),
+    say: (text) => page.say(text),
     // what the others are told changed: at once, not at the next look
     changed: () => {
       page.people.report();
@@ -947,7 +940,7 @@ async function boot(): Promise<void> {
    *  lines are scrolled to and flashed there. */
   const openSourceAt = (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => {
     const j = page.g.byName.get(name) ?? page.g.foldedInto.get(name);
-    if (j === undefined) return say(`${name} is not in the graph now.`);
+    if (j === undefined) return page.say(`${name} is not in the graph now.`);
     const here = at ? sources.at(at) : null;
     let w = here?.decl === j ? here : sources.all.find((p) => p.decl === j) ?? null;
     if (w) sources.reveal(w);
@@ -1101,7 +1094,7 @@ async function boot(): Promise<void> {
       page.showLevel();
     },
     menu: (t, x, y, world) => page.openMenu(t, x, y, world),
-    frozenDrag: () => say(frozenWhy()),
+    frozenDrag: () => page.say(frozenWhy()),
   });
   page.canvas = canvas;
 
@@ -1184,7 +1177,7 @@ async function boot(): Promise<void> {
     },
     // the Export window, at the right, beside which the line is drawn
     beside: () => (page.exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
-    say: (text) => say(text),
+    say: (text) => page.say(text),
     changed: (on) => {
       linearBtn.classList.toggle("on", on);
       linearBtn.setAttribute("aria-pressed", String(on));
@@ -1242,7 +1235,7 @@ async function boot(): Promise<void> {
         .sort((a, b) => a.label.localeCompare(b.label) || a.name.localeCompare(b.name)),
     // the title where the reader gave none: the project's name, its declarations and its targets
     titles: () => titleOf(page.meta.project.name, page.meta.projectCount, Object.keys(page.review.data.targets).length),
-    say: (text) => say(text),
+    say: (text) => page.say(text),
   });
   page.art = art;
   // the board's names are written in an artwork's fonts once they are there
@@ -1397,7 +1390,7 @@ async function boot(): Promise<void> {
     boardChanged: () => linear.refresh(),
     levelChanged: () => page.showLevel(),
     activityChanged: () => page.activity.changed(),
-    hint: (text) => say(text),
+    hint: (text) => page.say(text),
     writeAddress: (push) => page.writeAddress(push),
     // a preview of the view at another build is arranged by nobody here (web/src/views.ts); a view
     // kept at a past build is arranged as any (the owner's decision of 2026-10-10)
@@ -1438,76 +1431,7 @@ async function boot(): Promise<void> {
     if (one !== undefined) return void sync.setHidden([one], false);
     if (t.closest("[data-show-all]")) void sync.setHidden([...nav.board.rec.hidden[cm()]], false);
   });
-
-  // the conversation window, the reader's own (web/src/chatwin.ts, CollabSpec decision 13): opened
-  // and closed by the reader alone; it starts at the canvas's bottom left, beside the side panel
-  const chatWin = new ChatWindow($("#convo"), store, {
-    // under the bars, not under the review strip, which comes and goes with the view
-    insets: () => ({ left: canvas.insets.left, top: $("#viewbar").getBoundingClientRect().bottom + 8 }),
-    expanded: () => page.talk.expanded(),
-    toggled: (open) => {
-      $("#talk-btn").setAttribute("aria-pressed", String(open));
-      if (open) $("#talk-notice").hidden = true;
-    },
-  });
-  page.chatWin = chatWin;
-  // the following strip steps aside from it rather than cover its box
-  keepStripClear($("#following"), $("#convo"));
-  // a phone: the bar's ⋯, the side panel's drawer, the panel's sheet (web/src/phone.ts)
-  new Phone({
-    closePanel: () => $<HTMLElement>("#panel [data-close]")?.click(),
-    resized: () => syncInsets(),
-    modeHint: (m) => TAP_HINT[m as Tool] ?? "",
-  });
-  // an upright monitor: the board above a work area (web/src/monitor.ts)
-  new MonitorLayout({ resized: () => syncInsets() });
-  const syncInsets = () => {
-    const side = $("#side").getBoundingClientRect();
-    // the panel, or the timeline's drawer in its place; the selection bar heads that column, which
-    // it moves down by its height
-    const open = $("#panel").classList.contains("open") || $("#activity").classList.contains("open") || $("#lostfound").classList.contains("open");
-    // the review strip, and under it the note of a view kept at a past build: a kept view focused
-    // on a target has both (HistorySpec decision 19)
-    const height = (id: string) => ($(id).hidden ? 0 : $(id).offsetHeight + 6);
-    const lens = height("#lensbar"), kept = height("#tm-kept");
-    const strip = lens + kept > 0;
-    // the note's height too, where it is the second
-    const second = lens && kept;
-    const bar = $("#selbar");
-    document.body.style.setProperty("--selbar-h", bar.hidden ? "0px" : `${bar.offsetHeight + 8}px`);
-    document.body.style.setProperty("--lens-h", `${lens}px`);
-    // on a phone the selection bar goes under them both
-    document.body.style.setProperty("--strip-h", `${lens + kept}px`);
-    // a phone (web/src/phone.ts): the side panel is a drawer, the panel a sheet from the bottom,
-    // the selection bar across the top, the legend and the zoom's box at the bottom
-    const sheet = $("#panel").classList.contains("open") ? $("#panel").offsetHeight : 0;
-    canvas.insets = isPhone()
-      ? {
-          left: 0,
-          right: 0,
-          top: bar.hidden ? $("#viewbar").getBoundingClientRect().bottom + (strip ? 44 + second : 12) : bar.getBoundingClientRect().bottom + 12,
-          bottom: sheet ? sheet + 8 : 56,
-        }
-      : isTall()
-        ? // a tall screen (PhoneSpec, "Tall screens"): the whole width, above the sheet and the dock
-          tallInsets()
-        : monitorInsets() ?? {
-          left: side.width ? side.right + 8 : 0,
-          // offsetWidth, not the bounding box: the panel may still be sliding in
-          right: open ? $("#panel").offsetWidth + 20 : bar.hidden ? 0 : bar.offsetWidth + 20,
-          top: $("#viewbar").getBoundingClientRect().bottom + (strip ? 52 + second : 28),
-          bottom: 48,
-        };
-    // the zoom buttons keep to the canvas's bottom right, the review strip to its middle; where the
-    // panel leaves no canvas (a narrow window), there is nothing to zoom
-    document.body.style.setProperty("--inset-right", `${canvas.insets.right}px`);
-    document.body.style.setProperty("--inset-left", `${canvas.insets.left}px`);
-    $("#zoom").hidden = innerWidth - canvas.insets.right - canvas.insets.left < 140;
-    // the conversation window, where it has not been put by the reader, starts beside the side
-    // panel (it does not move while the reader moves it, nor when a source window opens)
-    chatWin.layout();
-  };
-  page.syncInsets = syncInsets;
+  Object.assign(page, layoutPart(page));
 
   /** The review strip, wherever the review has a focus (ReviewSpec, "Reviewing a target"; ViewSpec
    *  decision 28): it stays while the reader goes from one declaration to the next. */
@@ -1542,7 +1466,7 @@ async function boot(): Promise<void> {
    *  line; `data-artwork-saved` on the page says what was saved, for a script that waits for it. */
   const openRecipe = async (link: { text: string; save: ("png" | "svg")[] }) => {
     const read = readRecipe(decodeRecipe(link.text));
-    if ("error" in read) return say(`This link's artwork could not be read: ${read.error}`);
+    if ("error" in read) return page.say(`This link's artwork could not be read: ${read.error}`);
     const L = canvas.layout;
     const { look, problems, left } = resolveRecipe(read.recipe, {
       clusters: L.clusters,
@@ -1554,7 +1478,7 @@ async function boot(): Promise<void> {
       targets: Object.keys(page.review.data.targets),
       projectCount: page.g.projectCount,
     });
-    if (problems.length || left) say(`This link's artwork: ${[...problems, ...(left ? [`${left} names left out, more than an artwork carries`] : [])].join("; ")}.`);
+    if (problems.length || left) page.say(`This link's artwork: ${[...problems, ...(left ? [`${left} names left out, more than an artwork carries`] : [])].join("; ")}.`);
     if (art.isOpen) await art.close();
     // come: the board drawn with the look, which asked for the git commit as it came (gitAsked)
     await art.open(look);
@@ -1568,7 +1492,7 @@ async function boot(): Promise<void> {
     await untilStill({ now: () => performance.now(), drawnAt: () => drawnAt, sleep: (ms) => new Promise((ok) => setTimeout(ok, ms)) }, since);
     // a browser asks before a site saves several files at once (the owner's decision of 2026-10-15:
     // the reader is told)
-    if (link.save.length > 1) say(`Saving the picture as ${link.save.map((k) => k.toUpperCase()).join(" and ")}: your browser may ask to allow this site to download several files.`);
+    if (link.save.length > 1) page.say(`Saving the picture as ${link.save.map((k) => k.toUpperCase()).join(" and ")}: your browser may ask to allow this site to download several files.`);
     const made = await art.save(link.save);
     document.documentElement.dataset.artworkSaved = made.length ? made.join(",") : "none";
   };
@@ -1653,24 +1577,6 @@ async function boot(): Promise<void> {
     if (!same) reviewChanged();
   };
   page.takeChange = takeChange;
-
-  /** Something said for a moment where the hint is (below the review strip and the note of a kept
-   *  view, where they show): the hint shows nothing otherwise. */
-  const say = (text: string) => {
-    const hint = $("#hint");
-    if (saying) clearTimeout(saying);
-    // shown before it is written: a live region in the page when its words change is read out
-    hint.hidden = false;
-    hint.textContent = text;
-    hint.classList.add("say");
-    hint.classList.toggle("below", !$("#lensbar").hidden || !$("#tm-kept").hidden);
-    saying = setTimeout(() => {
-      saying = null;
-      hint.hidden = true;
-      hint.classList.remove("say", "below");
-    }, 3500);
-  };
-  page.say = say;
   /** The tips in place what is recorded may be the moment of: a target's second declaration
    *  approved on a view focused on it, while it has no key declaration; a key marked ends that. */
   let approvedInFocus = 0;
@@ -1709,14 +1615,14 @@ async function boot(): Promise<void> {
         ? "Export: this view at the build on show, as a document typeset with LaTeX; or the board as a picture (Artwork)"
         : "Export: this view as a document, typeset with LaTeX; or the board as a picture (Artwork)";
     tm.renderKept();
-    syncInsets();
+    page.syncInsets();
   };
 
   /** Views are not switched in the Time Machine (HistorySpec decision 16): true, and the reader is
    *  told so, while it is open. */
   const noSwitch = (): boolean => {
     if (!tm.active) return false;
-    say("Views are not switched in the Time Machine: leave it first (Esc).");
+    page.say("Views are not switched in the Time Machine: leave it first (Esc).");
     return true;
   };
   page.noSwitch = noSwitch;
@@ -1726,13 +1632,13 @@ async function boot(): Promise<void> {
    *  build where this view does not hold it (ViewSpec decision 27). */
   const openTimeMachine = async (at: TimeMachineAt = {}): Promise<boolean> => {
     if (data.snapshot) {
-      say("A snapshot has no history: the Time Machine is the server's.");
+      page.say("A snapshot has no history: the Time Machine is the server's.");
       return false;
     }
     if (!(await tm.open({ snapshot: at.snapshot }))) return false;
     page.offerTip("first-time-machine");
     if (!at.name || page.goName(at.name)) return true;
-    say(`${at.name} is not in the graph of that build.`);
+    page.say(`${at.name} is not in the graph of that build.`);
     return true;
   };
   page.openTimeMachine = openTimeMachine;
@@ -1819,7 +1725,7 @@ async function boot(): Promise<void> {
   // a handle for diagnosis from the console: window.visualproof.canvas
   // and the Time Machine's hook, as the build-status popover and the lost-and-found call it
   (window as unknown as { visualproof: object }).visualproof = { canvas, linear, graph: () => page.g, present: () => page.present, board: () => nav.board, views, tm, timeMachine: (at?: TimeMachineAt) => openTimeMachine(at) };
-  window.addEventListener("resize", syncInsets);
+  window.addEventListener("resize", page.syncInsets);
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
   // the reader's own focus there, which the address does not carry, as they left it (ViewSpec
@@ -1830,7 +1736,7 @@ async function boot(): Promise<void> {
     if (linked?.view && linked.view === first && !views.summary(first)) notOpened = VIEW_GONE;
   }
   page.listen();
-  if (notOpened) say(notOpened);
+  if (notOpened) page.say(notOpened);
   // a link with a snapshot of what its sharer saw: applied once, on the board its address opened
   const snap = snapshotIn(location.hash);
   if (snap) await page.openSnapshot(snap);
