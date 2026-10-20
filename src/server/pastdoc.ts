@@ -84,7 +84,8 @@ export class PastBuilds {
     const texts = new Map<string, DocSource | null>();
     // the outside world's texts of that build: its packages' files now, where at its revisions
     const outsideTexts = new Map<string, { file: string; package: string; lines: string[] } | null>();
-    const outsideNow = this.w.outsideNow;
+    const w = this.w;
+    const outsideNow = w.outsideNow && ((m: string) => w.outsideNow!(m));
     const outside = (m: string) => {
       if (!outsideTexts.has(m)) {
         const r = outsideNow && h.outsideModulesOf(id).has(m) ? pastOutside(info, m, outsideNow) : null;

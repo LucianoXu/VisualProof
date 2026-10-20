@@ -265,7 +265,8 @@ export async function historyAnswer(w: HistoryWorld, a: Ask, refuse: (a: Ask) =>
     if (typeof id !== "number") return id;
     const module = a.query.get("module") ?? "";
     if (!module || module.length > 2000) return no(400, "Say which module: module=<its name>.");
-    return pastSource(h, id, module, w.outsideNow);
+    // asked of the world as a method: the live server's reads its own state
+    return pastSource(h, id, module, w.outsideNow && ((m) => w.outsideNow!(m)));
   }
   if (path === "/diff") {
     const from = snapshotOf(w, a, "from", false);

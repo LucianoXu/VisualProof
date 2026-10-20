@@ -16,7 +16,8 @@ import type { ClusterMode, Layout, RawGraph, ViewMeta, ViewNode } from "../src/s
 import { LAYOUT_VERSION } from "../src/shared/graph.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
 import { backfillPackages, History, manifestRevisions, pageGraph } from "../src/server/history.ts";
-import { pastOutside, pastSource } from "../src/server/historyapi.ts";
+import { historyAnswer, pastOutside, pastSource } from "../src/server/historyapi.ts";
+import type { HistoryWorld } from "../src/server/historyapi.ts";
 import { OutsideSources } from "../src/server/outside.ts";
 import { ownName } from "../src/server/versions.ts";
 import { pastGraph } from "../src/shared/pastgraph.ts";
@@ -86,7 +87,7 @@ test("a snapshot records its packages' revisions and its outside declarations' p
   assert.deepEqual([...h.outsideModulesOf(s.id)].sort(), ["Init.Prelude", "Mathlib.Logic.Basic"]);
 });
 
-test("a past build shows an outside declaration's source only where its package is at that build's revision now; the core, where the toolchain is the same", () => {
+test("a past build shows an outside declaration's source only where its package is at that build's revision now; the core, where the toolchain is the same", async () => {
   const P = project();
   const h = new History(join(tmp, "site-past"));
   const old = h.record(graph(), opts(T0, "f1", "leanprover/lean4:v4.34.0", { mathlib: REV1 })).info;
@@ -116,6 +117,17 @@ test("a past build shows an outside declaration's source only where its package 
   assert.doesNotMatch(JSON.stringify(pastSource(h, same.id, "Mathlib.Other", P.now).body), /outside sources/, "not one of the build's outside modules: answered as any module it does not have");
   // straight, as the agents' endpoint and the past document read it
   assert.equal(pastOutside(same, "Mathlib.Logic.Basic", P.now).status, 200);
+  // through the page's endpoint, the world asked as the live server is, a method reading its own state
+  const live = {
+    history: h,
+    identity: () => ownName,
+    project: { toolchain: "leanprover/lean4:v4.35.0" },
+    outsideNow(m: string) {
+      return this.project.toolchain ? P.now(m) : null;
+    },
+  } as unknown as HistoryWorld;
+  const page = await historyAnswer(live, { method: "GET", path: "/api/history/source", query: new URLSearchParams({ id: String(same.id), module: "Mathlib.Logic.Basic" }), body: null, caller: { name: null, kind: "person" } } as never);
+  assert.equal(page.status, 200);
 });
 
 test("the snapshots read before the revisions were recorded are given theirs from their commit's lake-manifest.json; not a dirty or guessed one", () => {
