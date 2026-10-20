@@ -14,7 +14,7 @@
 
 import type { FileStatus } from "../../shared/build.ts";
 import type { ClusterMode } from "../../shared/graph.ts";
-import { fresh, standing, statusOf } from "../../shared/review.ts";
+import { ownStatus, statusOf } from "../../shared/review.ts";
 import type { Author, ReviewData } from "../../shared/review.ts";
 import { needsReview } from "../../shared/reviewqueue.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
@@ -100,8 +100,10 @@ export function mineHint(code: number, whose: string | null): string {
  *  earlier one, stale — else whether it needs review. */
 export function mineState(d: ReviewData, g: Graph, i: number, me: Author | null): number {
   const v = g.nodes[i];
-  const o = me ? standing(d, v.name, me) : null;
-  if (o) return !fresh(o, v.hash) ? ST_STALE : o.verdict === "comment" ? ST_COMMENTED : ST_APPROVED;
+  const s = me ? ownStatus(d, v.name, me, v.hash) : "none";
+  if (s === "stale") return ST_STALE;
+  if (s === "commented") return ST_COMMENTED;
+  if (s === "approved") return ST_APPROVED;
   return needsReview(g, d, i) ? ST_UNREVIEWED : ST_TRUSTED;
 }
 

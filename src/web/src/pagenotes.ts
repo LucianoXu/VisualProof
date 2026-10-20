@@ -201,7 +201,7 @@ export function notesPart(page: Page): NotesPart {
   const derivedIn = (v: { id: string; scope: string; clustering: ClusterMode }): ((n: ProjectNote) => boolean) | null => {
     if (v.id === page.nav.board.id) return derivesOn(page.cm(), page.vg().nodes, existsIn(page.nav.board.full.nodes), page.boardReview().links, page.nav.board.past?.past.nowName);
     try {
-      const set = evaluate(parseQuery(v.scope), { g: page.g, review: page.review.data });
+      const set = evaluate(parseQuery(v.scope), { g: page.g, review: page.review.data, me: page.mineAuthor() });
       return derivesOn(v.clustering, page.g.nodes.filter((_, i) => set[i]), existsIn(page.g.nodes), page.review.data.links);
     } catch {
       return null;

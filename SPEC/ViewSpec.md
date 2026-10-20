@@ -266,11 +266,13 @@ term    := "(" query ")"
          | "kind" "(" kind { "," kind } ")"
          | "status" "(" status { "," status } ")"
          | "advice" "(" verdict { "," verdict } ")"
+         | "mine" "(" own { "," own } ")"
 roots   := "selection" | name { "," name } | query
 kind    := theorem | def | abbrev | instance | structure | class | inductive | opaque
          | axiom | quot | constructor | recursor | notation | unknown
 status  := unreviewed | approved | commented | stale
 verdict := approve | comment
+own     := approved | commented | stale | none
 name    := a word without whitespace, "(", ")", "," or '"'  |  a JSON string
 ```
 
@@ -287,6 +289,15 @@ name    := a word without whitespace, "(", ")", "," or '"'  |  a JSON string
   present version; `key(T, …)` each target and its key marks its TCB or review set still holds,
   trusted or not (ExportSpec decision 1); `key(targets)` every target at evaluation. Unknown names
   stand for nothing.
+- `mine(…)` (the owner's decision of 2026-10-20): where the reader's own review stands — their
+  current opinion on the present version approves (`approved`) or comments (`commented`), is on an
+  earlier version (`stale`), or there is none (`none`, trusted or not, as `status(unreviewed)`) —,
+  whose being the Mine scheme's (CanvasSpec, "Colour schemes"): the reader's own, or while they
+  follow someone, that person's. Where there is no reader — the server, an agent (whose advice is
+  no opinion, AgentSpec decision 2), an exported document, a reader without a name — it holds
+  nothing. A board whose scope reads it is the same scope for everyone and each reader's own set:
+  "Only not reviewed by me" (⚙ Board's +) shows each what they have not reviewed. It is bounded and
+  counted as `status` is.
 - `QUERY_LIMITS`, the same for both forms: text 20,000 characters, nesting 32, 1,000 parts, 2,000
   names (each at most 2,000 characters), 64 closures (each `key` target one, `key(targets)` one).
 

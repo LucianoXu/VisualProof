@@ -24,7 +24,9 @@ export interface BoardPanelHooks {
   toggle(section: string): void;
 }
 
-/** Conditions offered by "+": the External switch that was, trust, review statuses, kinds, sorry. */
+/** Conditions offered by "+": the External switch that was, trust, review statuses, one's own review
+ *  (`mine(none)`: each reader sees what they have not reviewed, the owner's decision of 2026-10-20),
+ *  kinds, sorry. */
 const OFFERED: { label: string; c: Condition }[] = [
   { label: "Without the outside world", c: { op: "except", q: { op: "external" } } },
   { label: "Except what is trusted", c: { op: "except", q: { op: "trusted" } } },
@@ -32,6 +34,7 @@ const OFFERED: { label: string; c: Condition }[] = [
   { label: "Only stale", c: { op: "and", q: { op: "status", statuses: ["stale"] } } },
   { label: "Only commented", c: { op: "and", q: { op: "status", statuses: ["commented"] } } },
   { label: "Except approved", c: { op: "except", q: { op: "status", statuses: ["approved"] } } },
+  { label: "Only not reviewed by me", c: { op: "and", q: { op: "mine", statuses: ["none"] } } },
   { label: "Only what an agent comments on", c: { op: "and", q: { op: "advice", verdicts: ["comment"] } } },
   { label: "Only theorems", c: { op: "and", q: { op: "kind", kinds: ["theorem"] } } },
   { label: "Only definitions", c: { op: "and", q: { op: "kind", kinds: ["def"] } } },
@@ -111,7 +114,7 @@ export class BoardPanel {
     } else if (!shut && this.editing === "text") {
       html +=
         `<form class="scope-edit" data-form="text"><input class="scope-input" value="${escapeHtml(printQuery(v.rec.scope))}" spellcheck="false" autocomplete="off" aria-label="The scope, as a query">` +
-        `<div class="scope-help muted">all, tcb(A), uses(A), usedBy(A), decl(A), ns(P), file(P), trusted, external, kind(theorem), status(unreviewed), advice(comment), sorry, nonstandard — joined by and, or, except. Enter applies it for everyone; Esc leaves it.</div>` +
+        `<div class="scope-help muted">all, tcb(A), uses(A), usedBy(A), decl(A), ns(P), file(P), trusted, external, kind(theorem), status(unreviewed), advice(comment), mine(none), sorry, nonstandard — joined by and, or, except. Enter applies it for everyone; Esc leaves it.</div>` +
         (this.error ? `<div class="modal-err">${escapeHtml(this.error)}</div>` : "") +
         `</form>`;
     } else if (!shut) {

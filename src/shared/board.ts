@@ -35,7 +35,7 @@ import type { LayoutMemory } from "./layout.ts";
 import type { PlaceOp, Pins } from "./places.ts";
 import { evaluate, within } from "./query.ts";
 import type { Query } from "./query.ts";
-import type { ReviewData } from "./review.ts";
+import type { Author, ReviewData } from "./review.ts";
 import { Graph } from "./viewgraph.ts";
 
 /** Part of a graph as a graph of its own, with maps between the two numberings. */
@@ -128,11 +128,11 @@ export interface BoardSet {
   sub: Sub | null;
 }
 
-/** The board a scope makes of a graph and a review. A scope holding the whole project and either
- *  all of the outside world or none of it is the server's layout; anything else is laid out on its
- *  own. */
-export function boardSet(g: Graph, review: ReviewData, scope: Query): BoardSet {
-  const set = evaluate(scope, { g, review });
+/** The board a scope makes of a graph and a review (`me`: whose own review `mine(…)` reads, the
+ *  page's reader). A scope holding the whole project and either all of the outside world or none of
+ *  it is the server's layout; anything else is laid out on its own. */
+export function boardSet(g: Graph, review: ReviewData, scope: Query, me: Author | null = null): BoardSet {
+  const set = evaluate(scope, { g, review, me });
   let own = 0, ext = 0;
   for (let i = 0; i < g.n; i++) if (set[i]) i < g.projectCount ? own++ : ext++;
   const outsideAll = ext === g.n - g.projectCount;
@@ -151,11 +151,12 @@ export interface Lit {
   inside: boolean;
 }
 
-/** What query `q` lights up on board `bs` of graph `g` (the graph the board was taken from): the
+/** What query `q` lights up on board `bs` of graph `g` (the graph the board was taken from; `me` as
+ *  boardSet's): the
  *  query's set in the whole graph, then what of it the board holds — never the outside world on a
  *  board without it. */
-export function lightUp(g: Graph, review: ReviewData, bs: BoardSet, q: Query): Lit {
-  const full = evaluate(q, { g, review });
+export function lightUp(g: Graph, review: ReviewData, bs: BoardSet, q: Query, me: Author | null = null): Lit {
+  const full = evaluate(q, { g, review, me });
   let total = 0, count = 0;
   if (!bs.sub) {
     // the whole graph is the board's: cut in place what its scope leaves out

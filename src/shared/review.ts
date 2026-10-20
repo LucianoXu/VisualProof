@@ -788,6 +788,16 @@ export function standing(d: ReviewData, name: string, who: Author): Opinion | nu
   return o && !o.withdrawn ? o : null;
 }
 
+/** Where one person's own review of a declaration stands (the owner's decision of 2026-10-20: the
+ *  Mine scheme, `mine(…)`): their current opinion, on the version whose hash is `hash` — approved,
+ *  commented — or on an earlier one, stale; none where they have none (none given, or withdrawn).
+ *  Nobody else's opinion counts, and an agent's advice is no person's. */
+export function ownStatus(d: ReviewData, name: string, who: Author, hash: string | undefined): Status {
+  const o = standing(d, name, who);
+  if (!o) return "none";
+  return !fresh(o, hash) ? "stale" : STATUS_OF[o.verdict];
+}
+
 /** Where the approval of `who` on `name` stands against the version whose hash is `hash` (ReviewSpec
  *  decision 1, the owner's decision of 2026-10-20): `approved` where their current opinion is an
  *  approval of that version — approving again records nothing —, `stale` where it is an approval of

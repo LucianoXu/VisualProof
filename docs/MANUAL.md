@@ -756,8 +756,9 @@ lock, edges, the linear form, theme), the top holds your tabs and your mode.
   the folding legend.
 - **The scope** says what is on a board, as chips under Filter (⚙ Board): *everything*, *TCB
   of X*, *what X uses*, *what uses X*, *key declarations of T* (`key(T)`), a namespace or a folder, with conditions (*except what is
-  trusted*, *without the outside world*, *only not yet reviewed*, *only what an agent comments on*,
-  …). `+` adds one, `×` takes one off, a click on the first chip writes the scope as a query
+  trusted*, *without the outside world*, *only not yet reviewed*, *only not reviewed by me*
+  (`mine(none)`: each reader sees what they themselves have not reviewed; also `mine(approved)`,
+  `mine(commented)`, `mine(stale)`), *only what an agent comments on*, …). `+` adds one, `×` takes one off, a click on the first chip writes the scope as a query
   (`tcb(A.t) except trusted except external`). A change is everyone's on that board. The Project's
   scope stays *everything*: Duplicate it for a board that holds less.
 - **Hidden levels** (ViewSpec decision 24): a cluster's row in the side panel (the struck-through

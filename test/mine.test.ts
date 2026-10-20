@@ -1,11 +1,17 @@
 // One's own review (the owner's decisions of 2026-10-20): the Mine colour scheme — Status's review
 // states from the reader's own opinions alone (CanvasSpec, "Colour schemes"), beside Kind and
 // Status, `c` stepping through the three, followed as the colouring part is (CollabSpec decision 4);
-// a reader without a name has none to show, and the legend says so.
+// a reader without a name has none to show, and the legend says so. The query `mine(approved |
+// commented | stale | none)` (ViewSpec, the query language), read and printed, bounded and
+// evaluated as `status(…)` is, against the reader's own review; for no reader (the server, an
+// agent) it holds nothing.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { boardSet, lightUp } from "../src/shared/board.ts";
 import { cleanView } from "../src/shared/collab.ts";
+import { cleanQuery, describe, describeCondition, evaluate, parseQuery, printQuery, QUERY_LIMITS, readsReview } from "../src/shared/query.ts";
+import { scopeTitle } from "../src/shared/titles.ts";
 import type { ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { emptyReview, record } from "../src/shared/review.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
@@ -125,4 +131,58 @@ test("the reader's choice keeps Mine, apart where the review has a focus and els
   const base = { mode: "tcb", sel: null, source: false, clusterMode: "namespace", cam: null, view: null, scope: null, tabs: [] };
   assert.equal(cleanView({ ...base, scheme: "mine" })!.scheme, "mine");
   assert.equal(cleanView({ ...base, scheme: "rainbow" })!.scheme, undefined);
+});
+
+test("the query: mine(…) read and printed canonically, in either form, its words its own; bounded as any", () => {
+  for (const t of ["mine(none)", "mine(approved, commented, stale, none)", "tcb(P.d) except trusted and mine(none, stale)", "all except mine(approved)"]) {
+    const q = parseQuery(t);
+    assert.equal(printQuery(q), t, t);
+    assert.deepEqual(cleanQuery(JSON.parse(JSON.stringify(q))), q, "the JSON form survives a trip");
+  }
+  assert.deepEqual(parseQuery("MINE(None, STALE)"), { op: "mine", statuses: ["none", "stale"] });
+  assert.throws(() => parseQuery("mine(unreviewed)"), /unreviewed is not one of approved, commented, stale, none/);
+  assert.throws(() => parseQuery("mine()"), /mine: give at least one/);
+  assert.throws(() => parseQuery("mine"), /mine takes its arguments in parentheses/);
+  assert.equal(cleanQuery({ op: "mine", statuses: ["mine"] }), null);
+  assert.equal(cleanQuery({ op: "mine", statuses: [] }), null);
+  // its words count among the names, its parts among the parts, as status's do
+  assert.throws(() => parseQuery(`mine(${Array.from({ length: QUERY_LIMITS.names + 1 }, () => "none").join(", ")})`), /names more than/);
+  // it reads the review: a board of it is computed again as opinions come
+  assert.equal(readsReview(parseQuery("tcb(A) and mine(none)")), true);
+  // in words: "me" is whoever reads them
+  assert.equal(describe(parseQuery("mine(none)")), "not reviewed by me");
+  assert.equal(describe(parseQuery("mine(stale, commented)")), "stale of mine or commented on by me");
+  assert.equal(describeCondition({ op: "and", q: parseQuery("mine(none)") }), "only not reviewed by me");
+  assert.equal(scopeTitle(parseQuery("tcb(P.d) and mine(none)")), "TCB of P.d, only not reviewed by me");
+});
+
+test("the query evaluated: one reader's own review — Alice's and Bob's apart, none for nobody; a board and what is lit read it", () => {
+  const { g, d } = mineWorld();
+  const ev = (t: string, me: { by: string; person?: string } | null) => {
+    const set = evaluate(parseQuery(t), { g, review: d, me });
+    return g.nodes.filter((_, i) => set[i]).map((v) => v.name);
+  };
+  const alice = { by: "Alice" }, bob = { by: "Bob" };
+  assert.deepEqual(ev("mine(approved)", alice), ["P.a"]);
+  assert.deepEqual(ev("mine(commented)", alice), ["P.b"]);
+  assert.deepEqual(ev("mine(stale)", alice), ["P.c"]);
+  // none: no opinion of hers — withdrawn included —, trusted or not, as status(unreviewed) is
+  assert.deepEqual(ev("mine(none)", alice), ["P.d", "P.e", "Q.f", "Mathlib.g"]);
+  assert.deepEqual(ev("all except trusted and mine(none)", alice), ["P.d", "P.e"]);
+  assert.deepEqual(ev("mine(approved)", bob), ["P.b", "P.d"]);
+  assert.deepEqual(ev("mine(none)", bob), ["P.c", "P.e", "Q.f", "Mathlib.g"]);
+  assert.deepEqual(ev("mine(approved)", { by: "Carol", person: "c0c0c0c0c0" }), ["P.d"]);
+  // nobody's own review — the server, an agent, a reader without a name: nothing, mine(none) too
+  assert.deepEqual(ev("mine(none)", null), []);
+  assert.deepEqual(evaluate(parseQuery("mine(approved, none)"), { g, review: d }).reduce((a, b) => a + b, 0), 0);
+  assert.deepEqual(ev("mine(approved)", { by: "Claude" }), [], "an agent's advice is no one's own");
+  // a board of it, and what it lights up, are the reader's
+  const scope = parseQuery("all except trusted and mine(none)");
+  const names = (set: Uint8Array) => g.nodes.filter((_, i) => set[i]).map((v) => v.name);
+  assert.deepEqual(names(boardSet(g, d, scope, alice).set), ["P.d", "P.e"]);
+  assert.deepEqual(names(boardSet(g, d, scope, bob).set), ["P.c", "P.e"]);
+  assert.equal(boardSet(g, d, scope).count, 0, "nobody's");
+  const all = boardSet(g, d, parseQuery("all"));
+  assert.equal(lightUp(g, d, all, parseQuery("mine(stale)"), alice).count, 1);
+  assert.equal(lightUp(g, d, all, parseQuery("mine(stale)")).count, 0);
 });

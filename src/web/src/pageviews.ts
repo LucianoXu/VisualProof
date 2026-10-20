@@ -94,6 +94,8 @@ export async function viewsPart(page: Page): Promise<ViewsPart> {
     handsOver: () => page.handsOver(),
     meta: () => page.meta,
     review: () => page.review.data,
+    // whose own review mine(…) reads: the reader's, or whom they follow (web/src/pagescheme.ts)
+    me: () => page.mineAuthor?.() ?? null,
     // a view in the Time Machine, or kept at a past build, shows that build's graph; at another build
     // than its own, it is a preview
     past: (rec) => (data.snapshot ? null : tm.sourceFor(rec)),
@@ -135,6 +137,7 @@ export async function viewsPart(page: Page): Promise<ViewsPart> {
     present: () => page.present,
     meta: () => page.meta,
     review: () => page.review.data,
+    me: () => page.mineAuthor?.() ?? null,
     board: () => nav.board ?? null,
     title: (id) => views.title(id),
     tip: (id) => views.tip(id),

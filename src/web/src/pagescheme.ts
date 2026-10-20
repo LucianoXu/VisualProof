@@ -136,12 +136,12 @@ export function schemePart(page: Page): SchemePart {
   };
   const nextScheme = (): Scheme => SCHEMES_SHOWN[(SCHEMES_SHOWN.indexOf(ownScheme()) + 1) % SCHEMES_SHOWN.length];
   const mineChanged = () => {
-    if (mineKey() === mineWas) return;
-    if (page.canvas.scheme === "mine") {
-      syncCodes();
-      page.drawVisitors();
-      legend.render();
-    } else mineWas = mineKey();
+    const k = mineKey();
+    if (k === mineWas) return;
+    mineWas = k;
+    // what reads it follows as it does a change of the review: the colouring, the boards whose scope
+    // reads mine(…), what is lit
+    page.reviewChanged();
   };
   const legend = new Legend($("#legend"), {
     scheme: () => page.canvas.scheme,

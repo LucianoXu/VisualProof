@@ -302,7 +302,7 @@ export function reviewPart(page: Page): ReviewPart {
 
   /** What a query lights up on the board on show: computed on the whole graph the board was taken
    *  from, then cut to what the board holds (shared/board.ts, lightUp). */
-  const litOn = (q: Query): Lit => lightUp(page.nav.board.full, boardReview(), page.nav.board.bs, q);
+  const litOn = (q: Query): Lit => lightUp(page.nav.board.full, boardReview(), page.nav.board.bs, q, page.mineAuthor());
   /** Zoom in (ViewSpec decision 13): the scope of a view of what `q` lights up on this board, which
    *  holds exactly that; null when it would hold nothing, or just what this board holds. */
   const zoomOf = (q: Query | null, lit: Lit | null = q && litOn(q)): Query | null =>
