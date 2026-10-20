@@ -142,7 +142,15 @@ export function panelsPart(page: Page): PanelsPart {
     const s = past.snapshot;
     const m = past.marks[i] ?? 0;
     const kept = page.g.isExt(i) || !page.g.nodes[i].range ? null : past.kept.get(page.g.nodes[i].module);
-    const then = page.g.isExt(i) || !page.g.nodes[i].range ? "its statement and doc then." : kept ? "its statement, doc and source then (Space)." : "its statement and doc then; its source then is not kept.";
+    // outside the project nothing is kept per build: its source only where its package is at the
+    // same revision now (HistorySpec decision 24), which the window finds out
+    const then = !page.g.nodes[i].range
+      ? "its statement and doc then."
+      : page.g.isExt(i)
+        ? "its source then where its package is at the same revision now (Space)."
+        : kept
+          ? "its statement, doc and source then (Space)."
+          : "its statement and doc then; its source then is not kept.";
     const now = past.nowName.get(page.g.nodes[i].name);
     const what =
       m & PAST_GHOST

@@ -8,6 +8,8 @@ import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { isDeclName } from "./hover.ts";
+import type { HoverFile } from "./hover.ts";
+import { outsideSource } from "./outside.ts";
 import { lakeTextHash } from "./status.ts";
 import { finalAnswer } from "./readonlygate.ts";
 import { slimDeploy } from "../shared/deploy.ts";
@@ -61,7 +63,14 @@ export function source(app: App, res: ServerResponse, url: URL): void {
   if (!live.graph) return sendJson(res, { error: "not ready" }, 503);
   const mod = url.searchParams.get("module") ?? "";
   const rel = live.moduleFile(mod);
-  if (!rel) return sendJson(res, { error: `no source for ${mod.slice(0, 300)}: it is not a module of the graph` }, 404);
+  if (!rel) {
+    // outside the project: a module an outside declaration of the graph is in, its file in its
+    // package or in Lean's core (server/outside.ts; the owner's decision of 2026-10-20)
+    const out = rel === undefined ? live.outsideFile(mod) : undefined;
+    const src = out ? outsideSource(out.file, out.changed) : null;
+    if (src) return sendJson(res, src);
+    return sendJson(res, { error: `no source for ${mod.slice(0, 300)}: ${out === null || (out && !src) ? "its file is not found outside the project" : "it is not a module of the graph"}` }, 404);
+  }
   const text = readFileSync(join(live.project.root, rel), "utf8");
   const hash = lakeTextHash(text);
   // the usage pass's contexts of the module (shared/context.ts), when this is the text it
@@ -78,11 +87,14 @@ export async function hover(app: App, req: IncomingMessage, res: ServerResponse,
   // what Lean says is at a position of a project file (server/hover.ts). Only the graph's
   // modules (meta.modules) reach Lean: the module names the file the graph was read from, so
   // no path from the client reaches the disk, and no other file in the project's folder — an
-  // old copy, a CI script — is ever elaborated or imported
+  // old copy, a CI script — is ever elaborated or imported. Outside the project, only a
+  // module an outside declaration of the graph is in, its file found in its package
+  // (server/outside.ts; the owner's decision of 2026-10-20)
   if (!live.graph) return sendJson(res, { error: "not ready" }, 503);
   const mod = url.searchParams.get("module") ?? "";
   const rel = live.moduleFile(mod);
-  if (rel === undefined) return sendJson(res, { error: `${mod.slice(0, 300)} is not a module of the graph` }, 404);
+  const out = rel === undefined ? live.outsideFile(mod) : undefined;
+  if (rel === undefined && out === undefined) return sendJson(res, { error: `${mod.slice(0, 300)} is not a module of the graph` }, 404);
   // a read-only reader (CollabSpec decision 11) is answered what Lean already said of this
   // build, else asks it within bounds, per address and in all
   const keyOf = reader !== undefined && req.method === "GET" ? `${live.graph.fingerprint}\0${path}\0${url.search}` : null;
@@ -110,12 +122,14 @@ export async function hover(app: App, req: IncomingMessage, res: ServerResponse,
     if (!isDeclName(name)) return sendJson(res, { error: "not a name" }, 400);
     return reply(await app.hover.print(mod, name, false, 6000));
   }
-  if (rel === null) return sendJson(res, { error: `no source for ${mod}` }, 404);
-  const text = readFileSync(join(live.project.root, rel), "utf8");
+  if (rel === null || out === null || (rel === undefined && !out)) return sendJson(res, { error: `no source for ${mod.slice(0, 300)}` }, 404);
+  // an outside file is opened by its resolved path, under its package's name
+  const file: HoverFile = out ? { name: `${out.file.package.name}: ${out.file.file}`, path: out.file.path } : rel!;
+  const text = readFileSync(out ? out.file.path : join(live.project.root, rel!), "utf8");
   const hash = lakeTextHash(text);
   if (path === "/api/hover/open") {
     try {
-      await app.hover.open(rel, text, hash);
+      await app.hover.open(file, text, hash);
       return sendJson(res, { ok: true });
     } catch (e) {
       return sendJson(res, { error: app.hover.failure ?? (e instanceof Error ? e.message : String(e)) });
@@ -131,11 +145,11 @@ export async function hover(app: App, req: IncomingMessage, res: ServerResponse,
     const ps = r.body;
     const ok = Array.isArray(ps) && ps.length <= 5000 && ps.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isInteger(x) && x >= 0));
     if (!ok) return sendJson(res, { error: "positions" }, 400);
-    return sendJson(res, await app.hover.names(rel, text, hash, ps as [number, number][], 8000));
+    return sendJson(res, await app.hover.names(file, text, hash, ps as [number, number][], 8000));
   }
   const line = Number(url.searchParams.get("line")), character = Number(url.searchParams.get("character"));
   if (!Number.isInteger(line) || !Number.isInteger(character) || line < 0 || character < 0) return sendJson(res, { error: "position" }, 400);
-  return reply(await app.hover.hover(rel, text, hash, line, character, 6000));
+  return reply(await app.hover.hover(file, text, hash, line, character, 6000));
 }
 
 /** the project's git source and commit as git says them now, not as the build was read (an

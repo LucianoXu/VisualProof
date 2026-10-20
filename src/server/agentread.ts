@@ -15,6 +15,9 @@ import { ALL_SITES } from "../shared/viewgraph.ts";
 import { View } from "./agentgraph.ts";
 import { MAX_WAIT, describeOf, leanHome, printOf } from "./agentlean.ts";
 import type { AgentApi, Answer, Ask, Caller } from "./agent.ts";
+import { pastOutside } from "./historyapi.ts";
+import type { SnapshotInfo } from "./history.ts";
+import type { OutsideWhere } from "../shared/outside.ts";
 import { clampInt, fail, flag, ok } from "./agent.ts";
 
 /** A module of the project (AgentSpec, after the trial of decision 7): its file's doc comments
@@ -255,16 +258,21 @@ export function source(api: AgentApi, a: Ask): Answer {
 
 function sourceOf(api: AgentApi, v: View, i: number): Answer {
   const n = v.g.nodes[i];
-  if (v.g.isExt(i)) return fail(404, `${n.name} is outside the project (${n.module}): there is no source here.`, `Ask Lean about it: GET /api/agent/describe or /api/agent/print?name=${encodeURIComponent(n.name)}.`);
+  // outside the project, its package's file (the owner's decision of 2026-10-20)
+  const ext = v.g.isExt(i);
   if (!n.range) return fail(404, `The graph records no place for ${n.name} in its file.`, "GET /api/agent/declaration gives its statement; /api/agent/print what Lean elaborated.");
-  const f = api.file(v, n.module);
+  const f: { rel: string; lines: string[]; edited: boolean; hash: string; outside?: OutsideWhere } | null = ext ? api.outsideText(n.module) : api.file(v, n.module);
+  if (!f && ext) return fail(404, `${n.name} is outside the project (${n.module}), and its file is not found here.`, `Ask Lean about it: GET /api/agent/describe or /api/agent/print?name=${encodeURIComponent(n.name)}.`);
   if (!f) return fail(404, `The file of ${n.module} cannot be read.`, "GET /api/agent/declaration gives its statement.");
+  const out = f.outside ?? null;
   const at = excerptOf(f.lines, f.edited, n.name, n.range);
+  if (!at && out) return fail(404, `${n.name} is no longer in ${f.rel}: ${out.package} is at another revision than the graph was read at.`, `Ask Lean about it: GET /api/agent/describe?name=${encodeURIComponent(n.name)}.`);
   if (!at) return fail(404, `${n.name} is no longer in ${f.rel}: the file changed since it was compiled.`, "Wait for the build; GET /api/agent/declaration gives the compiled statement.");
   return ok({
     name: n.name,
     module: n.module,
     file: f.rel,
+    ...(out ? { outside: out } : {}),
     compiled: !f.edited,
     ...(n.gen !== undefined
       ? { generatedNote: `Lean generated ${n.name} from a command, and no declaration that command writes was found to fold it into: it is not written in the source, and this is the command's text. GET /api/agent/print gives what Lean made of it.` }
@@ -272,12 +280,14 @@ function sourceOf(api: AgentApi, v: View, i: number): Answer {
     ...(n.also?.length
       ? { also: n.also, alsoNote: `Lean generated these from the same command; they are part of ${n.name}'s unit, and its hash covers them. GET /api/agent/print?name=<one of them> shows what Lean made.` }
       : {}),
-    ...(f.edited
-      ? { note: "The file changed since it was compiled: this is the present text, found by name. The graph and the content hash are about the compiled text, so advice on it waits until the file is compiled again." }
-      : {}),
+    ...(f.edited && out
+      ? { note: `${out.package} is at another revision than the graph was read at: this is its present text, found by name.` }
+      : f.edited
+        ? { note: "The file changed since it was compiled: this is the present text, found by name. The graph and the content hash are about the compiled text, so advice on it waits until the file is compiled again." }
+        : {}),
     // what is in force where it is written, as Lean (shared/context.ts): advice records it with
     // the text, a blank line between them
-    context: contextText(readContext(f.lines, at.start, api.exact(n.module, n.name, f))),
+    context: contextText(readContext(f.lines, at.start, out ? null : api.exact(n.module, n.name, f))),
     text: f.lines.slice(at.start, at.end + 1).join("\n"),
   });
 }
@@ -306,8 +316,10 @@ function pastSource(api: AgentApi, name: string | null, raw: string): Answer {
   }
   if (i < 0) i = g.nodes.findIndex((n, k) => own(k) && !!n.also?.includes(want));
   const build = { id, at: s.at, commit: s.commit };
+  // outside the project, nothing is kept per build (HistorySpec decision 24)
+  const e = i < 0 ? g.nodes.findIndex((n, k) => !own(k) && n.name === want) : -1;
+  if (e >= 0) return pastOutsideSource(api, s, g.nodes[e], build);
   if (i < 0) {
-    if (g.nodes.some((n, k) => !own(k) && n.name === want)) return fail(404, `${want} is outside the project: there is no source here.`, `Ask Lean about it: GET /api/agent/describe?name=${encodeURIComponent(want)}.`);
     return fail(404, `There is no declaration ${want} in the graph of snapshot ${id}.`, `GET /api/agent/history/last?name=${encodeURIComponent(want)} finds the newest build that had it.`, { snapshot: build });
   }
   const n = g.nodes[i];
@@ -347,6 +359,40 @@ function pastSource(api: AgentApi, name: string | null, raw: string): Answer {
   });
 }
 
+/** Outside declaration `n`'s source at snapshot `s`'s build (HistorySpec decision 24): its
+ *  package's file as it is now, where the package is at the revision that build had (Lean's core:
+ *  the same toolchain), at the place the build recorded — the place now, where a snapshot read
+ *  before 0.7.0 recorded none; else that build's outside source was not kept. */
+function pastOutsideSource(api: AgentApi, s: SnapshotInfo, n: { name: string; module: string; range?: [number, number, number, number] }, build: { id: number; at: string; commit: SnapshotInfo["commit"] }): Answer {
+  const w = api.world;
+  const r = w.outsideNow ? pastOutside(s, n.module, (m) => w.outsideNow!(m)) : null;
+  if (!r || r.status !== 200) {
+    const why = (r?.body as { why?: string } | undefined)?.why ?? "outside sources are not kept per build";
+    return fail(404, `The source of ${n.name} at snapshot ${build.id} was not kept: ${why}.`, `Ask Lean about it as it is now: GET /api/agent/describe?name=${encodeURIComponent(n.name)}.`, { kept: false, outside: true, name: n.name, module: n.module, snapshot: build });
+  }
+  const body = r.body as { file: string; text: string; outside: OutsideWhere };
+  const now = api.graph();
+  const j = now instanceof View ? now.g.byName.get(n.name) : undefined;
+  const range = n.range ?? (now instanceof View && j !== undefined && now.g.isExt(j) ? now.g.nodes[j].range : undefined);
+  if (!range) return fail(404, `Snapshot ${build.id} records no place for ${n.name} in its file.`, `GET /api/agent/history/graph?id=${build.id} gives the graph then.`, { snapshot: build });
+  const lines = body.text.split("\n");
+  const at = compiledExcerpt(lines, range);
+  return ok({
+    name: n.name,
+    module: n.module,
+    file: body.file,
+    outside: body.outside,
+    snapshot: build,
+    compiled: true,
+    check: "rev",
+    note: `Outside sources are not kept per build: this is ${body.outside.package} as it is now, at the same revision as at that build. A past build is not reviewed: advice is given on the latest build.`,
+    line: at.start + 1,
+    endLine: at.end + 1,
+    context: contextText(readContext(lines, at.start, null)),
+    text: lines.slice(at.start, at.end + 1).join("\n"),
+  });
+}
+
 export function context(api: AgentApi, a: Ask): Answer {
   const v = api.graph();
   if (!(v instanceof View)) return v;
@@ -360,18 +406,21 @@ export function context(api: AgentApi, a: Ask): Answer {
  *  namespaces and sections around it, opens, variables, universes, options, local commands. */
 function contextOf(api: AgentApi, v: View, i: number): Answer {
   const n = v.g.nodes[i];
-  if (v.g.isExt(i)) return fail(404, `${n.name} is outside the project (${n.module}): there is no file here to read.`, `Ask Lean about it: GET /api/agent/print?name=${encodeURIComponent(n.name)}.`);
+  // outside the project, read from its package's file, never elaborated
+  const ext = v.g.isExt(i);
   if (!n.range) return fail(404, `The graph records no place for ${n.name} in its file.`, "GET /api/agent/print shows what Lean elaborated, every name in full.");
-  const f = api.file(v, n.module);
+  const f: { rel: string; lines: string[]; edited: boolean; hash: string; outside?: OutsideWhere } | null = ext ? api.outsideText(n.module) : api.file(v, n.module);
+  if (!f && ext) return fail(404, `${n.name} is outside the project (${n.module}), and its file is not found here.`, `Ask Lean about it: GET /api/agent/print?name=${encodeURIComponent(n.name)}.`);
   if (!f) return fail(404, `The file of ${n.module} cannot be read.`, "GET /api/agent/print shows what Lean elaborated, every name in full.");
   const at = excerptOf(f.lines, f.edited, n.name, n.range);
-  if (!at) return fail(404, `${n.name} is no longer in ${f.rel}: the file changed since it was compiled.`, "Wait for the build; GET /api/agent/declaration gives the compiled statement.");
+  if (!at) return fail(404, `${n.name} is no longer in ${f.rel}: ${ext ? "its package is at another revision than the graph was read at" : "the file changed since it was compiled"}.`, "Wait for the build; GET /api/agent/declaration gives the compiled statement.");
   const spaces = namespacesOf(v.g);
-  const exact = api.exact(n.module, n.name, f);
+  const exact = ext ? null : api.exact(n.module, n.name, f);
   return ok({
     name: n.name,
     module: n.module,
     file: f.rel,
+    ...(f.outside ? { outside: f.outside } : {}),
     compiled: !f.edited,
     ...(f.edited ? { note: "The file changed since it was compiled: this is read from the present text, up to where the declaration is found by name now." } : {}),
     line: at.start + 1,
