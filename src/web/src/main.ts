@@ -33,8 +33,7 @@ import type { Query } from "../../shared/query.ts";
 import { applyEvent, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole } from "../../shared/review.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { fixedScope, PROJECT, versionName, viewFocus } from "../../shared/views.ts";
-import { GraphCanvas } from "./canvas.ts";
+import { PROJECT, versionName, viewFocus } from "../../shared/views.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
 import { dataSource } from "./data.ts";
 import { WholeReview } from "./reviewread.ts";
@@ -44,9 +43,6 @@ import type { ModuleContexts } from "../../shared/context.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
 import { Graph } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
-import { dragMoves } from "./drag.ts";
-import { Notes } from "./notes.ts";
-import { Stickies } from "./sticky.ts";
 import { ProjectNotes } from "./projectnotes.ts";
 import { Panel } from "./panel.ts";
 import { READ_ONLY } from "./people.ts";
@@ -54,7 +50,6 @@ import { deployWaiting } from "./buildpop.ts";
 import { githubBlob } from "../../shared/deploy.ts";
 import { Editor } from "./editor.ts";
 import { keptFocus, readerFocus } from "./focus.ts";
-import { kindDot, ringed } from "./axiomring.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
@@ -67,12 +62,10 @@ import { takeKept } from "./reload.ts";
 import type { Kept } from "./reload.ts";
 import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
-import { clusterSubject, fileOf, PAST_LINK } from "../../shared/library.ts";
+import { clusterSubject, PAST_LINK } from "../../shared/library.ts";
 import { snapshotIn } from "../../shared/sharesnap.ts";
 import { recipeIn } from "../../shared/artrecipe.ts";
-import { STATUS_LABEL, STATUSES } from "./status.ts";
 import { noteIn, siteOrigins } from "./chatlinks.ts";
-import { LinearForm } from "./linear.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
 import { Store } from "./store.ts";
 import { ViewNav } from "./viewnav.ts";
@@ -83,10 +76,11 @@ import type { LayoutWorker } from "./layoutqueue.ts";
 import type { Board } from "./views.ts";
 import { buildWhen, TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
-import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
+import { boardMarks, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
-import { $, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
+import { $, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { boardPart } from "./pageboard.ts";
 import { artPart } from "./pageart.ts";
 import { sidePart } from "./pageside.ts";
 import { layoutPart } from "./pagelayout.ts";
@@ -148,16 +142,12 @@ export interface MainPart {
   zoomOf: (q: Query | null, lit?: Lit | null) => Query | null;
   papers: Papers;
   panel: Panel;
+  clusterPanel: ClusterPanel;
   selBar: SelectionBar;
   sources: Sources<SourceWindow>;
   openSourceAt: (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => void;
   shownCluster: () => number;
   showSelected: () => void;
-  notes: Notes;
-  canvas: GraphCanvas;
-  ownOpen: Map<string, boolean>;
-  stickies: Stickies;
-  linear: LinearForm;
   renderStrip: () => void;
   syncFocus: () => void;
   timeMachine: (at?: TimeMachineAt) => void;
@@ -559,7 +549,7 @@ async function boot(): Promise<void> {
   page.pickDecl = pickDecl;
   /** A cluster of the board clicked with the tool. */
   const pickCluster = (c: number): Pick => {
-    const cl = canvas.layout.clusters[c];
+    const cl = page.canvas.layout.clusters[c];
     return clusterPick(S.mode, cl, cm(), keysFor({ cluster: cl.key, by: cm() }));
   };
   page.pickCluster = pickCluster;
@@ -695,7 +685,7 @@ async function boot(): Promise<void> {
     return { x: r.left, y: Math.min(Math.max(y, r.top + 18), r.bottom - 18) };
   };
   // the name moves with the panel's scroll, and the lead with it
-  $("#panel").addEventListener("scroll", () => canvas.request(), { passive: true });
+  $("#panel").addEventListener("scroll", () => page.canvas.request(), { passive: true });
 
   // the library and the reference window (AttachmentSpec.md; web/src/paperlinks.ts): the links a panel
   // lists, the pairing with the source window, the window shown to those who follow
@@ -714,7 +704,7 @@ async function boot(): Promise<void> {
     },
     goCluster: (kind, key) => {
       if ((kind === "file") !== (cm() === "module")) return page.say(`${key} is a cluster by ${kind === "file" ? "file" : "namespace"}: this board is clustered by ${cm() === "module" ? "file" : "namespace"}.`);
-      const c = clusterIndex(canvas.layout, key);
+      const c = clusterIndex(page.canvas.layout, key);
       if (c < 0) page.say(`${key} is not a cluster of this board.`);
       else page.goCluster(c);
     },
@@ -740,13 +730,13 @@ async function boot(): Promise<void> {
     walk: (i) => walk(i),
     reviewData: () => boardReview(),
     openSource: (i) => void sources.show(i),
-    preview: (i) => canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
+    preview: (i) => page.canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
     unpin: (i) => {
       if (toView(i) < 0) return;
-      canvas.unpin(toView(i));
+      page.canvas.unpin(toView(i));
       page.sync.sharePins();
     },
-    isPinned: (i) => !frozen() && toView(i) >= 0 && canvas.isPinned(toView(i)),
+    isPinned: (i) => !frozen() && toView(i) >= 0 && page.canvas.isPinned(toView(i)),
     close: () => {
       page.clear();
       page.commit();
@@ -800,19 +790,19 @@ async function boot(): Promise<void> {
 
   // a cluster's panel, in the same place (web/src/clusterpanel.ts)
   const clusterPanel = new ClusterPanel($("#panel"), {
-    board: () => ({ graph: vg(), layout: canvas.layout, mode: cm(), toFull }),
+    board: () => ({ graph: vg(), layout: page.canvas.layout, mode: cm(), toFull }),
     reviewData: () => boardReview(),
-    isFolded: (c) => canvas.folded.has(c),
-    toggleFold: (c) => canvas.toggleFold(c),
+    isFolded: (c) => page.canvas.folded.has(c),
+    toggleFold: (c) => page.canvas.toggleFold(c),
     goCluster: (c) => page.goCluster(c),
     go: (i) => page.go(i),
-    preview: (i) => canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
-    previewCluster: (c) => canvas.previewCluster(c),
+    preview: (i) => page.canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
+    previewCluster: (c) => page.canvas.previewCluster(c),
     zoom: (c) => void page.zoomCluster(c),
     canZoom: (c) => !reader && page.clusterScope(c) !== null,
-    hide: (c) => page.hideLevel(canvas.layout.clusters[c].key),
-    trust: (c) => page.trust.state(canvas.layout.clusters[c], cm()),
-    trustClicked: (c, anchor) => page.trust.clicked(canvas.layout.clusters[c], cm(), anchor),
+    hide: (c) => page.hideLevel(page.canvas.layout.clusters[c].key),
+    trust: (c) => page.trust.state(page.canvas.layout.clusters[c], cm()),
+    trustClicked: (c, anchor) => page.trust.clicked(page.canvas.layout.clusters[c], cm(), anchor),
     // a past build's files are not the build status of now, and its modules are its graph's
     fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
     stateLabel: (st) => STATE_LABEL[st],
@@ -824,6 +814,7 @@ async function boot(): Promise<void> {
     },
     links: (key, mode) => papers.clusterHtml(key, mode),
   });
+  page.clusterPanel = clusterPanel;
 
   // the selection, under the mode buttons (web/src/selbar.ts)
   const selBar = new SelectionBar($("#selbar"), {
@@ -932,7 +923,7 @@ async function boot(): Promise<void> {
 
   /** The cluster the panel tells of, in the board's layout (its key read in the board's
    *  clustering); -1 when it tells of none, or of one this board does not hold. */
-  const shownCluster = (): number => (page.shown && "cluster" in page.shown && canvas.layout ? clusterIndex(canvas.layout, page.shown.cluster) : -1);
+  const shownCluster = (): number => (page.shown && "cluster" in page.shown && page.canvas.layout ? clusterIndex(page.canvas.layout, page.shown.cluster) : -1);
   page.shownCluster = shownCluster;
 
   /** The panel for what was last clicked — a cluster's (web/src/clusterpanel.ts), or a
@@ -947,7 +938,7 @@ async function boot(): Promise<void> {
       sources.follow(null);
       sources.redrawReviews();
       clusterPanel.show(c);
-      canvas.setLead({ kind: "cluster", c }, leadEnd);
+      page.canvas.setLead({ kind: "cluster", c }, leadEnd);
       return;
     }
     clusterPanel.hide();
@@ -956,7 +947,7 @@ async function boot(): Promise<void> {
     sources.follow(i);
     sources.redrawReviews();
     const k = i === null ? -1 : page.visitorOf(i);
-    canvas.setLead(i !== null && toView(i) >= 0 ? { kind: "node", i: toView(i) } : k >= 0 ? { kind: "visitor", k } : null, leadEnd);
+    page.canvas.setLead(i !== null && toView(i) >= 0 ? { kind: "node", i: toView(i) } : k >= 0 ? { kind: "visitor", k } : null, leadEnd);
     // an opinion given on an earlier version, its What changed closed (web/src/tips.ts, stale-opinion)
     if ($("#panel details[data-rv-changes]:not([open])")) page.offerTip("stale-opinion");
     if (i !== null && editedNow(i) === null && !pastShown())
@@ -985,189 +976,8 @@ async function boot(): Promise<void> {
     if (typeof v !== "string") first = v.id;
     else notOpened = `This link's view could not be opened: ${v}`;
   }
-
-  const notes = new Notes($("#notes"));
-  page.notes = notes;
-  /** What lies over the canvas, where no card goes: the bar, the tabs, the side panel, the
-   *  declaration's panel while open, the strip, the eyes, the legend. */
-  const covering = ["#bar", "#tabs", ".views-wrap", "#tmbar", "#tm-list", "#tm-kept", "#lightup", "#selbar", "#side", "#panel.open", "#lensbar", "#zoom", "#legend", "#activity.open", "#lostfound.open", "#board-pop", "#trust-list", "#eyes-pop"];
-  const overlays = () =>
-    covering.flatMap((q) => {
-      const r = document.querySelector<HTMLElement>(q)?.getBoundingClientRect();
-      return r && r.width && r.height ? [r] : [];
-    });
-  const canvas = new GraphCanvas($("#canvas") as HTMLCanvasElement, $("#labels") as HTMLCanvasElement, $("#cards"), page.g, {
-    covers: overlays,
-    // a click with the tool (web/src/selection.ts); a double-click on a cluster folds or opens it,
-    // which the canvas does itself
-    nodeClick: (j, shift) => void page.clickOn(pickDecl(vg().nodes[j].name), shift),
-    // a visitor is a declaration as any: clicked with the tool (ViewSpec decision 27)
-    visitorClick: (k, shift) => {
-      if (page.visitors[k]) page.clickOn(pickDecl(page.visitors[k].name), shift);
-    },
-    clusterClick: (c, shift) => void page.clickOn(pickCluster(c), shift),
-    backgroundClick: () => {
-      page.clear();
-      page.commit();
-    },
-    hover: (t, x, y) => {
-      const tip = $("#tip");
-      if (!t) {
-        tip.hidden = true;
-        return;
-      }
-      if (t.kind === "node") {
-        const i = t.i;
-        const v = vg().nodes[i];
-        const f = canvas.fileOf(i);
-        // by status, the state in words beside its colour; by kind, the file's build trouble
-        const ss = STATUSES[canvas.statusOf(i)];
-        const st =
-          canvas.scheme === "status"
-            ? ` <span class="tip-st">${STATUS_LABEL[ss]}</span>`
-            : f && STATE_LABEL[f.state]
-              ? ` <span class="tip-st st-${f.state}">${STATE_LABEL[f.state]}</span>`
-              : "";
-        // an axiom's ringed, by either scheme (web/src/axiomring.ts)
-        const dot = canvas.scheme === "status" ? `ss s-${ss}${vg().isExt(i) ? " k-external" : ""}${ringed(v.kind) ? " axiom" : ""}` : kindDot(v.kind, vg().isExt(i));
-        // on a past graph, what became of it since
-        const then = markWords(canvas.pastMarkOf(i), canvas.nowNameOf(i));
-        tip.innerHTML = `<span class="dot ${dot}"></span>${escapeHtml(v.name)}${st}${then.length ? ` <span class="tip-st tip-tm">${escapeHtml(then.join(" · "))}</span>` : ""}`;
-      } else if (t.kind === "visitor") {
-        // a visitor: what it is, and that it is the reader's own, not of the board
-        const vis = page.visitors[t.k];
-        const i = vis ? page.g.byName.get(vis.name) : undefined;
-        if (!vis || i === undefined) return void (tip.hidden = true);
-        const dot = kindDot(page.g.nodes[i].kind, page.g.isExt(i));
-        // on a folded cluster's card: which one, and that selecting it opens it for the reader alone
-        const card = canvas.visitorCard(t.k);
-        const inside = card >= 0 ? `; inside folded ${escapeHtml(canvas.layout.clusters[card].label)}, a click opens it for you` : "";
-        tip.innerHTML =
-          `<span class="dot ${dot}"></span>${escapeHtml(vis.name)} <span class="tip-st tip-visit">visiting — not on this board` +
-          `${vis.from ? `; reached from ${escapeHtml(short(vis.from))}` : ""}${inside} · Add to view keeps it</span>`;
-      } else {
-        const cl = canvas.layout.clusters[t.c];
-        // folded on the board but open for the reader's visitor (ViewSpec decision 27): double-click
-        // opens it for everyone
-        const what = canvas.openForVisitor(t.c)
-          ? "folded on this board, open for your visitor · double-click to open it for everyone"
-          : `click to select · double-click to ${canvas.folded.has(t.c) ? "open" : "fold"}`;
-        // a drag moves it only with the lock let go, or the drag key held on a locked layout
-        tip.innerHTML =
-          `<span class="dot cluster-dot"></span>${escapeHtml(cl.key.replace("⟨external⟩", "External"))}` +
-          ` <span class="tip-st">${cl.count.toLocaleString()} · ${what}${page.dragging() ? " · drag to move" : ""}</span>`;
-      }
-      tip.style.transform = `translate(${x + 14}px, ${y + 12}px)`;
-      tip.hidden = false;
-    },
-    pinsChanged: () => {
-      page.sync.sharePins();
-      linear.refresh();
-      const i = selected();
-      if (i !== null) panel.show(i);
-    },
-    foldChanged: () => {
-      page.sync.shareFolds();
-      page.outline.render();
-      clusterPanel.refresh();
-      page.showLevel();
-    },
-    menu: (t, x, y, world) => page.openMenu(t, x, y, world),
-    frozenDrag: () => page.say(frozenWhy()),
-  });
-  page.canvas = canvas;
-
-  /** a read-only reader's notes opened or collapsed, by id (CollabSpec decision 11, the owner's
-   *  decision of 2026-10-16): theirs alone, over the state everyone shares, in this page and gone on
-   *  reload, as their folds are */
-  const ownOpen = new Map<string, boolean>(reader && kept ? kept.notes : []);
-  page.ownOpen = ownOpen;
-  /** Notes as this page shows them: each open or collapsed as its reader left it, where it is theirs
-   *  alone (`ownOpen`), else by its own state. */
-  const asOpenHere = <T extends { id: string; open: boolean }>(ns: T[]): T[] =>
-    ownOpen.size ? ns.map((n) => (ownOpen.has(n.id) && ownOpen.get(n.id) !== n.open ? { ...n, open: ownOpen.get(n.id)! } : n)) : ns;
-
-  // the notes on the board on show (web/src/sticky.ts): the project's that the board holds and the
-  // view's own, placed again every frame the canvas draws; what is done to one goes to everyone, as
-  // the view's operations or the project's notes' (AttachmentSpec decisions 13–19)
-  const stickies: Stickies = new Stickies($("#stickies"), canvas, {
-    notes: () => ({ project: asOpenHere(projectNotes.list), view: asOpenHere(nav.board?.rec.notes ?? []) }),
-    // the Project holds every note of the project; another board what its scope gives and its
-    // view's lists (the owner's decision of 2026-10-11), the links read as the board reads the review
-    items: () => ({ all: !nav.board || fixedScope(nav.board.rec), items: nav.board?.rec.items, links: boardReview().links ?? [] }),
-    board: () => (nav.board ? { nodes: vg().nodes, full: nav.board.full.nodes, mode: cm(), nowName: nav.board.past?.past.nowName } : null),
-    // a note attached to a declaration shows at the reader's visitor of it, and falls back under the
-    // other clustering to beside it in the Project's layout of that clustering
-    visitors: () => page.visitors.map((v) => v.name),
-    whole: (m) => ({ L: page.meta.layouts[m], index: page.present.byName }),
-    resolve: (name) => (page.g.byName.has(name) ? name : null),
-    go: (name) => {
-      const i = page.g.byName.get(name);
-      if (i !== undefined) page.go(i);
-    },
-    moves: (h) => !frozen() && dragMoves(page.locked, h),
-    setOpen: (id, _kind, open) => page.setNoteOpen(id, open),
-    moved: (id, to) => void page.moveNote(id, to),
-    // where a card hangs from its icon is shared as its state is, and is no edit
-    card: (id, kind, card) => void (kind === "project" ? page.projectOps([{ op: "pnote-card", id, card }]) : page.noteOps([{ op: "note-card", id, card }])),
-    edit: (id) => void page.editNote(id),
-    menu: (id, x, y) => page.openNoteMenu(id, x, y),
-    unfold: (c) => canvas.toggleFold(c),
-    // the library is the server's now, whatever build the board shows
-    file: (sha) => fileOf(page.review.data, sha),
-    noFiles: () => !!data.snapshot,
-    openCarry: (_id, c) => papers.openCarry(c),
-  });
-  page.stickies = stickies;
-  canvas.onFrame = () => stickies.frame();
-  // Fit to screen, and a board's first framing, hold the notes' icons too, and their cards where
-  // they fit
-  canvas.fitExtra = (k, cards) => stickies.fitBoxes(k, cards);
-
-  // the linear form (ExportSpec decision 18, web/src/linear.ts): the board drawn as its document's
-  // outline, while the Export window is open or at the reader's asking (⋯, o)
-  const linearBtn = $("#linear-btn");
-  const linear: LinearForm = new LinearForm($("#linear") as HTMLCanvasElement, canvas, {
-    outline: () => {
-      const b = nav.board;
-      if (!b) return Promise.resolve("There is no board on show.");
-      // the build the board shows, as its document is printed at it (ExportSpec decision 16)
-      const version = b.preview ? (b.past?.past?.snapshot.id ?? null) : undefined;
-      return data.exportOutline(b.id, version);
-    },
-    graph: () => vg(),
-    noteSpot: (id) => stickies.spotOf(id),
-    lit: (i) => !!canvas.active?.[i],
-    edgeLit: (u, v, site) => canvas.edgeLit(u, v, site),
-    keyLinks: () => canvas.keyLinks,
-    selectDecl: (i, shift) => void page.clickOn(pickDecl(vg().nodes[i].name), shift),
-    selectSection: (c, shift) => void page.clickOn(pickCluster(c), shift),
-    frozen: () => (frozen() ? frozenWhy() : null),
-    edges: () => S.showEdges,
-    moveNote: (id, key, world, detach) => stickies.moveInto(id, key, world, detach),
-    noteText: (id) => page.noteOf(id)?.note.text ?? null,
-    noteOpen: (id) => page.noteOpenHere(id),
-    toggleNote: (id) => page.setNoteOpen(id, !page.noteOpenHere(id)),
-    // the board's menu on what a row is; Fold and Fit are the form's (menuAct)
-    menu: (on, x, y, spot) => {
-      if (on?.kind === "note") page.openNoteMenu(on.id, x, y);
-      else page.openMenu(on?.kind === "decl" ? { kind: "node", i: on.i } : on ? { kind: "cluster", c: on.c } : null, x, y, spot ?? canvas.toWorld(x, y), false, on?.kind === "cluster" ? on.folded : undefined);
-      if (page.menuOn) page.menuOn.linear = true;
-    },
-    // the Export window, at the right, beside which the line is drawn
-    beside: () => (page.exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
-    say: (text) => page.say(text),
-    changed: (on) => {
-      linearBtn.classList.toggle("on", on);
-      linearBtn.setAttribute("aria-pressed", String(on));
-      page.people.report();
-    },
-  });
-  page.linear = linear;
-  linearBtn.addEventListener("click", () => linear.toggle());
+  Object.assign(page, boardPart(page));
   Object.assign(page, artPart(page));
-  // the notes the outline holds are those the board shows
-  stickies.onRender = () => linear.refresh();
   /** the board the notes were last drawn for */
   let stickiesOn = "";
   Object.assign(page, sidePart(page));
@@ -1239,7 +1049,7 @@ async function boot(): Promise<void> {
     page.renderTabs();
     papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
-    stickies.render();
+    page.stickies.render();
     if (followed) page.selectionFollowed();
   };
   /** The whole review (where this page holds another revision than the server's, or events came in
@@ -1380,28 +1190,28 @@ async function boot(): Promise<void> {
     if (b.id !== visitorsOn) {
       page.visitors = [];
       visitorsOn = b.id;
-      canvas.setVisitors([], [], []);
+      page.canvas.setVisitors([], [], []);
     }
     if (b.full !== page.g) useGraph(b.full);
-    canvas.setGraph(b.graph);
+    page.canvas.setGraph(b.graph);
     const marks = b.past ? boardMarks(b.past.past, b.graph.n, b.toFull) : null;
-    canvas.setPast(marks?.marks ?? null, marks?.now);
-    canvas.setLayout(L, b.rec.pins[m], b.rec.folds[m], m);
-    canvas.setFrozen(frozen());
-    linear.refresh();
+    page.canvas.setPast(marks?.marks ?? null, marks?.now);
+    page.canvas.setLayout(L, b.rec.pins[m], b.rec.folds[m], m);
+    page.canvas.setFrozen(frozen());
+    page.linear.refresh();
     page.exportModal.boardChanged();
     // a note being written stays while its board is drawn again (the review changed what it
     // holds); another board closes it
-    if (b.id !== stickiesOn) stickies.reset();
+    if (b.id !== stickiesOn) page.stickies.reset();
     stickiesOn = b.id;
-    stickies.render();
+    page.stickies.render();
     page.outline.setLayout(L, `${b.id}\u0000${m}`);
-    canvas.setBuild(b.past ? null : page.build?.files ?? null);
+    page.canvas.setBuild(b.past ? null : page.build?.files ?? null);
     // the whole project's layout holds the outside world; a scope without it hides it
-    canvas.setShowExternals(b.bs.whole ? b.bs.outside : true);
+    page.canvas.setShowExternals(b.bs.whole ? b.bs.outside : true);
     for (const btn of document.querySelectorAll<HTMLElement>("#board-pop [data-cluster]")) btn.classList.toggle("on", btn.dataset.cluster === m);
     $("#side-what").textContent = m === "module" ? "Files" : "Namespaces";
-    notes.clear();
+    page.notes.clear();
     page.syncStatus();
     page.applyScheme();
     page.showLevel();
@@ -1425,7 +1235,7 @@ async function boot(): Promise<void> {
 
   // a handle for diagnosis from the console: window.visualproof.canvas
   // and the Time Machine's hook, as the build-status popover and the lost-and-found call it
-  (window as unknown as { visualproof: object }).visualproof = { canvas, linear, graph: () => page.g, present: () => page.present, board: () => nav.board, views, tm, timeMachine: (at?: TimeMachineAt) => openTimeMachine(at) };
+  (window as unknown as { visualproof: object }).visualproof = { canvas: page.canvas, linear: page.linear, graph: () => page.g, present: () => page.present, board: () => nav.board, views, tm, timeMachine: (at?: TimeMachineAt) => openTimeMachine(at) };
   window.addEventListener("resize", page.syncInsets);
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
@@ -1491,7 +1301,7 @@ async function boot(): Promise<void> {
     page.activity.changed();
     let last = "";
     setInterval(() => {
-      const now = JSON.stringify(page.people.mode === "none" ? null : { s: sources.open, c: canvas.cam });
+      const now = JSON.stringify(page.people.mode === "none" ? null : { s: sources.open, c: page.canvas.cam });
       if (now !== last) {
         last = now;
         page.people.report();
