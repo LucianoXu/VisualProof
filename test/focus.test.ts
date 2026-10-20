@@ -77,7 +77,7 @@ test("a page opened at an address takes the reader's own focus there as their pl
   assert.deepEqual(keptFocus({}), {});
   assert.deepEqual(keptFocus(undefined), {});
   assert.deepEqual(keptFocus({ focus: ["A.t"] }), {});
-  // the place it makes, read as the page reads it (main.ts, place): what the reader chose wins
+  // the place it makes, read as the page reads it (pageselection.ts, place): what the reader chose wins
   const mine = keptFocus({ focus: null }).focus;
   assert.equal(readerFocus(mine, "A.t", isTarget, ["A.t"]), null);
 });

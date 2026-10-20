@@ -43,7 +43,7 @@ export function applyTheme(choice: ThemeChoice = themeChoice()): void {
 }
 
 /** Show `t` whatever the reader chose, until it is let go (null): the artwork mode's theme (web/src/
- *  main.ts, drawLook), which a change of the system's, followed by "As the system", must not undo
+ *  pageart.ts, drawLook), which a change of the system's, followed by "As the system", must not undo
  *  while the mode is on. Let go, the reader's choice is in force again. */
 export function holdTheme(t: ThemeShown | null): void {
   held = t;

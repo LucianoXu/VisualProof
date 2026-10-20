@@ -361,7 +361,7 @@ function drawerEl() {
 }
 
 /** A follower's page: its Activity and lost-and-found as the page draws them, its colouring and
- *  edges, applied from a followed reader's presence as web/src/main.ts applies them. */
+ *  edges, applied from a followed reader's presence as web/src/pagefollow.ts applies them. */
 function follower(me: string | null = "Bob") {
   const actEl = drawerEl(), lostEl = drawerEl();
   const asked: (string | null)[] = [];

@@ -494,7 +494,7 @@ test("shown as a followed reader's, the form is the follower's own once followin
   f.toggle();
   assert.deepEqual([f.shown, f.asked], [false, false]);
   // the follower's own Export window opened over it and closed: the window's alone goes (web/src/
-  // main.ts says whether the one following left goes too)
+  // pageshare.ts says whether the one following left goes too)
   await f.show("followed");
   await f.show("export");
   f.hide("export");

@@ -5,7 +5,7 @@
 // the declarations over time; Keep this version in this view, and Save as new view — and the view
 // cannot be switched until it is left (Esc or ✕). Where a reader is in it is their own, as their
 // camera is: presence carries it, and someone
-// following them opens the same build (web/src/main.ts).
+// following them opens the same build (web/src/pagefollow.ts).
 //
 // It is also where a view kept at a past build (`ViewData.version`) takes its graph from: the views
 // ask it for the past graph of a view (`past`, `prepare`), which is the Time Machine's on the view it
@@ -83,7 +83,7 @@ export interface TimeMachineHooks {
    *  on by itself (HistorySpec decision 18) */
   following?(): boolean;
   /** the latest build is another: `from` the one before, `to` the new one (its renames are the
-   *  selection's to follow, web/src/main.ts) */
+   *  selection's to follow, web/src/pageselection.ts) */
   newBuild?(from: number, to: number): void;
 }
 
@@ -587,7 +587,7 @@ export class TimeMachine {
 
   // ---------------------------------------------------------------- the mode
 
-  /** Open the Time Machine on the view on show (the hook web/src/main.ts wires): at `snapshot`, the
+  /** Open the Time Machine on the view on show (the hook web/src/pageviews.ts wires): at `snapshot`, the
    *  latest by default; on `name` there. */
   async open(at: TimeMachineAt = {}): Promise<boolean> {
     const b = this.hooks.board();

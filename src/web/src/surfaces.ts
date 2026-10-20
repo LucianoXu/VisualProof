@@ -4,7 +4,7 @@
 // a new surface cannot fall between them:
 //
 // - what presence carries (shared/collab.ts, PresenceView) is exactly the followed parts' fields, each
-//   read by the page and applied to a follower's (web/src/main.ts gives both, typed by this list);
+//   read by the page and applied to a follower's (web/src/pagefollow.ts gives both, typed by this list);
 // - what ends following (web/src/people.ts) is a change to a followed part, or acting on what a
 //   followed surface shows; nothing done in a surface of the reader's own ends it, nor does reading.
 //
@@ -43,7 +43,7 @@ interface Followed {
   dblclick?: string;
   /** where the wheel changes it: on the canvas it zooms */
   wheel?: string;
-  /** applied with the place, by one step of the page's (web/src/main.ts, `follow`): the view opened
+  /** applied with the place, by one step of the page's (web/src/pagepeople.ts, `follow`): the view opened
    *  first, then the build, then the camera, tool, selection, focus and visitors, then the windows;
    *  the other parts are applied on their own once the place is reached */
   place?: true;

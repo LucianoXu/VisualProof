@@ -15,7 +15,7 @@
 // screens differ; once following ends, the windows that stood for theirs are the follower's own.
 //
 // This is the windows' logic alone, with no page in it, so that it is tested without a browser
-// (test/sources.test.ts); web/src/sourcewin.ts draws each window, web/src/main.ts wires them.
+// (test/sources.test.ts); web/src/sourcewin.ts draws each window, web/src/pagepanels.ts wires them.
 
 import { MAX_PINNED } from "../../shared/collab.ts";
 import { cascadeRect, CASCADE, EDGE, insideRect, onTop } from "./floatwin.ts";

@@ -65,7 +65,7 @@ const names = (q: Query) => {
   return g.nodes.filter((_, j) => s[j]).map((v) => v.name).sort();
 };
 const cl = (key: string): Cluster => ({ key, label: key, parent: -1, depth: 0, x: 0, y: 0, lx: 0, ly: 0, r: 1, count: 0, ext: false });
-/** Whose key declarations, as the page decides it (web/src/main.ts, keysFor): the focus's
+/** Whose key declarations, as the page decides it (web/src/pagereview.ts, keysFor): the focus's
  *  target; elsewhere a target clicked is its own, anything else every target's. */
 const keysFor = (onReview: string | null) => (r: Root): KeysOf =>
   onReview ?? ("decl" in r && Object.hasOwn(d.targets, r.decl) ? r.decl : null);

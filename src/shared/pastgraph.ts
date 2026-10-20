@@ -85,7 +85,7 @@ export interface PastGraph {
 }
 
 /** The git commit of a past build; none where it is not known, or only guessed. Its source is the
- *  project's, which the page has now (web/src/main.ts, GET /api/git). */
+ *  project's, which the page has now (web/src/pageart.ts, GET /api/git). */
 function gitThen(commit: Snapshot["commit"]): { git?: GitSource } {
   if (!commit || commit.guessed) return { git: undefined };
   return { git: { source: null, commit: commit.hash, branch: commit.branch, ...(commit.dirty ? { dirty: true as const } : {}) } };

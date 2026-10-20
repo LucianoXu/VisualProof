@@ -6,7 +6,7 @@
 //
 // `menuItems` says what the menu holds, as a pure function, so that it is tested without a page;
 // `ContextMenu` draws it, keeps it inside the window, and is driven by the pointer or the keys.
-// What each item does is web/src/main.ts's.
+// What each item does is web/src/pagemenu.ts's.
 
 import { escapeHtml } from "./highlight.ts";
 
@@ -97,7 +97,7 @@ export interface MenuContext {
 /** What stands where the review's items would be on a board of a past build. */
 const PAST_REVIEW: MenuItem = { act: "past-review", label: "The review is given on the latest build", disabled: true };
 
-/** One line of the menu. `act` says what main.ts does with it. */
+/** One line of the menu. `act` says what pagemenu.ts does with it. */
 export interface MenuItem {
   act: string;
   label: string;

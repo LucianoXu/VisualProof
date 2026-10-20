@@ -7,7 +7,7 @@
 // commit waiting for it, the last build that ended, with the end of its log where it failed.
 //
 // What it holds is a pure function of what the page knows (`popHtml`), tested in
-// test/buildpop.test.ts; web/src/main.ts draws it and does what its buttons say.
+// test/buildpop.test.ts; web/src/pagelive.ts draws it and does what its buttons say.
 
 import type { FileStatus } from "../../shared/build.ts";
 import type { DeployStatus } from "../../shared/deploy.ts";

@@ -9,7 +9,7 @@
 // meanwhile offering it ("Updated — reload").
 //
 // This is the logic alone, with no page in it, so that it is tested without a browser
-// (test/reload.test.ts); web/src/main.ts wires it.
+// (test/reload.test.ts); web/src/pagelive.ts wires it.
 
 declare const __VP_VERSION__: string | undefined;
 

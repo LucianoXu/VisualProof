@@ -47,7 +47,7 @@ export function targetRows(targets: readonly string[], views: readonly ViewSumma
 
 /** Where a click on a target with a view takes the reader (ViewSpec decision 29): that view, by its
  *  id; null where it is on show — the board stays, and the target is gone to there as any declaration
- *  is (decision 27). A target with none (`view` undefined) is given one (main.ts, `reviewTarget`). */
+ *  is (decision 27). A target with none (`view` undefined) is given one (pagetabs.ts, `reviewTarget`). */
 export function targetStep(view: string | undefined, board: string | null): string | null {
   return view === undefined || view === board ? null : view;
 }

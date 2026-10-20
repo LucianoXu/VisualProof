@@ -38,7 +38,7 @@ export interface LostHooks {
   comment(text: string, name: string): string;
   /** a declaration picked with the page's search, for Attach to…; null when the reader gave up */
   pick(prompt: string): Promise<string | null>;
-  /** the Time Machine, at a build, on a declaration (web/src/main.ts, `timeMachine`) */
+  /** the Time Machine, at a build, on a declaration (web/src/pageviews.ts, `timeMachine`) */
   timeMachine(at?: { snapshot?: number; name?: string }): void;
   /** the reader's name, asked for where there is none: null where they declined */
   ensureName(): Promise<string | null>;

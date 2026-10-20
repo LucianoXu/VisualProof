@@ -8,7 +8,7 @@
 // opens between the side panel and the declaration's panel, where the board is. The decision and the
 // geometry alone, tested without a browser (test/pairing.test.ts), but for `pairTop` and
 // `betweenPanels`, which read where the page's bars and panels are; web/src/paperlinks.ts,
-// paperwin.ts and main.ts use it.
+// paperwin.ts and pagepanels.ts use it.
 
 import type { ClusterMode } from "../../shared/graph.ts";
 import type { Link } from "../../shared/library.ts";
