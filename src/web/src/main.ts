@@ -89,7 +89,7 @@ import type { Kept } from "./reload.ts";
 import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
-import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, withSnapshot, writeSnapshot } from "../../shared/sharesnap.ts";
+import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, writeSnapshot } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES, statusCodes, statusState } from "./status.ts";
 import type { Scheme } from "./status.ts";
@@ -111,7 +111,6 @@ import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
 import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
-import type { ViewState } from "./state.ts";
 import { Store } from "./store.ts";
 import { typing } from "./typing.ts";
 import { VERIFIED } from "./verified.ts";
@@ -128,6 +127,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { addressPart } from "./pageaddress.ts";
 import { livePart } from "./pagelive.ts";
 import { toolbarPart } from "./pagetoolbar.ts";
 import { menuPart } from "./pagemenu.ts";
@@ -139,6 +139,7 @@ import { guidePart } from "./pageguide.ts";
 export interface MainPart {
   selected: () => number | null;
   boardReview: () => ReviewData;
+  stay: () => void;
   views: Views;
   projectNotes: ProjectNotes;
   nav: ViewNav;
@@ -186,16 +187,20 @@ export interface MainPart {
   syncStatus: () => void;
   ownScheme: () => Scheme;
   chooseScheme: (s: Scheme) => void;
+  parts: PageParts;
   talk: Talk;
   chipFor: (url: string) => Chip | null;
   people: People;
   asking: Asking;
+  openSnapshot: (text: string) => Promise<void>;
+  openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
   made: (r: ViewAnswer) => Promise<string | null>;
   named: () => Promise<string | null>;
   tabs: Tabs;
   focusMenu: FocusMenu;
   targetTcbs: Map<string, { names: Set<string>; modules: Set<string> } | null>;
   exportModal: ExportModal;
+  showNote: (view: string, id: string) => void;
   activity: Activity;
   lostDrawer: LostAndFound;
   timeMachine: (at?: TimeMachineAt) => void;
@@ -215,10 +220,7 @@ export interface MainPart {
   reveal: (i: number) => void;
   go: (i: number) => void;
   openTimeMachine: (at?: TimeMachineAt) => Promise<boolean>;
-  current: () => ViewState;
-  seenHash: () => Promise<string>;
-  writeAddress: (push: boolean) => void;
-  commit: () => void;
+  place: (p: Place, fresh: boolean) => void;
   goToModule: (m: string) => void;
 }
 
@@ -378,6 +380,7 @@ async function boot(): Promise<void> {
     boardQueue.prune();
     syncBusy();
   };
+  page.stay = stay;
   const views = new Views(data.views, {
     ...(data.snapshot ? {} : { layOut: layOutBoard }),
     graph: () => page.present,
@@ -675,7 +678,7 @@ async function boot(): Promise<void> {
       : {
           keyView: (i: number) => {
             void openDerived(printQuery({ op: "key", of: [declNow(i)] }), null, undefined, declNow(i)).then((ok) => {
-              if (ok === true) commit();
+              if (ok === true) page.commit();
               else if (typeof ok === "string") say(ok);
             });
           },
@@ -797,7 +800,7 @@ async function boot(): Promise<void> {
     isPinned: (i) => !frozen() && toView(i) >= 0 && canvas.isPinned(toView(i)),
     close: () => {
       clear();
-      commit();
+      page.commit();
     },
     // a past build's files are not the build status of now
     fileOf: (i) => (pastShown() ? undefined : page.fileIndex.get(page.g.nodes[i].module)),
@@ -867,7 +870,7 @@ async function boot(): Promise<void> {
     goToModule: (m) => goToModule(m),
     close: () => {
       clear();
-      commit();
+      page.commit();
     },
     links: (key, mode) => papers.clusterHtml(key, mode),
   });
@@ -882,17 +885,17 @@ async function boot(): Promise<void> {
       page.shown = to;
       apply();
       revealShown();
-      commit();
+      page.commit();
     },
     remove: (k) => {
       ({ picks: page.picks, shown: page.shown } = remove(page.picks, page.shown, k));
       apply();
-      commit();
+      page.commit();
     },
     zoom: () => void zoomIn(),
     clear: () => {
       clear();
-      commit();
+      page.commit();
     },
     markKeys: () => {
       const m = keyMarking();
@@ -1052,7 +1055,7 @@ async function boot(): Promise<void> {
     clusterClick: (c, shift) => void clickOn(pickCluster(c), shift),
     backgroundClick: () => {
       clear();
-      commit();
+      page.commit();
     },
     hover: (t, x, y) => {
       const tip = $("#tip");
@@ -1410,7 +1413,7 @@ async function boot(): Promise<void> {
     levelChanged: () => page.showLevel(),
     activityChanged: () => activity.changed(),
     hint: (text) => say(text),
-    writeAddress: (push) => writeAddress(push),
+    writeAddress: (push) => page.writeAddress(push),
     // a preview of the view at another build is arranged by nobody here (web/src/views.ts); a view
     // kept at a past build is arranged as any (the owner's decision of 2026-10-10)
     frozen: () => (frozen() ? frozenWhy() : null),
@@ -1648,6 +1651,7 @@ async function boot(): Promise<void> {
       artwork: (v) => art.follow(v.artwork ?? null),
     },
   };
+  page.parts = parts;
   /** Where this page is: what the others are told, and what Share tells an agent. */
   const whereIAm = (): PresenceView => presenceOf(parts.read, nav.tabs.map((t) => t.id));
   /** The declaration a name in an agent's message stands for: a full name, or the one declaration
@@ -1684,10 +1688,10 @@ async function boot(): Promise<void> {
     },
     open: (hash) => {
       people.unfollow();
-      openAddress(hash);
+      page.openAddress(hash);
     },
     chip: (url) => chipFor(url),
-    seenLink: async () => copyLink({ origin: site.base, pathname: location.pathname }, await seenHash()),
+    seenLink: async () => copyLink({ origin: site.base, pathname: location.pathname }, await page.seenHash()),
     unkeyed: (text) => withoutKeys(text, site.origins),
     counted: (n, marked) => {
       const badge = $("#talk-badge");
@@ -1892,7 +1896,7 @@ async function boot(): Promise<void> {
         else if (tm.snapshot !== v.history.snapshot) await tm.show(v.history.snapshot);
       } else if (tm.active) await tm.close();
     }
-    writeAddress(false);
+    page.writeAddress(false);
     if (ended()) return reached;
     // what their panels and their board show besides: Activity, the lost-and-found, the colouring,
     // the edges — each their page says (an older one says none: this reader's stay)
@@ -1949,6 +1953,7 @@ async function boot(): Promise<void> {
     const line = missingLine(gone);
     if (line) say(line);
   };
+  page.openSnapshot = openSnapshot;
   /** Open a link's artwork recipe (ExportSpec decision 20, shared/artrecipe.ts) on the board its
    *  address opened, the selection it carries made: resolved against this board, the artwork mode
    *  opened with what it says (not kept as this reader's settings until they change one), the whole
@@ -1987,6 +1992,7 @@ async function boot(): Promise<void> {
     const made = await art.save(link.save);
     document.documentElement.dataset.artworkSaved = made.length ? made.join(",") : "none";
   };
+  page.openRecipe = openRecipe;
   // a layout's memory is handed over under a name, or by a private reader, as the server takes it
   page.handsOver = () => !reader && (!!data.snapshot || !!people.name || !!data.privateSession);
   /** The others' selections on the canvas, and who else is on the declaration in the panel. */
@@ -2016,7 +2022,7 @@ async function boot(): Promise<void> {
     if (!r.view) return r.error ?? "The view could not be made.";
     if (tm.active) await tm.close();
     await views.load();
-    if (await nav.show(r.view.id, null)) commit();
+    if (await nav.show(r.view.id, null)) page.commit();
     sync.afterPost();
     return null;
   };
@@ -2036,7 +2042,7 @@ async function boot(): Promise<void> {
     summary: (id) => views.summary(id),
     list: () => views.summaries,
     select: (id) => void openView(id),
-    close: (id) => void nav.close(id).then(() => writeAddress(false)),
+    close: (id) => void nav.close(id).then(() => page.writeAddress(false)),
     create: async (name) => (await named()) ?? made(await views.post("create", { name })),
     duplicate: async (name) => (await named()) ?? made(await views.post("create", { name, from: nav.board.id })),
     rename: async (name) => {
@@ -2057,7 +2063,7 @@ async function boot(): Promise<void> {
       const r = await sync.change("delete", {});
       if (r.error) return r.error;
       await nav.close(id);
-      writeAddress(false);
+      page.writeAddress(false);
       return null;
     },
     readOnly: () => !!data.snapshot || !!reader,
@@ -2085,7 +2091,7 @@ async function boot(): Promise<void> {
     choose: (f) => {
       page.mine = f;
       apply();
-      writeAddress(false);
+      page.writeAddress(false);
     },
     setView: async (f) => {
       if (frozen()) return frozenWhy();
@@ -2097,7 +2103,7 @@ async function boot(): Promise<void> {
       // the reader's focus is the view's now: nothing of their own is left
       page.mine = undefined;
       apply();
-      writeAddress(false);
+      page.writeAddress(false);
       return null;
     },
     canSet: () => !frozen(),
@@ -2133,7 +2139,7 @@ async function boot(): Promise<void> {
   const openView = async (id: string) => {
     if (id === nav.board.id) return stay();
     if (noSwitch()) return;
-    if (await nav.select(id)) commit();
+    if (await nav.select(id)) page.commit();
   };
   /** A target, from the targets list: its view, on the target, or, with none (`id` null), a view
    *  nobody keeps of its TCB, linked to it (see reviewTarget); a target no longer in the graph opens
@@ -2258,11 +2264,12 @@ async function boot(): Promise<void> {
     if (view !== nav.board.id && noSwitch()) return;
     void (view === nav.board.id ? Promise.resolve(true) : nav.select(view)).then((ok) => {
       if (!ok) return;
-      if (view !== nav.board.id) commit();
+      if (view !== nav.board.id) page.commit();
       if (stickies.has(id)) stickies.flyTo(id);
       else say("That note is no longer on this view.");
     });
   };
+  page.showNote = showNote;
 
   const activity = new Activity($("#activity"), $("#activity-btn"), $("#activity-badge"), store, {
     me: () => people.name,
@@ -2406,7 +2413,7 @@ async function boot(): Promise<void> {
   };
   /** Where a selection that followed a rename is told: the address, and those following. */
   const selectionFollowed = () => {
-    writeAddress(false);
+    page.writeAddress(false);
     people.report();
   };
   page.selectionFollowed = selectionFollowed;
@@ -2597,7 +2604,7 @@ async function boot(): Promise<void> {
     page.picks = r.picks;
     page.shown = r.shown;
     apply();
-    commit();
+    page.commit();
     tipsOnClick(p, shift, before);
     return true;
   };
@@ -2652,11 +2659,11 @@ async function boot(): Promise<void> {
     useTool(m);
     syncTool();
     const r = retool(page.picks, page.shown, m, (root) => keysFor(root));
-    if (r.picks === page.picks) return writeAddress(false);
+    if (r.picks === page.picks) return page.writeAddress(false);
     page.picks = r.picks;
     page.shown = r.shown;
     apply();
-    commit();
+    page.commit();
   };
 
   /** The tool chosen by the reader, by a mode's button or key: another step of Rests on than TCB
@@ -2796,7 +2803,7 @@ async function boot(): Promise<void> {
     page.shown = shownOf(p);
     apply();
     reveal(i);
-    commit();
+    page.commit();
   };
   page.go = go;
   /** Go to a cluster of the board (a row of a cluster's panel): a click there with the tool. */
@@ -2805,7 +2812,7 @@ async function boot(): Promise<void> {
     page.shown = shownOf(page.picks[0]);
     apply();
     canvas.flyToCluster(c);
-    commit();
+    page.commit();
   };
 
   /** The board on show is of another graph (a past build's, or the graph on show again): what
@@ -2892,7 +2899,7 @@ async function boot(): Promise<void> {
     if (!ok) return `“${name}” is made, kept at that build: it is in Views.`;
     // the tabs were hidden while it was shown: drawn again now, its tab brought into sight
     renderTabs();
-    commit();
+    page.commit();
     return null;
   };
 
@@ -2959,6 +2966,7 @@ async function boot(): Promise<void> {
     if (ensureVisitors()) apply();
     if (!p.cam && (selected() !== null || shownCluster() >= 0)) revealShown();
   };
+  page.place = place;
   const here = (): Place => ({ cam: { ...canvas.cam }, mode: S.mode, picks: selectionText(page.picks), shown: page.shown, ...(page.mine !== undefined ? { focus: page.mine } : {}) });
 
   /** Zoom in: a view of what is lit, in a tab of its own, with the same selection; at the board's
@@ -2972,7 +2980,7 @@ async function boot(): Promise<void> {
     if (typeof r === "string") say(r);
     else if (r) {
       canvas.fit(false);
-      commit();
+      page.commit();
     }
   };
   /** The scope of a view of a cluster alone (its panel's Zoom in): what of it this board holds, as
@@ -2990,7 +2998,7 @@ async function boot(): Promise<void> {
     // a view found open has its own clustering: it is given this board's, unless it is a preview
     if (cm() !== mode && !frozen()) await sync.setClustering(mode);
     canvas.fit(false);
-    commit();
+    page.commit();
   };
 
   /** Open a target's view (ViewSpec decision 29): the view it is linked to, with a click on the
@@ -3012,7 +3020,7 @@ async function boot(): Promise<void> {
     if ((linked !== undefined && targetStep(linked, nav.board.id) === null) || (linked === undefined && reader)) {
       page.mine = name;
       go(i);
-      writeAddress(false);
+      page.writeAddress(false);
       return;
     }
     if (noSwitch()) return;
@@ -3020,7 +3028,7 @@ async function boot(): Promise<void> {
     const to: Place = { mode: S.mode, picks: selectionText([p]), shown: shownOf(p), cam: null, focus: name };
     if (linked !== undefined) {
       void nav.select(linked, to).then((ok) => {
-        if (ok) commit();
+        if (ok) page.commit();
         // its view deleted meanwhile: the target on the board on show
         else go(i);
       });
@@ -3033,7 +3041,7 @@ async function boot(): Promise<void> {
       await views.load();
       renderTabs();
       if (!(await nav.select(v.id, to))) return;
-      commit();
+      page.commit();
       if (!v.kept) say(`★${short(name)} had no view: this view of its TCB is its view while it lasts. Pin, fold or name it to keep it, and its link with it.`);
     })();
   };
@@ -3063,147 +3071,7 @@ async function boot(): Promise<void> {
     say(`★${short(name)} is linked to this view now: clicking ★${short(name)} opens it.`);
     return null;
   };
-
-  // ---------------------------------------------------------------- history and the address
-  //
-  // Every step (a click on a declaration, a row, a name; another view) is an entry in the browser's
-  // history, with the state in the address, so back and forward work as they do anywhere and every
-  // view is a link. The camera travels in the entry, not the address.
-
-  let navTop = 0;
-  const current = (): ViewState => ({
-    view: nav.query() === null ? nav.board.id : null,
-    scope: nav.query(),
-    // a view nobody keeps, of a past build: the build travels with its query
-    version: nav.queryVersion(),
-    mode: S.mode,
-    picks: selectionText(page.picks),
-    shown: page.shown,
-  });
-  page.current = current;
-  const entry = () => (history.state && typeof history.state.n === "number" ? (history.state as { n: number; cam?: object; tm?: number }) : { n: 0 });
-  /** The address of what this reader sees, with its snapshot (CollabSpec decision 7): what a link to
-   *  what they see carries, whatever Share's switch (decision 13); the address alone where the
-   *  snapshot cannot be made. */
-  const seenHash = async (): Promise<string> => {
-    const hash = encodeState(current());
-    const snap = await writeSnapshot(followedOf(parts.read), canvas.screen).catch(() => null);
-    return snap ? withSnapshot(hash, snap).slice(1) : hash;
-  };
-  page.seenHash = seenHash;
-  /** In the Time Machine, the build its board shows travels in the entry (not the address: where a
-   *  reader is in it is their own, HistorySpec decision 18), so that back and forward return to a
-   *  past board at its build (the owner's decision of 2026-10-09). */
-  const tmEntry = (): { tm?: number } => (tm.active && tm.shown !== null && tm.shown !== tm.latest ? { tm: tm.shown } : {});
-  const renderNav = () => {
-    const back = entry().n > 0, forward = entry().n < navTop;
-    $<HTMLButtonElement>("#nav-back").disabled = !back;
-    $<HTMLButtonElement>("#nav-fwd").disabled = !forward;
-    page.steps = { back, forward };
-    sources.following?.setNav(back, forward);
-  };
-  /** Write the state into the address: a new entry (`push`) or the current one. */
-  const writeAddress = (push: boolean) => {
-    // a view still being opened (a link, back, forward): the address already says where it goes
-    if (!push && nav.busy) return;
-    const hash = "#" + encodeState(current()) + page.filmPart;
-    try {
-      if (push && hash !== location.hash) {
-        // the entry being left remembers where the camera was
-        history.replaceState({ ...entry(), cam: { ...canvas.cam } }, "");
-        const n = entry().n + 1;
-        history.pushState({ n, ...tmEntry() }, "", hash);
-        navTop = n;
-      } else if (hash !== location.hash) {
-        const { tm: _was, ...rest } = entry();
-        history.replaceState({ ...rest, ...tmEntry() }, "", hash);
-      }
-    } catch {
-      // a browser that refuses: the page works, the address just does not follow
-    }
-    renderNav();
-    nav.remember();
-    people.report();
-  };
-  page.writeAddress = writeAddress;
-  const commit = () => writeAddress(true);
-  page.commit = commit;
-
-  /** Take a state from the address (a link, back, forward): its view, opened again from its query
-   *  if need be; the camera from the entry if it has one. */
-  const restore = async (st: ViewState, cam: { x: number; y: number; k: number } | null, tmAt?: number) => {
-    const to: Place = { mode: st.mode, picks: st.picks, shown: st.shown, cam };
-    const id = st.view ?? (st.scope ? null : PROJECT);
-    // an entry made in the Time Machine returns to its build
-    const atBuild = async () => {
-      if (typeof tmAt !== "number") return;
-      if (!tm.active) await tm.open({ snapshot: tmAt });
-      else if (tm.snapshot !== tmAt) await tm.show(tmAt);
-    };
-    if (id === nav.board.id || (!id && st.scope === nav.query() && (st.version ?? null) === nav.queryVersion())) {
-      // a view still being laid out for a step before is not gone to after all
-      stay();
-      place(to, false);
-      return atBuild();
-    }
-    // back or forward to another view: the Time Machine is left, as views are not switched in it
-    if (tm.active) await tm.close();
-    if (id && (await nav.select(id, to))) return atBuild();
-    // a view nobody keeps opens again at the build it showed
-    const opened = st.scope ? await nav.open(st.scope, to, { version: st.version ?? null }) : false;
-    if (opened === true) return atBuild();
-    // gone, or never there (an address typed or kept): the Project, and why
-    await nav.select(PROJECT, to);
-    if (typeof opened === "string") say(`This link's view could not be opened: ${opened}`);
-    else if (id && id !== PROJECT && !views.summary(id)) say(VIEW_GONE);
-  };
-  /** Take what the address says (a link, back, forward): its board; a link with a snapshot opened in
-   *  this tab, then what its sharer saw, once; an artwork's recipe, once; the note a link names. */
-  const followAddress = (cam: { x: number; y: number; k: number } | null, tmAt?: number): Promise<void> => {
-    const st = decodeState(location.hash);
-    const snap = snapshotIn(location.hash);
-    const recipe = recipeIn(location.hash);
-    const note = noteIn(location.hash);
-    return (st ? restore(st, cam, tmAt) : Promise.resolve())
-      .then(() => (snap ? openSnapshot(snap).then(() => writeAddress(false)) : undefined))
-      .then(() => {
-        // the recipe is read: the address goes back to the board's at once, as at the first load
-        if (!recipe) return;
-        void openRecipe(recipe);
-        writeAddress(false);
-      })
-      .then(() => {
-        if (note) showNote(note.ofView ? nav.board.id : "", note.id);
-        // the address names what is shown (CanvasSpec, "Navigation"), also where it named a view
-        // that is gone or what no state reads as
-        writeAddress(false);
-        renderNav();
-        people.report();
-      });
-  };
-  window.addEventListener("popstate", (e) => {
-    const cam = (e.state as { cam?: { x: number; y: number; k: number } } | null)?.cam ?? null;
-    const tmAt = (e.state as { tm?: unknown } | null)?.tm;
-    void followAddress(cam, typeof tmAt === "number" ? tmAt : undefined);
-  });
-  /** A link of this site followed from a conversation (CollabSpec decision 13): its address applied
-   *  in the page as a share link is — its board, what its sharer saw, the note it names — without a
-   *  reload; a step of the reader's history, which Back returns from. */
-  const openAddress = (hash: string) => {
-    const to = "#" + hash.replace(/^#/, "");
-    try {
-      // the entry being left remembers where the camera was
-      history.replaceState({ ...entry(), cam: { ...canvas.cam } }, "");
-      const n = entry().n + 1;
-      history.pushState({ n }, "", to);
-      navTop = n;
-    } catch {
-      return;
-    }
-    void followAddress(null);
-  };
-  $("#nav-back").addEventListener("click", () => history.back());
-  $("#nav-fwd").addEventListener("click", () => history.forward());
+  Object.assign(page, addressPart(page));
   // the review strip: its target's name goes back to the target
   $("#lens-title").addEventListener("click", (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-go]");
@@ -3276,11 +3144,11 @@ async function boot(): Promise<void> {
   // the builds the history holds: the clocks of views kept at one say which
   if (!data.snapshot) void tm.load().then(() => renderTabs());
   try {
-    history.replaceState({ n: 0 }, "", "#" + encodeState(current()));
+    history.replaceState({ n: 0 }, "", "#" + encodeState(page.current()));
   } catch {
     // see writeAddress
   }
-  renderNav();
+  page.renderNav();
   people.renderMe();
   reviewChanged();
   page.renderBuild();
