@@ -34,7 +34,6 @@ import { applyEvent, emptyReview, logFileName, problemsText, readEvent, validPer
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole } from "../../shared/review.ts";
 import { briefWhen } from "../../shared/titles.ts";
 import { PROJECT, versionName, viewFocus } from "../../shared/views.ts";
-import { ClusterPanel } from "./clusterpanel.ts";
 import { dataSource } from "./data.ts";
 import { WholeReview } from "./reviewread.ts";
 import type { DataSource, ReviewState } from "./data.ts";
@@ -42,27 +41,17 @@ import { exactContext, judgedText } from "../../shared/context.ts";
 import type { ModuleContexts } from "../../shared/context.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
 import { Graph } from "../../shared/viewgraph.ts";
-import { escapeHtml } from "./highlight.ts";
 import { ProjectNotes } from "./projectnotes.ts";
-import { Panel } from "./panel.ts";
 import { READ_ONLY } from "./people.ts";
 import { deployWaiting } from "./buildpop.ts";
-import { githubBlob } from "../../shared/deploy.ts";
 import { Editor } from "./editor.ts";
 import { keptFocus, readerFocus } from "./focus.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
-import { SelectionBar } from "./selbar.ts";
-import { clusterIndex, clusterPick, declPick, remove, selectionQuery, shownOf } from "./selection.ts";
+import { clusterPick, declPick, selectionQuery } from "./selection.ts";
 import type { KeysOf, Pick, Root } from "./selection.ts";
-import { SourceWindow, sourceMemory } from "./sourcewin.ts";
-import type { SourceHooks } from "./sourcewin.ts";
-import { Sources } from "./sources.ts";
 import { takeKept } from "./reload.ts";
 import type { Kept } from "./reload.ts";
-import { pairTop } from "./paperdock.ts";
-import { Papers } from "./paperlinks.ts";
-import { clusterSubject, PAST_LINK } from "../../shared/library.ts";
 import { snapshotIn } from "../../shared/sharesnap.ts";
 import { recipeIn } from "../../shared/artrecipe.ts";
 import { noteIn, siteOrigins } from "./chatlinks.ts";
@@ -74,12 +63,13 @@ import { Views } from "./views.ts";
 import { LayoutQueue } from "./layoutqueue.ts";
 import type { LayoutWorker } from "./layoutqueue.ts";
 import type { Board } from "./views.ts";
-import { buildWhen, TimeMachine } from "./timemachine.ts";
+import { TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
-import { boardMarks, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
+import { boardMarks, reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
-import { $, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW } from "./page.ts";
+import { $, VIEW_GONE, PAST_REVIEW, READ_ONLY_REVIEW } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { panelsPart } from "./pagepanels.ts";
 import { boardPart } from "./pageboard.ts";
 import { artPart } from "./pageart.ts";
 import { sidePart } from "./pageside.ts";
@@ -102,7 +92,6 @@ import { guidePart } from "./pageguide.ts";
 
 /** What main.ts makes that the parts written so far read (until each is a part of its own). */
 export interface MainPart {
-  selected: () => number | null;
   boardReview: () => ReviewData;
   stay: () => void;
   views: Views;
@@ -120,6 +109,8 @@ export interface MainPart {
   edits: Map<string, boolean>;
   served: Map<string, string[] | null>;
   servedContexts: Map<string, { contexts: ModuleContexts | null; hash: string | null }>;
+  editedNow: (i: number) => boolean | null;
+  edited: (i: number) => Promise<boolean>;
   submit: (op: ReviewRequest) => Promise<string | null>;
   flow: ReviewFlow;
   flowNow: ReviewFlow;
@@ -133,6 +124,7 @@ export interface MainPart {
   keysFor: (r: Root, target?: string | null) => KeysOf;
   pickDecl: (name: string, target?: string | null) => Pick;
   pickCluster: (c: number) => Pick;
+  walk: (i: number) => void;
   reviewBox: ReviewBox;
   declNow: (i: number) => string;
   clickedDecls: () => number[];
@@ -140,14 +132,6 @@ export interface MainPart {
   toggleKey: (i?: number | null) => void;
   litOn: (q: Query) => Lit;
   zoomOf: (q: Query | null, lit?: Lit | null) => Query | null;
-  papers: Papers;
-  panel: Panel;
-  clusterPanel: ClusterPanel;
-  selBar: SelectionBar;
-  sources: Sources<SourceWindow>;
-  openSourceAt: (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => void;
-  shownCluster: () => number;
-  showSelected: () => void;
   renderStrip: () => void;
   syncFocus: () => void;
   timeMachine: (at?: TimeMachineAt) => void;
@@ -253,9 +237,6 @@ async function boot(): Promise<void> {
     handsOver: (): boolean => false,
     // the rest each part sets as it is made
   } as Partial<Page> as Page;
-  /** the declaration the panel tells of, in the whole graph's numbering, or null */
-  const selected = (): number | null => (page.shown && "decl" in page.shown ? page.g.byName.get(page.shown.decl) ?? null : null);
-  page.selected = selected;
   let visitorsOn = "";
   /** The review as the board on show reads it, by its declarations' names: on a past graph, what was
    *  said of a declaration renamed since — kept under its name now — is read under its name then too
@@ -445,6 +426,7 @@ async function boot(): Promise<void> {
   const servedContexts = new Map<string, { contexts: ModuleContexts | null; hash: string | null }>();
   page.servedContexts = servedContexts;
   const editedNow = (i: number): boolean | null => (page.g.isExt(i) ? false : edits.get(page.g.nodes[i].module) ?? null);
+  page.editedNow = editedNow;
   const edited = async (i: number): Promise<boolean> => {
     if (page.g.isExt(i)) return false;
     const mod = page.g.nodes[i].module;
@@ -458,6 +440,7 @@ async function boot(): Promise<void> {
     servedContexts.set(mod, { contexts: src?.contexts ?? null, hash: src?.hash ?? null });
     return e;
   };
+  page.edited = edited;
   /** A declaration's text as the source window shows it, with the context it is written in above
    *  it: what an opinion records (shared/context.ts), and what a stale one is compared with;
    *  undefined until its file has been read. */
@@ -567,6 +550,7 @@ async function boot(): Promise<void> {
     toSelection();
     page.go(i);
   };
+  page.walk = walk;
 
   const reviewBox = new ReviewBox(page.g, {
     review: () => ({
@@ -620,7 +604,7 @@ async function boot(): Promise<void> {
           },
         }),
     go: (i) => page.go(i),
-    openSource: (name, from, to, quoted, root) => openSourceAt(name, from, to, quoted, root),
+    openSource: (name, from, to, quoted, root) => page.openSourceAt(name, from, to, quoted, root),
   });
   page.reviewBox = reviewBox;
   if (kept) reviewBox.restoreDrafts(kept.review);
@@ -650,7 +634,7 @@ async function boot(): Promise<void> {
   page.keyMarking = keyMarking;
   /** Mark or unmark a declaration as key for the focus (k): the one in the panel, or in the source
    *  window the key was pressed in. */
-  const toggleKey = (i = selected()) => {
+  const toggleKey = (i = page.selected()) => {
     const r = reviewRoot();
     if (r === null || i === null || i === r || data.snapshot) return;
     if (reader) return page.say(READ_ONLY);
@@ -673,292 +657,7 @@ async function boot(): Promise<void> {
   const zoomOf = (q: Query | null, lit: Lit | null = q && litOn(q)): Query | null =>
     q && lit && zoomScope(q, nav.board.rec.scope, lit, nav.board.bs);
   page.zoomOf = zoomOf;
-
-  /** Where the lead from the selection meets the panel: its left edge, level with the
-   *  declaration's name while that is in sight; null while the panel is away. */
-  const leadEnd = (): { x: number; y: number } | null => {
-    const el = $("#panel");
-    if (!el.classList.contains("open")) return null;
-    const r = el.getBoundingClientRect();
-    const t = el.querySelector(".p-name")?.getBoundingClientRect();
-    const y = t ? t.top + t.height / 2 : r.top + 48;
-    return { x: r.left, y: Math.min(Math.max(y, r.top + 18), r.bottom - 18) };
-  };
-  // the name moves with the panel's scroll, and the lead with it
-  $("#panel").addEventListener("scroll", () => page.canvas.request(), { passive: true });
-
-  // the library and the reference window (AttachmentSpec.md; web/src/paperlinks.ts): the links a panel
-  // lists, the pairing with the source window, the window shown to those who follow
-  const papers: Papers = new Papers($("#windows"), $("#library-btn"), $("#library-pop"), $("#panel"), {
-    review: () => boardReview(),
-    takeChange: (c) => takeChange(c),
-    graph: () => page.g,
-    clustering: () => cm(),
-    boardSubject: () => (page.shown && "decl" in page.shown ? `decl(${page.shown.decl})` : page.shown && "cluster" in page.shown ? clusterSubject(page.shown.cluster, cm()) : null),
-    // a past build is not reviewed, and links are part of the review (ViewSpec decision 26)
-    cannotLink: () => (data.snapshot ? "A snapshot of the page shows the links as they were: they are made on the server." : reader ? READ_ONLY : pastShown() ? PAST_LINK : null),
-    goDecl: (name) => {
-      const i = page.g.byName.get(name) ?? page.g.foldedInto.get(name);
-      if (i === undefined) page.say(`${name} is not in the graph on show.`);
-      else page.go(i);
-    },
-    goCluster: (kind, key) => {
-      if ((kind === "file") !== (cm() === "module")) return page.say(`${key} is a cluster by ${kind === "file" ? "file" : "namespace"}: this board is clustered by ${cm() === "module" ? "file" : "namespace"}.`);
-      const c = clusterIndex(page.canvas.layout, key);
-      if (c < 0) page.say(`${key} is not a cluster of this board.`);
-      else page.goCluster(c);
-    },
-    headers: () => ({ "content-type": "application/json", ...(data.name ? { "x-visualproof-name": encodeURIComponent(data.name) } : {}), ...(data.privateSession ? { "x-visualproof-private": data.privateSession } : {}) }),
-    ensureName: async () => (await page.people.ensure()) !== null,
-    following: () => page.people.followedName,
-    changed: () => page.people.report(),
-    say: (text) => page.say(text),
-    relayoutSource: () => sources.following?.relayout(),
-    repaint: () => showSelected(),
-    readOnly: () => (data.snapshot ? "A snapshot of the page carries no library: its files are on the server." : reader ? READ_ONLY : null),
-    noFiles: () => (data.snapshot ? "A snapshot of the page carries the library's records and links, not its files: open it on the server." : null),
-    // what notes carry (AttachmentSpec decision 12): a clip made into a note, a file attached to one
-    cannotNote: () => page.noteRefused(),
-    clip: (c, text) => page.clipToNote(c, text),
-    attach: (note, c) => page.attachTo(note, c),
-  });
-  page.papers = papers;
-
-  const panel = new Panel($("#panel"), page.g, reviewBox, {
-    links: (i) => papers.declHtml(i),
-    go: (i) => page.go(i),
-    walk: (i) => walk(i),
-    reviewData: () => boardReview(),
-    openSource: (i) => void sources.show(i),
-    preview: (i) => page.canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
-    unpin: (i) => {
-      if (toView(i) < 0) return;
-      page.canvas.unpin(toView(i));
-      page.sync.sharePins();
-    },
-    isPinned: (i) => !frozen() && toView(i) >= 0 && page.canvas.isPinned(toView(i)),
-    close: () => {
-      page.clear();
-      page.commit();
-    },
-    // a past build's files are not the build status of now
-    fileOf: (i) => (pastShown() ? undefined : page.fileIndex.get(page.g.nodes[i].module)),
-    alsoHere: (i) => {
-      const on = page.people.on(page.g.nodes[i].name);
-      if (!on.length) return "";
-      return (
-        `<span>Also here:</span>` +
-        on.map((p) => `<span class="avatar${p.agent ? " agent" : ""}" style="background:${page.people.colorOf(p)}" title="${escapeHtml(page.people.nameOf(p))}">${escapeHtml(page.people.label(p))}</span>`).join("") +
-        `<span>${escapeHtml(on.map((p) => page.people.nameOf(p)).join(", "))}</span>`
-      );
-    },
-    why: (i) => {
-      const r = reviewRoot();
-      return r === null ? "" : flow.whyHtml(r, i);
-    },
-    queue: (i, keyOnly) => (flow.isTarget(i) ? flow.listHtml(i, keyOnly) : null),
-    listOrder: () => S.tcbOrder ?? "review",
-    setListOrder: (o) => {
-      S.tcbOrder = o;
-      store.save();
-    },
-    editorLink: (i) => editor.href(page.g, i),
-    shut: (section) => store.isShut(section),
-    toggle: (section) => store.toggleShut(section),
-    then: (i) => thenHtml(i),
-  });
-  page.panel = panel;
-  /** What the panel says of a declaration of a past graph (HistorySpec decision 17): the build it
-   *  is shown at, whether its source then is kept (decision 23), and what became of it since. */
-  const thenHtml = (i: number): string | null => {
-    const past = nav.board?.past?.past;
-    if (!past || page.g !== past.graph) return null;
-    const s = past.snapshot;
-    const m = past.marks[i] ?? 0;
-    const kept = page.g.isExt(i) || !page.g.nodes[i].range ? null : past.kept.get(page.g.nodes[i].module);
-    const then = page.g.isExt(i) || !page.g.nodes[i].range ? "its statement and doc then." : kept ? "its statement, doc and source then (Space)." : "its statement and doc then; its source then is not kept.";
-    const now = past.nowName.get(page.g.nodes[i].name);
-    const what =
-      m & PAST_GHOST
-        ? "Gone now: no rename since carried it."
-        : [m & PAST_RENAMED ? `Renamed since: now <code>${escapeHtml(now ?? "")}</code>.` : "", m & PAST_CHANGED ? "Changed since: another version now." : ""].filter(Boolean).join(" ");
-    return (
-      `<div class="banner tm-then"><b>As built ${escapeHtml(buildWhen(s.at))}</b>${s.commit ? ` · <code>${escapeHtml(s.commit.hash.slice(0, 7))}</code>` : ""}: ` +
-      `${then}${what ? `<div class="tm-then-m">${what}</div>` : ""}</div>`
-    );
-  };
-
-  // a cluster's panel, in the same place (web/src/clusterpanel.ts)
-  const clusterPanel = new ClusterPanel($("#panel"), {
-    board: () => ({ graph: vg(), layout: page.canvas.layout, mode: cm(), toFull }),
-    reviewData: () => boardReview(),
-    isFolded: (c) => page.canvas.folded.has(c),
-    toggleFold: (c) => page.canvas.toggleFold(c),
-    goCluster: (c) => page.goCluster(c),
-    go: (i) => page.go(i),
-    preview: (i) => page.canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
-    previewCluster: (c) => page.canvas.previewCluster(c),
-    zoom: (c) => void page.zoomCluster(c),
-    canZoom: (c) => !reader && page.clusterScope(c) !== null,
-    hide: (c) => page.hideLevel(page.canvas.layout.clusters[c].key),
-    trust: (c) => page.trust.state(page.canvas.layout.clusters[c], cm()),
-    trustClicked: (c, anchor) => page.trust.clicked(page.canvas.layout.clusters[c], cm(), anchor),
-    // a past build's files are not the build status of now, and its modules are its graph's
-    fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
-    stateLabel: (st) => STATE_LABEL[st],
-    modulesUnder: (prefix) => page.g.meta.modules.filter((m) => m.name === prefix || m.name.startsWith(prefix + ".")).map((m) => m.name),
-    goToModule: (m) => page.goToModule(m),
-    close: () => {
-      page.clear();
-      page.commit();
-    },
-    links: (key, mode) => papers.clusterHtml(key, mode),
-  });
-  page.clusterPanel = clusterPanel;
-
-  // the selection, under the mode buttons (web/src/selbar.ts)
-  const selBar = new SelectionBar($("#selbar"), {
-    canOpenViews: () => !reader,
-    names: () => views.titles().names ?? undefined,
-    show: (k) => {
-      const to = shownOf(page.picks[k]);
-      if (!to) return;
-      page.shown = to;
-      page.apply();
-      page.revealShown();
-      page.commit();
-    },
-    remove: (k) => {
-      ({ picks: page.picks, shown: page.shown } = remove(page.picks, page.shown, k));
-      page.apply();
-      page.commit();
-    },
-    zoom: () => void page.zoomIn(),
-    clear: () => {
-      page.clear();
-      page.commit();
-    },
-    markKeys: () => {
-      const m = keyMarking();
-      if (m) void reviewBox.markKeys(m.names).then((why) => why && page.say(why));
-    },
-  });
-  page.selBar = selBar;
-
-  // the source windows (ReviewSpec, "The source window"; web/src/sources.ts): the one that follows
-  // the selection, opened in the middle of the screen each time, and those the reader pinned; a
-  // reload starts without them
-  const viewport = () => ({ w: document.documentElement.clientWidth || innerWidth, h: document.documentElement.clientHeight || innerHeight });
-  page.steps = { back: false, forward: false };
-  // the source windows are of the graph on show (`useGraph`): on a board of a past build, they show
-  // the text that build was compiled from (HistorySpec decision 23)
-  const sourceHooks: SourceHooks = {
-    go: (name) => {
-      const j = page.g.byName.get(name);
-      if (j !== undefined) page.go(j);
-    },
-    // a past build's files are not the build status of now
-    fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
-    compiledOf: (m) => page.compiled.get(m),
-    close: (w) => sources.close(w),
-    pin: (w) => void sources.pin(w),
-    // a source window collapsed or opened again leaves or takes its side of the reference window
-    // paired with it, the two kept apart as the pairing shows them (AttachmentSpec decision 8)
-    collapsed: () => {
-      page.people.report();
-      papers.redock();
-    },
-    back: () => history.back(),
-    forward: () => history.forward(),
-    steps: () => page.steps,
-    editorLink: (G, i, at) => editor.href(G, i, at),
-    // following a branch on GitHub (DeploySpec decision 13): the build's lines there
-    githubLink: (file, commit, from, to) => (page.deploy?.github ? githubBlob(page.deploy.github, commit, file, from, to) : null),
-    builtCommit: () => page.graphInfo?.commit ?? null,
-    pinned: () => sources.pinned.map((p) => p.rect()),
-    top: () => pairTop(),
-    say: (text) => page.say(text),
-    pastOf: (G) => {
-      const past = nav.board?.past?.past;
-      return past && past.graph === G ? { past, when: buildWhen(past.snapshot.at) } : null;
-    },
-    // the reference window paired with a source window stands beside it, on the right of the two
-    docked: (w) => papers.dockFor(w),
-  };
-  const memory = sourceMemory();
-  const sources: Sources<SourceWindow> = new Sources({
-    make: () => new SourceWindow($("#windows"), page.g, data, reviewBox, sourceHooks, memory),
-    say: (text) => page.say(text),
-    // what the others are told changed: at once, not at the next look
-    changed: () => {
-      page.people.report();
-      papers.redock();
-    },
-    viewport,
-    // a pinned window stands under the page's bars, as the paired windows do
-    top: () => pairTop(),
-    // the reference window opens the declaration's first link beside the window opened or stepped,
-    // pinned or not (AttachmentSpec decision 8)
-    shown: (w, i) => papers.paired(i, w),
-  });
-  page.sources = sources;
-
-  /** Open declaration `name`'s source at lines `from`–`to` of its file (a code quote's header in a
-   *  comment, clicked in `at`; ReviewSpec, "Comments"): in a window that shows it already — the one
-   *  clicked in, else any — and else in the following window, the declaration gone to first; the
-   *  lines are scrolled to and flashed there. */
-  const openSourceAt = (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => {
-    const j = page.g.byName.get(name) ?? page.g.foldedInto.get(name);
-    if (j === undefined) return page.say(`${name} is not in the graph now.`);
-    const here = at ? sources.at(at) : null;
-    let w = here?.decl === j ? here : sources.all.find((p) => p.decl === j) ?? null;
-    if (w) sources.reveal(w);
-    else {
-      if (selected() !== j) page.go(j);
-      w = sources.show(j);
-    }
-    w.showLines(from, to, quoted);
-  };
-  page.openSourceAt = openSourceAt;
-
-  /** The cluster the panel tells of, in the board's layout (its key read in the board's
-   *  clustering); -1 when it tells of none, or of one this board does not hold. */
-  const shownCluster = (): number => (page.shown && "cluster" in page.shown && page.canvas.layout ? clusterIndex(page.canvas.layout, page.shown.cluster) : -1);
-  page.shownCluster = shownCluster;
-
-  /** The panel for what was last clicked — a cluster's (web/src/clusterpanel.ts), or a
-   *  declaration's with the source window following it; and once it is known whether the
-   *  declaration's file changed since it was compiled, both again if it did, or if a stale opinion
-   *  on it is waiting for its text to show what changed. */
-  const showSelected = () => {
-    // what the panel tells of has no card on the canvas: a lead from it to the panel instead
-    const c = shownCluster();
-    if (c >= 0) {
-      panel.hide();
-      sources.follow(null);
-      sources.redrawReviews();
-      clusterPanel.show(c);
-      page.canvas.setLead({ kind: "cluster", c }, leadEnd);
-      return;
-    }
-    clusterPanel.hide();
-    const i = selected();
-    panel.show(i);
-    sources.follow(i);
-    sources.redrawReviews();
-    const k = i === null ? -1 : page.visitorOf(i);
-    page.canvas.setLead(i !== null && toView(i) >= 0 ? { kind: "node", i: toView(i) } : k >= 0 ? { kind: "visitor", k } : null, leadEnd);
-    // an opinion given on an earlier version, its What changed closed (web/src/tips.ts, stale-opinion)
-    if ($("#panel details[data-rv-changes]:not([open])")) page.offerTip("stale-opinion");
-    if (i !== null && editedNow(i) === null && !pastShown())
-      void edited(i).then((e) => {
-        if ((e || reviewBox.needsSource(i)) && selected() === i && !pastShown()) {
-          panel.show(i);
-          sources.follow(i);
-        }
-      });
-  };
-  page.showSelected = showSelected;
+  Object.assign(page, panelsPart(page));
 
   // the first view: the one the address names, else the tab the reader left on show, else the
   // Project
@@ -1041,13 +740,13 @@ async function boot(): Promise<void> {
       // a visitor's colour by status, and its diamond, are the review's too
       page.drawVisitors();
       renderStrip();
-      showSelected();
+      page.showSelected();
       page.renderSelBar();
     }
     page.activity.changed();
     page.boardPanel.render();
     page.renderTabs();
-    papers.refresh();
+    page.papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
     page.stickies.render();
     if (followed) page.selectionFollowed();
@@ -1106,12 +805,12 @@ async function boot(): Promise<void> {
    *  had it (HistorySpec decision 23). */
   const useGraph = (G: Graph) => {
     page.g = G;
-    panel.g = page.g;
+    page.panel.g = page.g;
     reviewBox.g = page.g;
     page.searchBox.setGraph(page.g);
-    if (sources.all.some((w) => w.g !== G)) {
-      for (const w of sources.all) w.g = G;
-      sources.redraw((name) => G.byName.get(name));
+    if (page.sources.all.some((w) => w.g !== G)) {
+      for (const w of page.sources.all) w.g = G;
+      page.sources.redraw((name) => G.byName.get(name));
     }
   };
 
@@ -1280,8 +979,8 @@ async function boot(): Promise<void> {
       return decl === undefined ? null : { decl, collapsed: w.collapsed };
     };
     const f = kept.sources.following && on(kept.sources.following);
-    sources.mirror({ following: f, pinned: kept.sources.pinned.map(on).filter((w) => w !== null) });
-    sources.release();
+    page.sources.mirror({ following: f, pinned: kept.sources.pinned.map(on).filter((w) => w !== null) });
+    page.sources.release();
   }
   $("#loader").classList.add("gone");
   // faded out, it leaves the page: a screen reader would read "Reading the project…" at its end
@@ -1301,7 +1000,7 @@ async function boot(): Promise<void> {
     page.activity.changed();
     let last = "";
     setInterval(() => {
-      const now = JSON.stringify(page.people.mode === "none" ? null : { s: sources.open, c: page.canvas.cam });
+      const now = JSON.stringify(page.people.mode === "none" ? null : { s: page.sources.open, c: page.canvas.cam });
       if (now !== last) {
         last = now;
         page.people.report();
