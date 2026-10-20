@@ -26,28 +26,24 @@
 
 import type { BuildDelta, BuildRev, BuildStatus } from "../../shared/build.ts";
 import type { ChatEvent, ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../../shared/collab.ts";
-import { artNameId } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout, ViewMeta } from "../../shared/graph.ts";
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
-import { evaluate, parseQuery, printQuery, readsReview, sameQuery, setOutside, withoutOutside } from "../../shared/query.ts";
+import { printQuery, readsReview, setOutside, withoutOutside } from "../../shared/query.ts";
 import { litKeyEdges } from "../../shared/keys.ts";
-import { keyMarked, keyMarks, under, validPrefix } from "../../shared/review.ts";
+import { keyMarked, keyMarks } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewRev } from "../../shared/review.ts";
 import { reviewCount, trustSplit } from "../../shared/reviewqueue.ts";
-import { scopeWith, scopeWithout } from "../../shared/scopeedit.ts";
 import { noteExcerpt } from "../../shared/sticky.ts";
 import { briefWhen } from "../../shared/titles.ts";
 import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, PROJECT_SCOPE, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
-import type { Target, VisitorPoint } from "./canvas.ts";
-import { ContextMenu, menuItems } from "./ctxmenu.ts";
-import type { MenuContext, MenuTarget, TrustTo } from "./ctxmenu.ts";
+import type { VisitorPoint } from "./canvas.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
 import { dataSource } from "./data.ts";
 import { WholeReview } from "./reviewread.ts";
@@ -104,7 +100,7 @@ import { Tabs } from "./tabs.ts";
 import { Share } from "./share.ts";
 import { excerpt, ownAgents, PUBLIC, stateWords, Talk } from "./talk.ts";
 import { ChatWindow, keepStripClear } from "./chatwin.ts";
-import { chipOf, chipText, copyLink, noteHash, noteIn, siteLink, siteOrigins, withoutKeys } from "./chatlinks.ts";
+import { chipOf, copyLink, noteIn, siteLink, siteOrigins, withoutKeys } from "./chatlinks.ts";
 import type { Chip } from "./chatlinks.ts";
 import { planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
@@ -135,6 +131,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, MODE_HINT, RESTS_HINT, STEP_HINT, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { menuPart } from "./pagemenu.ts";
 import { notesPart } from "./pagenotes.ts";
 import { keysPart } from "./pagekeys.ts";
 import { guidePart } from "./pageguide.ts";
@@ -148,16 +145,23 @@ export interface MainPart {
   nav: ViewNav;
   vg: () => Graph;
   toView: (i: number) => number;
+  toFull: (j: number) => number;
   cm: () => ClusterMode;
   tm: TimeMachine;
   pastShown: () => boolean;
   frozen: () => boolean;
   frozenWhy: () => string;
+  submit: (op: ReviewRequest) => Promise<string | null>;
+  flow: ReviewFlow;
+  blocked: () => string | null;
   isTarget: (name: string) => boolean;
+  reviewName: () => string | null;
   reviewRoot: () => number | null;
   keysFor: (r: Root, target?: string | null) => KeysOf;
   pickDecl: (name: string, target?: string | null) => Pick;
+  pickCluster: (c: number) => Pick;
   reviewBox: ReviewBox;
+  declNow: (i: number) => string;
   toggleKey: (i?: number | null) => void;
   litOn: (q: Query) => Lit;
   papers: Papers;
@@ -169,13 +173,17 @@ export interface MainPart {
   stickies: Stickies;
   linear: LinearForm;
   ART_KEYS: Set<string>;
+  art: ArtFrame;
   trust: Trust;
   boardPop: Popover;
   trustPop: Popover;
   sync: BoardSync;
+  hideLevel: (key: string) => void;
   ownScheme: () => Scheme;
   chooseScheme: (s: Scheme) => void;
+  chipFor: (url: string) => Chip | null;
   people: People;
+  made: (r: ViewAnswer) => Promise<string | null>;
   named: () => Promise<string | null>;
   tabs: Tabs;
   focusMenu: FocusMenu;
@@ -186,12 +194,17 @@ export interface MainPart {
   apply: () => void;
   syncTool: () => void;
   say: (text: string) => void;
+  clickOn: (p: Pick, shift: boolean) => boolean;
+  useTool: (m: Tool) => void;
   readerMode: (m: Tool) => void;
   clear: () => void;
+  visitorOf: (i: number) => number;
   visitOn: (i: number, from: number | null) => void;
   reveal: (i: number) => void;
   go: (i: number) => void;
   openTimeMachine: (at?: TimeMachineAt) => Promise<boolean>;
+  current: () => ViewState;
+  seenHash: () => Promise<string>;
   writeAddress: (push: boolean) => void;
   commit: () => void;
   pill: HTMLElement;
@@ -200,9 +213,7 @@ export interface MainPart {
   eyesPop: Popover;
   edgesBtn: HTMLElement;
   toggleLock: () => void;
-  ctxMenu: ContextMenu;
-  menuContext: (part: Query | null) => MenuContext;
-  menuOnSelection: () => void;
+  relayout: () => Promise<void>;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -408,6 +419,7 @@ async function boot(): Promise<void> {
   const toView = (i: number) => nav.board.toView(i);
   page.toView = toView;
   const toFull = (j: number) => nav.board.toFull(j);
+  page.toFull = toFull;
   /** the board's clustering */
   const cm = (): ClusterMode => nav.board.rec.clustering;
   page.cm = cm;
@@ -539,10 +551,12 @@ async function boot(): Promise<void> {
         return e.message;
       },
     );
+  page.submit = submit;
 
   // the review flow where the review has a focus (ViewSpec decision 28): the focus's review set in
   // review order, the next one to review, why a declaration is in it (web/src/reviewqueue.ts)
   const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => people.name });
+  page.flow = flow;
   /** The same on the graph on show, whatever build the board shows: how far each target's review has
    *  come is the review's now (the targets list, the views menu) */
   const flowNow = new ReviewFlow({ graph: () => page.present, review: () => page.review.data, reader: () => people.name });
@@ -556,6 +570,7 @@ async function boot(): Promise<void> {
     const p = page.review.problems.find((x) => x.file === mine);
     return p ? `Your review log (log/${mine}) has a line that cannot be read — line ${p.line}: ${p.why}. Nothing more is written to it until it is fixed by hand.` : null;
   };
+  page.blocked = blocked;
   const isTarget = (name: string): boolean => Object.hasOwn(boardReview().targets, name);
   page.isTarget = isTarget;
   /** The targets the board on show holds, by name. */
@@ -574,6 +589,7 @@ async function boot(): Promise<void> {
    *  chose one, else the view's; null where there is none, and the review strip and its keys stand
    *  aside. */
   const reviewName = (): string | null => (nav.board ? readerFocus(page.mine, viewFocusName(), isTarget, [...linkedTargets(), ...heldTargets()]) : null);
+  page.reviewName = reviewName;
   /** The same in the whole graph's numbering. */
   const reviewRoot = () => {
     const t = reviewName();
@@ -595,6 +611,7 @@ async function boot(): Promise<void> {
     const cl = canvas.layout.clusters[c];
     return clusterPick(S.mode, cl, cm(), keysFor({ cluster: cl.key, by: cm() }));
   };
+  page.pickCluster = pickCluster;
   /** The Selection tool, nothing selected again (walking a TCB chooses it). */
   const toSelection = () => {
     if (S.mode === "plain") return;
@@ -670,6 +687,7 @@ async function boot(): Promise<void> {
    *  since gave it, which the review, the views' records and their scopes speak (HistorySpec decision
    *  8); else its name. */
   const declNow = (i: number): string => nav.board?.past?.past.nowName.get(page.g.nodes[i].name) ?? page.g.nodes[i].name;
+  page.declNow = declNow;
   /** The declarations clicked (the selection's picks' roots), in the whole graph's numbering. */
   const clickedDecls = (): number[] =>
     page.picks.flatMap((p) => {
@@ -1096,7 +1114,7 @@ async function boot(): Promise<void> {
       clusterPanel.refresh();
       page.showLevel();
     },
-    menu: (t, x, y, world) => openMenu(t, x, y, world),
+    menu: (t, x, y, world) => page.openMenu(t, x, y, world),
     frozenDrag: () => say(frozenWhy()),
   });
   page.canvas = canvas;
@@ -1175,7 +1193,7 @@ async function boot(): Promise<void> {
     // the board's menu on what a row is; Fold and Fit are the form's (menuAct)
     menu: (on, x, y, spot) => {
       if (on?.kind === "note") page.openNoteMenu(on.id, x, y);
-      else openMenu(on?.kind === "decl" ? { kind: "node", i: on.i } : on ? { kind: "cluster", c: on.c } : null, x, y, spot ?? canvas.toWorld(x, y), false, on?.kind === "cluster" ? on.folded : undefined);
+      else page.openMenu(on?.kind === "decl" ? { kind: "node", i: on.i } : on ? { kind: "cluster", c: on.c } : null, x, y, spot ?? canvas.toWorld(x, y), false, on?.kind === "cluster" ? on.folded : undefined);
       if (page.menuOn) page.menuOn.linear = true;
     },
     // the Export window, at the right, beside which the line is drawn
@@ -1240,6 +1258,7 @@ async function boot(): Promise<void> {
     titles: () => titleOf(page.meta.project.name, page.meta.projectCount, Object.keys(page.review.data.targets).length),
     say: (text) => say(text),
   });
+  page.art = art;
   // the board's names are written in an artwork's fonts once they are there
   document.fonts?.addEventListener?.("loadingdone", () => {
     if (!page.artLook) return;
@@ -1405,6 +1424,7 @@ async function boot(): Promise<void> {
   /** Hide a level of the board on show by its cluster's key, for everyone on it (ViewSpec decision
    *  24): the outline's rows, a cluster's panel and the canvas's menu call it. */
   const hideLevel = (key: string) => void sync.hideLevel(key);
+  page.hideLevel = hideLevel;
   /** The levels the board on show hides, in ⚙ Board: how many, Show all, and each with Show. */
   const renderHidden = () => {
     const keys = nav.board?.rec.hidden[cm()] ?? [];
@@ -1715,6 +1735,7 @@ async function boot(): Promise<void> {
       tool: (t) => (restsOn(t) ? "Rests on" : MODE_NAME[t]),
     });
   };
+  page.chipFor = chipFor;
 
   // ---------------------------------------------------------------- who is here
   //
@@ -1992,6 +2013,7 @@ async function boot(): Promise<void> {
     sync.afterPost();
     return null;
   };
+  page.made = made;
   // a private reader's view is made without their name, and needs none (CollabSpec decision 8)
   const named = async (): Promise<string | null> => (reader ? READ_ONLY : data.snapshot || (await people.ensureLayout()) ? null : "A view is made under your name: give one first.");
   page.named = named;
@@ -2596,6 +2618,7 @@ async function boot(): Promise<void> {
     tipsOnClick(p, shift, before);
     return true;
   };
+  page.clickOn = clickOn;
 
   /** The tips in place a reader's click may be the moment of (GuideSpec decision 9; web/src/tips.ts
    *  says each rule): under Selection, what was selected replaced three times in 20 s; under Rests
@@ -2636,6 +2659,7 @@ async function boot(): Promise<void> {
     if (restsOn(m)) S.restsOn = m;
     store.save();
   };
+  page.useTool = useTool;
 
   /** The tool (decided 2026-10-07): how the next click selects. With something selected, the
    *  pick last clicked is selected again under it, alone (web/src/selection.ts, retool): one step
@@ -2686,6 +2710,7 @@ async function boot(): Promise<void> {
     const name = page.g.nodes[i]?.name;
     return name === undefined ? -1 : page.visitors.findIndex((v) => v.name === name);
   };
+  page.visitorOf = visitorOf;
   /** Declaration `i`, which the board does not hold, a visitor on it, the newest of the trail,
    *  reached from `from` where that is on the board or a visitor. Its place is the canvas's to choose
    *  (drawVisitors); one that is a visitor already keeps its own. */
@@ -3072,6 +3097,7 @@ async function boot(): Promise<void> {
     picks: selectionText(page.picks),
     shown: page.shown,
   });
+  page.current = current;
   const entry = () => (history.state && typeof history.state.n === "number" ? (history.state as { n: number; cam?: object; tm?: number }) : { n: 0 });
   /** The address of what this reader sees, with its snapshot (CollabSpec decision 7): what a link to
    *  what they see carries, whatever Share's switch (decision 13); the address alone where the
@@ -3081,6 +3107,7 @@ async function boot(): Promise<void> {
     const snap = await writeSnapshot(followedOf(parts.read), canvas.screen).catch(() => null);
     return snap ? withSnapshot(hash, snap).slice(1) : hash;
   };
+  page.seenHash = seenHash;
   /** In the Time Machine, the build its board shows travels in the entry (not the address: where a
    *  reader is in it is their own, HistorySpec decision 18), so that back and forward return to a
    *  past board at its build (the owner's decision of 2026-10-09). */
@@ -3680,352 +3707,10 @@ async function boot(): Promise<void> {
       void nav.redraw();
     }
   };
+  page.relayout = relayout;
   $("#relayout").addEventListener("click", () => void relayout());
-
-  // ---------------------------------------------------------------- the canvas's menu
-  //
-  // A right click on the canvas, or the ContextMenu key or Shift+F10 on what is selected (ViewSpec,
-  // "The canvas's menu", decided 2026-10-09): what can be done with a declaration, a cluster or the
-  // empty canvas, as web/src/ctxmenu.ts lists it, each item doing what the page does elsewhere —
-  // the panel's review, the modes, Duplicate, the scope chips, trusting from the side panel.
-
-  page.menuOn = null;
-  const ctxMenu = new ContextMenu($("#ctxmenu"), {
-    chose: (act, name) => void menuAct(act, name),
-    // what it was open on was lit for it: no longer
-    closed: () => canvas.preview(null),
-  });
-  page.ctxMenu = ctxMenu;
-  // a right click elsewhere on the page keeps the browser's menu; while this one is open, it is
-  // the only one (the ContextMenu key reaches the page as a right click too)
-  document.addEventListener("contextmenu", (e) => {
-    if (ctxMenu.open) e.preventDefault();
-  });
-  /** A name can be had for what is recorded under one: given here, or by the proxy. */
-  const canName = () => !data.snapshot && !reader && (!!people.name || people.mode === "declared");
-  /** Whether two scopes hold the same set, on the whole graph and the review as they are. */
-  const sameSet = (a: Query, b: Query): boolean => {
-    const x = evaluate(a, { g: page.g, review: boardReview() }), y = evaluate(b, { g: page.g, review: boardReview() });
-    for (let j = 0; j < x.length; j++) if (x[j] !== y[j]) return false;
-    return true;
-  };
-  /** A namespace to trust from the menu, where trusting it can be done from here (TrustTo). */
-  const trustOf = (prefix: string | null): TrustTo | null => {
-    if (!prefix || !validPrefix(prefix)) return null;
-    const by = page.review.data.trusted.filter((t) => under(prefix, t));
-    return by.includes(prefix) ? { prefix, on: true } : by.length ? null : { prefix, on: false };
-  };
-  /** Where the menu is open and what the reader may do there. `part`: what it is open on, as a part
-   *  of a scope — the kept views that hold all of it already are said so. */
-  const menuContext = (part: Query | null): MenuContext => {
-    const rec = nav.board.rec;
-    const has = part && evaluate(part, { g: page.g, review: boardReview() });
-    const holds = (scope: string): boolean => {
-      if (!has) return false;
-      try {
-        const set = evaluate(parseQuery(scope), { g: page.g, review: boardReview() });
-        for (let j = 0; j < has.length; j++) if (has[j] && !set[j]) return false;
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    return {
-      fixed: fixedScope(rec),
-      review: reviewName(),
-      // every view whose scope can change, the kept ones first, then those open now and not kept
-      // yet, which adding to keeps (ViewSpec decision 21)
-      views: views.summaries
-        .filter((v) => !fixedScope(v) && v.id !== rec.id)
-        .sort((a, b) => Number(b.kept) - Number(a.kept))
-        .slice(0, 40)
-        .map((v) => ({ id: v.id, title: views.title(v.id), holds: holds(v.scope), ...(v.kept ? {} : { temporary: true }) })),
-      // a preview of the view at another build is arranged by nobody here; a past build is not
-      // reviewed (the owner's decision of 2026-10-10)
-      arrange: (!!data.snapshot || canName()) && !frozen(),
-      here: fixedScope(rec) ? null : rec.id,
-      write: canName() && !blocked() && !pastShown(),
-      past: pastShown(),
-      preview: frozen(),
-      // a phone: a source takes the whole screen, nothing is pinned beside it (PhoneSpec decision 13)
-      noPin: isPhone(),
-      // a link to it, without the key, wherever there is a server to open it (CollabSpec decision 13)
-      link: !data.snapshot,
-    };
-  };
-  page.menuContext = menuContext;
-  /** Open the menu on what is at a point of the window: a declaration or a cluster of the board,
-   *  or the empty canvas; `keys`: from the keyboard; `folded`: a cluster folded where the menu is
-   *  open (the linear form's own folds). What it is open on is lit while it is. */
-  const openMenu = (t: Target | null, x: number, y: number, world: [number, number], keys = false, folded?: boolean) => {
-    const title = views.title(nav.board.id);
-    // the menu says what it is on: the pointer's tooltip goes
-    $("#tip").hidden = true;
-    if (t?.kind === "node" || t?.kind === "visitor") {
-      // a visitor is a declaration as any, but for what is on the board (ViewSpec decision 27)
-      const visitor = t.kind === "visitor";
-      const i = visitor ? page.g.byName.get(page.visitors[t.k]?.name ?? "") : toFull(t.i);
-      if (i === undefined) return;
-      const name = page.g.nodes[i].name;
-      const r = reviewRoot();
-      // an artwork's names by selection: its name shown in the picture, or not (ExportSpec decision 19)
-      const artName = t.kind === "node" ? artNameId("decl", canvas.g.nodes[t.i].name) : undefined;
-      const inArt = artName ? art.nameChosen(artName) : undefined;
-      const mt: MenuTarget = {
-        kind: "decl",
-        name,
-        ext: page.g.isExt(i),
-        key: r !== null && flow.keyable(r, i) ? keyMarked(boardReview(), page.g.nodes[r].name, name) : null,
-        target: Object.hasOwn(boardReview().targets, name),
-        ns: page.g.isExt(i) ? null : trustOf(name.split(".").slice(0, -1).join(".") || null),
-        ...(visitor ? { visitor: true } : {}),
-        ...(inArt !== undefined ? { art: inArt } : {}),
-      };
-      // a scope is written in the names of now, as a move keeps it (a past graph's renamed one)
-      page.menuOn = { t: mt, i, part: { op: "decl", names: [declNow(i)] }, world, at: { x, y }, ...(artName ? { artName } : {}) };
-      if (t.kind === "node") canvas.preview(t.i);
-      ctxMenu.show(menuItems(mt, menuContext(page.menuOn.part), title), x, y, name, keys);
-    } else if (t?.kind === "cluster") {
-      const cl = canvas.layout.clusters[t.c];
-      const st = trust.state(cl, cm());
-      const artName = artNameId("cluster", cl.key);
-      const inArt = art.nameChosen(artName);
-      const mt: MenuTarget = {
-        kind: "cluster",
-        key: cl.key,
-        folded: folded ?? canvas.folded.has(t.c),
-        folder: cm() === "module",
-        trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null,
-        ...(inArt !== undefined ? { art: inArt } : {}),
-      };
-      page.menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y }, artName };
-      canvas.previewCluster(t.c);
-      ctxMenu.show(menuItems(mt, menuContext(page.menuOn.part), title), x, y, cl.key.replace("⟨external⟩", "External"), keys);
-    } else {
-      const mt: MenuTarget = { kind: "canvas" };
-      page.menuOn = { t: mt, part: null, world, at: { x, y } };
-      ctxMenu.show(menuItems(mt, menuContext(null), title), x, y, title, keys);
-    }
-  };
-  /** The ContextMenu key or Shift+F10: the menu on what the panel tells of, where it is on the
-   *  canvas (kept within the canvas's free part), or on the empty canvas in its middle. */
-  const menuOnSelection = () => {
-    const I = canvas.insets;
-    const W = document.documentElement.clientWidth, H = document.documentElement.clientHeight;
-    const inside = (p: [number, number]): [number, number] => [Math.max(I.left + 8, Math.min(W - I.right - 8, p[0])), Math.max(I.top + 8, Math.min(H - I.bottom - 8, p[1]))];
-    const i = selected();
-    const c = shownCluster();
-    let t: Target | null = null;
-    let at: [number, number];
-    const k = i === null ? -1 : visitorOf(i);
-    if (i !== null && toView(i) >= 0) {
-      t = { kind: "node", i: toView(i) };
-      at = canvas.toScreen(...canvas.posOf(toView(i)));
-    } else if (k >= 0 && canvas.visitorPos(k)) {
-      t = { kind: "visitor", k };
-      at = canvas.toScreen(...canvas.visitorPos(k)!);
-    } else if (c >= 0) {
-      t = { kind: "cluster", c };
-      at = canvas.screenOf("cluster", canvas.layout.clusters[c].key)!;
-    } else at = [I.left + (W - I.left - I.right) / 2, I.top + (H - I.top - I.bottom) / 2];
-    const [x, y] = inside(at);
-    openMenu(t, x, y, canvas.toWorld(x, y), true);
-  };
-  page.menuOnSelection = menuOnSelection;
-  /** Copy text to the clipboard; where the browser refuses (a page not served securely), through a
-   *  field selected for the moment. */
-  const copyText = async (text: string, said = `Copied ${text}`) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const f = document.createElement("textarea");
-      f.value = text;
-      f.style.cssText = "position: fixed; opacity: 0; pointer-events: none";
-      document.body.append(f);
-      f.select();
-      document.execCommand("copy");
-      f.remove();
-    }
-    say(said);
-  };
-  /** Copy link (ViewSpec decision 21, CollabSpec decision 13): a link to what the menu was opened on
-   *  — a declaration, a cluster, a note — or, on the empty canvas, to what the reader sees (decision
-   *  7's snapshot, whatever Share's switch), on the board on show; never with the key. The page says
-   *  it was copied, as a conversation will show it. */
-  const copyLinkTo = async (on: NonNullable<Page["menuOn"]>) => {
-    const t = on.t;
-    const base = current();
-    let hash: string;
-    if (t.kind === "decl") hash = encodeState({ ...base, picks: selectionText([pickDecl(t.name)]), shown: { decl: t.name } });
-    else if (t.kind === "cluster" && on.c !== undefined) hash = encodeState({ ...base, picks: selectionText([pickCluster(on.c)]), shown: { cluster: t.key } });
-    else if (t.kind === "cluster") hash = encodeState({ ...base, picks: null, shown: { cluster: t.key } });
-    else if (t.kind === "note" && on.note) hash = noteHash(encodeState(base), on.note, page.noteOf(on.note)?.kind === "view");
-    else hash = await seenHash();
-    const url = copyLink({ origin: site.base, pathname: location.pathname }, hash);
-    const c = chipFor(url);
-    await copyText(url, `Link copied: ${c ? chipText(c) : "this page"}. It carries no key: whoever opens it must be let in already.`);
-  };
-  /** What the menu was open on, in a few words. */
-  const menuWhat = (t: MenuTarget) => (t.kind === "decl" ? short(t.name) : t.kind === "cluster" ? short(t.key) : "it");
-  /** Take `part` out of the board on show (`scope except part`): for everyone on it; on the Project,
-   *  whose scope stays, in a copy of it named `name`, shown in a tab. */
-  const removeFromBoard = async (part: Query, what: string, name?: string) => {
-    const rec = nav.board.rec;
-    const next = scopeWithout(rec.scope, part, sameSet);
-    if (sameQuery(next, rec.scope)) return say(`This board does not hold ${what}.`);
-    if (!fixedScope(rec)) {
-      const why = await sync.setScope(next);
-      if (why) say(why);
-      return;
-    }
-    const why = (await named()) ?? (await made(await views.post("create", { name: name ?? `${views.title(rec.id)} without ${what}`, from: rec.id, scope: printQuery(next) })));
-    if (why) say(why);
-  };
-  /** Add `part` to a view (`scope or part`), for everyone on it: a kept one, or the board on show,
-   *  where a visitor so becomes a member (ViewSpec decision 27), shown at once. */
-  const addToView = async (id: string, part: Query, what: string) => {
-    const v = views.summary(id);
-    const here = id === nav.board.id;
-    if (!v && !here) return;
-    let scope: Query;
-    try {
-      scope = here ? nav.board.rec.scope : parseQuery(v!.scope);
-    } catch {
-      return say(`The scope of “${views.title(id)}” cannot be read here.`);
-    }
-    const next = scopeWith(scope, part, sameSet);
-    if (sameQuery(next, scope)) return say(`“${views.title(id)}” holds ${what} already.`);
-    if (here) {
-      const why = await sync.setScope(next);
-      return say(why ?? `Added ${what} to this view: a member of it now.`);
-    }
-    const r = await views.post("scope", { id, scope: printQuery(next) });
-    if (r.who) people.lost();
-    if (r.error) return say(r.error);
-    sync.afterPost();
-    say(`Added ${what} to “${views.title(id)}”.`);
-  };
+  Object.assign(page, menuPart(page));
   Object.assign(page, notesPart(page));
-
-  /** Do what was chosen in the menu. */
-  const menuAct = async (act: string, name?: string) => {
-    const on = page.menuOn;
-    if (!on) return;
-    const t = on.t;
-    const what = menuWhat(t);
-    const i = on.i;
-    if (act.startsWith("add:")) return on.part && addToView(act.slice(4), on.part, what);
-    if (act.startsWith("detach:")) return on.note ? void page.detach(on.note, Number(act.slice(7))) : undefined;
-    if (act.startsWith("item:")) return on.note ? void page.itemTo(on.note, act.slice(5)) : undefined;
-    switch (act) {
-      case "art-name":
-        if (on.artName && (t.kind === "decl" || t.kind === "cluster")) art.showName(on.artName, !t.art);
-        return;
-      case "source":
-        if (i !== undefined) sources.show(i);
-        return;
-      case "pin":
-        if (i !== undefined) sources.openPinned(i);
-        return;
-      case "tcb":
-      case "deps":
-      case "apps":
-        // a pick under that mode, as its button does
-        if (t.kind !== "decl") return;
-        useTool(act);
-        syncTool();
-        clickOn(pickDecl(t.name), false);
-        return;
-      case "copy":
-        if (t.kind === "decl") await copyText(t.name);
-        return;
-      case "link":
-        await copyLinkTo(on);
-        return;
-      case "remove":
-      case "remove-new":
-        if (on.part) await removeFromBoard(on.part, what, name);
-        return;
-      case "add-new": {
-        if (!on.part) return;
-        const why = (await named()) ?? (await made(await views.post("create", { name: name ?? what, scope: printQuery(on.part) })));
-        if (why) say(why);
-        return;
-      }
-      case "key":
-        if (i !== undefined) toggleKey(i);
-        return;
-      case "target": {
-        if (t.kind !== "decl" || !(await people.ensure())) return;
-        const why = await submit({ op: "target", name: t.name, on: !t.target });
-        if (why) say(why);
-        return;
-      }
-      case "approve":
-      case "comment": {
-        // the review box, in the panel, with the focus where the opinion is given
-        if (i === undefined) return;
-        if (selected() !== i) go(i);
-        setTimeout(() => {
-          const box = act === "approve" ? $("#panel").querySelector<HTMLElement>('[data-rv="approve"]') : $("#panel").querySelector<HTMLElement>("[data-rv-comment]");
-          box?.focus();
-          box?.scrollIntoView({ block: "nearest" });
-        }, 60);
-        return;
-      }
-      case "trust": {
-        const to = t.kind === "decl" ? t.ns : t.kind === "cluster" ? t.trust : null;
-        if (to) trust.ask(to.prefix, !to.on, on.at);
-        return;
-      }
-      case "fold":
-        if (on.linear && t.kind === "cluster") linear.toggleFold(t.key);
-        else if (on.c !== undefined) canvas.toggleFold(on.c);
-        return;
-      case "hide":
-        if (t.kind === "cluster") hideLevel(t.key);
-        return;
-      case "fit":
-        if (on.linear) linear.fit();
-        else canvas.fit();
-        return;
-      case "relayout":
-        await relayout();
-        return;
-      case "note":
-      case "note-view":
-        await page.writeNote(act === "note" ? "project" : "view", on.at, on.world);
-        return;
-      case "note-edit":
-        if (on.note) await page.editNote(on.note, on.at);
-        return;
-      case "note-toggle":
-        if (on.note) page.setNoteOpen(on.note, !page.noteOpenHere(on.note));
-        return;
-      case "note-kind":
-        if (on.note) await page.switchNote(on.note);
-        return;
-      case "item-remove":
-        if (on.note) await page.itemTo(on.note, null);
-        return;
-      case "note-attach": {
-        const n = on.note ? page.noteOf(on.note) : null;
-        const no = page.noteRefused();
-        if (no) return say(no);
-        if (n) papers.chooseToAttach(n.note.id, noteExcerpt(n.note.text, 40));
-        return;
-      }
-      case "note-delete": {
-        const n = on.note ? page.noteOf(on.note) : null;
-        const where = n?.kind === "project" ? "the project, for everyone, on the Project and every view that shows it" : `“${views.title(nav.board.id)}”, for everyone on it`;
-        if (!n || !confirm(`Delete this note from ${where}?\n\n${n.note.text.slice(0, 200)}`)) return;
-        if (await named()) return;
-        if (n.kind === "project") void page.projectOps([{ op: "pnote-delete", id: n.note.id }]);
-        else page.noteOps([{ op: "note-delete", id: n.note.id }]);
-        return;
-      }
-    }
-  };
   Object.assign(page, keysPart(page));
 
   // a handle for diagnosis from the console: window.visualproof.canvas
