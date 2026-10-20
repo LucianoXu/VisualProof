@@ -4,7 +4,9 @@
 // makes the same graph here from the same answers (server/historyapi.ts), so that the document holds
 // exactly what the board shows, and reads each module's text of that build from the history's blobs
 // (server/sourcestore.ts, HistorySpec decisions 20–23). A text that is not kept is said so, never
-// stood in for by the latest build's.
+// stood in for by the latest build's. A module outside the project is not kept per build: its text
+// is its package's file now where that package is at the revision the build had, else not kept
+// (decision 24; server/historyapi.ts, `pastOutside`).
 //
 // A snapshot's graph takes about a second to read back, and the past graph made from it a fraction
 // more: the last few builds printed are kept, each with the texts read for it, so that a second
@@ -18,7 +20,7 @@ import type { PastGraph } from "../shared/pastgraph.ts";
 import type { Graph } from "../shared/viewgraph.ts";
 import { pageGraph } from "./history.ts";
 import type { SnapshotInfo } from "./history.ts";
-import { MOST_DIFF, snapshotDiff } from "./historyapi.ts";
+import { MOST_DIFF, pastOutside, snapshotDiff } from "./historyapi.ts";
 import type { HistoryWorld } from "./historyapi.ts";
 
 /** A past build as its documents read it. */
@@ -30,6 +32,9 @@ export interface PastBuild {
   fileOf(module: string): string | null;
   /** a module's text of that build, read once; null where it is not kept */
   source(module: string): DocSource | null;
+  /** a module outside the project whose text of that build is its package's file now (HistorySpec
+   *  decision 24): its file there and the package; null where it is not kept */
+  outside(module: string): { file: string; package: string } | null;
 }
 
 /** how many past builds are kept: a past graph and the texts read for a large view are large on a
@@ -77,6 +82,17 @@ export class PastBuilds {
       diff,
     );
     const texts = new Map<string, DocSource | null>();
+    // the outside world's texts of that build: its packages' files now, where at its revisions
+    const outsideTexts = new Map<string, { file: string; package: string; lines: string[] } | null>();
+    const outsideNow = this.w.outsideNow;
+    const outside = (m: string) => {
+      if (!outsideTexts.has(m)) {
+        const r = outsideNow && h.outsideModulesOf(id).has(m) ? pastOutside(info, m, outsideNow) : null;
+        const body = r?.status === 200 ? (r.body as { file: string; text: string; outside: { package: string } }) : null;
+        outsideTexts.set(m, body && { file: body.file, package: body.outside.package, lines: body.text.split("\n") });
+      }
+      return outsideTexts.get(m)!;
+    };
     const b: PastBuild = {
       info,
       past,
@@ -84,9 +100,14 @@ export class PastBuilds {
       source: (m) => {
         if (!texts.has(m)) {
           const t = h.textOf(id, m);
-          texts.set(m, t && t.text !== null ? { lines: t.text.split("\n"), edited: false, contexts: null, hash: null, check: t.ref.check ?? "lake" } : null);
+          const o = t ? null : outside(m);
+          texts.set(m, t && t.text !== null ? { lines: t.text.split("\n"), edited: false, contexts: null, hash: null, check: t.ref.check ?? "lake" } : o ? { lines: o.lines, edited: false, contexts: null, hash: null } : null);
         }
         return texts.get(m)!;
+      },
+      outside: (m) => {
+        const o = outside(m);
+        return o && { file: o.file, package: o.package };
       },
     };
     this.kept.set(key, b);

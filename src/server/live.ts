@@ -50,7 +50,7 @@ import type { ViewPlaces } from "./views.ts";
 import { graphOf, memoryProblem, titleContext } from "./agentviews.ts";
 import { ownName, rebinder, versionBase, versions, withVersions } from "./versions.ts";
 import type { Identity, VersionBase } from "./versions.ts";
-import { buildTime, commitNow, History } from "./history.ts";
+import { backfillPackages, buildTime, commitNow, History } from "./history.ts";
 import { backfillSources, keepSources } from "./sourcestore.ts";
 import type { SnapGraph } from "./history.ts";
 import type { Mover } from "./historyapi.ts";
@@ -70,6 +70,8 @@ import type { UpdateStatus } from "./updates.ts";
 import { withoutReasons } from "../shared/timeline.ts";
 import type { StoredEvent } from "../shared/timeline.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
+import { OutsideSources } from "./outside.ts";
+import type { OutsideFile } from "./outside.ts";
 
 const TICK = 1000;
 /** outputs quiet this long, and no compile running: the build is over */
@@ -101,6 +103,9 @@ export const BUILD_DELTA_PART = 1 / 8;
 
 /** The graph's modules and their files (meta.modules), per graph read (agentviews.ts, graphOf). */
 const moduleFiles = new WeakMap<ViewMeta, Map<string, string | null>>();
+/** The modules the graph's outside declarations are in, per graph read: the only outside modules
+ *  whose source is served or handed to Lean (server/outside.ts). */
+const outsideModules = new WeakMap<ViewMeta, Set<string>>();
 
 /** An open event stream: the page reading it, the id everyone knows it by (presence), and the
  *  secret only it is told, which its heartbeats carry (server/presence.ts). */
@@ -270,6 +275,10 @@ export class Live {
   private nodeIndex = new Map<string, number>();
   /** the declarations outside the project the graph on show refers to: in it too */
   private outside = new Set<string>();
+  /** where the outside declarations' sources are (server/outside.ts), and the packages' revisions
+   *  as the graph on show was read: a package at another one now is not the text it was read from */
+  readonly outsideSources: OutsideSources;
+  private outsideRead: { packages: Record<string, string>; toolchain: string } | null = null;
 
   constructor(project: Project, dirs: Dirs, saved: string | null, review: ReviewStore, editor: string | null = null, jobs = DEFAULT_JOBS) {
     this.project = project;
@@ -278,6 +287,8 @@ export class Live {
     this.review = review;
     this.editor = editor;
     this.usage = new UsagePass(project, dirs, saved ? 0 : jobs, (l) => this.say(l));
+    // the toolchain is the project's as it is now: a branch followed may change it (server/deploy.ts)
+    this.outsideSources = new OutsideSources(project.root, () => this.project.toolchain);
     this.tracker = new BuildTracker(project);
     this.timeline = new Timeline(dirs.site, (e) => this.sendActivity(e));
     this.tokens = new AgentTokens(dirs.site);
@@ -455,6 +466,36 @@ export class Live {
     return files.get(module);
   }
 
+  /** The file of a module outside the project, where an outside declaration of the graph on show
+   *  is in it (ReviewSpec, "The source window", the owner's decision of 2026-10-20): its package's or
+   *  Lean's core's (server/outside.ts), and whether that package is at another revision now than
+   *  when the graph was read (`changed`). Undefined where the graph has no outside declaration in
+   *  that module (or there is no graph yet, or it is a saved graph's, whose project is not here),
+   *  null where its file is not found. */
+  outsideFile(module: string): { file: OutsideFile; changed: boolean } | null | undefined {
+    const G = graphOf(this);
+    if (!G || this.saved) return undefined;
+    let mods = outsideModules.get(G.meta);
+    if (!mods) outsideModules.set(G.meta, (mods = new Set(G.meta.nodes.slice(G.meta.projectCount).map((v) => v.module))));
+    if (!mods.has(module)) return undefined;
+    const file = this.outsideSources.find(module);
+    if (!file) return null;
+    const read = this.outsideRead;
+    const p = file.package;
+    const changed = !!read && (p.core ? read.toolchain !== this.project.toolchain : (read.packages[p.name] ?? null) !== p.rev);
+    return { file, changed };
+  }
+
+  /** A module outside the project as it is now, whatever the graph on show holds (server/outside.ts),
+   *  and the toolchain now: what a past build's outside source is compared with (HistorySpec
+   *  decision 24; server/historyapi.ts, `pastOutside`). Null for a saved graph, whose project is not
+   *  here. */
+  outsideNow(module: string): { file: OutsideFile; toolchain: string } | null {
+    if (this.saved) return null;
+    const file = this.outsideSources.find(module);
+    return file && { file, toolchain: this.project.toolchain };
+  }
+
   /** The Project view's pins changed (the agents' API): every page gets the operations, and who
    *  made them. */
   placesChanged(ops: unknown[], from: string | null, by: string | null): void {
@@ -550,6 +591,16 @@ export class Live {
     // the source texts of the snapshots made before the history kept them, found once, in the
     // background (HistorySpec decision 22): a snapshot backfilled is not looked at again
     if (this.history) void backfillSources(this.history, this.project, this.dirs.cache, (l) => this.say(l)).catch((e) => this.say(`history: the source texts could not be backfilled: ${e instanceof Error ? e.message : String(e)}`));
+    // the packages' revisions of the snapshots read before they were recorded, from their commits
+    // (HistorySpec decision 24)
+    if (this.history && !this.saved) {
+      try {
+        const n = backfillPackages(this.history, this.project.root);
+        if (n) this.say(`history: ${n} snapshot(s) given their packages' revisions, from their commits' lake-manifest.json`);
+      } catch (e) {
+        this.say(`history: the packages' revisions could not be backfilled: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     // the review's logs are watched whatever the graph comes from: they may change on disk any time
     this.timers.push(setInterval(() => this.checkReview(), TICK));
     this.timers.push(
@@ -735,6 +786,9 @@ export class Live {
     this.base = versionBase(ex.graph);
     this.nodeIndex = new Map(this.base.names.map((n, i) => [n, i]));
     this.outside = new Set(ex.graph.externals.map((e) => e.name));
+    // the revisions its outside declarations were read at: those of the manifest it was extracted
+    // with (server/extract.ts, fingerprint), as it is now
+    this.outsideRead = this.saved ? null : { packages: this.outsideSources.revisions(), toolchain: this.project.toolchain };
     // the history first: the renames found against the build before are migrated, so that the
     // versions served are made under them (HistorySpec.md)
     const renamed = this.snapshot(ex, missing);
@@ -888,7 +942,7 @@ export class Live {
         written = found.written;
         return found;
       };
-      const r = this.history.record(ex.graph, { at: buildTime(this.project), fingerprint: ex.fingerprint, commit, toolchain: this.project.toolchain, missing, sources, tool: this.toolVersion });
+      const r = this.history.record(ex.graph, { at: buildTime(this.project), fingerprint: ex.fingerprint, commit, toolchain: this.project.toolchain, missing, sources, tool: this.toolVersion, packages: this.outsideSources.revisions() });
       if (!r.written) return renamed;
       const s = r.info;
       if (r.before) {
