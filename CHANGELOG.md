@@ -5,6 +5,12 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.7.0
+
+- Show the source of declarations from outside the project — Mathlib, every other package and Lean's core — in the source window, with Lean's hovers and Open on GitHub at the package's revision. An outside key declaration is printed in its document; a past build shows an outside source where its package is at the same revision as now.
+- Put the caret after a link's chip in the conversation's box, not before it.
+- Hand an agent the messages of its private channel and the public one in the order they were written.
+
 ## 0.6.0
 
 - Talk in the page: one conversation window, your own, always in front of the source and reference windows, opened by its button and never by following. A public channel, *Everyone*, for every person and agent, with `@` mentions that wake an agent; a private channel with each of your own agents. Links of the site show as what they lead to; *Copy link* in the canvas's menu copies one without the key.
