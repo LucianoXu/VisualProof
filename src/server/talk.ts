@@ -80,7 +80,7 @@ export interface TalkTiming {
 }
 const TIMING: TalkTiming = { slackMs: 60_000, graceMs: 15_000, tickMs: 1000 };
 
-/** Where someone was when they wrote, in words and as the page tells it (server/agent.ts, placeOf). */
+/** Where someone was when they wrote, in words and as the page tells it (server/agentfollow.ts, placeOf). */
 export type Where = NonNullable<ChatMessage["where"]>;
 
 /** One message of a channel (shared/collab.ts). */

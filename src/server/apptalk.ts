@@ -10,6 +10,7 @@ import { forPages, MAX_PERSON, PUBLIC, THREAD } from "./talk.ts";
 import { mentioned } from "../shared/mentions.ts";
 import type { Answer } from "./agent.ts";
 import { sendJson } from "./send.ts";
+import { placeOf } from "./agentfollow.ts";
 import type { App } from "./app.ts";
 
 /** where a reader is: the others see it (CollabSpec decision 4); of a private reader, only that
@@ -79,7 +80,7 @@ export async function chat(app: App, req: IncomingMessage, res: ServerResponse, 
   // where the writer was, as the page says it, bounded: a selection can be a long query; a private
   // reader's message says nothing of where they are (CollabSpec decision 8), only who wrote it
   const view = app.ids.privateOf(req) === null ? cleanView(b.place) : null;
-  const at = view ? app.agents.placeOf(view) : null;
+  const at = view ? placeOf(app.agents, view) : null;
   const clip = (x: string | null, n: number) => (x !== null && x.length > n ? x.slice(0, n - 1) + "…" : x);
   const where = at ? { inWords: clip(at.inWords, 600)!, view: at.view, declaration: clip(at.declaration, 300), selection: clip(at.selection, 300) } : null;
   // the names it mentions; in the public channel, the agents among them are handed it
