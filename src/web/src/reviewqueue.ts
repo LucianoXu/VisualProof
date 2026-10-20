@@ -19,10 +19,15 @@
 // apart as "+N trusted") and all (approved of the review). They are marked ◆ in the review list,
 // which can show them alone, the trusted ones among them (the owner's decision of 2026-10-19: a key
 // declaration is a member of the TCB, trusted or not); what each supports is shared/keys.ts.
+//
+// The list can keep to the reader's own review (the owner's decision of 2026-10-20): what they have
+// not reviewed, where theirs is stale, or what they commented on — a reading preference of theirs,
+// as the order is, by their own opinions alone (shared/review.ts, ownStatus). The strip's progress
+// stays the team's: there is no personal progress beside it.
 
 import { SITE_STMT } from "../../shared/graph.ts";
-import { advice, adviceOf, fresh, statusOf } from "../../shared/review.ts";
-import type { Progress, ReviewData } from "../../shared/review.ts";
+import { advice, adviceOf, fresh, ownStatus, statusOf } from "../../shared/review.ts";
+import type { Author, Progress, ReviewData } from "../../shared/review.ts";
 import { keyCounts, keyGraph } from "../../shared/keys.ts";
 import type { KeyCounts, KeyGraph } from "../../shared/keys.ts";
 import { keyMarks, trustedBy } from "../../shared/review.ts";
@@ -38,7 +43,21 @@ export interface ReviewFlowHooks {
   review(): ReviewData;
   /** the reader's name; null before they give one */
   reader(): string | null;
+  /** the reader as their opinions are kept: by their personal link where they came by one, else
+   *  their name; null without one (web/src/pagescheme.ts, readerAuthor) */
+  me?(): Author | null;
 }
+
+/** What a target's review list keeps to, of the reader's own review (the owner's decision of
+ *  2026-10-20): what they have not reviewed, where theirs is stale, what they commented on; null for
+ *  all of it. */
+export type OwnFilter = "none" | "stale" | "commented";
+export const OWN_FILTERS: readonly OwnFilter[] = ["none", "stale", "commented"];
+const OWN_WORDS: Record<OwnFilter, { label: string; title: string; note: string }> = {
+  none: { label: "Not reviewed", title: "Only what you have given no opinion on (none, or one withdrawn)", note: "you have not reviewed" },
+  stale: { label: "Stale", title: "Only where your opinion is on an earlier version: it changed since", note: "where your opinion is stale" },
+  commented: { label: "Commented", title: "Only what your current opinion comments on", note: "you commented on" },
+};
 
 /** How a declaration reads in a chain: with its namespace's last part, which tells `Module.env`
  *  from `ModExpr.env`. */
@@ -239,16 +258,30 @@ export class ReviewFlow {
    *  where it is used; one the graph has no declaration for on the board is listed first, and goes
    *  to the target, whose panel approves it. `keyOnly` (◆ Key): the key declarations alone, in their
    *  order (shared/keys.ts, keySet) — the trusted ones first, marked trusted and unnumbered, since
-   *  they are not in the review order; then the rest, numbered as in the review order. */
-  listHtml(root: number, keyOnly = false): string {
+   *  they are not in the review order; then the rest, numbered as in the review order. `own`: only
+   *  those where the reader's own review stands so (OwnFilter), the trusted key declarations, which
+   *  need none, left out; the filter's switch heads the list where the reader has a name. */
+  listHtml(root: number, keyOnly = false, own: OwnFilter | null = null): string {
     const g = this.hooks.graph();
     const d = this.hooks.review();
     const q = this.queue(root);
     const kg = this.keys(root);
     const keys = new Set(kg.keys);
-    const off = keyOnly ? [] : offBoard(q);
+    const me = this.hooks.me?.() ?? null;
+    // where the reader's own review of each stands, by name (an axiom off the board has no version)
+    const ownOf = (name: string, hash: string | undefined) => (me ? ownStatus(d, name, me, hash) : "none");
+    const position0 = new Set(q.order);
+    const allOff = keyOnly ? [] : offBoard(q);
+    const allOrder = keyOnly ? kg.keys : q.order;
+    // the counts each filter would show, of what needs review in the list
+    const counts = new Map<string, number>();
+    for (const a of allOff) counts.set(ownOf(a.name, undefined), (counts.get(ownOf(a.name, undefined)) ?? 0) + 1);
+    for (const i of allOrder) if (position0.has(i)) counts.set(ownOf(g.nodes[i].name, g.nodes[i].hash), (counts.get(ownOf(g.nodes[i].name, g.nodes[i].hash)) ?? 0) + 1);
+    const filter = me ? own : null;
+    const keep = (name: string, hash: string | undefined) => filter === null || ownOf(name, hash) === filter;
+    const off = allOff.filter((a) => keep(a.name, undefined));
     // the positions are the review order's, also where only the key declarations are listed
-    const order = keyOnly ? kg.keys : q.order;
+    const order = filter === null ? allOrder : allOrder.filter((i) => position0.has(i) && keep(g.nodes[i].name, g.nodes[i].hash));
     const position = new Map(q.order.map((i, k) => [i, k]));
     const offN = offBoard(q).length;
     const where = (a: QueueAxiom) => (a.via.length ? ` · used in ${a.via.map((j) => chainName(g, j)).join(", ")}` : "");
@@ -259,11 +292,29 @@ export class ReviewFlow {
         `<span class="q-n">${k + 1}</span>axiom ${escapeHtml(a.name)}<span class="muted">${escapeHtml(where(a))}</span></button>`,
     );
     const kp = this.keyProgress(root);
-    const note = keyOnly
-      ? `The key declarations, ◆, ${kp.trusted ? `${kp.trusted} trusted first, needing no review, then the rest ` : ""}in review order: ${kp.approved} of ${kp.total} approved, ${this.keysLeft(root)} not yet reviewed by you.`
-      : `Non-standard axioms first, then bottom-up: what a declaration uses comes before it; ` +
-        `${this.left(root)} of ${q.order.length + offN} not yet reviewed by you.`;
+    const shown = order.length + off.length;
+    const note =
+      filter !== null
+        ? shown
+          ? `${shown} of ${allOrder.filter((i) => position0.has(i)).length + allOff.length} ${OWN_WORDS[filter].note}, in review order.`
+          : `Nothing here ${OWN_WORDS[filter].note}.`
+        : keyOnly
+          ? `The key declarations, ◆, ${kp.trusted ? `${kp.trusted} trusted first, needing no review, then the rest ` : ""}in review order: ${kp.approved} of ${kp.total} approved, ${this.keysLeft(root)} not yet reviewed by you.`
+          : `Non-standard axioms first, then bottom-up: what a declaration uses comes before it; ` +
+            `${this.left(root)} of ${q.order.length + offN} not yet reviewed by you.`;
+    // the filter by one's own review: All, then each with how many it keeps; a reader without a name
+    // has no review of their own to keep to
+    const switcher = me
+      ? `<div class="q-own" role="group" aria-label="Only by your own review"><span class="muted">Yours:</span><span class="seg mini">` +
+        `<button data-q-own="" class="${filter === null ? "on" : ""}" aria-pressed="${filter === null}" title="Everything in the list">All</button>` +
+        OWN_FILTERS.map(
+          (f) =>
+            `<button data-q-own="${f}" class="${filter === f ? "on" : ""}" aria-pressed="${filter === f}" title="${OWN_WORDS[f].title}">${OWN_WORDS[f].label} <span class="q-own-n">${counts.get(f) ?? 0}</span></button>`,
+        ).join("") +
+        `</span></div>`
+      : "";
     return (
+      switcher +
       `<div class="q-note muted">${note}</div>` +
       `<div class="q-list">` +
       offRows.join("") +

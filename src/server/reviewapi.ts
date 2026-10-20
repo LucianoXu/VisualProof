@@ -20,6 +20,12 @@
 // nothing: a declaration gone from the graph, or a file changed since compiled, keeps what was said
 // of it withdrawable.
 //
+// Nobody approves twice (ReviewSpec decision 1, the owner's decision of 2026-10-20): an approval of
+// the present version by someone whose current opinion there is an approval of it already — their
+// own, the person's they speak for, an agent's advice — writes nothing, and is answered
+// `{ok, unchanged: true}` (shared/review.ts, noChange); once a change has made it stale, approving
+// again is recorded.
+//
 // Every refusal is an answer: a status, and words that say what to do instead.
 
 import { readFileSync } from "node:fs";
@@ -287,9 +293,10 @@ export class ReviewApi {
   }
 }
 
-/** An append's result as an answer: the change and the event written (none where nothing changed:
- *  a target marked that is one), or why nothing was written. */
+/** An append's result as an answer: the change and the event written, or `unchanged` where nothing
+ *  changed (a target marked that is one, an approval of the version one approved already: ReviewSpec
+ *  decision 1), or why nothing was written. */
 export function appended(r: AppendResult): ReviewAnswer {
   if ("status" in r) return { status: r.status, body: { error: r.error, hint: r.status === 409 ? "Mend that line of the log by hand (or ask its writer to); VisualProof never rewrites a log." : "Send {op, …}." } };
-  return { status: 200, body: { ok: true, change: r.change, ...(r.change ? { event: r.event } : {}) } };
+  return { status: 200, body: { ok: true, change: r.change, ...(r.change ? { event: r.event } : { unchanged: true }) } };
 }

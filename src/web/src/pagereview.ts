@@ -116,12 +116,15 @@ export function reviewPart(page: Page): ReviewPart {
 
   /** Record something in the review; resolves to why it was refused, or null. The answer carries
    *  the change, applied at once (the reader sees their board follow); the event that tells every
-   *  page the same change is then known and skipped. */
+   *  page the same change is then known and skipped. An opinion that changed nothing was an approval
+   *  of the version approved already (ReviewSpec decision 1, the owner's decision of 2026-10-20),
+   *  another page's meanwhile: said, so that a comment sent with it stays in the box. */
   const submit = (op: ReviewRequest): Promise<string | null> =>
     // a past build is not reviewed: the review is given on the graph of now
     page.pastShown() ? Promise.resolve(PAST_REVIEW) : data.postReview(op).then(
       (c) => {
         if (c) takeChange(c);
+        else if (op.op === "opinion") return `${op.for ? `${op.for}'s` : "Your"} approval of this version stands already: nothing was recorded.`;
         tipsOnReview(op);
         return null;
       },
@@ -134,7 +137,7 @@ export function reviewPart(page: Page): ReviewPart {
 
   // the review flow where the review has a focus (ViewSpec decision 28): the focus's review set in
   // review order, the next one to review, why a declaration is in it (web/src/reviewqueue.ts)
-  const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => page.people.name });
+  const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => page.people.name, me: () => page.readerAuthor() });
   /** The same on the graph on show, whatever build the board shows: how far each target's review has
    *  come is the review's now (the targets list, the views menu) */
   const flowNow = new ReviewFlow({ graph: () => page.present, review: () => page.review.data, reader: () => page.people.name });
@@ -213,6 +216,14 @@ export function reviewPart(page: Page): ReviewPart {
     ensureReviewer: () => page.people.ensure(),
     submit,
     said: (text) => page.say(text),
+    // the opinions folded or shown, the reader's own, kept in this browser: every review box at once,
+    // the panel's and each source window's
+    opinionsShown: () => !store.data.opinionsFolded,
+    showOpinions: (shown) => {
+      store.data.opinionsFolded = shown ? undefined : true;
+      store.save();
+      page.showSelected();
+    },
     queue: (i) => flow.queue(i),
     progress: (i) => flow.progress(i),
     reviewLens: (i) => page.reviewTarget(i),
@@ -291,7 +302,7 @@ export function reviewPart(page: Page): ReviewPart {
 
   /** What a query lights up on the board on show: computed on the whole graph the board was taken
    *  from, then cut to what the board holds (shared/board.ts, lightUp). */
-  const litOn = (q: Query): Lit => lightUp(page.nav.board.full, boardReview(), page.nav.board.bs, q);
+  const litOn = (q: Query): Lit => lightUp(page.nav.board.full, boardReview(), page.nav.board.bs, q, page.mineAuthor());
   /** Zoom in (ViewSpec decision 13): the scope of a view of what `q` lights up on this board, which
    *  holds exactly that; null when it would hold nothing, or just what this board holds. */
   const zoomOf = (q: Query | null, lit: Lit | null = q && litOn(q)): Query | null =>

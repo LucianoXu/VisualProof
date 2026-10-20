@@ -257,7 +257,7 @@ step; the rest each on its own once the place is reached.
 | paper | the reference window: open, collapsed, file, page, link | `paper` | |
 | activity | Activity open or closed, its filters | `activity` (`open`, `kind`, `who`, `mine`) | |
 | lostFound | the lost-and-found open or closed | `lostFound` (`open`) | |
-| colouring | the legend's Kind or Status | `scheme` | `c` |
+| colouring | the legend's Kind, Status or Mine (the followed reader's own opinions: CanvasSpec, "Colour schemes") | `scheme` | `c` |
 | edges | edges drawn | `edges` | `g` |
 | linear | the board drawn as its document's outline, the linear form (ExportSpec decision 18) | `linear` | `o` |
 | artwork | the artwork mode: on or off, its settings (the board drawn with them) and its frame (ExportSpec decision 19, the owner's decision of 2026-10-14) | `artwork` | |
@@ -266,8 +266,10 @@ Presence also carries `tabs` (the views a page has open, which the server then k
 takes it. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a
 part without a form does not typecheck.
 
-**Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order; the
-outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme; the layout lock (`l`);
+**Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order and
+what of it is kept to by one's own review; the review box's opinions folded or shown (ReviewSpec,
+"One review box"); the outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme;
+the layout lock (`l`);
 zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the

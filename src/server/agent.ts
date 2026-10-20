@@ -671,7 +671,7 @@ export class AgentApi {
       {
         method: "POST", path: "/api/agent/opinion", brief: "advice: approve or comment", needs: "advise", about: "Give advice on a declaration's present version: approve, or comment with what is wrong, unclear or worth checking. The server records the content hash and the text you judged. A later opinion replaces your earlier one. Never counted. A non-standard axiom a target rests on is advised on by its name, also where the graph has no declaration for it.",
         params: { name, verdict: "approve | comment", comment: "your reasons; the text of a comment, which needs one (at most 10,000 characters). Light Markdown, kept as written: > quotes, `code`, ```lean blocks, **bold**, *italics*; a declaration's full name in backticks links to it; no HTML. Quote an opinion as `> [**Alice** (2026-10-09)](opinion:<name>#<by>@<at>):`, source lines as `[File.lean:12–13](source:<name>#L12-L13)` over a ```lean block (GET /api/agent/docs/advice)", opinions: `or several at once, [{name, verdict, comment}], at most ${MAX_OPINIONS}: answered as POST opinions answers them` },
-        returns: "{ok, recorded: {name, verdict, comment, hash, judged}, counted: false}",
+        returns: "{ok, recorded: {name, verdict, comment, hash, judged}, counted: false}; {ok, unchanged: true, note} where your advice approves this version already (nothing recorded)",
         run: (a) => opinionPost(this, a),
       },
       {
@@ -683,7 +683,7 @@ export class AgentApi {
       {
         method: "POST", path: "/api/agent/opinions", needs: "advise", about: `Advice on up to ${MAX_OPINIONS} declarations at once: each item is checked and recorded as POST opinion does it, and answered on its own — one refused does not refuse the others.`,
         params: { opinions: `[{name, verdict, comment}], at most ${MAX_OPINIONS}` },
-        returns: "{ok, recorded, refused, counted: false, results: [{index, name, status, recorded? | error, hint, didYouMean?}]}",
+        returns: "{ok, recorded, unchanged?, refused, counted: false, results: [{index, name, status, recorded? | unchanged? | error, hint, didYouMean?}]}",
         run: (a) => opinionsPost(this, a),
       },
       {

@@ -142,7 +142,7 @@ export interface VisitorPoint {
   kind: string;
   /** an axiom, of the project or outside it: ringed (web/src/axiomring.ts) */
   axiom?: boolean;
-  /** its state in the Status scheme (web/src/status.ts) */
+  /** its state in the Status scheme, or the Mine scheme while it is on (web/src/status.ts) */
   status: number;
   target: boolean;
   key: boolean;
@@ -387,7 +387,8 @@ export class GraphCanvas {
   /** how the points are coloured (setScheme): by kind, or by where each stands (CanvasSpec,
    *  "Colour schemes", decided 2026-10-08) */
   scheme: Scheme = "kind";
-  /** per node, its state in the Status scheme (web/src/status.ts), from setStatus */
+  /** per node, its state in the Status scheme — in the Mine scheme, its Mine state — (web/src/status.ts),
+   *  from setStatus */
   private statusCode: Uint8Array = new Uint8Array(0);
   /** per cluster, of what it holds that needs review: how many are approved, commented, and in
    *  all (the Status scheme's progress arcs) */
@@ -716,17 +717,18 @@ export class GraphCanvas {
     return this.keyList.includes(i);
   }
 
-  /** Where each node of the canvas's graph stands (web/src/status.ts, statusCodes): its colour in
-   *  the Status scheme, and the clusters' progress. */
+  /** Where each node of the canvas's graph stands (web/src/status.ts, statusCodes; mineCodes in the
+   *  Mine scheme): its colour in the Status or the Mine scheme, and the clusters' progress. */
   setStatus(codes: Uint8Array): void {
     this.statusCode = codes.length === this.g.n ? codes : new Uint8Array(this.g.n).fill(ST_UNREVIEWED);
     this.countProgress();
-    if (this.scheme === "status") this.clearCards();
+    if (this.scheme !== "kind") this.clearCards();
     this.invalidate();
   }
 
-  /** Colour the points by kind or by status. Rings, the target's star and the others' marks are
-   *  the same in both. */
+  /** Colour the points by kind, by status or by the reader's own review (Mine, in Status's colours,
+   *  from the codes setStatus was given). Rings, the target's star and the others' marks are the same
+   *  in each. */
   setScheme(s: Scheme): void {
     if (s === this.scheme) return;
     this.scheme = s;
@@ -2375,7 +2377,7 @@ export class GraphCanvas {
   /** A node's colour in the scheme in force. */
   private colorOf(i: number): RGBA {
     const th = this.theme;
-    if (this.scheme === "status") return th.status[this.statusCode[i] ?? ST_UNREVIEWED];
+    if (this.scheme !== "kind") return th.status[this.statusCode[i] ?? ST_UNREVIEWED];
     return this.g.isExt(i) ? th.ext : th.kind[this.g.nodes[i].kind] ?? th.ext;
   }
 
@@ -3001,12 +3003,12 @@ export class GraphCanvas {
     writeNames(this.ctx, names, halo ?? `rgb(${Math.round(bg[0] * 255)}, ${Math.round(bg[1] * 255)}, ${Math.round(bg[2] * 255)})`);
   }
 
-  /** In the Status scheme, how far the review of each cluster on screen has come, on its outline: an
-   *  arc from the top, clockwise, for the share approved, then one for the share commented, of what
-   *  it holds that needs review. Only on circles large enough to read it, and only where something
-   *  has been said. */
+  /** In the Status and Mine schemes, how far the review of each cluster on screen has come — the
+   *  reader's own in Mine —, on its outline: an arc from the top, clockwise, for the share approved,
+   *  then one for the share commented, of what it holds that needs review. Only on circles large
+   *  enough to read it, and only where something has been said. */
   private drawProgress(onScreen: (sx: number, sy: number, pad: number) => boolean): void {
-    if (this.scheme !== "status" || !this.clusterProgress.length) return;
+    if (this.scheme === "kind" || !this.clusterProgress.length) return;
     const S = this.scene;
     const P = this.clusterProgress;
     const ctx = this.ctx;
@@ -3287,7 +3289,7 @@ export class GraphCanvas {
       if (W.vrep[k] >= 0) return void hidden.set(W.vrep[k], (hidden.get(W.vrep[k]) ?? 0) + 1);
       const [x, y] = this.toScreen(W.vx[k], W.vy[k]);
       if (!onScreen(x, y, 200)) return;
-      const c = this.scheme === "status" ? th.status[v.status] ?? th.status[ST_UNREVIEWED] : v.kind === "external" ? th.ext : th.kind[v.kind] ?? th.ext;
+      const c = this.scheme !== "kind" ? th.status[v.status] ?? th.status[ST_UNREVIEWED] : v.kind === "external" ? th.ext : th.kind[v.kind] ?? th.ext;
       ctx.fillStyle = css(th.bg);
       ctx.beginPath();
       ctx.arc(x, y, R + 3 + (v.axiom ? AXIOM_OUT : 0), 0, 2 * Math.PI);
@@ -3722,7 +3724,7 @@ export class GraphCanvas {
     const el = document.createElement("div");
     // its dot has its point's colour, in the scheme in force (style.css, .card.s-*); nothing else on
     // a card tells of its status
-    const st = this.scheme === "status" ? ` ss s-${STATUSES[this.statusCode[i] ?? ST_UNREVIEWED]}` : "";
+    const st = this.scheme !== "kind" ? ` ss s-${STATUSES[this.statusCode[i] ?? ST_UNREVIEWED]}` : "";
     el.className = `card ${kindDot(v.kind, g.isExt(i))}${st}${this.targetList.includes(i) ? " target" : this.keyList.includes(i) ? " key" : ""}`;
     el.dataset.node = String(i);
     // on a past graph, its marks against now: a renamed one's name now among them

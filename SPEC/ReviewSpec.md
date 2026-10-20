@@ -8,6 +8,12 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
    reviewer's new opinion replaces their earlier one; their current one can be withdrawn (decision
    9). Every opinion is kept with who, when, the toolchain, the version and the text judged. Nothing
    defines "the team approved": the page shows each reviewer's opinion and a summary.
+   - **Nobody approves twice** (the owner's decision of 2026-10-20): an approval of the present
+     version by someone whose current opinion there is already an approval of that version is not
+     recorded — the server answers `{ok, unchanged: true}` and writes nothing, a comment sent with it
+     neither — whether they give it, someone speaking for them records it (decision 8), or it is an
+     agent's advice (AgentSpec decision 2). Once a change has made their approval stale, approving
+     again is recorded: it is about another version.
 2. **An opinion is about one version of one declaration** (TCBSpec decisions 1 and 3); on another
    version it is *stale*. Reviewing a declaration means "it says what it should, given that what it
    uses means what it says", so a change underneath stales only what changed. An opinion records the
@@ -69,6 +75,10 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
      never anyone else's opinion or advice; nobody withdraws an agent's advice for it.
    - A read-only reader withdraws nothing (CollabSpec decision 11); a private reader as a person
      (CollabSpec decision 8).
+   - **Approved ✓ withdraws** (the owner's decision of 2026-10-20): where the approval of whoever the
+     box records for is of the present version, Approve reads *Approved ✓*, *Withdraw approval* under
+     the pointer, and a click withdraws it ("What the page shows"). The key `a` only ever approves:
+     where that approval stands it does nothing but say so, and never withdraws.
 
 ## What the page shows
 
@@ -78,18 +88,38 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   before approve is one order, `VERDICT_ORDER` (shared/review.ts), read by every status, count,
   colour and query.
 - **The review box**: each reviewer's latest opinion (stale ones marked, with What changed) and the
-  history; the agents' advice apart; the comment box, Approve (solid green) and Comment (solid blue)
+  history, all folded or all shown (below); the agents' advice apart; the comment box, Approve (solid green, saying where the approval
+  stands, below) and Comment (solid blue)
   — the box empties when the opinion is taken and keeps its text when refused — and Speaking for;
   the key mark; ☆ Mark as target; for a target, its progress (key declarations, then all), the
   axioms outside the graph with their Approve and Comment, and its view (Its view, Key view, Link to
   this view: ViewSpec decision 29).
+- **The opinions fold all or nothing** (the owner's decision of 2026-10-20): one toggle at their head,
+  *Opinions N · M earlier, K withdrawn — Fold all* (or *Show all*), folds them all or shows them all,
+  in every review box at once — the panel's and each source window's —, a reading preference, the
+  reader's own (CollabSpec, "Yours"), kept in the browser; shown where none is kept.
+  - **Folded**: a line for each person's current opinion — who, approved or commented, when, *stale*
+    where it is on an earlier version, *recorded by* where someone spoke for them, Withdraw beside
+    the one the box records for — and nothing of its text; the agents' advice a line each too.
+  - **Shown**: each current opinion in full, with Quote, then *Earlier*: the opinions replaced or
+    withdrawn and each withdrawal at its time; the advice in full.
+  - **What changed** under a stale opinion is a diff, not an opinion: it keeps its own toggle,
+    closed at first, folded or shown alike. A quoted opinion gone to shows them all.
+- **Approve shows the state** (the owner's decision of 2026-10-20), wherever a review box stands, of
+  the approval of whoever the box records for — the reader, or the person they speak for (decision
+  8): *Approve* where they have no current approval (none, a comment, or withdrawn); *Approved ✓*,
+  tinted rather than solid, where their current approval is of the present version — under the
+  pointer or the keyboard's focus it reads *Withdraw approval*, and a click withdraws it (decision
+  9), at once, as Withdraw does an approval; *Approve again* where their approval is of an earlier
+  version. Speaking for someone, each Approve says theirs at once ("Approved ✓ for Bob"). An axiom
+  outside the graph, in its target's box, has the same Approve.
 - **One review box** (the owner's decision of 2026-10-19): it stands in the panel and in each source
   window, following or pinned, each on its own declaration, and it is the same box in each — the
   same controls, in the same order, under the same rules. Nothing of it is the panel's alone.
 - **Withdraw** (decision 9) stands beside the current opinion of whoever the box records for — the
   reader, or the person they speak for — in every review box. An approval goes at once; a comment is
-  asked about first; the page says what it did. The history lists an opinion withdrawn, faded, and
-  its withdrawal at its time ("Alice withdrew their approval"; "recorded by" the typist where they
+  asked about first; the page says what it did. The history (the opinions shown) lists an opinion
+  withdrawn, faded, and its withdrawal at its time ("Alice withdrew their approval"; "recorded by" the typist where they
   spoke for its author).
 - **The key mark** (ExportSpec decision 1): where the reader's focus is a target whose TCB holds the
   declaration — trusted or not, in the project or outside it (the owner's decision of 2026-10-19) —
@@ -213,7 +243,16 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     together), then what more targets rest on, then by name; or key declarations alone (◆ Key), or
     by kind. A row goes to its declaration, as a visitor where the board does not hold it (ViewSpec
     decision 27); rows the reader settled are faded.
-  - Keys: `a` approve, `m` comment (asking for text first), `k` key (ExportSpec decision 4). The
+  - **Kept to one's own review** (the owner's decision of 2026-10-20): over the list, in review order
+    or ◆ Key, *Yours: All · Not reviewed · Stale · Commented*, each with how many it keeps — what
+    the reader has no opinion on (none given, or withdrawn), where theirs is on an earlier version,
+    what theirs comments on — by their own opinions alone (as the Mine scheme, CanvasSpec, "Colour
+    schemes"), the trusted key declarations, which need none, left out. A reading preference, as the
+    order is (CollabSpec, "Yours"), kept in the browser; whom they follow changes nothing of it. A
+    reader without a name has no review of their own, and no switch. Nothing of it joins the strip:
+    there is no personal progress beside the team's.
+  - Keys: `a` approve (only ever: where the approval stands, nothing — decision 9), `m` comment
+    (asking for text first), `k` key (ExportSpec decision 4). The
     panel says why a declaration is in the TCB: the shortest chain of references from the target.
 
 ## The logs
@@ -301,7 +340,9 @@ agent's ends `.agent.jsonl`; an invited person's is the link's id, `3f2a9c1b07.p
   come as `review-delta`; a replay whole that comes to the same review is a delta of no events (the
   owner's decision of 2026-10-19).
 - `POST /api/review` records the page's events and answers with the change; a request that changes
-  nothing (a target marked again, a prefix trusted again, a standing key mark) writes nothing. A
+  nothing (a target marked again, a prefix trusted again, a standing key mark, an approval of the
+  version approved already: decision 1) writes nothing, and is answered `{ok, change: null,
+  unchanged: true}`. A
   withdrawal (`{op: "withdraw", name, for?}`) is refused (409) where no opinion of whose it would
   take back stands; it binds nothing, so what was said of a declaration gone from the graph, or of
   a file changed since compiled, can be withdrawn.

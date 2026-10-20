@@ -174,8 +174,9 @@ export interface PresenceView {
   activity?: ActivityView;
   /** the lost-and-found (HistorySpec decisions 12–14): open or closed */
   lostFound?: { open: boolean };
-  /** the colouring the board is drawn in: the legend's Kind or Status (CanvasSpec, "Colour schemes") */
-  scheme?: ColourScheme;
+  /** the colouring the board is drawn in: the legend's Kind, Status or Mine (CanvasSpec, "Colour
+   *  schemes"); Mine is the reader's own opinions, which a follower is shown as theirs */
+  scheme?: BoardScheme;
   /** the edges drawn (CanvasSpec, "Edges"); proof edges, said until 2026-10-15, are no more */
   edges?: boolean;
   /** the board drawn as its document's outline (ExportSpec decision 18, web/src/linear.ts) */
@@ -352,9 +353,14 @@ export function cleanArtwork(v: unknown): ArtworkView | null {
   return { w, h, scheme, theme, background, labels, namesFrom, hiddenNames, shownNames, ruledNames, edges, notes: o.notes, targets, shownTargets, keys, selection: o.selection, source: o.source === true, style, title: cleanTitle(o.title), subtitle: cleanTitle(o.subtitle), titleSize: cleanTitleSize(o.titleSize), footSize: cleanFootSize(o.footSize), border: o.border === true, region: [...r] };
 }
 
-/** The legend's schemes (CanvasSpec, "Colour schemes"). */
+/** The schemes a picture is drawn in (CanvasSpec, "Colour schemes"; an artwork, ExportSpec decision
+ *  19): by kind or by status. */
 export const SCHEMES = ["kind", "status"] as const;
 export type ColourScheme = (typeof SCHEMES)[number];
+/** The legend's schemes, the board's: those, and Mine — the reader's own review (the owner's
+ *  decision of 2026-10-20), which a picture drawn by the server has nobody to draw for. */
+export const BOARD_SCHEMES = ["kind", "status", "mine"] as const;
+export type BoardScheme = (typeof BOARD_SCHEMES)[number];
 /** Activity's filters: the kind of event, and whose (web/src/activity.ts). */
 export const ACTIVITY_KINDS = ["all", "review", "build", "change"] as const;
 export const ACTIVITY_WHO = ["all", "agents", "people"] as const;
@@ -551,7 +557,7 @@ export function cleanView(v: unknown): PresenceView | null {
   const activity: ActivityView | null =
     av && typeof av.open === "boolean" && kind && who ? { open: av.open, kind, who, ...(typeof av.mine === "string" && validName(av.mine) ? { mine: av.mine } : {}) } : null;
   const lost = o.lostFound && typeof o.lostFound === "object" ? (o.lostFound as Record<string, unknown>).open : undefined;
-  const scheme = one(SCHEMES, o.scheme);
+  const scheme = one(BOARD_SCHEMES, o.scheme);
   const pinned = Array.isArray(o.pinned)
     ? o.pinned
         .slice(0, MAX_PINNED)

@@ -419,7 +419,16 @@ body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn,
 .rv-op.rv-comment .rv-dot { background: var(--rv-commented); }
 .rv-op.old .rv-dot { background: var(--rv-stale); }
 .rv-c { margin: 2px 0 0 14px; padding: 4px 8px; background: var(--code-bg); border-radius: 6px; white-space: pre-wrap; font-size: 12px; }
-.rv-hist summary { cursor: pointer; color: var(--text-2); font-size: 12px; }
+/* the opinions' head (ReviewSpec, "One review box", the owner's decision of 2026-10-20): how many
+   stand and came before, and the one toggle that folds them all to a line each or shows them all */
+.rv-ops-h { display: flex; align-items: baseline; gap: 8px; font-size: 12px; color: var(--text-2); }
+.rv-ops-n b { color: var(--text); font-weight: 600; }
+.rv-fold { margin-left: auto; flex: none; font: 600 11.5px var(--font); color: var(--accent); background: none; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 999px; padding: 1px 9px; cursor: pointer; }
+.rv-fold:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.rv-fold:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* the history, with the opinions shown: the earlier and withdrawn ones under the current */
+.rv-hist { display: flex; flex-direction: column; gap: 4px; }
+.rv-hist-h { color: var(--text-2); font-size: 11.5px; }
 .rv-hist .rv-op { margin-left: 8px; }
 /* an opinion withdrawn, and its withdrawal, in the history (ReviewSpec decision 9): faded, the
    withdrawal's dot hollow */
@@ -524,6 +533,17 @@ body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn,
 :root[data-theme="dark"] .rv-btn.approve:focus-visible { outline-color: var(--rv-approved); }
 :root[data-theme="dark"] .rv-btn.comment:focus-visible { outline-color: var(--rv-commented); }
 .rv-btn.approve:disabled, .rv-btn.comment:disabled { color: white; opacity: 0.45; }
+/* Approved ✓ (ReviewSpec decision 1, the owner's decision of 2026-10-20): the approval that stands,
+   no longer a call to act — its colour's tint, ruled in it — and under the pointer or the keyboard's
+   focus what a click does, Withdraw approval, in the colour of taking back; the two words in one
+   cell, so that the button keeps its width as they change */
+.rv-btn.approve.on { display: inline-grid; color: var(--rv-approved); background: color-mix(in srgb, var(--rv-approved) 13%, var(--surface-solid)); border-color: color-mix(in srgb, var(--rv-approved) 55%, transparent); font-weight: 600; }
+.rv-btn.approve.on > span { grid-area: 1 / 1; text-align: center; }
+.rv-btn.approve.on .rv-undo { visibility: hidden; }
+.rv-btn.approve.on:is(:hover, :focus-visible) { color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, var(--surface-solid)); border-color: color-mix(in srgb, var(--bad) 50%, transparent); filter: none; }
+.rv-btn.approve.on:is(:hover, :focus-visible) .rv-is { visibility: hidden; }
+.rv-btn.approve.on:is(:hover, :focus-visible) .rv-undo { visibility: visible; }
+.rv-btn.approve.on:focus-visible { outline-color: var(--bad); }
 .rv-btn.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 .rv-tgt { align-self: flex-start; }
 .rv-tag { font-size: 12px; color: var(--accent); }
@@ -652,6 +672,11 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .seg.mini { padding: 2px; border-radius: 8px; }
 .seg.mini button { padding: 2px 8px; border-radius: 6px; font-size: 11.5px; }
 .q-note { font-size: 11.5px; margin: -2px 0 6px; }
+/* a target's list kept to the reader's own review (the owner's decision of 2026-10-20): beside the
+   order's switch, in its style, each with how many it keeps */
+.q-own { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; font-size: 11.5px; }
+.q-own-n { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.q-own .on .q-own-n { color: inherit; }
 .q-row .q-n { display: inline-block; min-width: 2.2em; margin-right: 6px; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
 /* every row of the queue has its dot, so that the numbers line up: an open one for none yet */
 .q-row.rv-none::before {
@@ -2605,6 +2630,9 @@ kbd {
 .lg-swatch.lg-kind {
   background: conic-gradient(var(--k-def) 0 20%, var(--k-structure) 0 40%, var(--k-instance) 0 60%, var(--k-theorem) 0 80%, var(--k-axiom) 0);
 }
+/* Mine where it has nothing to show (a reader without a name): what is not yet reviewed, ringed in
+   approved's colour; else, as Status, a pie of the review */
+.lg-swatch.lg-mine { background: var(--status-unreviewed); box-shadow: inset 0 0 0 1.5px var(--status-approved); }
 .lg-chip-n { color: var(--text-2); font-variant-numeric: tabular-nums; font-size: 11.5px; }
 .lg-chev { color: var(--text-3); font-size: 10px; }
 .lg-card {
@@ -2622,6 +2650,9 @@ kbd {
 .lg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lg-n { color: var(--text-2); font-variant-numeric: tabular-nums; font-size: 11.5px; }
 .lg-row.none .lg-n { color: var(--text-3); }
+/* by one's own review (Mine): whose it is, or that there is nobody's yet */
+.lg-mine { color: var(--text-2); font-size: 11.5px; line-height: 1.35; }
+.lg-mine.lg-none { color: var(--text); padding: 5px 7px; border-radius: 8px; background: var(--code-bg); }
 /* by status, the board's progress, in the scheme's own colours */
 .lg-prog { display: flex; flex-direction: column; gap: 3px; color: var(--text-2); font-size: 11.5px; }
 .lg-prog .rv-bar i.ok { background: var(--status-approved); }

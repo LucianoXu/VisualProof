@@ -67,6 +67,8 @@ export function peoplePart(page: Page): PeoplePart {
     // following leaves"): the artwork mode's bar, all but Share and Search out of reach again; the
     // linear form, which nothing on the screen says how to put away — the line does, once
     unfollowed: () => {
+      // Mine, and mine(…), are the reader's own again (web/src/pagescheme.ts)
+      page.mineChanged();
       page.sources.release();
       page.papers.unfollowed();
       page.artReach();
@@ -77,6 +79,8 @@ export function peoplePart(page: Page): PeoplePart {
     renamed: () => {
       page.showSelected();
       page.renderStrip();
+      // the reader's own review, which Mine shows and mine(…) reads, is under their name
+      page.mineChanged();
       if (!reader) page.talk.identity();
     },
     // asking others to follow (CollabSpec decision 10): Esc declines a request shown, unless it is

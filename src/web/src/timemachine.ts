@@ -35,7 +35,7 @@ import type { ClusterMode, Layout, ViewMeta } from "../../shared/graph.ts";
 import { memoryOf } from "../../shared/layout.ts";
 import type { LayoutMemory } from "../../shared/layout.ts";
 import { printQuery, readsReview } from "../../shared/query.ts";
-import type { ReviewData } from "../../shared/review.ts";
+import type { Author, ReviewData } from "../../shared/review.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { versionRefused } from "../../shared/views.ts";
 import type { ViewData } from "../../shared/views.ts";
@@ -58,6 +58,8 @@ export interface TimeMachineHooks {
   present(): Graph;
   meta(): ViewMeta;
   review(): ReviewData;
+  /** whose own review `mine(…)` reads (web/src/pagescheme.ts, mineAuthor) */
+  me?(): Author | null;
   /** the board on show */
   board(): Board | null;
   /** what a view is called, and what the page says of it under the pointer: its scope in full */
@@ -563,11 +565,11 @@ export class TimeMachine {
    *  reads the review (which changes in place). */
   private boardOfNow(rec: ViewData): BoardSet {
     const now = this.hooks.present();
-    if (readsReview(rec.scope)) return boardSet(now, this.hooks.review(), rec.scope);
+    if (readsReview(rec.scope)) return boardSet(now, this.hooks.review(), rec.scope, this.hooks.me?.() ?? null);
     this.sameNow(now);
     const k = printQuery(rec.scope);
     let bs = this.nowBoards.get(k);
-    if (!bs) this.nowBoards.set(k, (bs = boardSet(now, this.hooks.review(), rec.scope)));
+    if (!bs) this.nowBoards.set(k, (bs = boardSet(now, this.hooks.review(), rec.scope, this.hooks.me?.() ?? null)));
     return bs;
   }
 
@@ -577,7 +579,7 @@ export class TimeMachine {
     const b = this.hooks.board();
     if (!b) return null;
     const mode = b.rec.clustering;
-    const bs = boardSet(past.graph, reviewThen(this.hooks.review(), past.nowName), b.rec.scope);
+    const bs = boardSet(past.graph, reviewThen(this.hooks.review(), past.nowName), b.rec.scope, this.hooks.me?.() ?? null);
     const graph = bs.sub ? bs.sub.graph : past.graph;
     const mem = await this.memoryOf(b.rec, mode);
     // the build the view is kept at: its memory recalls it, nothing is laid out

@@ -15,7 +15,6 @@ import { ringed } from "./axiomring.ts";
 import type { LitCount } from "./selbar.ts";
 import { click, clusterOn, clusterSet, edgeMode, followRenames, pickWords, readSelection, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, TOOLS } from "./selection.ts";
 import type { Pick, Tool } from "./selection.ts";
-import { statusState } from "./status.ts";
 import { clusterPrefix } from "./trust.ts";
 import { stillVisiting, visit, visitorEdges } from "./visitors.ts";
 import type { Place } from "./viewnav.ts";
@@ -316,7 +315,8 @@ export function selectionPart(page: Page): SelectionPart {
         place: v.place,
         kind: page.g.isExt(i) ? "external" : node.kind,
         axiom: ringed(node.kind),
-        status: statusState(page.boardReview(), page.g, i, page.g.isExt(i) || page.pastShown() ? undefined : page.fileIndex.get(node.module), page.g.axiomsOf(i).includes("sorryAx")),
+        // in the scheme in force: Status's state, or Mine's
+        status: page.pointState(i),
         target: Object.hasOwn(targets, v.name),
         key: r !== null && r !== i && page.flow.isKey(r, i),
         board: edges.board,

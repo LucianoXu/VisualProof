@@ -30,7 +30,7 @@ MCP: `companion`.
 | `source`, `sourceCollapsed` | the source window following their selection: open; collapsed to its pill |
 | `pinned` | pinned source windows, first pinned first, `{declaration, collapsed}`; followers mirror them (an agent pins none) |
 | `history` | `{snapshot, built}`: the build they browse in the Time Machine |
-| `activity`, `lostAndFound`, `colouring`, `edges` | what else followers take, where their page says it (a page from before, and an agent, say none): `activity` `{open, kind, who, mine?}` (kind: all, review, build, change; who: all, agents, people; `mine`: the person whose targets it keeps to); `lostAndFound` `{open}`; `colouring` `kind` or `status`; edges drawn or not |
+| `activity`, `lostAndFound`, `colouring`, `edges` | what else followers take, where their page says it (a page from before, and an agent, say none): `activity` `{open, kind, who, mine?}` (kind: all, review, build, change; who: all, agents, people; `mine`: the person whose targets it keeps to); `lostAndFound` `{open}`; `colouring` `kind`, `status` or `mine` (their own review); edges drawn or not |
 | `inWords` | the place in words; of the row above, only what differs from a fresh page |
 
 `wait=<s>` (≤ 60) waits until someone comes, goes, goes idle or moves (view, selection,

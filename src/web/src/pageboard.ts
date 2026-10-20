@@ -11,7 +11,7 @@ import { Notes } from "./notes.ts";
 import { Stickies } from "./sticky.ts";
 import { kindDot, ringed } from "./axiomring.ts";
 import { fileOf } from "../../shared/library.ts";
-import { STATUS_LABEL, STATUSES } from "./status.ts";
+import { mineLabel, STATUS_LABEL, STATUSES } from "./status.ts";
 import { LinearForm } from "./linear.ts";
 import { markWords } from "./past.ts";
 import { $, STATE_LABEL, short } from "./page.ts";
@@ -62,16 +62,19 @@ export function boardPart(page: Page): BoardPart {
         const i = t.i;
         const v = page.vg().nodes[i];
         const f = canvas.fileOf(i);
-        // by status, the state in words beside its colour; by kind, the file's build trouble
+        // by status, the state in words beside its colour; by one's own review (Mine), whose it is;
+        // by kind, the file's build trouble
         const ss = STATUSES[canvas.statusOf(i)];
         const st =
           canvas.scheme === "status"
             ? ` <span class="tip-st">${STATUS_LABEL[ss]}</span>`
-            : f && STATE_LABEL[f.state]
-              ? ` <span class="tip-st st-${f.state}">${STATE_LABEL[f.state]}</span>`
-              : "";
-        // an axiom's ringed, by either scheme (web/src/axiomring.ts)
-        const dot = canvas.scheme === "status" ? `ss s-${ss}${page.vg().isExt(i) ? " k-external" : ""}${ringed(v.kind) ? " axiom" : ""}` : kindDot(v.kind, page.vg().isExt(i));
+            : canvas.scheme === "mine"
+              ? ` <span class="tip-st">${escapeHtml(mineLabel(canvas.statusOf(i), page.mineWhose()))}</span>`
+              : f && STATE_LABEL[f.state]
+                ? ` <span class="tip-st st-${f.state}">${STATE_LABEL[f.state]}</span>`
+                : "";
+        // an axiom's ringed, in every scheme (web/src/axiomring.ts)
+        const dot = canvas.scheme !== "kind" ? `ss s-${ss}${page.vg().isExt(i) ? " k-external" : ""}${ringed(v.kind) ? " axiom" : ""}` : kindDot(v.kind, page.vg().isExt(i));
         // on a past graph, what became of it since
         const then = markWords(canvas.pastMarkOf(i), canvas.nowNameOf(i));
         tip.innerHTML = `<span class="dot ${dot}"></span>${escapeHtml(v.name)}${st}${then.length ? ` <span class="tip-st tip-tm">${escapeHtml(then.join(" · "))}</span>` : ""}`;

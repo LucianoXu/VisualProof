@@ -310,10 +310,11 @@ test("the review box: Withdraw beside the current opinion of whoever it records 
   record(d, { op: "withdraw", name: "N.a", by: "Olivia" }, "tc", at(4));
   const html = box.html(0);
   assert.deepEqual(shown(html), []);
-  const hist = /<details class="rv-hist"><summary>All 2 opinions · 1 withdrawn<\/summary>(.*)<\/details>/.exec(html);
+  assert.match(html, /<span class="rv-ops-n">Opinions <b>1<\/b> <span class="muted">· 1 earlier, 1 withdrawn<\/span><\/span>/);
+  const hist = /<div class="rv-hist"><div class="rv-hist-h">Earlier<\/div>(.*?)<\/div><div class="rv-advice">/.exec(html);
   assert.ok(hist, html);
   const rows = [...hist[1].matchAll(/<div class="rv-op ([^"]*)"[^>]*><span class="rv-dot"><\/span><b>([^<]*)<\/b> ([a-z ]+)/g)].map((m) => `${m[2]} ${m[3].trim()}${m[1].includes("withdrawn") ? " (withdrawn)" : ""}`);
-  assert.deepEqual(rows, ["Olivia approved (withdrawn)", "Bob commented", "Olivia withdrew their approval"]);
+  assert.deepEqual(rows, ["Olivia approved (withdrawn)", "Olivia withdrew their approval"]);
   // a read-only reader is offered no Withdraw
   readOnly = true;
   record(d, { op: "opinion", name: "N.a", by: "Olivia", verdict: "approve", hash: "h" }, "tc", at(5));

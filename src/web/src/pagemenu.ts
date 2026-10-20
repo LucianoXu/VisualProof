@@ -53,7 +53,7 @@ export function menuPart(page: Page): MenuPart {
   const canName = () => !data.snapshot && !reader && (!!page.people.name || page.people.mode === "declared");
   /** Whether two scopes hold the same set, on the whole graph and the review as they are. */
   const sameSet = (a: Query, b: Query): boolean => {
-    const x = evaluate(a, { g: page.g, review: page.boardReview() }), y = evaluate(b, { g: page.g, review: page.boardReview() });
+    const x = evaluate(a, { g: page.g, review: page.boardReview(), me: page.mineAuthor() }), y = evaluate(b, { g: page.g, review: page.boardReview(), me: page.mineAuthor() });
     for (let j = 0; j < x.length; j++) if (x[j] !== y[j]) return false;
     return true;
   };
@@ -67,11 +67,11 @@ export function menuPart(page: Page): MenuPart {
    *  of a scope — the kept views that hold all of it already are said so. */
   const menuContext = (part: Query | null): MenuContext => {
     const rec = page.nav.board.rec;
-    const has = part && evaluate(part, { g: page.g, review: page.boardReview() });
+    const has = part && evaluate(part, { g: page.g, review: page.boardReview(), me: page.mineAuthor() });
     const holds = (scope: string): boolean => {
       if (!has) return false;
       try {
-        const set = evaluate(parseQuery(scope), { g: page.g, review: page.boardReview() });
+        const set = evaluate(parseQuery(scope), { g: page.g, review: page.boardReview(), me: page.mineAuthor() });
         for (let j = 0; j < has.length; j++) if (has[j] && !set[j]) return false;
         return true;
       } catch {

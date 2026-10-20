@@ -19,7 +19,8 @@ of invisible clusters" is the view's hidden levels (decision 24).
    - A view is its exported document's outline: what it holds, ordered bottom first by position on
      the board (ExportSpec decisions 12–13).
 3. **The reader's own**: camera and selection (remembered per view), the tool, reading preferences
-   (edges, theme, colour scheme), open tabs. A follower sees all but the theme and the
+   (edges, theme, colour scheme — Kind, Status or Mine, the reader's own review: CanvasSpec, "Colour
+   schemes"), open tabs. A follower sees all but the theme and the
    tabs (CollabSpec decision 4).
 4. **One query language** for scopes and the selection (decisions 11, 13).
 5. **The Project and the board's settings.**
@@ -265,11 +266,13 @@ term    := "(" query ")"
          | "kind" "(" kind { "," kind } ")"
          | "status" "(" status { "," status } ")"
          | "advice" "(" verdict { "," verdict } ")"
+         | "mine" "(" own { "," own } ")"
 roots   := "selection" | name { "," name } | query
 kind    := theorem | def | abbrev | instance | structure | class | inductive | opaque
          | axiom | quot | constructor | recursor | notation | unknown
 status  := unreviewed | approved | commented | stale
 verdict := approve | comment
+own     := approved | commented | stale | none
 name    := a word without whitespace, "(", ")", "," or '"'  |  a JSON string
 ```
 
@@ -286,6 +289,15 @@ name    := a word without whitespace, "(", ")", "," or '"'  |  a JSON string
   present version; `key(T, …)` each target and its key marks its TCB or review set still holds,
   trusted or not (ExportSpec decision 1); `key(targets)` every target at evaluation. Unknown names
   stand for nothing.
+- `mine(…)` (the owner's decision of 2026-10-20): where the reader's own review stands — their
+  current opinion on the present version approves (`approved`) or comments (`commented`), is on an
+  earlier version (`stale`), or there is none (`none`, trusted or not, as `status(unreviewed)`) —,
+  whose being the Mine scheme's (CanvasSpec, "Colour schemes"): the reader's own, or while they
+  follow someone, that person's. Where there is no reader — the server, an agent (whose advice is
+  no opinion, AgentSpec decision 2), an exported document, a reader without a name — it holds
+  nothing. A board whose scope reads it is the same scope for everyone and each reader's own set:
+  "Only not reviewed by me" (⚙ Board's +) shows each what they have not reviewed. It is bounded and
+  counted as `status` is.
 - `QUERY_LIMITS`, the same for both forms: text 20,000 characters, nesting 32, 1,000 parts, 2,000
   names (each at most 2,000 characters), 64 closures (each `key` target one, `key(targets)` one).
 
@@ -304,7 +316,8 @@ then clears the selection; it never leaves a view.
 - Layout memory: per view and clustering, keyed by the set and the hidden levels; past builds key it
   by snapshot so it never mixes with the latest. A page recalls it exactly; on a changed set it lays
   out from the old memory and hands the new one over (at most 50 MB, the owner's decision of 2026-10-14; first wins). Handing over needs a
-  name (or a private reader); otherwise the layout stays local.
+  name (or a private reader); otherwise the layout stays local. A board whose scope reads `mine(…)`,
+  each reader's own set, keeps its layout local too.
 - Zoom in's scope is the lit query alone when it lies within the board, else it `and` the board's
   scope. Zoom in is disabled when nothing is lit or the board holds just that.
 

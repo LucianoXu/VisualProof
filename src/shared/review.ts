@@ -478,15 +478,26 @@ export function record(d: ReviewData, r: ReviewOp, toolchain: string, now: strin
   return e;
 }
 
+/** Whose opinion a request records or takes back: the person it is for (ReviewSpec decisions 8 and
+ *  9), else its writer's own — an agent's, its advice. */
+function whoseOp(r: Extract<ReviewOp, { op: "opinion" | "withdraw" }>): Author {
+  return r.for?.trim() ? { by: r.for.trim(), ...(r.forPerson ? { person: r.forPerson } : {}) } : { by: r.by.trim(), agent: r.agent, person: r.person };
+}
+
 /** Whether recording `r` would change nothing: a target marked that is one, a prefix trusted that
- *  is, a key declaration marked that is, a withdrawal with no opinion standing to take back. Such a
+ *  is, a key declaration marked that is, a withdrawal with no opinion standing to take back, an
+ *  approval of the present version by someone whose current opinion there is one already. Such a
  *  request is answered, and nothing is appended. */
 export function noChange(d: ReviewData, r: ReviewOp): boolean {
   if (r.op === "target") return Object.hasOwn(d.targets, r.name) === r.on;
   if (r.op === "trust") return d.trusted.includes(r.prefix) === r.on;
   if (r.op === "key") return keyMarked(d, r.target, r.name) === r.on;
+  // nobody approves twice (ReviewSpec decision 1, the owner's decision of 2026-10-20): people,
+  // someone spoken for and agents' advice alike; once a change has made it stale, approving again
+  // is new
+  if (r.op === "opinion") return r.verdict === "approve" && approval(d, r.name, whoseOp(r), r.hash) === "approved";
   // nothing standing to take back (ReviewSpec decision 9)
-  if (r.op === "withdraw") return !standing(d, r.name, r.for?.trim() ? { by: r.for.trim(), ...(r.forPerson ? { person: r.forPerson } : {}) } : { by: r.by.trim(), agent: r.agent, person: r.person });
+  if (r.op === "withdraw") return !standing(d, r.name, whoseOp(r));
   if (r.op === "move") return moveIsIdle(d, { ...r, rename: r.rename || undefined });
   if (isLibraryOp(r.op)) return libraryNoChange(d, r as LibraryOp);
   return false;
@@ -775,6 +786,27 @@ export function standing(d: ReviewData, name: string, who: Author): Opinion | nu
   const whose = author(who);
   const o = (Object.hasOwn(d.opinions, name) ? d.opinions[name] : []).findLast((p) => author(p) === whose);
   return o && !o.withdrawn ? o : null;
+}
+
+/** Where one person's own review of a declaration stands (the owner's decision of 2026-10-20: the
+ *  Mine scheme, `mine(…)`): their current opinion, on the version whose hash is `hash` — approved,
+ *  commented — or on an earlier one, stale; none where they have none (none given, or withdrawn).
+ *  Nobody else's opinion counts, and an agent's advice is no person's. */
+export function ownStatus(d: ReviewData, name: string, who: Author, hash: string | undefined): Status {
+  const o = standing(d, name, who);
+  if (!o) return "none";
+  return !fresh(o, hash) ? "stale" : STATUS_OF[o.verdict];
+}
+
+/** Where the approval of `who` on `name` stands against the version whose hash is `hash` (ReviewSpec
+ *  decision 1, the owner's decision of 2026-10-20): `approved` where their current opinion is an
+ *  approval of that version — approving again records nothing —, `stale` where it is an approval of
+ *  an earlier one, `none` where it is no approval (none, a comment, or withdrawn). What the review
+ *  box's Approve says (Approve, Approved ✓, Approve again), and what the server takes as no change. */
+export function approval(d: ReviewData, name: string, who: Author, hash: string | undefined): "none" | "approved" | "stale" {
+  const o = standing(d, name, who);
+  if (!o || o.verdict !== "approve") return "none";
+  return fresh(o, hash) ? "approved" : "stale";
 }
 
 /** An opinion recorded for someone else (ReviewSpec decision 8), as the review holds it: theirs —

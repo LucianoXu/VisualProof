@@ -37,8 +37,8 @@ import type { BoardMemory, BoardSet } from "../../shared/board.ts";
 import type { ClusterMode, Layout, ViewMeta } from "../../shared/graph.ts";
 import type { PresenceView } from "../../shared/collab.ts";
 import { memoryOf } from "../../shared/layout.ts";
-import { parseQuery, printQuery, readsReview } from "../../shared/query.ts";
-import type { ReviewData } from "../../shared/review.ts";
+import { parseQuery, printQuery, readsMine, readsReview } from "../../shared/query.ts";
+import type { Author, ReviewData } from "../../shared/review.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { namesOf } from "../../shared/titles.ts";
 import { applyItemOp } from "../../shared/items.ts";
@@ -96,6 +96,9 @@ export interface ViewsHooks {
   handsOver?(): boolean;
   meta(): ViewMeta;
   review(): ReviewData;
+  /** whose own review `mine(…)` reads (web/src/pagescheme.ts, mineAuthor): the reader's, or whom they
+   *  follow; none without a name */
+  me?(): Author | null;
   /** the past graph a view shows instead, where it shows one and it is at hand (web/src/timemachine.ts) */
   past?(rec: ViewData): PastSource | null;
   /** have that past graph at hand: a board waits for it */
@@ -289,7 +292,7 @@ export class Views {
     const preview = this.hooks.preview?.(rec, past?.past ?? null) ?? false;
     const have = this.boards.get(id);
     if (have && have.scope === scope && have.full === full && have.preview === preview) return have;
-    return this.make(id, rec, scope, boardSet(full, this.reviewOf(past), rec.scope), past, preview);
+    return this.make(id, rec, scope, boardSet(full, this.reviewOf(past), rec.scope, this.hooks.me?.() ?? null), past, preview);
   }
 
   /** The review as a board of `past` (null: the graph on show) reads it: by its names then too. */
@@ -375,7 +378,9 @@ export class Views {
       // a preview hands nothing over: the memory is the view's own board's
       if (next && !b.preview) b.made[mode] = next;
       else delete b.made[mode];
-      if (!next || tries >= 2 || b.preview || this.hooks.handsOver?.() === false) return made(layout);
+      // a board whose scope reads mine(…) is each reader's own set: its layout stays the page's, as one
+      // without a name keeps it (ViewSpec, "Boards and layout memory")
+      if (!next || tries >= 2 || b.preview || this.hooks.handsOver?.() === false || readsMine(b.rec.scope)) return made(layout);
       const r = await this.api.post("memory", { id: b.id, mode, base: mem?.set ?? null, memory: next });
       if (r.accepted || r.error) {
         // taken (or the view is gone, and the picture is this page's alone)
@@ -436,14 +441,15 @@ export class Views {
     this.boards.clear();
   }
 
-  /** The review changed: boards whose scope reads it are computed again; the ids of those whose
+  /** The review changed, or whose own review `mine(…)` reads: boards whose scope reads it are
+   *  computed again; the ids of those whose
    *  set changed. A board whose set stays is the same board, layouts and all, so that one drawn
    *  or being laid out is not replaced by an equal one (a redraw waiting for it would be lost). */
   reviewChanged(): string[] {
     const out: string[] = [];
     for (const [id, b] of [...this.boards]) {
       if (!readsReview(b.rec.scope)) continue;
-      const bs = boardSet(b.full, this.reviewOf(b.past ?? null), b.rec.scope);
+      const bs = boardSet(b.full, this.reviewOf(b.past ?? null), b.rec.scope, this.hooks.me?.() ?? null);
       if (bs.key === b.bs.key) continue;
       this.make(id, b.rec, printQuery(b.rec.scope), bs, b.past ?? null, b.preview);
       out.push(id);

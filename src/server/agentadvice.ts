@@ -1,7 +1,9 @@
 // Advice (AgentSpec decision 2, ReviewSpec decisions 8 and 9), the endpoints of server/agent.ts an
 // agent gives its opinions by: on a declaration's present version, bound to the text it judged as
 // the page's opinions are (server/reviewapi.ts); on several at once; and its own taken back. Advice
-// is recorded marked as an agent's: shown apart, never counted, at every level.
+// is recorded marked as an agent's: shown apart, never counted, at every level. Nobody approves
+// twice (ReviewSpec decision 1, the owner's decision of 2026-10-20): an approval of the version its
+// advice approves already writes nothing, and is answered `unchanged`.
 
 import { STANDARD_AXIOMS } from "../shared/review.ts";
 import { appended } from "./reviewapi.ts";
@@ -18,8 +20,12 @@ export function opinionPost(api: AgentApi, a: Ask): Answer {
   if (!(v instanceof View)) return v;
   const r = advise(api, v, body(a), a.caller);
   if (r.status !== 200) return r;
+  if ((r.body as { unchanged?: boolean }).unchanged) return ok({ ok: true, ...(r.body as object), counted: false });
   return ok({ ok: true, ...(r.body as object), counted: false, note: "Recorded as advice: shown apart to people, never counted." });
 }
+
+/** What an approval of the version one approved already is answered with: nothing was written. */
+const UNCHANGED = "Your advice there is an approval of this version already: nothing was recorded, a comment with it neither. Withdraw it first (POST /api/agent/opinion/withdraw) to approve again with other words, or comment.";
 
 /** The agent's advice on a declaration taken back (ReviewSpec decision 9): its own, never anyone
  *  else's; afterwards it has none there, its earlier advice not restored. A name the graph folds
@@ -55,8 +61,11 @@ export function opinionsPost(api: AgentApi, a: Ask): Answer {
     const r = advise(api, v, x && typeof x === "object" && !Array.isArray(x) ? (x as Record<string, unknown>) : {}, a.caller);
     return { index: k, name: (x as { name?: unknown } | null)?.name ?? null, status: r.status, ...(r.body as object) };
   });
-  const recorded = results.filter((r) => r.status === 200).length;
-  return ok({ ok: true, recorded, refused: items.length - recorded, counted: false, note: "Each item is answered on its own (its status); what was recorded is advice: shown apart to people, never counted.", results });
+  const done = results.filter((r) => r.status === 200);
+  // an approval of the version it approved already writes nothing (ReviewSpec decision 1)
+  const unchanged = done.filter((r) => (r as { unchanged?: boolean }).unchanged).length;
+  const recorded = done.length - unchanged;
+  return ok({ ok: true, recorded, ...(unchanged ? { unchanged } : {}), refused: items.length - done.length, counted: false, note: "Each item is answered on its own (its status); what was recorded is advice: shown apart to people, never counted.", results });
 }
 
 /** Check and record one piece of advice: the answer is `{recorded}`, or why it is refused. What
@@ -101,6 +110,9 @@ function advise(api: AgentApi, v: View, b: Record<string, unknown>, me: Caller):
     return { status: a.status, body: a.body };
   }
   const folded = unit !== name ? { asked: name, foldedInto: unit } : {};
+  // nobody approves twice (ReviewSpec decision 1, the owner's decision of 2026-10-20): its advice
+  // there is an approval of this version already, and nothing is written, the words with it neither
+  if (!r.change) return ok({ unchanged: true, name: x.name, note: UNCHANGED, ...folded });
   return ok({ recorded: { name: x.name, verdict, ...(comment ? { comment } : {}), hash: x.hash ?? null, judged: judged.text !== undefined ? "source" : judged.statement !== undefined ? "statement" : null }, ...folded });
 }
 

@@ -38,7 +38,9 @@ board holds, else `null`. Your own focus (`POST view {focus}`) changes nothing o
 directly: the page's Direct), `decl(A, B)`, `key(T)` (the target and the declarations
 marked key for it that its review still holds; `key(targets)`: every target's), `ns(P)`, `file(P)`,
 `trusted`, `external`, `kind(theorem, def)`, `status(unreviewed|approved|commented|stale)`,
-`advice(approve|comment)`, `sorry`, `nonstandard`; joined left to right by `and`, `or`, `except`;
+`advice(approve|comment)`, `sorry`, `nonstandard`; `mine(approved|commented|stale|none)`, where
+the reader's own review stands: on a person's page theirs, for you (advice is no opinion) nothing;
+joined left to right by `and`, `or`, `except`;
 parentheses group; a closure may take a query (`tcb(ns(P) except external)`); a name that needs it
 is in JSON quotes. A target's review set: `tcb(T) except trusted or (uses(T) and kind(axiom) and
 nonstandard)`. At most 20,000 characters, 32 levels of nesting, 1,000 parts, 2,000 names, 64

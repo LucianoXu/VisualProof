@@ -14,6 +14,7 @@
 //   file(Mathlib.NumberTheory)   declarations of the modules under the prefix
 //   trusted | external | sorry | nonstandard
 //   kind(theorem, def) | status(unreviewed, stale) | advice(comment)
+//   mine(none, stale)            where the reader's own review stands (none: they gave no opinion)
 //   key(fermatLastTheoremFour)   the target and the declarations marked key for it
 //   key(targets)                 the same for every target
 //   X and Y | X or Y | X except Y        left to right, one level; parentheses group
@@ -25,8 +26,8 @@
 // `module` may stand for `ns` and `file`.
 
 import type { Kind } from "./graph.ts";
-import { adviceOf, keyMarks, STANDARD_AXIOMS, statusOf, trusted, under } from "./review.ts";
-import type { ReviewData, Verdict } from "./review.ts";
+import { adviceOf, keyMarks, ownStatus, STANDARD_AXIOMS, statusOf, trusted, under } from "./review.ts";
+import type { Author, ReviewData, Verdict } from "./review.ts";
 import type { Graph, Mode } from "./viewgraph.ts";
 
 /** The roots of a closure: declarations by name, the reader's selection, or the set a query holds
@@ -35,6 +36,9 @@ export type Roots = string[] | "selection" | Query;
 
 /** A review status as a condition names it: `unreviewed` is what shared/review.ts calls "none". */
 export type ReviewStatus = "unreviewed" | "approved" | "commented" | "stale";
+/** Where one's own review stands, as `mine(…)` names it (the owner's words of 2026-10-20): `none`,
+ *  no opinion of one's own there. */
+export type MineStatus = "approved" | "commented" | "stale" | "none";
 
 export type Query =
   | { op: "all" }
@@ -49,6 +53,9 @@ export type Query =
   | { op: "status"; statuses: ReviewStatus[] }
   /** what an agent advises on the present version (AgentSpec decision 2) */
   | { op: "advice"; verdicts: Verdict[] }
+  /** where the reader's own review stands (the owner's decision of 2026-10-20): their current
+   *  opinion on the present version, stale, or none; nothing for no reader (QueryContext, `me`) */
+  | { op: "mine"; statuses: MineStatus[] }
   /** the key declarations of targets (ExportSpec decision 4): each target, and the members of its
    *  review marked key for it; `targets` for every target the review has, whichever they
    *  are when it is read (the Keys step of Rests on where the review has no focus, ViewSpec decision 20) */
@@ -59,6 +66,7 @@ export type Combinator = "and" | "or" | "except";
 
 export const KINDS: Kind[] = ["theorem", "def", "abbrev", "instance", "structure", "class", "inductive", "opaque", "axiom", "quot", "constructor", "recursor", "notation", "unknown"];
 export const STATUSES: ReviewStatus[] = ["unreviewed", "approved", "commented", "stale"];
+export const MINE_STATUSES: MineStatus[] = ["approved", "commented", "stale", "none"];
 const VERDICTS: Verdict[] = ["approve", "comment"];
 const CLOSURES = ["tcb", "uses", "usedBy", "refs"] as const;
 type ClosureOp = (typeof CLOSURES)[number];
@@ -346,7 +354,8 @@ function parse(text: string): Query {
     if (w === "kind") return { op: "kind", kinds: choose(args(), KINDS, "kind") };
     if (w === "status") return { op: "status", statuses: choose(args(), STATUSES, "status") };
     if (w === "advice") return { op: "advice", verdicts: choose(args(), VERDICTS, "advice") };
-    throw new QueryError(`${text1(t)} is not a word of the query language (all, tcb, uses, usedBy, refs, decl, key, ns, file, trusted, external, kind, status, advice, sorry, nonstandard)`, t.at);
+    if (w === "mine") return { op: "mine", statuses: choose(args(), MINE_STATUSES, "mine") };
+    throw new QueryError(`${text1(t)} is not a word of the query language (all, tcb, uses, usedBy, refs, decl, key, ns, file, trusted, external, kind, status, advice, mine, sorry, nonstandard)`, t.at);
   };
 
   const expr = (): Query => {
@@ -402,6 +411,8 @@ export function printQuery(q: Query): string {
       return `status(${q.statuses.join(", ")})`;
     case "advice":
       return `advice(${q.verdicts.join(", ")})`;
+    case "mine":
+      return `mine(${q.statuses.join(", ")})`;
     case "and":
     case "or":
     case "except": {
@@ -492,6 +503,8 @@ function readJson(x: unknown, why = false): Query | string | null {
           : null;
       case "advice":
         return Array.isArray(o.verdicts) && o.verdicts.length && o.verdicts.every((s) => VERDICTS.includes(s as Verdict)) ? { op: "advice", verdicts: [...(o.verdicts as Verdict[])] } : null;
+      case "mine":
+        return Array.isArray(o.statuses) && o.statuses.length && o.statuses.every((s) => MINE_STATUSES.includes(s as MineStatus)) ? { op: "mine", statuses: [...(o.statuses as MineStatus[])] } : null;
       case "and":
       case "or":
       case "except": {
@@ -563,11 +576,20 @@ export function namesIn(q: Query): string[] {
   return [...out];
 }
 
-/** Whether the query reads the review (trust, statuses, advice): its set changes with opinions. */
+/** Whether the query reads the review (trust, statuses, advice, one's own): its set changes with
+ *  opinions. */
 export function readsReview(q: Query): boolean {
-  if (q.op === "trusted" || q.op === "status" || q.op === "advice" || q.op === "key") return true;
+  if (q.op === "trusted" || q.op === "status" || q.op === "advice" || q.op === "key" || q.op === "mine") return true;
   if ((q.op === "tcb" || q.op === "uses" || q.op === "usedBy" || q.op === "refs") && q.of !== "selection" && !Array.isArray(q.of)) return readsReview(q.of);
   if (q.op === "and" || q.op === "or" || q.op === "except") return readsReview(q.a) || readsReview(q.b);
+  return false;
+}
+
+/** Whether the query reads one's own review (`mine(…)`): its set is each reader's own. */
+export function readsMine(q: Query): boolean {
+  if (q.op === "mine") return true;
+  if ((q.op === "tcb" || q.op === "uses" || q.op === "usedBy" || q.op === "refs") && q.of !== "selection" && !Array.isArray(q.of)) return readsMine(q.of);
+  if (q.op === "and" || q.op === "or" || q.op === "except") return readsMine(q.a) || readsMine(q.b);
   return false;
 }
 
@@ -656,6 +678,8 @@ const list = (names: string[]) => (names.length > 2 ? `${names.slice(0, 2).map(l
 const roots = (of: Roots): string => (of === "selection" ? "the selection" : Array.isArray(of) ? list(of) : describe(of));
 const or = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}` : xs[0]);
 // a Map, not an object: `constructor` is a kind, and an object's own property besides
+/** one's own review in words (`mine(…)`): "me" is whoever reads it, the reader */
+const MINE_WORDS: Record<MineStatus, string> = { approved: "approved by me", commented: "commented on by me", stale: "stale of mine", none: "not reviewed by me" };
 const PLURAL = new Map<string, string>([["theorem", "theorems"], ["def", "definitions"], ["abbrev", "abbreviations"], ["instance", "instances"], ["structure", "structures"], ["class", "classes"], ["inductive", "inductive types"], ["opaque", "opaque constants"], ["axiom", "axioms"], ["notation", "notations"]]);
 
 /** A set in a few words, for a chip: "TCB of fermatLastTheoremFour", "everything". */
@@ -702,6 +726,8 @@ export function describe(q: Query): string {
       return or(q.statuses.map((s) => (s === "unreviewed" ? "not yet reviewed" : s)));
     case "advice":
       return `what an agent ${or(q.verdicts.map((v) => (v === "approve" ? "approves" : "comments on")))}`;
+    case "mine":
+      return or(q.statuses.map((s) => MINE_WORDS[s]));
     case "and":
     case "or":
     case "except":
@@ -720,7 +746,7 @@ export function describeCondition(c: Condition): string {
     if (q.op === "nonstandard") return "only with non-standard axioms";
     if (q.op === "ns") return `only in namespace ${q.prefix}`;
     if (q.op === "file") return `only in files under ${q.prefix}`;
-    if (q.op === "kind" || q.op === "status" || q.op === "advice" || q.op === "key") return `only ${describe(q)}`;
+    if (q.op === "kind" || q.op === "status" || q.op === "advice" || q.op === "key" || q.op === "mine") return `only ${describe(q)}`;
     return `and ${describe(q)}`;
   }
   if (c.op === "except") return `except ${describe(q)}`;
@@ -730,11 +756,14 @@ export function describeCondition(c: Condition): string {
 // ---------------------------------------------------------------- evaluating
 
 /** What a query is evaluated against: the graph, the review it reads, and the selection lighting
- *  up is relative to (numbered in `g`). */
+ *  up is relative to (numbered in `g`); and `me`, the reader whose own review `mine(…)` reads (the
+ *  page's reader, or whom they follow) — none for the server, an agent, an exported document or a
+ *  reader without a name, for whom `mine(…)` holds nothing. */
 export interface QueryContext {
   g: Graph;
   review: ReviewData;
   selection?: number[];
+  me?: Author | null;
 }
 
 /** The declarations of `ctx.g` a query holds, as a 0/1 array. Names the graph does not hold stand
@@ -825,6 +854,13 @@ function evaluateIn(q: Query, ctx: QueryContext, walks: Map<string, Uint8Array>)
         const a = adviceOf(d, g.nodes[i].name, g.nodes[i].hash);
         return a !== null && vs.has(a);
       });
+    }
+    case "mine": {
+      // nobody's own review to read: nothing (an agent's advice is no one's own, AgentSpec decision 2)
+      const me = ctx.me;
+      if (!me) return out;
+      const ss = new Set<string>(q.statuses);
+      return each((i) => ss.has(ownStatus(d, g.nodes[i].name, me, g.nodes[i].hash)));
     }
     case "and":
     case "or":

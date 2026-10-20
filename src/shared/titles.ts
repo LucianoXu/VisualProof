@@ -206,6 +206,9 @@ function filterWords(q: Query): string | null {
       return or(q.statuses);
     case "advice":
       return or(q.verdicts.map((v) => (v === "approve" ? "agent-approved" : "agent-commented")));
+    case "mine":
+      // the reader's own review: "me" is whoever reads the title
+      return or(q.statuses.map((s) => (s === "none" ? "not reviewed by me" : s === "stale" ? "stale of mine" : `${s} by me`)));
     case "sorry":
       return "with sorry";
     case "nonstandard":
@@ -262,6 +265,7 @@ function said(q: Query, N: TitleNames): string {
     case "kind":
     case "status":
     case "advice":
+    case "mine":
       return filterWords(q)!;
     case "and":
     case "or":

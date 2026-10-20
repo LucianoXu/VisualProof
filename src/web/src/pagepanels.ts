@@ -123,10 +123,15 @@ export function panelsPart(page: Page): PanelsPart {
       const r = page.reviewRoot();
       return r === null ? "" : page.flow.whyHtml(r, i);
     },
-    queue: (i, keyOnly) => (page.flow.isTarget(i) ? page.flow.listHtml(i, keyOnly) : null),
+    queue: (i, keyOnly, own) => (page.flow.isTarget(i) ? page.flow.listHtml(i, keyOnly, own ?? null) : null),
     listOrder: () => S.tcbOrder ?? "review",
     setListOrder: (o) => {
       S.tcbOrder = o;
+      store.save();
+    },
+    listOwn: () => S.tcbOwn ?? null,
+    setListOwn: (own) => {
+      S.tcbOwn = own ?? undefined;
       store.save();
     },
     editorLink: (i) => editor.href(page.g, i),

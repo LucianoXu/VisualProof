@@ -609,11 +609,14 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   going back, or to another tab, gives the new view up.
 - **Colours**: by kind, or by **status** — one colour per declaration for where it stands, the
   most urgent winning: being compiled, build failed, contains `sorry`, commented, stale, approved,
-  not yet reviewed, trusted (CanvasSpec, "Colour schemes"). A view where the review has a
-  focus opens in Status, every other view in Kind; switching (`c`, or the legend) is the reader's own, kept per kind of view (and
-  seen by whoever follows you). In
-  Status each cluster's outline shows its review's progress, an arc for what is approved and one
-  for what is commented. The **legend** at the bottom left folds to a chip naming the scheme; open,
+  not yet reviewed, trusted (CanvasSpec, "Colour schemes") — or by **Mine**, your own review: the
+  same colours from your own opinions alone (what you approved, commented on, approved or commented
+  before it changed, have not reviewed; what is trusted), nobody else's. While you follow someone,
+  Mine is theirs, the legend naming them; without a name you have none, and the legend says so. A
+  view where the review has a focus opens in Status, every other view in Kind; switching (`c` steps
+  Kind, Status, Mine; or the legend) is the reader's own, kept per kind of view (and seen by
+  whoever follows you). In Status and Mine each cluster's outline shows its review's progress, an
+  arc for what is approved and one for what is commented. The **legend** at the bottom left folds to a chip naming the scheme; open,
   it counts the board's declarations per colour. No rings tell of status on the canvas. **An axiom
   is a ring**, in either scheme: its dot has a ring of its own colour around it, a gap apart, on the
   board, in an artwork, in the legend, the panel and the search, so that it is told by its shape
@@ -626,7 +629,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   source (its window opened or closed), `Esc` close what is open, then clear the selection, `f`
   fit, `+` / `−` zoom (also the buttons at the bottom right), `[` / `]` fold or open one level
   (also the Depth buttons), `e` the outside world on this board
-  (for everyone on it; the Project always holds it), `g` edges, `l` the lock, `c` colours by kind or status, `b` build status,
+  (for everyone on it; the Project always holds it), `g` edges, `l` the lock, `c` colours by kind, status or your own review, `b` build status,
   `p` a frame meter, `a` / `m` approve, comment (see Review), `k` mark as key for the focus, `t` the Time Machine (`←` / `→` a build before or after,
   `Home` / `End` the first or the last), `Shift F10` (or the ContextMenu key) the menu on the
   selection, `?` the help menu.
@@ -753,8 +756,9 @@ lock, edges, the linear form, theme), the top holds your tabs and your mode.
   the folding legend.
 - **The scope** says what is on a board, as chips under Filter (⚙ Board): *everything*, *TCB
   of X*, *what X uses*, *what uses X*, *key declarations of T* (`key(T)`), a namespace or a folder, with conditions (*except what is
-  trusted*, *without the outside world*, *only not yet reviewed*, *only what an agent comments on*,
-  …). `+` adds one, `×` takes one off, a click on the first chip writes the scope as a query
+  trusted*, *without the outside world*, *only not yet reviewed*, *only not reviewed by me*
+  (`mine(none)`: each reader sees what they themselves have not reviewed; also `mine(approved)`,
+  `mine(commented)`, `mine(stale)`), *only what an agent comments on*, …). `+` adds one, `×` takes one off, a click on the first chip writes the scope as a query
   (`tcb(A.t) except trusted except external`). A change is everyone's on that board. The Project's
   scope stays *everything*: Duplicate it for a board that holds less.
 - **Hidden levels** (ViewSpec decision 24): a cluster's row in the side panel (the struck-through
@@ -802,6 +806,11 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   advice, the comment box, **Approve**, **Comment**, **Speaking for**, **Withdraw** beside your
   opinion, the key mark, **☆ Mark as target**, and for a target its progress, its axioms outside the
   graph and its view.
+- **Fold all** / **Show all**, at the head of the opinions (*Opinions 3 · 2 earlier*), folds every
+  opinion to a line — who, approved or commented, when, *stale* — or shows them all in full, the
+  earlier and withdrawn ones under *Earlier*; the agents' advice folds with them. It is your own
+  reading preference, the same in the panel and every source window, kept in this browser. *What
+  changed* under a stale opinion opens on its own, folded or not.
 - **Approve** or **Comment** on the declaration (a comment needs text; an
   approval may carry one too); a new opinion replaces your earlier one, and the box empties once
   it is recorded. The first time, a window asks for the name your opinions are recorded
@@ -812,10 +821,15 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   version*, and **What changed** shows the lines removed and added since (the opinion
   records the text it was given on: the context it is written in, then its source), so a
   re-review reads only the change.
+- **Nobody approves twice**: Approve says where your approval stands — **Approve**, **Approved ✓**
+  once you approved this version (under the pointer it reads *Withdraw approval*, and a click takes
+  it back), **Approve again** once the declaration changed since. Approving what you approved
+  already records nothing (an agent's advice neither), and `a` only ever approves: on what you
+  approved, it does nothing. Speaking for someone, it says theirs.
 - **Withdraw** takes your current opinion back: it stands beside it in every review box. An
   approval goes at once; a comment asks first. Afterwards you have no opinion there — every
   status, count and list is as if you had given none, and an earlier opinion of yours does not
-  come back — but nothing is erased: the panel's **All opinions** keeps the opinion, faded, and the
+  come back — but nothing is erased: the opinions shown keep it under *Earlier*, faded, and the
   withdrawal at its time ("Alice withdrew their approval"), and Activity says it. Speaking for
   someone, it withdraws theirs, recorded by you. A new opinion of yours stands as any. Agents
   withdraw their own advice ([docs/agent-api](agent-api/advice.md)).
@@ -850,7 +864,10 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   The strip is one line of progress, *Reviewing ★target · ◆ approved / K · approved / total*, with
   what is commented and stale, how many declarations agents comment on, and *All reviewed ✓* once
   your part is done; it has no button, and there is no *Next to review*. The target's panel lists
-  the TCB in review order — bottom-up, what several targets share first — or by kind. For each
+  the TCB in review order — bottom-up, what several targets share first — or by kind; over it,
+  **Yours: Not reviewed · Stale · Commented** keeps the list to your own review (what you have no
+  opinion on, where yours is on an earlier version, what you commented on), each with how many,
+  kept in this browser. For each
   declaration the panel says **why it is in the TCB**: the shortest chain of references from the
   target. Keys: `a` approve, `m` comment (it asks for the text first).
 - **Key declarations** ([ExportSpec.md](../SPEC/ExportSpec.md), decisions 1–4): a target's review set can
