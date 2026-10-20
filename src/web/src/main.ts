@@ -27,13 +27,12 @@
 import type { FileStatus } from "../../shared/build.ts";
 import type { ChatMessage, PresenceView } from "../../shared/collab.ts";
 import type { ClusterMode, GitSource, Layout } from "../../shared/graph.ts";
-import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
 import { printQuery, readsReview } from "../../shared/query.ts";
 import { keyMarked, keyMarks } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
-import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
+import { applyEvent, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole } from "../../shared/review.ts";
 import { reviewCount } from "../../shared/reviewqueue.ts";
 import { noteExcerpt } from "../../shared/sticky.ts";
@@ -63,8 +62,6 @@ import type { AskFollow } from "../../shared/askfollow.ts";
 import { PeerMenu } from "./peermenu.ts";
 import { applyOwn, followedOf, presenceOf } from "./surfaces.ts";
 import type { PageParts } from "./surfaces.ts";
-import { Activity } from "./activity.ts";
-import { LostAndFound } from "./lostfound.ts";
 import { deployWaiting } from "./buildpop.ts";
 import { githubBlob } from "../../shared/deploy.ts";
 import { Editor } from "./editor.ts";
@@ -124,6 +121,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { timelinePart } from "./pagetimeline.ts";
 import { selectionPart } from "./pageselection.ts";
 import { addressPart } from "./pageaddress.ts";
 import { livePart } from "./pagelive.ts";
@@ -172,6 +170,7 @@ export interface MainPart {
   papers: Papers;
   selBar: SelectionBar;
   sources: Sources<SourceWindow>;
+  openSourceAt: (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => void;
   shownCluster: () => number;
   showSelected: () => void;
   canvas: GraphCanvas;
@@ -205,16 +204,15 @@ export interface MainPart {
   named: () => Promise<string | null>;
   tabs: Tabs;
   focusMenu: FocusMenu;
-  targetTcbs: Map<string, { names: Set<string>; modules: Set<string> } | null>;
+  openView: (id: string) => Promise<void>;
   exportModal: ExportModal;
-  showNote: (view: string, id: string) => void;
-  activity: Activity;
-  lostDrawer: LostAndFound;
   timeMachine: (at?: TimeMachineAt) => void;
   wholeReview: WholeReview<ReviewWhole>;
   takeChange: (c: ReviewChange) => void;
   say: (text: string) => void;
+  noSwitch: () => boolean;
   openTimeMachine: (at?: TimeMachineAt) => Promise<boolean>;
+  reviewTarget: (i: number) => void;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -975,6 +973,7 @@ async function boot(): Promise<void> {
     }
     w.showLines(from, to, quoted);
   };
+  page.openSourceAt = openSourceAt;
 
   /** The cluster the panel tells of, in the board's layout (its key read in the board's
    *  clustering); -1 when it tells of none, or of one this board does not hold. */
@@ -1409,7 +1408,7 @@ async function boot(): Promise<void> {
     notesChanged: () => stickies.render(),
     boardChanged: () => linear.refresh(),
     levelChanged: () => page.showLevel(),
-    activityChanged: () => activity.changed(),
+    activityChanged: () => page.activity.changed(),
     hint: (text) => say(text),
     writeAddress: (push) => page.writeAddress(push),
     // a preview of the view at another build is arranged by nobody here (web/src/views.ts); a view
@@ -1632,8 +1631,8 @@ async function boot(): Promise<void> {
       }),
       // the reference window (AttachmentSpec decision 11)
       paper: () => (papers.state() ? { paper: papers.state()! } : {}),
-      activity: () => ({ activity: activity.state() }),
-      lostFound: () => ({ lostFound: { open: lostDrawer.open } }),
+      activity: () => ({ activity: page.activity.state() }),
+      lostFound: () => ({ lostFound: { open: page.lostDrawer.open } }),
       // the reader's own, under an artwork's, which the artwork's part carries
       colouring: () => ({ scheme: ownScheme() }),
       edges: () => ({ edges: S.showEdges }),
@@ -1643,8 +1642,8 @@ async function boot(): Promise<void> {
     // what this page shows is this reader's own once following ends, so it is kept as shown: the
     // colouring and the edges in this browser, as the reader's own choice is
     apply: {
-      activity: (v) => activity.mirror(v.activity!),
-      lostFound: (v) => lostDrawer.toggle(v.lostFound!.open),
+      activity: (v) => page.activity.mirror(v.activity!),
+      lostFound: (v) => page.lostDrawer.toggle(v.lostFound!.open),
       colouring: (v) => {
         if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
       },
@@ -2143,6 +2142,7 @@ async function boot(): Promise<void> {
     if (noSwitch()) return;
     if (await nav.select(id)) page.commit();
   };
+  page.openView = openView;
   /** A target, from the targets list: its view, on the target, or, with none (`id` null), a view
    *  nobody keeps of its TCB, linked to it (see reviewTarget); a target no longer in the graph opens
    *  its view alone, and with none has nowhere to go. */
@@ -2152,33 +2152,6 @@ async function boot(): Promise<void> {
     if (i !== undefined) reviewTarget(i);
     else if (id !== null) void openView(id);
     else say(`★${short(target)} is not in the graph now, and has no view.`);
-  };
-
-  // ---------------------------------------------------------------- what happened
-  //
-  // The timeline (CollabSpec decision 5) in a drawer on the right. What "My targets" and a build's
-  // warning look at: each target's TCB, its declarations and their modules, worked out once per
-  // graph and review — on the graph on show, whatever build the board shows: the timeline is the
-  // review's, which does not depend on the board.
-
-  const targetTcbs = new Map<string, { names: Set<string>; modules: Set<string> } | null>();
-  page.targetTcbs = targetTcbs;
-  const tcbOfTarget = (name: string) => {
-    if (!targetTcbs.has(name)) {
-      const i = page.present.byName.get(name);
-      if (i === undefined) targetTcbs.set(name, null);
-      else {
-        const seen = page.present.reach([i], SITE_STMT | SITE_BODY, "out");
-        const names = new Set<string>(), modules = new Set<string>();
-        for (let j = 0; j < seen.length; j++)
-          if (seen[j]) {
-            names.add(page.present.nodes[j].name);
-            if (!page.present.isExt(j)) modules.add(page.present.nodes[j].module);
-          }
-        targetTcbs.set(name, { names, modules });
-      }
-    }
-    return targetTcbs.get(name) ?? null;
   };
   // a link to this view that lets whoever has it in, or a prompt for an AI agent with a token of its
   // own (web/src/share.ts); a snapshot is shared as a file
@@ -2246,132 +2219,7 @@ async function boot(): Promise<void> {
   page.exportModal = exportModal;
   // a snapshot of the page carries the links, not the library's files (they are the server's)
   if (data.snapshot) $("#library-btn").hidden = true;
-
-  // a view whose record this page holds says whether the note is on it; another, whether the view
-  // is there; a note of the project (`view` ""), whether the project still has it
-  const hasNote = (view: string, id: string): boolean => {
-    if (view === "") return !!projectNotes.get(id);
-    const r = views.rec(view);
-    return r ? !!r.notes?.some((n) => n.id === id) : !!views.summary(view);
-  };
-  const showNote = (view: string, id: string): void => {
-    // a note of the project: on the board on show where it holds it, else on the Project, which
-    // holds what every note is about
-    if (view === "") {
-      if (stickies.has(id)) return stickies.flyTo(id);
-      if (!projectNotes.get(id)) return say("That note is no longer the project's.");
-      view = PROJECT;
-    }
-    // views are not switched in the Time Machine
-    if (view !== nav.board.id && noSwitch()) return;
-    void (view === nav.board.id ? Promise.resolve(true) : nav.select(view)).then((ok) => {
-      if (!ok) return;
-      if (view !== nav.board.id) page.commit();
-      if (stickies.has(id)) stickies.flyTo(id);
-      else say("That note is no longer on this view.");
-    });
-  };
-  page.showNote = showNote;
-
-  const activity = new Activity($("#activity"), $("#activity-btn"), $("#activity-badge"), store, {
-    me: () => people.name,
-    review: () => page.review.data,
-    mine: (name) => {
-      // the targets this reader marked, or the reader they took it from by following them: not
-      // those an agent of the same name marked
-      const targets = new Set(Object.entries(page.review.data.targets).filter(([, t]) => name !== null && t.by === name && !t.agent).map(([n]) => n));
-      const names = new Set<string>(), modules = new Set<string>();
-      for (const t of targets) {
-        const s = tcbOfTarget(t);
-        s?.names.forEach((n) => names.add(n));
-        s?.modules.forEach((m) => modules.add(m));
-      }
-      return { targets, names, modules };
-    },
-    touching: (mods) => Object.keys(page.review.data.targets).filter((t) => mods.some((m) => tcbOfTarget(t)?.modules.has(m))),
-    covering: (p) =>
-      Object.keys(page.review.data.targets).filter((t) => {
-        for (const n of tcbOfTarget(t)?.names ?? []) {
-          const i = page.present.byName.get(n)!;
-          if (covers(p, n, page.present.nodes[i].module, page.present.isExt(i))) return true;
-        }
-        return false;
-      }),
-    showPrefix: (p) => page.goToPrefix(p),
-    has: (name) => page.g.byName.has(name),
-    go: (name) => {
-      const i = page.g.byName.get(name);
-      if (i !== undefined) page.go(i);
-    },
-    comment: (text, name) => reviewBox.comment(text, name),
-    openOpinion: (r) => reviewBox.jump(r, null, null),
-    openSource: (r, quoted) => openSourceAt(r.name, r.from, r.to, quoted, null),
-    reviewTarget: (name) => {
-      const i = page.g.byName.get(name);
-      if (i !== undefined) reviewTarget(i);
-    },
-    goToModule: (m) => page.goToModule(m),
-    hasView: (id) => !!views.summary(id),
-    openView: (id) => void openView(id),
-    viewTitle: (id) => views.title(id),
-    scopeTitle: (scope) => titleOfScope(scope, views.titles()),
-    scopeTip: (scope) => views.tip("", scope),
-    hasNote: (view, id) => hasNote(view, id),
-    showNote: (view, id) => showNote(view, id),
-    // the lost-and-found's drawer takes the same place: one of the two is open
-    toggled: (open) => {
-      if (open && lostDrawer.open) lostDrawer.toggle(false);
-      syncInsets();
-    },
-    stateChanged: () => people.report(),
-    migrations: () => lostDrawer.migrations(),
-    openLost: (key) => lostDrawer.show(key),
-    // a snapshot of the page has no reference window: its files and links are text there
-    ...(data.snapshot ? {} : { openFile: (sha: string) => papers.openFile(sha), openLink: (id: string) => papers.openLink(id) }),
-    // an agent's layout, put back: under the reader's name, as the timeline records it (a private
-    // reader's, without one)
-    undo: async (id) => {
-      if (reader) return READ_ONLY;
-      if (!(await people.ensureLayout())) return "An undo is recorded under your name: give one first.";
-      const r = await data.undoLayout(id);
-      if (r.who) people.lost();
-      return r.error ?? null;
-    },
-  });
-  page.activity = activity;
-
-  // ---------------------------------------------------------------- the lost-and-found
-
-  // what was said of declarations the graph no longer has (HistorySpec decisions 12–14), in a drawer
-  // where Activity's is, opened from the build-status popover
-  const lostDrawer = new LostAndFound($("#lostfound"), data.lost, {
-    has: (name) => page.g.byName.has(name),
-    go: (name) => {
-      const i = page.g.byName.get(name);
-      if (i !== undefined) page.go(i);
-    },
-    hasView: (id) => !!views.summary(id),
-    openView: (id) => void openView(id),
-    hasNote: (view, id) => hasNote(view, id),
-    showNote: (view, id) => showNote(view, id),
-    comment: (text, name) => reviewBox.comment(text, name),
-    // Attach to…: a declaration of the graph, picked with the search, by its name now (a board of a
-    // past build searches its own graph)
-    pick: (prompt) => page.searchBox.pick(prompt).then((i) => (i === null ? null : declNow(i))),
-    timeMachine: (at) => timeMachine(at),
-    ensureName: () => people.ensure(),
-    nameLost: () => people.lost(),
-    toggled: (open) => {
-      if (open && activity.open) activity.toggle(false);
-      syncInsets();
-      people.report();
-    },
-    changed: () => {
-      activity.changed();
-      if (!page.pop.hidden) page.renderPop();
-    },
-  });
-  page.lostDrawer = lostDrawer;
+  Object.assign(page, timelinePart(page));
 
   // ---------------------------------------------------------------- into the Time Machine
 
@@ -2387,7 +2235,7 @@ async function boot(): Promise<void> {
    *  advice) may hold another set now: the board on show is drawn again at once. */
   const reviewChanged = () => {
     const followed = page.followSelection();
-    targetTcbs.clear();
+    page.targetTcbs.clear();
     views.reviewChanged();
     if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => boardPanel.render());
     syncStatus();
@@ -2405,7 +2253,7 @@ async function boot(): Promise<void> {
       showSelected();
       page.renderSelBar();
     }
-    activity.changed();
+    page.activity.changed();
     boardPanel.render();
     renderTabs();
     papers.refresh();
@@ -2515,6 +2363,7 @@ async function boot(): Promise<void> {
     say("Views are not switched in the Time Machine: leave it first (Esc).");
     return true;
   };
+  page.noSwitch = noSwitch;
 
   /** Open the Time Machine on the view on show (the hook the build-status popover and the
    *  lost-and-found call): at `snapshot`, the latest by default; on `name` there — a visitor of that
@@ -2644,6 +2493,7 @@ async function boot(): Promise<void> {
       if (!v.kept) say(`★${short(name)} had no view: this view of its TCB is its view while it lasts. Pin, fold or name it to keep it, and its link with it.`);
     })();
   };
+  page.reviewTarget = reviewTarget;
   /** Why target `name` cannot be linked to the view on show now, or null (ViewSpec decision 29). */
   const linkWhy = (name: string): string | null => {
     if (data.snapshot) return null;
@@ -2702,7 +2552,7 @@ async function boot(): Promise<void> {
   if (snap) await openSnapshot(snap);
   // a link to a note (Copy link, CollabSpec decision 13): the note shown, on the board it opened
   const noteLink = noteIn(location.hash);
-  if (noteLink) showNote(noteLink.ofView ? nav.board.id : "", noteLink.id);
+  if (noteLink) page.showNote(noteLink.ofView ? nav.board.id : "", noteLink.id);
   // the reader came to a place (a declaration, a view, what a sharer saw, an artwork): the welcome
   // stays quiet (GuideSpec decision 1)
   const deepLink = filmLink !== undefined || !!snap || !!noteLink || !!recipeIn(location.hash) || (!!linked && (!!linked.picks || !!linked.shown || (linked.view !== null && linked.view !== PROJECT) || !!linked.scope));
@@ -2736,7 +2586,7 @@ async function boot(): Promise<void> {
   // faded out, it leaves the page: a screen reader would read "Reading the project…" at its end
   setTimeout(() => ($("#loader").hidden = true), 450);
   Object.assign(page, guidePart(page));
-  void data.activity().then((events) => activity.load(events));
+  void data.activity().then((events) => page.activity.load(events));
   // who this page is, then the others are told where it is; the camera and the source window
   // change without a step in the history, so they are looked at every second and a half
   void people.init().then(() => {
@@ -2747,7 +2597,7 @@ async function boot(): Promise<void> {
       page.guide.welcome(deepLink);
       if (filmLink !== undefined) page.guide.openHelp("tips", filmLink ? { chapter: filmLink } : {});
     }, 400);
-    activity.changed();
+    page.activity.changed();
     let last = "";
     setInterval(() => {
       const now = JSON.stringify(people.mode === "none" ? null : { s: sources.open, c: canvas.cam });

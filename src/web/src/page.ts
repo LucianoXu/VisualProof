@@ -20,6 +20,7 @@ import type { ArtSettings } from "./artwork.ts";
 import type { Store } from "./store.ts";
 import type { Visitor } from "./visitors.ts";
 import type { Saved } from "./store.ts";
+import type { TimelinePart } from "./pagetimeline.ts";
 import type { SelectionPart } from "./pageselection.ts";
 import type { AddressPart } from "./pageaddress.ts";
 import type { LivePart } from "./pagelive.ts";
@@ -156,6 +157,6 @@ export interface PageState {
 
 /** The page: what it is given, its state, and what each part gives the others. */
 export interface Page extends
-  PageGiven, PageState, SelectionPart, AddressPart, LivePart, ToolbarPart, MenuPart, NotesPart,
-  KeysPart, GuidePart, MainPart
+  PageGiven, PageState, TimelinePart, SelectionPart, AddressPart, LivePart, ToolbarPart, MenuPart,
+  NotesPart, KeysPart, GuidePart, MainPart
 {}
