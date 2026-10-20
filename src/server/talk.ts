@@ -15,7 +15,7 @@
 //
 // The state each agent is shown in comes from what it does, not from what it says: *listening*
 // while a wait is open; *thinking* from the moment messages were handed to it until it replies, with
-// what its requests show it doing (server/agent.ts, doingOf) and the line it may set itself;
+// what its requests show it doing (server/agenttalk.ts, doingOf) and the line it may set itself;
 // *working* when it makes requests with nothing to answer; *offline* once it has had no wait open
 // and made no request for its longest wait plus a minute — the time an agent that listens takes at
 // most to come back. An offline agent's private channel cannot be written to (409); a mention of it
