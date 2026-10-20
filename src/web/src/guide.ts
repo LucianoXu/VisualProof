@@ -372,7 +372,7 @@ const KEYS: [string, Row[]][] = [
   [
     "Reviewing",
     [
-      { k: ["a"], what: "approve the selection; in a source window, its declaration" },
+      { k: ["a"], what: "approve the selection (nothing where you approved it already); in a source window, its declaration" },
       { k: ["m"], what: "comment on it: write the comment, Esc, m again" },
       { k: ["k"], what: "mark it key for the focus (Focus ▾), or unmark it" },
     ],
@@ -383,7 +383,7 @@ const KEYS: [string, Row[]][] = [
       { k: ["e"], what: "the outside world on this board, for everyone" },
       { k: ["g"], what: "edges, for you" },
       { k: ["o"], what: "the linear form: the board as its document's outline, on one line" },
-      { k: ["c"], what: "colour by kind or by status, for you" },
+      { k: ["c"], what: "colour by kind, by status or by your own review (Mine), for you" },
       { k: ["b"], what: "build status" },
       { k: ["p"], what: "frame meter" },
       { k: ["?"], what: "this sheet: the tips, and the keys" },

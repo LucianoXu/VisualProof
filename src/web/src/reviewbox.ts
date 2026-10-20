@@ -669,8 +669,8 @@ export class ReviewBox {
   }
 
   /** Once the review is drawn in `root`: a quoted opinion being gone to flashes there — in the
-   *  history when it is not among the latest, the opinions shown — and is scrolled to, once in each place.
-   *  Drawn again while it flashes, it flashes on from where it was. Whether it is there. */
+   *  history when it is not among the latest, the opinions shown — and is scrolled to, once in each
+   *  place. Drawn again while it flashes, it flashes on from where it was. Whether it is there. */
   reveal(root: HTMLElement): boolean {
     const f = this.flashing;
     if (!f) return false;
