@@ -27,7 +27,8 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
    - **Starting to follow** applies the followed state at once: Activity closes or opens (with the
      followed reader's filters) as theirs is; the follower's source windows mirror theirs, at most
      six pinned on the follower's side, their own included; "My targets" becomes the followed
-     reader's ("Alice's targets").
+     reader's ("Alice's targets"); the follower's Export window, open or not, is replaced by the
+     followed reader's, closed where theirs is (the owner's decision of 2026-10-20).
    - **Changing anything followed ends following**, as does acting on what is shown (a control of a
      followed surface, typing in a field of one), so nothing moves under a comment being written.
      Reading (scrolling, selecting or copying text, hovering) never ends it. A tool of the reader's
@@ -268,17 +269,19 @@ step; the rest each on its own once the place is reached.
 | colouring | the legend's Kind, Status or Mine (the followed reader's own opinions: CanvasSpec, "Colour schemes") | `scheme` | `c` |
 | edges | edges drawn | `edges` | `g` |
 | linear | the board drawn as its document's outline, the linear form (ExportSpec decision 18) | `linear` | `o` |
+| export | the Export window (ExportSpec decision 5; the owner's decision of 2026-10-20): open or closed, which view it exports (the one on show) and what its document holds, every setting, the title and author line; the document typeset — Generate's progress, then the same downloads, from the export's cache | `export` (`open`, `settings`, `job`: `{id, state, error?}`) | |
 | artwork | the artwork mode: on or off, its settings (the board drawn with them) and its frame (ExportSpec decision 19, the owner's decision of 2026-10-14) | `artwork` | |
 
-Presence also carries `tabs` (the views a page has open, which the server then keeps); no follower
-takes it. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a
+Presence also carries `tabs` (the views a page has open, which the server then keeps) and
+`following` (whom the page follows: "Who follows me", "What the page shows"); no follower takes
+them. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a
 part without a form does not typecheck.
 
 **Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order and
 what of it is kept to by one's own review; the review box's opinions folded or shown (ReviewSpec,
 "One review box"); the outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme;
 the layout lock (`l`);
-zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
+zoom, find and the box tool of the reference window; Share and its switch; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
 others' initials and a person's menu; the request banner; the conversation window (decision 13) and
@@ -292,8 +295,8 @@ words, tooltips and hints, the notes of others' changes, the loader.
 
 - **A press** counts in the innermost surface: on a control that changes a followed part, wherever
   it is, it ends following; in a surface of the reader's own, never; on a followed surface (side
-  panel, panel, source and reference windows, Activity, lost-and-found, review strip), only on a
-  control, not on text or a scrollbar; outside every surface (the canvas), always. A double-click
+  panel, panel, source and reference windows, Activity, lost-and-found, review strip, the Export
+  window), only on a control, not on text or a scrollbar; outside every surface (the canvas), always. A double-click
   on a source or reference window's title bar ends it; the wheel, on the canvas only; Back and
   Forward too.
 - The presence bar, a person's menu, the following strip, the conversation window, the name's menu
@@ -315,18 +318,19 @@ The owner's report of 2026-10-17: following a reader whose Export window was ope
 left the follower's board in the linear form with nothing on the screen to leave it by. Decision 4
 says the follower keeps what their page shows; this says, part by part, how what they keep is theirs:
 **nothing following brought stays on the screen without a control of the follower's own that puts it
-away**. The first five points are what 0.4.3 does; the last three are open.
+away**. The first five points are what 0.4.3 does, the sixth what 0.8.0 does; of the last three,
+the second is closed and the others are open.
 
 - **Kept, with their own controls**: the place — the view and its tab, the build browsed (the Time
   Machine's ✕, `t`, Esc), the camera, the tool, the selection, the focus, the visitors, the panel; the
   source and reference windows (ReviewSpec: nothing on the screen changes as following ends); Activity
-  and the lost-and-found (their ✕, Esc); the colouring and the edges, kept in the browser as the
-  reader's own choice.
+  and the lost-and-found (their ✕, Esc); the Export window (its ✕, Close, Esc); the colouring and the
+  edges, kept in the browser as the reader's own choice.
 - **The linear form**, kept (ExportSpec decision 18), is asked for by nobody on the follower's page:
-  ⋯ → *Linear form* and `o` put it away, and so does the follower's own Export window as it closes —
-  the form the followed reader's Export window drew goes as theirs goes. Nothing on the screen saying
-  so, the page says it once as following ends ("The board stays in the linear form you followed: o,
-  or ⋯ at the bottom → Linear form, puts it away.").
+  ⋯ → *Linear form* and `o` put it away, and so does the Export window as it closes — the follower's
+  own now, where following ended with the followed reader's open (below). Where no Export window is
+  open to say so, the page says it once as following ends ("The board stays in the linear form you
+  followed: o, or ⋯ at the bottom → Linear form, puts it away.").
 - **The artwork mode**, kept with its panel (ExportSpec decision 19): Done and Esc leave it, the camera
   back where it was when the mode came; its settings are not the follower's until they change one.
 - **The ways out stay in reach while following**, wherever the followed reader's page takes the
@@ -335,16 +339,20 @@ away**. The first five points are what 0.4.3 does; the last three are open.
   own); a person's menu opens over the Export window and the artwork's panel.
 - **Nothing comes after the end**: a step begun while following (opening the followed reader's view)
   takes nothing more of theirs once following has ended — neither their build nor their windows.
+- **The Export window** (the owner's decision of 2026-10-20) is followed: the follower sees the
+  followed reader's, open or not, with its settings and the document typeset. Their own, open when
+  following starts, is replaced by it; opening or closing it, a setting, Generate, a download, Close
+  end following; when following ends, the window as it shows — open, with those settings and that
+  document, its progress followed to its end — is the follower's own, and Close puts it away with
+  the linear form it draws.
 - *Open*: **Esc and the linear form.** Esc closes what is open and leaves the Time Machine, then
   clears the selection (ViewSpec); it does not put the linear form away. Proposed: it does, after the
   Time Machine and before the selection, for every reader, so that Esc leaves every mode a page can
   be left in.
-- *Open*: **The follower's own Export window.** Opened while following, or open when following
-  starts, it draws the follower's board in the linear form where the followed reader's is not: the
-  reader's own over what they follow. By decision 4 (a tool of the reader's own that changes a
-  followed part is that part's control), opening it would end following, and following would close
-  it (it exports the view on show when it opened, which following leaves); today Export is the
-  reader's own whole, and neither happens.
+- *Closed by the owner's decision of 2026-10-20*: **the follower's own Export window.** The Export
+  window is followed (above, and "Surfaces"): opening it while following ends following, as a control
+  of a followed part does, and one open when following starts is replaced by the followed reader's,
+  so the reader's own never draws their board in the linear form over what they follow.
 - *Open*: **On a phone** Activity, the lost-and-found and the artwork's panel take the whole screen
   over the following strip: the follower does not see whom they follow, nor its ✕; a control of what
   covers it (its ✕, Done) ends following, closing it too. Proposed: the strip stays over them while

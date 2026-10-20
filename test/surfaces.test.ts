@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { agentPlace, ART_NAMES_BYTES, ART_RULED_BYTES, ART_TARGETS_BYTES, cleanView } from "../src/shared/collab.ts";
-import type { ActivityView, ArtworkView, PresenceView } from "../src/shared/collab.ts";
+import type { ActivityView, ArtworkView, ExportWindowView, PresenceView } from "../src/shared/collab.ts";
 import { Activity } from "../src/web/src/activity.ts";
 import type { ActivityHooks } from "../src/web/src/activity.ts";
 import { LostAndFound } from "../src/web/src/lostfound.ts";
@@ -98,8 +98,10 @@ test("the registry declares every surface of the page: each element of its skele
   const ids: string[] = [...FOLLOWED.map((p) => p.part), ...YOURS.map((y) => y.id)];
   assert.equal(new Set(ids).size, ids.length);
   // the parts the owner named followed, and the surfaces named the reader's own
-  assert.deepEqual(FOLLOWED.map((p) => p.part), ["view", "history", "camera", "tool", "selection", "focus", "visitors", "panel", "sources", "paper", "activity", "lostFound", "colouring", "edges", "linear", "artwork"]);
-  for (const y of ["windowPlaces", "scroll", "sections", "tcbOrder", "outline", "whatChanged", "theme", "lock", "share", "export", "help", "library", "board", "trusted", "viewsMenu", "search", "name", "conversation", "followingStrip", "hoverCards", "pointer"]) assert.ok(ids.includes(y), y);
+  assert.deepEqual(FOLLOWED.map((p) => p.part), ["view", "history", "camera", "tool", "selection", "focus", "visitors", "panel", "sources", "paper", "activity", "lostFound", "colouring", "edges", "linear", "export", "artwork"]);
+  for (const y of ["windowPlaces", "scroll", "sections", "tcbOrder", "outline", "whatChanged", "theme", "lock", "share", "help", "library", "board", "trusted", "viewsMenu", "search", "name", "conversation", "followingStrip", "hoverCards", "pointer"]) assert.ok(ids.includes(y), y);
+  // the Export window is followed since the owner's decision of 2026-10-20: no longer the reader's own
+  assert.ok(!YOURS.some((y) => y.id === ("export" as string)));
 });
 
 /** A page whose every part reads as given: the place's parts with what a page says of them. */
@@ -120,9 +122,14 @@ function reading(): PageParts["read"] {
     colouring: () => ({ scheme: "status" }),
     edges: () => ({ edges: false }),
     linear: () => ({ linear: true }),
+    export: () => ({ export: EXPORT }),
     artwork: () => ({ artwork: ART }),
   };
 }
+
+/** an Export window open, with its settings and the document it typesets (the owner's decision of
+ *  2026-10-20) */
+const EXPORT: ExportWindowView = { open: true, settings: { paper: "letter", fontSize: 12, codeSize: 9, contents: false }, job: { id: "0123456789abcdef0123456789abcdef", state: "done" } };
 
 /** an artwork's settings and the rectangle of the board its frame holds (ExportSpec decision 19) */
 const ART: ArtworkView = {
@@ -212,8 +219,8 @@ test("presence carries exactly the followed parts, and the views a page holds op
   assert.ok(Buffer.byteLength(JSON.stringify(ruled)) <= ART_RULED_BYTES && ruled.length > 10, `${ruled.length} names`);
   const { ruledNames: _ruled, ...unruled } = ART;
   assert.deepEqual(cleanView({ ...v, artwork: unruled })!.artwork!.ruledNames, []);
-  // an agent's presence carries none: agents have no artwork, and follow nobody
-  const { artwork: _artwork, following: _following, ...rest } = cleanView(v)!;
+  // an agent's presence carries none: agents have no artwork nor Export window, and follow nobody
+  const { artwork: _artwork, following: _following, export: _export, ...rest } = cleanView(v)!;
   assert.deepEqual(agentPlace(cleanView(v)), rest);
   assert.ok(!("artwork" in agentPlace(cleanView(v))!));
   assert.ok(!("following" in agentPlace(cleanView({ ...v, following: "n:Alice" }))!));
@@ -387,13 +394,14 @@ function follower(me: string | null = "Bob") {
     },
     changed: () => {},
   } as unknown as LostHooks);
-  const page = { scheme: "kind" as string, edges: true, linear: false, artwork: null as ArtworkView | null };
+  const page = { scheme: "kind" as string, edges: true, linear: false, artwork: null as ArtworkView | null, export: null as ExportWindowView | null };
   const apply: PageParts["apply"] = {
     activity: (v) => activity.mirror(v.activity!),
     lostFound: (v) => lost.toggle(v.lostFound!.open),
     colouring: (v) => (page.scheme = v.scheme!),
     edges: (v) => (page.edges = v.edges!),
     linear: (v) => (page.linear = v.linear!),
+    export: (v) => (page.export = v.export ?? null),
     artwork: (v) => (page.artwork = v.artwork ?? null),
   };
   return { activity, lost, page, apply, actEl, asked, told: () => told };
@@ -433,7 +441,7 @@ test("following starts: the follower's Activity, lost-and-found, colouring and e
   assert.deepEqual([f.activity.open, f.lost.open], [true, false]);
   // the colouring and the edges, and the linear form, as the other's board draws them
   applyOwn(leader({ scheme: "status", edges: false, linear: true }), f.apply);
-  assert.deepEqual(f.page, { scheme: "status", edges: false, linear: true, artwork: null });
+  assert.deepEqual(f.page, { scheme: "status", edges: false, linear: true, artwork: null, export: null });
   // the place's parts are the page's own step, not these
   const placed: string[] = [];
   applyOwn(leader({ selection: "A.b", sel: "A.b", source: true }), new Proxy(f.apply, { get: (o, k) => (placed.push(String(k)), (o as Record<string, unknown>)[k as string]) }));
@@ -447,7 +455,7 @@ test("following ends: what the follower's page shows stays, their own; their nex
   applyOwn(leader({ activity: { open: true, kind: "change", who: "agents", mine: "Alice" }, scheme: "status", edges: false }), f.apply);
   // following ended: nothing is put back
   assert.deepEqual(f.activity.state(), { open: true, kind: "change", who: "agents", mine: "Alice" });
-  assert.deepEqual(f.page, { scheme: "status", edges: false, linear: false, artwork: null });
+  assert.deepEqual(f.page, { scheme: "status", edges: false, linear: false, artwork: null, export: null });
   // the reader's own change of a filter starts from what they were shown
   f.actEl.click("data-who", "all");
   assert.deepEqual(f.activity.state(), { open: true, kind: "change", who: "all", mine: "Alice" });
@@ -465,12 +473,12 @@ test("a page from before 2026-10-11, or an agent, says nothing of them: whoever 
   f.actEl.click("data-filter", "review");
   const own = f.activity.state();
   const old = cleanView(place)!;
-  for (const field of ["activity", "lostFound", "scheme", "edges", "linear", "artwork"] as const) assert.ok(!(field in old), field);
+  for (const field of ["activity", "lostFound", "scheme", "edges", "linear", "artwork", "export"] as const) assert.ok(!(field in old), field);
   applyOwn(old, f.apply);
   assert.deepEqual(f.activity.state(), own);
   assert.equal(f.lost.open, false);
-  assert.deepEqual(f.page, { scheme: "kind", edges: true, linear: false, artwork: null });
+  assert.deepEqual(f.page, { scheme: "kind", edges: true, linear: false, artwork: null, export: null });
   // a page that says some of them: those, and the others stay
   applyOwn(leader({ edges: false }), f.apply);
-  assert.deepEqual([f.activity.state(), f.page], [own, { scheme: "kind", edges: false, linear: false, artwork: null }]);
+  assert.deepEqual([f.activity.state(), f.page], [own, { scheme: "kind", edges: false, linear: false, artwork: null, export: null }]);
 });

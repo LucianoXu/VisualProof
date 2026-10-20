@@ -19,7 +19,7 @@
 // `j` and the JSON's.
 
 import { cleanView } from "./collab.ts";
-import type { PresenceView } from "./collab.ts";
+import type { ExportWindowView, PresenceView } from "./collab.ts";
 
 /** the fragment's part that holds the snapshot */
 export const SNAP_PARAM = "snap";
@@ -104,6 +104,13 @@ const same = <F extends keyof PresenceView>(...fields: F[]): SnapForm<F> => ({
   read: (o, clean) => Object.fromEntries(fields.filter((f) => f in o && clean[f] !== undefined).map((f) => [f, clean[f]])),
 });
 
+/** The Export window with its job only where the job has an id: one the server had not named yet,
+ *  or refused, is nothing the opener can read. */
+function namedJob(e: ExportWindowView): ExportWindowView {
+  const { job, ...rest } = e;
+  return { ...rest, ...(job?.id ? { job } : {}) };
+}
+
 /** to a tenth of a unit of the board's world: a tenth of a pixel at the closest zoom but one */
 const tenth = (n: number) => Math.round(n * 10) / 10;
 
@@ -144,6 +151,15 @@ export const SNAPSHOT_FORMS = {
   colouring: same("scheme"),
   edges: same("edges"),
   linear: same("linear"),
+  // the Export window open, with its settings and the document it shows typeset or typesetting,
+  // which the opener reads by its id from the export's cache (the owner's decision of 2026-10-20); a
+  // job the server had not named yet, or refused, is no document to show, and is left out. Closed,
+  // nothing: the opener's own stays as it is
+  export: {
+    fields: ["export"],
+    write: (v) => (v.export?.open ? { export: namedJob(v.export) } : {}),
+    read: (o, clean) => ("export" in o && clean.export?.open ? { export: namedJob(clean.export) } : {}),
+  },
   artwork: same("artwork"),
 } as const satisfies Record<string, SnapForm>;
 

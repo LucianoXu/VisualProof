@@ -49,6 +49,7 @@ function heavy(): PresenceView {
     scheme: "status",
     edges: false,
     linear: false,
+    export: { open: true, settings: { paper: "letter", fontSize: 10, codeSize: 7.5, contents: false }, job: { id: "c0ffee00c0ffee00c0ffee00c0ffee00", state: "done" } },
     artwork: { w: 4961, h: 3508, scheme: "kind", theme: "dark", background: "transparent", labels: "board", namesFrom: "board", hiddenNames: [], shownNames: [], edges: "selection", notes: true, targets: "highlight", shownTargets: [], keys: true, selection: true, source: true, style: "stars", title: "Sphere Packing", subtitle: null, titleSize: 9.5, footSize: 2.4, ruledNames: [], border: true, region: [1201.25, -950.5, 1480.3, 1046.7] },
     tabs: ["project", "v7f3a9c2e41"],
   };
@@ -94,6 +95,21 @@ test("every followed part goes round the snapshot: read by the registry, written
   const some = await readSnapshot(await writeSnapshot({ view: "project", scope: null, sel: "N.a" }, null), null);
   assert.deepEqual(some!.view, { view: "project", scope: null, sel: "N.a" });
   assert.equal(some!.region, null);
+});
+
+test("the Export window travels open, with its settings and the document by its id; closed, or a job the server had not named, it says nothing (the owner's decision of 2026-10-20)", async () => {
+  const settings = { paper: "letter", fontSize: 12, codeSize: 9, contents: false } as const;
+  const round = async (e: unknown) => (await readSnapshot(await writeSnapshot({ export: e } as Partial<PresenceView>, null), null))!.view.export;
+  const id = "0123456789abcdef0123456789abcdef";
+  assert.deepEqual(await round({ open: true, settings, job: { id, state: "running" } }), { open: true, settings, job: { id, state: "running" } });
+  // closed: the opener's own stays as it is
+  assert.equal(await round({ open: false }), undefined);
+  // a job before the server named it, or refused, is nothing the opener can read
+  assert.deepEqual(await round({ open: true, settings, job: { id: "", state: "running" } }), { open: true, settings });
+  assert.deepEqual(await round({ open: true, settings, job: { id: "", state: "failed", error: "XeLaTeX is not installed" } }), { open: true, settings });
+  // read as a heartbeat is: settings out of range, a job that is none, are not carried
+  const odd = await readSnapshot("j" + Buffer.from(JSON.stringify({ export: { open: true, settings: { paper: "a3", fontSize: 11 }, job: { id: "../../etc", state: "done" } } })).toString("base64url"), null);
+  assert.deepEqual(odd!.view.export, { open: true });
 });
 
 test("the camera travels as the region of the board it showed: another screen shows the same region, fitted, not the same zoom", async () => {

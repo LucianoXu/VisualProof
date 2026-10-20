@@ -190,6 +190,16 @@ export const FOLLOWED = [
     keys: ["o"],
   },
   {
+    part: "export",
+    what: "the Export window (ExportSpec decision 5; followed, the owner's decision of 2026-10-20): open or closed, which view it exports and what its document holds, its settings, title and author line, and the document typeset — Generate's progress, the downloads",
+    fields: ["export"],
+    // the bar's button, and a phone's ⋯ item for it, open or close it; every control in it changes it
+    // or acts on what it shows (a setting, Generate, a download, Close) — a check's words too, which
+    // press its box
+    changes: "#export-btn, #more-pop [data-for=export-btn], #export-modal .ex-check",
+    reads: "#export-modal",
+  },
+  {
     part: "artwork",
     what: "the artwork mode (ExportSpec decision 19): on or off, its settings — the board drawn with them, the names and targets ticked — and what its frame holds",
     fields: ["artwork"],
@@ -221,7 +231,6 @@ export const YOURS = [
   // reader's own next drag; what they select on a page is reading, which ends nothing
   { id: "paperTools", what: "zoom, find and the box tool in the reference window", where: "[data-pw-zoom], [data-pw-find], [data-pw-box], .pw-find" },
   { id: "share", what: "Share, and its switch Exactly what I see", where: "#share-btn, #share-pop" },
-  { id: "export", what: "Export", where: "#export-btn, #export-modal" },
   { id: "help", what: "Help: the ? menu and its sheet, its tips and its keys, the tour, a tip in place, What's new, the welcome of a first visit (GuideSpec)", where: "#help-btn, #help-menu, #help, #tour, #intip, #whatsnew, #welcome, [data-tip-open]", keys: ["?"] },
   // the tour film in the sheet (GuideSpec decision 6, web/src/tourfilm.ts): its keys play it, go
   // from chapter to chapter, turn its captions on or off, there alone

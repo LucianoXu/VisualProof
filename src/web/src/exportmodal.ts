@@ -17,7 +17,16 @@
 //
 // The settings are this reader's own, kept in their browser with the page's other preferences
 // (web/src/store.ts).
+//
+// The window is followed (CollabSpec, "Surfaces"; the owner's decision of 2026-10-20): whoever follows
+// this reader sees it as it is here — open or not, the view on show it exports (the view's part brings
+// them to it), its settings, the document typeset: Generate's progress, then the same downloads, read
+// by the job's id from the export's cache. Read only for them: a control of it pressed ends following
+// (web/src/surfaces.ts), and the window, with those settings, is theirs. Their own window, open when
+// following starts, is replaced by the followed one; what it shows when following ends stays theirs.
 
+import { EXPORT_SETTINGS } from "../../shared/collab.ts";
+import type { ExportJobView, ExportSettings, ExportWindowView } from "../../shared/collab.ts";
 import { MAX_DOC_DECLS } from "../../shared/doc/sections.ts";
 import type { DocPlan } from "../../shared/doc/sections.ts";
 import { DEFAULT_SETTINGS } from "../../shared/doc/settings.ts";
@@ -60,6 +69,12 @@ export interface ExportJobState {
   runs?: number;
   /** what the document does not say about how it was made (shared/doc/build.ts, `docNotes`) */
   notes?: string[];
+  /** when it was asked for, by the server's clock (ISO), and by this page's (web/src/data.ts reads
+   *  the server's clock from its answer): where a follower's window counts its seconds from */
+  at?: string;
+  startedHere?: number;
+  /** a job no longer in the export's cache: shown to a follower, or by a link, after it left */
+  gone?: true;
 }
 
 export interface ExportHooks {
@@ -82,11 +97,14 @@ export interface ExportHooks {
   artwork?(): void;
   /** no document can be made here (a snapshot of the page): Export goes straight to the artwork */
   artworkOnly?(): boolean;
+  /** what those following this reader see of the window changed (`state`): it opened or closed, a
+   *  setting, the job */
+  changed?(): void;
 }
 
 /** The settings the modal sets; the others keep their defaults. */
-type Common = Pick<DocSettings, "paper" | "fontSize" | "codeSize" | "contents">;
-const COMMON: readonly (keyof Common)[] = ["paper", "fontSize", "codeSize", "contents"];
+type Common = ExportSettings;
+const COMMON = EXPORT_SETTINGS;
 
 const CODE_SIZES = [7, 7.5, 8, 8.5, 9, 9.5, 10];
 
@@ -157,19 +175,107 @@ export class ExportModal {
   }
 
   open(): void {
-    this.settings = common(this.hooks.saved()?.settings);
+    this.reveal(common(this.hooks.saved()?.settings), true);
+  }
+
+  /** Open the window on the view on show, with `settings`, its focus in it where the reader opened it
+   *  (`focus`), not where following did. */
+  private reveal(settings: Common, focus: boolean): void {
+    this.settings = settings;
     this.view = this.hooks.view();
     // a job followed before the window last closed is not this opening's: its answer, coming late,
     // is not shown here (it may be another view's)
-    this.turn++;
-    this.job = null;
+    this.dropJob();
     this.head = "";
     this.el.hidden = false;
     this.btn.classList.add("on");
     this.render();
     this.hooks.shown?.(true);
-    this.el.querySelector<HTMLElement>(".ex-box")?.focus();
+    if (focus) this.el.querySelector<HTMLElement>(".ex-box")?.focus();
     this.askHead();
+    this.hooks.changed?.();
+  }
+
+  /** What those following this reader see of the window, as presence carries it (CollabSpec,
+   *  "Surfaces"): open or closed; open, its settings and the job it shows, by its id. */
+  state(): ExportWindowView {
+    if (this.el.hidden) return { open: false };
+    const j = this.job;
+    const job: ExportJobView | null = j ? { id: j.gone ? "" : j.id, state: j.gone ? "failed" : j.state, ...(j.state === "failed" && j.error ? { error: j.error } : {}) } : null;
+    return { open: true, settings: { ...this.settings }, ...(job ? { job } : {}) };
+  }
+
+  /** A followed reader's window, or a link's (the owner's decision of 2026-10-20): open or closed as
+   *  theirs is, with their settings and the document they typeset — its progress, followed here by
+   *  its id until it is done, then its downloads. This reader's own window is replaced by it, and
+   *  what it shows stays, theirs, once following ends. Opened so, it takes no focus; closed so, it
+   *  gives none back. */
+  follow(v: ExportWindowView | null): void {
+    if (!v?.open) return this.close(true);
+    const settings = common(v.settings);
+    if (this.el.hidden) this.reveal(settings, false);
+    else this.settings = settings;
+    this.take(v.job ?? null);
+    this.render();
+    this.hooks.changed?.();
+  }
+
+  /** The job a followed reader's window shows, shown here: none; one the server has not named yet,
+   *  or refused; or one by its id, read from the server and followed until it is done, as their
+   *  window follows it. The job shown already changes nothing: it is followed here to its end. */
+  private take(j: ExportJobView | null): void {
+    const cur = this.job;
+    if (!j) {
+      if (cur) this.dropJob();
+      return;
+    }
+    if (cur && j.id && cur.id === j.id && !cur.gone && (cur.state === j.state || cur.state === "running")) return;
+    if (cur && !j.id && !cur.id && cur.state === j.state && (cur.error ?? "") === (j.error ?? "")) return;
+    if (!j.id) {
+      this.dropJob();
+      if (j.state === "running") {
+        this.job = { id: "", state: "running" };
+        this.started = Date.now();
+        this.startTimer();
+      } else this.job = { id: "", state: "failed", error: j.error ?? "XeLaTeX stopped" };
+      return;
+    }
+    void this.watch(j.id, j.state);
+  }
+
+  /** Follow a job by its id until it is done: its progress while it runs, counted from when it was
+   *  asked for, then its pages and downloads, or why it failed — or that it has left the cache. */
+  private async watch(id: string, state: ExportJobView["state"]): Promise<void> {
+    this.dropJob();
+    const turn = this.turn;
+    if (state === "running") {
+      this.job = { id, state: "running" };
+      this.started = Date.now();
+      this.startTimer();
+    }
+    let j = await this.hooks.poll(id);
+    while (typeof j !== "string" && j.state === "running" && turn === this.turn && !this.el.hidden) {
+      if (j.startedHere) this.started = j.startedHere;
+      if (this.job?.state !== "running") {
+        this.job = { id, state: "running" };
+        this.startTimer();
+        this.render();
+      }
+      await new Promise((ok) => setTimeout(ok, 700));
+      j = await this.hooks.poll(id);
+    }
+    if (turn !== this.turn) return;
+    this.stopTimer();
+    this.job = typeof j === "string" ? { id, state: "failed", error: j, gone: true } : j;
+    if (!this.el.hidden) this.render();
+    this.hooks.changed?.();
+  }
+
+  /** The job shown is put away, and the answers still to come for it are not shown. */
+  private dropJob(): void {
+    this.turn++;
+    this.stopTimer();
+    this.job = null;
   }
 
   /** The board on show changed (another view, another build, the view rescoped): the window, open,
@@ -184,11 +290,10 @@ export class ExportModal {
     this.view = v;
     if (other) {
       // the job followed, if any, is another document's
-      this.turn++;
-      this.stopTimer();
-      this.job = null;
+      this.dropJob();
       this.head = "";
       this.askHead();
+      this.hooks.changed?.();
     }
     this.render();
   }
@@ -205,14 +310,17 @@ export class ExportModal {
     });
   }
 
-  close(): void {
+  /** Close the window; `followed`: as the followed reader's closed, which gives no focus back but
+   *  where it was in it. */
+  close(followed = false): void {
     if (this.el.hidden) return;
     // closed from the keyboard (Esc, its buttons): the focus back on Export, not at the page's start
-    focusBack(this.el, this.btn, true);
+    focusBack(this.el, this.btn, !followed);
     this.el.hidden = true;
     this.btn.classList.remove("on");
     this.stopTimer();
     this.hooks.shown?.(false);
+    this.hooks.changed?.();
   }
 
   private changed(t: HTMLInputElement): void {
@@ -223,6 +331,7 @@ export class ExportModal {
     else if (k === "contents") s[k] = t.checked;
     else s[k] = t.value;
     this.render();
+    this.hooks.changed?.();
   }
 
   /** Why the view makes no document, or null. */
@@ -278,7 +387,9 @@ export class ExportModal {
       ? ""
       : job.state === "running"
         ? `<div class="ex-prog"><div class="ex-bar"><i></i></div><span>Typesetting with XeLaTeX… <span class="ex-secs">${this.elapsed()}</span></span></div>`
-        : job.state === "failed"
+        : job.gone
+          ? `<div class="banner warn">${esc(sentence(job.error ?? "That document is no longer in the export's cache"))} Generate makes it again.</div>`
+          : job.state === "failed"
           ? `<div class="banner bad">Typesetting failed: ${esc(sentence(job.error ?? "XeLaTeX stopped"))}</div>` + (job.log ? `<details class="ex-log"><summary>XeLaTeX's log</summary><pre>${esc(job.log)}</pre></details>` : "")
           : `<div class="ex-done"><div><b>${job.pages ?? "?"} page${job.pages === 1 ? "" : "s"}</b>, typeset in ${((job.ms ?? 0) / 1000).toFixed(1)} s.</div>` +
             `<div class="ex-dl"><a class="rv-btn primary" href="/api/export/file?id=${job.id}&what=pdf" download>Download PDF</a>` +
@@ -345,6 +456,15 @@ export class ExportModal {
     this.timer = null;
   }
 
+  /** The seconds a job has been going, counted on the window while it runs. */
+  private startTimer(): void {
+    this.stopTimer();
+    this.timer = setInterval(() => {
+      const secs = this.el.querySelector(".ex-secs");
+      if (secs) secs.textContent = this.elapsed();
+    }, 500);
+  }
+
   /** Typeset the view's document, and follow the job until it is done. */
   private async generate(): Promise<void> {
     const v = this.view;
@@ -355,12 +475,14 @@ export class ExportModal {
     this.started = Date.now();
     this.job = { id: "", state: "running" };
     this.render();
-    this.stopTimer();
-    this.timer = setInterval(() => {
-      const secs = this.el.querySelector(".ex-secs");
-      if (secs) secs.textContent = this.elapsed();
-    }, 500);
+    this.startTimer();
+    // those following see it start, then its job by its id once the server named it, then its end
+    this.hooks.changed?.();
     let j = await this.hooks.start({ view: v.id, settings, ...(v.version !== undefined ? { version: v.version } : {}) });
+    if (turn === this.turn && typeof j !== "string" && j.state === "running") {
+      this.job = { id: j.id, state: "running" };
+      this.hooks.changed?.();
+    }
     while (typeof j !== "string" && j.state === "running" && turn === this.turn && !this.el.hidden) {
       await new Promise((ok) => setTimeout(ok, 700));
       j = await this.hooks.poll(j.id);
@@ -369,5 +491,6 @@ export class ExportModal {
     this.stopTimer();
     this.job = typeof j === "string" ? { id: "", state: "failed", error: j } : j;
     if (!this.el.hidden) this.render();
+    this.hooks.changed?.();
   }
 }

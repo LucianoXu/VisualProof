@@ -781,6 +781,11 @@ async function exportAnswer(r: Promise<Response>): Promise<ExportJobState | stri
   try {
     const res = await r;
     const b = (await res.json().catch(() => ({}))) as { job?: ExportJobState; error?: string };
+    // when the job was asked for, by this page's clock: its time by the server's, less how long ago
+    // that was by the server's clock as it answered (its Date, to the second)
+    const now = Date.parse(res.headers.get("date") ?? "");
+    const at = b.job?.at ? Date.parse(b.job.at) : NaN;
+    if (b.job && Number.isFinite(now) && Number.isFinite(at)) b.job.startedHere = Date.now() - Math.max(0, now - at);
     return b.job ?? b.error ?? `the server answered ${res.status}`;
   } catch {
     return "the server could not be reached";

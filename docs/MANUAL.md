@@ -1171,7 +1171,8 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   sources** (a zip: the `.tex`, `visualproof.sty`, the fonts and a README) and the `.tex` and
   `.sty` alone, with the export's notes folded beneath (which definitions had their proofs found by
   reading their text, below). The settings are remembered in this browser. A view of more than
-  2,000 declarations of the project is narrowed first.
+  2,000 declarations of the project is narrowed first. Those following you see the window as you
+  do — its settings, the progress, the downloads — and Share's *Exactly what I see* carries it.
 - **A view of a past build** (decision 16) makes that build's document: what its board shows, the
   declarations of that build its scope holds, in
   its sections, each with the text that build compiled — where that text is not kept, its statement
@@ -1352,12 +1353,16 @@ what each one looks at stays their own.
   (CollabSpec decision 4): you take their view (in a tab opened for it if need be), their build in
   the Time Machine, camera, tool, selection and focus, what their panel tells of, their source
   windows and reference window (each opened, collapsed and closed with theirs, placed as your
-  screen places them), Activity and the lost-and-found open or closed with Activity's filters, and
-  their colouring and edges. Changing any of these ends following, as acting on what
-  you are shown does (a button of the panel, typing a comment), and Esc. Nothing of yours ends it:
+  screen places them), Activity and the lost-and-found open or closed with Activity's filters,
+  their colouring and edges, and their Export window — open or closed with theirs (yours, open as
+  you start, gives way to it), with their settings, and the document they generate: its progress,
+  then the same downloads, offered to you too. Changing any of these ends following, as acting on what
+  you are shown does (a button of the panel, typing a comment, a setting or a download of the Export
+  window), and Esc. Nothing of yours ends it:
   where windows sit, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
-  Export, Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
-  selecting text, copying it. When it ends, what you were shown stays, yours. On the canvas their
+  Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
+  selecting text, copying it. When it ends, what you were shown stays, yours: the Export window too,
+  with the settings it showed. On the canvas their
   selection carries a ring of their colour with their initials; the panel says who else is looking
   at a declaration.
 - **Asking others to follow you** (CollabSpec decision 10), to show them something: **Ask everyone

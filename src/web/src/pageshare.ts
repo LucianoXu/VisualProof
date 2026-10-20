@@ -85,6 +85,8 @@ export function sharePart(page: Page): SharePart {
     shown: (open) => (open ? void page.linear.show("export") : page.people.following ? page.linear.hide("export") : page.linear.hide("export", "followed")),
     artwork: () => page.art.open(),
     artworkOnly: () => !!data.snapshot,
+    // those following see the window as it is (the owner's decision of 2026-10-20)
+    changed: () => page.people.report(),
   });
   // a snapshot of the page carries the links, not the library's files (they are the server's)
   if (data.snapshot) $("#library-btn").hidden = true;
