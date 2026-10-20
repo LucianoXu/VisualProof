@@ -1,6 +1,8 @@
 // The exported document's plan (ExportSpec decisions 12 and 13): what a view holds, as the document
 // prints it. Every declaration of the project the board holds is printed, whatever is folded; what
-// the view holds from outside the project is not, and is counted instead. The sections are the
+// the view holds from outside the project is not, and is counted instead — but where it is key for a
+// target (ExportSpec decision 8, the owner's decision of 2026-10-20: key declarations may be outside
+// since 0.6.0), which is printed as the project's are, from its package's source. The sections are the
 // view's cluster structure as the board shows it — its clustering, its hidden levels taken out
 // (ViewSpec decision 24; shared/layout.ts, clusterTree) — each cluster that holds something printed
 // a section, nested by its depth.
@@ -13,6 +15,8 @@
 
 import type { ClusterMode } from "../graph.ts";
 import { clusterTree } from "../layout.ts";
+import { evaluate } from "../query.ts";
+import type { ReviewData } from "../review.ts";
 import type { Graph } from "../viewgraph.ts";
 
 /** Heading levels: section, subsection, subsubsection, then a paragraph-level heading, which every
@@ -50,15 +54,26 @@ export interface SectionPlan {
   sections: SectionPlan[];
 }
 
+/** The declarations outside the project a document prints (ExportSpec decision 8, the owner's
+ *  decision of 2026-10-20): those key for a target, each target's marks that its TCB or review set
+ *  still holds (`key(targets)`, shared/query.ts), per node of `g`. */
+export function outsideKeys(g: Graph, d: ReviewData): Uint8Array {
+  const key = evaluate({ op: "key", of: "targets" }, { g, review: d });
+  for (let i = 0; i < g.projectCount; i++) key[i] = 0;
+  return key;
+}
+
 /** What the document of a view holds. */
 export interface DocPlan {
   /** the declarations at the top of the board's tree, in no cluster: printed first, under no
    *  heading */
   decls: number[];
   sections: SectionPlan[];
-  /** how many declarations are printed, and how many sections hold them */
+  /** how many declarations are printed (those of the project, and those from outside it that are
+   *  key, `keyOutside` of them), and how many sections hold them */
   count: number;
   sectionCount: number;
+  keyOutside: number;
   /** what the view holds from outside the project, which is not printed: how many, and how many
    *  per library (the first part of the module), the most first */
   outside: { count: number; by: { name: string; count: number }[] };
@@ -69,8 +84,9 @@ export interface DocPlan {
  *  only is merged into it, its heading `A.B`, so that the document has no heading chains with
  *  nothing under them; the board merges such a chain into one circle already where it holds nothing
  *  else at all. On a board of a past build, `g` is its past graph (shared/pastgraph.ts), which holds
- *  that build's declarations alone. */
-export function planDoc(g: Graph, set: Uint8Array, mode: ClusterMode, hidden: readonly string[]): DocPlan {
+ *  that build's declarations alone. `keyed`: the declarations outside the project that are printed,
+ *  those key for a target (`outsideKeys`); none where it is left out. */
+export function planDoc(g: Graph, set: Uint8Array, mode: ClusterMode, hidden: readonly string[], keyed: Uint8Array | null = null): DocPlan {
   // the board's members in the whole graph's order, as a board's graph has them (shared/board.ts)
   const members: number[] = [];
   for (let i = 0; i < g.n; i++) if (set[i]) members.push(i);
@@ -79,8 +95,10 @@ export function planDoc(g: Graph, set: Uint8Array, mode: ClusterMode, hidden: re
   const top: number[] = [];
   const by = new Map<string, number>();
   let outside = 0;
+  let keyOutside = 0;
   members.forEach((i, k) => {
-    if (g.isExt(i)) {
+    if (g.isExt(i) && keyed?.[i]) keyOutside++;
+    else if (g.isExt(i)) {
       outside++;
       const lib = g.nodes[i].module.split(".")[0] || g.nodes[i].module;
       by.set(lib, (by.get(lib) ?? 0) + 1);
@@ -124,6 +142,7 @@ export function planDoc(g: Graph, set: Uint8Array, mode: ClusterMode, hidden: re
     sections,
     count: top.length + own.reduce((a, d) => a + d.length, 0),
     sectionCount,
+    keyOutside,
     outside: { count: outside, by: [...by].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : 1)) },
   };
 }

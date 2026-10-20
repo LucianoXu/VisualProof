@@ -491,7 +491,7 @@ test("agents export the board's order through the API, as the page does; a past 
       return a.body as DocModel;
     };
     const first = await model();
-    assert.equal(first.version, 10);
+    assert.equal(first.version, 11);
     assert.ok(printedNotes(first).some((n) => n.id === "note:np"), "the note of the project in C prints");
     assert.ok(seqOf(section(first, "C").items).includes("np"));
     // as the server lays out the board, so does the page: the same memory, the same picture; a pin

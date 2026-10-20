@@ -16,7 +16,10 @@
 // read but what the view's scope reads to say what it holds, and the trusted prefixes: no status,
 // no opinion is printed. Its title is the view's, as the view is named, and its author line the
 // people who left a trace on the view (ExportSpec decisions 14 and 15), whom the server finds
-// (shared/doc/authors.ts) and the view brings; no setting gives either.
+// (shared/doc/authors.ts) and the view brings; no setting gives either. A declaration from outside
+// the project is printed where it is key for a target (ExportSpec decision 8, the owner's decision of
+// 2026-10-20), as the project's are, from its package's source (or Lean's core's), its proofs found
+// by reading it; the rest of the outside world is counted on the head card.
 //
 // A view of a past build makes that build's document (ExportSpec decision 16): its graph is the past
 // graph its board is of (shared/pastgraph.ts), that build's declarations alone; each declaration's
@@ -45,7 +48,7 @@ import { DOC_VERSION } from "./model.ts";
 import { freshSpots, orderDoc } from "./order.ts";
 import type { BoardNote, BoardSpots, OrderedSection, Placed } from "./order.ts";
 import { cutByText, cutProofs, statementOnly } from "./proof.ts";
-import { planDoc, tooMuch } from "./sections.ts";
+import { outsideKeys, planDoc, tooMuch } from "./sections.ts";
 import type { SectionPlan } from "./sections.ts";
 import type { DocSettings } from "./settings.ts";
 
@@ -112,6 +115,10 @@ export interface DocInput {
   source(module: string): DocSource | null;
   /** a module's file in the project, relative; null outside it */
   fileOf(module: string): string | null;
+  /** a module outside the project whose source `source` gives (ExportSpec decision 8, the owner's
+   *  decision of 2026-10-20): its file in its package and the package; null where its source is not
+   *  found (of a past build: not kept, its package being at another revision now). Left out: none is. */
+  outside?(module: string): { file: string; package: string } | null;
   /** the build: its fingerprint and the project's commit where known, and its toolchain where it is
    *  not the graph's (a past build's) */
   build: { fingerprint: string | null; commit: DocModel["head"]["commit"]; toolchain?: string };
@@ -150,7 +157,8 @@ export function buildDoc(input: DocInput): DocModel {
   const { g, review: d, settings: s, view } = input;
   const past = input.past ?? null;
   const set = evaluate(view.scope, { g, review: d });
-  const plan = planDoc(g, set, view.clustering, view.hidden);
+  // what it holds from outside the project that is key is printed too (decision 8)
+  const plan = planDoc(g, set, view.clustering, view.hidden, outsideKeys(g, d));
   const why = tooMuch(plan.count);
   if (why) throw new DocInputError(why);
   // the board's order: what it draws lowest first
@@ -227,7 +235,9 @@ export function buildDoc(input: DocInput): DocModel {
     // the docstring shown as prose is not repeated in the code
     const code = codeFor(i, doc !== null);
     const papers = papersOf(declSubject(v.name));
-    return { id: v.name, name: v.name, short: g.short(i), kind: v.kind, module: v.module, file: input.fileOf(v.module), line: v.range ? v.range[0] : null, doc, code, ...(papers ? { papers } : {}) };
+    const out = g.isExt(i) ? input.outside?.(v.module) ?? null : null;
+    const file = g.isExt(i) ? out?.file ?? null : input.fileOf(v.module);
+    return { id: v.name, name: v.name, short: g.short(i), kind: v.kind, module: v.module, file, ...(g.isExt(i) ? { external: true as const, ...(out ? { package: out.package } : {}) } : {}), line: v.range && (out || !g.isExt(i)) ? v.range[0] : null, doc, code, ...(papers ? { papers } : {}) };
   };
 
   /** A declaration's code: its source where it can be read (a theorem's up to its statement, a
@@ -250,10 +260,13 @@ export function buildDoc(input: DocInput): DocModel {
       if (theorem) elide(c);
       return c;
     };
-    const src = g.isExt(i) || !v.range ? null : sourceOf(v.module);
+    // outside the project, its package's source where it is found (decision 8)
+    const ext = g.isExt(i);
+    const src = !v.range || (ext && !input.outside?.(v.module)) ? null : sourceOf(v.module);
     const at = src ? excerptOf(src.lines, src.edited, v.name, v.range!) : null;
-    // a past build's text that is not kept (HistorySpec decision 21): its statement then, said so
-    if (!src && past && !g.isExt(i) && v.range) return { ...fromGraph(), notKept: true };
+    // a past build's text that is not kept (HistorySpec decisions 21 and 24): its statement then,
+    // said so
+    if (!src && past && v.range) return { ...fromGraph(), notKept: true };
     if (!src || !at) return fromGraph();
     // the docstring above it, shown as prose already
     const start = dropDoc ? afterDoc(src.lines, at.start, at.end) : at.start;
@@ -275,10 +288,10 @@ export function buildDoc(input: DocInput): DocModel {
       const cut = v.proofs?.length ? cutProofs(src.lines, start, at.end, v.proofs) : null;
       return cut?.cuts ? { lines: cut.lines, proofElided: false, from: "source", proofsCut: cut.cuts } : codeOf(text, from);
     }
-    // the pass's places are not this text's (a past build's never are): the proofs as reading the
-    // text finds them
+    // the pass's places are not this text's (a past build's never are, nor the outside world's): the
+    // proofs as reading the text finds them
     const cut = cutByText(text);
-    return placed({ lines: cut.lines, proofElided: false, from, ...(cut.cuts ? { proofsCut: cut.cuts } : {}), textCut: past ? "past" : src.edited ? "edited" : "unread" });
+    return placed({ lines: cut.lines, proofElided: false, from, ...(cut.cuts ? { proofsCut: cut.cuts } : {}), textCut: ext ? "outside" : past ? "past" : src.edited ? "edited" : "unread" });
   };
 
   // a declaration, then the notes attached to it, as its explanation
@@ -403,9 +416,9 @@ export function docNotes(doc: DocModel): string[] {
   };
   const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
   const out: string[] = [];
-  const why = { edited: "their file changed since it was compiled", unread: "the usage pass has not read them (it is off, still running, or failed on their module)" };
+  const why = { edited: "their file changed since it was compiled", unread: "the usage pass has not read them (it is off, still running, or failed on their module)", outside: "they are outside the project, which the usage pass reads alone" };
   const reading = "Reading the text leaves out every `by` block, one that builds data too, and keeps a proof written as a term.";
-  for (const k of ["edited", "unread"] as const) {
+  for (const k of ["edited", "unread", "outside"] as const) {
     const es = all.filter((e) => e.code.textCut === k);
     if (es.length) out.push(`The proofs inside ${count(es.length, "definition", "definitions")} were found by reading the text rather than where the usage pass found them, since ${why[k]}: ${names(es)}. ${reading}`);
   }
@@ -420,7 +433,12 @@ export function docNotes(doc: DocModel): string[] {
   const gone = all.filter((e) => e.code.notKept);
   if (gone.length) out.push(`The text of ${count(gone.length, "declaration", "declarations")} at this build is not kept, and ${gone.length === 1 ? "its statement is" : "their statements are"} printed instead: ${names(gone)}.`);
   const bare = all.filter((e) => e.code.from === "statement" && !e.code.notKept);
-  if (bare.length) out.push(`${count(bare.length, "declaration of the project is", "declarations of the project are")} printed from the graph's statement rather than from the source: ${names(bare)}.`);
+  const own = bare.filter((e) => !e.external);
+  const away = bare.filter((e) => e.external);
+  if (own.length) out.push(`${count(own.length, "declaration of the project is", "declarations of the project are")} printed from the graph's statement rather than from the source: ${names(own)}.`);
+  if (away.length) out.push(`${count(away.length, "key declaration from outside the project is", "key declarations from outside the project are")} printed by name alone, their source not found: ${names(away)}.`);
+  const changed = all.filter((e) => e.package && e.code.from === "edited");
+  if (changed.length) out.push(`${count(changed.length, "key declaration from outside the project is", "key declarations from outside the project are")} printed from ${changed.length === 1 ? "its package" : "their packages"} as ${changed.length === 1 ? "it is" : "they are"} now, at another revision than the graph was read at, found by name: ${names(changed)}.`);
   return out;
 }
 
