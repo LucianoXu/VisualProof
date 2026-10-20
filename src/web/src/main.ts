@@ -60,7 +60,6 @@ import { githubBlob } from "../../shared/deploy.ts";
 import { Editor } from "./editor.ts";
 import { keptFocus, readerFocus } from "./focus.ts";
 import { kindDot, ringed } from "./axiomring.ts";
-import { Legend } from "./legend.ts";
 import { holdTheme } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
@@ -78,8 +77,7 @@ import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, PAST_LINK } from "../../shared/library.ts";
 import { snapshotIn } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
-import { STATUS_LABEL, STATUSES, statusCodes } from "./status.ts";
-import type { Scheme } from "./status.ts";
+import { STATUS_LABEL, STATUSES } from "./status.ts";
 import { ChatWindow, keepStripClear } from "./chatwin.ts";
 import { noteIn, siteOrigins } from "./chatlinks.ts";
 import { LinearForm } from "./linear.ts";
@@ -103,6 +101,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { schemePart } from "./pagescheme.ts";
 import { followPart } from "./pagefollow.ts";
 import { talkPart } from "./pagetalk.ts";
 import { peoplePart } from "./pagepeople.ts";
@@ -186,10 +185,6 @@ export interface MainPart {
   syncInsets: () => void;
   renderStrip: () => void;
   syncFocus: () => void;
-  syncStatus: () => void;
-  ownScheme: () => Scheme;
-  chooseScheme: (s: Scheme) => void;
-  legend: Legend;
   openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
   timeMachine: (at?: TimeMachineAt) => void;
   wholeReview: WholeReview<ReviewWhole>;
@@ -1273,7 +1268,7 @@ async function boot(): Promise<void> {
     if (a) linear.hide("reader", "followed");
     holdTheme(a ? (a.style === "board" ? a.theme : "dark") : null);
     canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
-    applyScheme();
+    page.applyScheme();
     page.syncEdges();
     page.apply();
   };
@@ -1529,77 +1524,13 @@ async function boot(): Promise<void> {
     const f = reviewName();
     if (f !== page.focusWas) {
       page.focusWas = f;
-      syncStatus();
-      applyScheme();
+      page.syncStatus();
+      page.applyScheme();
     }
     page.focusMenu.render();
   };
   page.syncFocus = syncFocus;
-
-  /** The review and the build on the canvas: the targets' stars, and where each declaration of
-   *  the board stands (web/src/status.ts) — its colour in the Status scheme, the clusters' progress
-   *  and the legend's counts. What agents advise is not among it: it stays in the panel. */
-  const syncStatus = () => {
-    const G = vg();
-    // a past build's status is its review against now's opinions; its files' builds are not known
-    canvas.setStatus(statusCodes(boardReview(), G, pastShown() ? new Map() : page.fileIndex));
-    canvas.setTargets(Object.keys(page.review.data.targets).map((n) => G.byName.get(n)).filter((j): j is number => j !== undefined));
-    // key declarations carry a diamond: where the review has a focus its target's, elsewhere every
-    // target's (ExportSpec decision 4); each with the targets it is key for, so that an artwork whose
-    // targets are chosen draws their keys alone (decision 19)
-    const r = reviewRoot();
-    const roots = r !== null ? [r] : Object.keys(page.review.data.targets).map((n) => page.g.byName.get(n)).filter((j): j is number => j !== undefined);
-    const keys = new Map<number, number[]>();
-    for (const t of roots) for (const k of flow.keys(t).keys) if (k !== t) keys.set(k, [...(keys.get(k) ?? []), t]);
-    const onBoard = (k: number) => G.byName.get(page.g.nodes[k].name);
-    const drawn = [...keys].flatMap(([k, ts]) => {
-      const j = onBoard(k);
-      return j === undefined ? [] : [{ j, of: ts.map(onBoard).filter((t): t is number => t !== undefined) }];
-    });
-    canvas.setKeys(
-      drawn.map((d) => d.j),
-      drawn.map((d) => d.of),
-    );
-    legend.render();
-    // an artwork's targets by selection list them
-    art.refresh();
-  };
-  page.syncStatus = syncStatus;
-
-  // ---------------------------------------------------------------- the colour scheme
-  //
-  // Kind or Status (CanvasSpec, "Colour schemes"): the reader's own, kept apart for a board where the
-  // review has a focus (Status unless the reader chose otherwise there) and for every other (Kind).
-  // Like the edges, and unlike the theme, it is what the board shows: followed (CollabSpec decision
-  // 4), never shared on the board.
-
-  /** The review has a focus on the board on show: where the review strip shows. */
-  const onReview = () => reviewRoot() !== null;
-  /** the reader's own colouring here, under an artwork's (drawLook) */
-  const ownScheme = () => store.schemeFor(onReview());
-  page.ownScheme = ownScheme;
-  const applyScheme = () => {
-    canvas.setScheme(page.artLook?.scheme ?? ownScheme());
-    legend.render();
-  };
-  const chooseScheme = (s: Scheme) => {
-    store.setScheme(onReview(), s);
-    applyScheme();
-    page.people.report();
-  };
-  page.chooseScheme = chooseScheme;
-  const legend = new Legend($("#legend"), {
-    scheme: () => canvas.scheme,
-    setScheme: chooseScheme,
-    counts: () => canvas.counts(),
-    isOpen: () => !!S.legend,
-    setOpen: (open) => {
-      S.legend = open;
-      store.save();
-    },
-    keyEdges: () => S.mode === "keys",
-  });
-  page.legend = legend;
+  Object.assign(page, schemePart(page));
   Object.assign(page, followPart(page));
   Object.assign(page, talkPart(page));
   Object.assign(page, peoplePart(page));
@@ -1663,7 +1594,7 @@ async function boot(): Promise<void> {
     page.targetTcbs.clear();
     views.reviewChanged();
     if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => boardPanel.render());
-    syncStatus();
+    page.syncStatus();
     trust.reviewChanged();
     renderTrusted();
     // what is lit reads the review when a pick does (key declarations, trust, statuses), and the
@@ -1864,8 +1795,8 @@ async function boot(): Promise<void> {
     for (const btn of document.querySelectorAll<HTMLElement>("#board-pop [data-cluster]")) btn.classList.toggle("on", btn.dataset.cluster === m);
     $("#side-what").textContent = m === "module" ? "Files" : "Namespaces";
     notes.clear();
-    syncStatus();
-    applyScheme();
+    page.syncStatus();
+    page.applyScheme();
     page.showLevel();
     page.syncPeers();
     boardPanel.render();
