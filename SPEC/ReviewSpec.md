@@ -157,9 +157,25 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     opening a pill or closing a window ends following; nothing on the screen changes as it ends.
   - **Names** link at once by reading the file as Lean would (enclosing namespaces, then the
     `open`s in force), then by Lean's answer, which wins (dot notation: `o.elim` to `Option.elim`).
+  - **Outside the project** (the owner's decision of 2026-10-20): the window, and Lean's hovers in
+    it, show every declaration from outside the project too — the packages of the project's
+    `.lake/packages/` and Lean's core (`Init`, `Std`, `Lean`…, from the toolchain's `src/lean/`).
+    The extractor records an outside declaration's place, as Lean keeps it in the `.olean`, and its
+    docstring, as for a project declaration; its file is its module's in its package, found as Lake
+    lays the package out (its `srcDir`, and each library's under it), Lean's core's in the
+    toolchain; it is served as the project's files are. Agents read it too (`source`, `describe`).
+    Only the `.lean` files of modules the graph's outside declarations are in are ever read, resolved
+    inside the packages' and the toolchain's source folders, never by a path a request gives nor a
+    symbolic link out of them, by whoever may read the project's sources, read-only readers
+    included, within the same bounds. Its title bar names the package and its revision.
+    - *Proposed*: where the package is at another revision than when the graph was read (a
+      dependency updated, a branch being built), the present text found by name, under a warning,
+      as for a file changed since it was compiled; an opinion on an outside declaration records no
+      text, as before.
 - **Hovering the source** shows Lean's hover from Lean's own language server, started in the
   project's folder of the cache (`lean-server/`) with the project's LEAN_PATH: with no lakefile
-  there, it never runs `lake setup-file`, so it reads the owner's build and builds nothing. Until a
+  there, it never runs `lake setup-file`, so it reads the owner's build and builds nothing. A file
+  outside the project is opened by the same server in the same way. Until a
   file is elaborated the hover says how far Lean is. At most two files open; it stops after ten idle
   minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
   statement and doc.

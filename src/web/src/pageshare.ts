@@ -8,7 +8,7 @@ import { docTitle, PROJECT } from "../../shared/views.ts";
 import { followedOf } from "./surfaces.ts";
 import { writeSnapshot } from "../../shared/sharesnap.ts";
 import { Share } from "./share.ts";
-import { planDoc } from "../../shared/doc/sections.ts";
+import { outsideKeys, planDoc } from "../../shared/doc/sections.ts";
 import { ExportModal } from "./exportmodal.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { $ } from "./page.ts";
@@ -65,7 +65,8 @@ export function sharePart(page: Page): SharePart {
         tip: page.views.tip(b.id),
         heading: docTitle(titled, page.views.titles()),
         fixed: b.rec.id === PROJECT,
-        plan: planDoc(b.full, b.bs.set, m, b.rec.hidden[m]),
+        // what it holds from outside the project and is key is printed too (ExportSpec decision 8)
+        plan: planDoc(b.full, b.bs.set, m, b.rec.hidden[m], outsideKeys(b.full, page.boardReview())),
         ...(version !== undefined ? { version } : {}),
         ...(past ? { when: briefWhen(past.snapshot.at) } : {}),
       };

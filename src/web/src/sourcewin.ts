@@ -20,6 +20,13 @@
 // compiled, the compiled place means nothing any more: the declaration is found again by name in
 // the present text, and the window says that this is not what Lean checked.
 //
+// A declaration outside the project is shown the same way (the owner's decision of 2026-10-20), from
+// its package's file — Mathlib's, Batteries', Lean's core's — at the place its `.olean` records
+// (server/outside.ts), with Lean's hovers, the title bar naming the package and its revision, and
+// "Open on GitHub" at that revision where the package is on GitHub. Where the package is at another
+// revision than when the graph was read, the declaration is found by name in the present text, as in
+// a file changed since it was compiled.
+//
 // On a board of a past build (HistorySpec decision 23, 2026-10-10) it shows the text that build was
 // compiled from, at the place the snapshot recorded, with that build's line numbers and the names in
 // it resolved on the past graph (web/src/pastsource.ts); or says that the text is not kept. Lean
@@ -56,6 +63,7 @@ import { contextLines, exactContext, readContext, usedVariables } from "../../sh
 import type { FileContext } from "../../shared/context.ts";
 import { excerptOf } from "../../shared/excerpt.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
+import { outsideLink, packageWords } from "../../shared/outside.ts";
 import { cascadeRect, EDGE, FloatWindow } from "./floatwin.ts";
 import type { Rect, Size } from "./floatwin.ts";
 import { escapeHtml, highlightLean, highlightLines, KEYWORDS, renderDoc, renderHover } from "./highlight.ts";
@@ -834,12 +842,12 @@ export class SourceWindow implements SourcePane {
     // the editor opens the file as it is now: at the compiled place, unless the window found the
     // declaration somewhere else in a file that changed since; GitHub, the build's own text at its
     // commit, where the text shown is that commit's
-    let remote: { href: string; commit: string } | null = null;
+    let remote: { href: string; commit: string; what?: string } | null = null;
     const head = (where: string, editor: string | null) =>
       `<div class="sw-head">${pinned ? "" : nav()}<span class="dot ${kindDot(v.kind, ext)}"></span><span class="sw-name" title="${escapeHtml(v.name)}">${short}</span>` +
       `<span class="sw-ns">${escapeHtml(parts.slice(0, -1).join("."))}</span><span class="sw-loc">${where}</span>` +
       (editor ? editorAnchor(editor) : "") +
-      (remote ? githubAnchor(remote.href, remote.commit) : "") +
+      (remote ? githubAnchor(remote.href, remote.commit, remote.what) : "") +
       `<span class="sw-acts">${pin}<button class="icon" data-sw-collapse aria-label="Collapse" title="Collapse to one line (or double-click the title bar)">${COLLAPSE}</button>` +
       `<button class="icon sw-close" data-sw-close aria-label="Close" title="${pinned ? "Close (Esc)" : "Close (Esc, or Space)"}">✕</button></span></div>`;
     // `final`: the declaration's own frame, not what stands for it while its code is read
@@ -855,8 +863,8 @@ export class SourceWindow implements SourcePane {
         `<button class="icon sw-close" data-sw-close aria-label="Close" title="Close">✕</button>`;
       if (final) this.drew();
     };
-    if (ext || !v.range) {
-      frame(escapeHtml(v.module), "", `<div class="sw-none">${ext ? "A declaration from outside the project: its source is not served here." : "No source position was recorded for it."}</div>`);
+    if (!v.range) {
+      frame(escapeHtml(v.module), "", `<div class="sw-none">No source position was recorded for it.</div>`);
       this.box.reveal(this.el);
       return;
     }
@@ -880,24 +888,30 @@ export class SourceWindow implements SourcePane {
       const shot = "missing" in got ? null : pastText(g, i, got);
       if ("missing" in got || !shot) {
         const why = "missing" in got && got.why ? `: ${escapeHtml(got.why)}` : "";
+        // outside the project, that build's source was not kept (HistorySpec decision 24)
         frame(
           escapeHtml(("missing" in got && got.file) || v.module),
           `<div class="banner sw-then">As built ${escapeHtml(then.when)}${commit ? ` · <code>${escapeHtml(commit.slice(0, 7))}</code>` : ""}</div>`,
-          `<div class="sw-none">Its source at this build is not kept${why}. The panel shows its statement and doc then.</div>`,
+          ext
+            ? `<div class="sw-none">Its source at this build was not kept${why}.</div>`
+            : `<div class="sw-none">Its source at this build is not kept${why}. The panel shows its statement and doc then.</div>`,
         );
         return settle();
       }
       this.code = { file: shot.file, start: shot.start, lines: shot.lines };
       this.resolve = shot.resolve;
-      // the text kept is that commit's own: the build read from a clean checkout of it
+      // the text kept is that commit's own: the build read from a clean checkout of it; outside the
+      // project, the package's at the revision it had then, which it has now
       const pc = then.past.snapshot.commit;
-      if (pc && !pc.dirty && !pc.guessed && (got.from === "tree" || got.from === `git:${pc.hash}`)) {
+      const out = got.outside ? outsideLink(got.outside, shot.start + 1, shot.end + 1) : null;
+      if (out && got.outside?.github) remote = { href: out, commit: got.outside.github.rev, what: packageWords(got.outside) };
+      else if (!got.outside && pc && !pc.dirty && !pc.guessed && (got.from === "tree" || got.from === `git:${pc.hash}`)) {
         const href = this.hooks.githubLink?.(shot.file, pc.hash, shot.start + 1, shot.end + 1);
         if (href) remote = { href, commit: pc.hash };
       }
       // what the pointer is over is asked of nobody: names show what the build knew of them
       this.shown = { module: v.module, start: shot.start, hash: "" };
-      const notes = [`<div class="banner sw-then">${escapeHtml(pastNote(then.when, commit, got.check))}</div>`];
+      const notes = [`<div class="banner sw-then">${escapeHtml(pastNote(then.when, commit, got.check, got.outside))}</div>`];
       if (v.gen !== undefined) notes.unshift(`<div class="banner">${genNote()}</div>`);
       frame(
         escapeHtml(shot.where),
@@ -912,33 +926,46 @@ export class SourceWindow implements SourcePane {
     const src = await this.data.source(v.module);
     if (turn !== this.turn || this.current !== i) return;
     if (!src) {
-      frame(escapeHtml(v.module), "", `<div class="sw-none">The file could not be read.</div>`);
+      frame(escapeHtml(v.module), "", `<div class="sw-none">${ext ? "A declaration from outside the project: its source is not found here." : "The file could not be read."}</div>`);
       this.box.reveal(this.el);
       return;
     }
     const lines = src.text.split("\n");
+    // outside the project, what was read is its package at the revision the graph was read at
+    const out = src.outside;
     const compiled = this.hooks.compiledOf(v.module);
-    const edited = !!compiled && !!src.hash && compiled !== src.hash;
+    const edited = out ? !!out.changed : !!compiled && !!src.hash && compiled !== src.hash;
     const at = excerptOf(lines, edited, v.name, v.range);
     const notes: string[] = [];
     if (v.gen !== undefined) notes.push(`<div class="banner">${genNote()}${this.still ? "" : " What Lean made of it is below the command."}</div>`);
     const f = this.hooks.fileOf(v.module);
     if (f && (f.state === "failed" || f.state === "unbuilt")) notes.push(`<div class="banner bad">The last build of this file failed: the graph shows it as it was last compiled.</div>`);
-    if (edited)
+    if (edited && out)
+      notes.push(
+        at
+          ? `<div class="banner warn">${escapeHtml(out.core ? "The toolchain" : out.package)} is at another revision than when the graph was read (${escapeHtml(packageWords(out))} now). Below is its present text, found by name; the graph refers to what was read then.</div>`
+          : `<div class="banner bad">${escapeHtml(out.core ? "The toolchain" : out.package)} is at another revision than when the graph was read (${escapeHtml(packageWords(out))} now), and the declaration is not in it any more under this name.</div>`,
+      );
+    else if (edited)
       notes.push(
         at
           ? `<div class="banner warn">This file has changed since it was compiled. Below is its present text, found by name; the statement, the TCB and the review refer to the compiled version.</div>`
           : `<div class="banner bad">This file has changed since it was compiled, and the declaration is not in it any more under this name.</div>`,
       );
+    // outside the project, the package it is in, before its file
+    const place = (out ? `${packageWords(out)} · ` : "") + src.file;
     if (!at) {
-      frame(escapeHtml(src.file), notes.join(""), `<div class="sw-none">Not found in the present text.</div>`);
+      frame(escapeHtml(place), notes.join(""), `<div class="sw-none">Not found in the present text.</div>`);
       this.box.reveal(this.el);
       return;
     }
     const text = lines.slice(at.start, at.end + 1).join("\n");
     this.code = { file: src.file, start: at.start, lines: text.split("\n") };
-    // the file is the build's text: at the build's commit, these lines
-    const built = this.hooks.builtCommit?.();
+    // the file is the build's text: at the build's commit, these lines; outside the project, the
+    // package's at its revision (DeploySpec decision 13)
+    const built = out ? null : this.hooks.builtCommit?.();
+    const outHref = out && !edited ? outsideLink(out, at.start + 1, at.end + 1) : null;
+    if (outHref && out?.github) remote = { href: outHref, commit: out.github.rev, what: packageWords(out) };
     if (built && !edited) {
       const href = this.hooks.githubLink?.(src.file, built, at.start + 1, at.end + 1);
       if (href) remote = { href, commit: built };
@@ -962,7 +989,7 @@ export class SourceWindow implements SourcePane {
       if (fresh && !this.still) this.data.hoverOpen(v.module);
     }
     frame(
-      `${escapeHtml(src.file)}:${at.start + 1}–${at.end + 1}${edited ? " · present text" : ""}`,
+      `${escapeHtml(place)}:${at.start + 1}–${at.end + 1}${edited ? " · present text" : ""}`,
       notes.join(""),
       this.contextHtml(lines, at.start, v.type ?? "", text, resolve, edited ? null : exactContext(src.contexts, v.name, src.hash)) +
         `<pre class="code src">${code}</pre>` +
@@ -1153,7 +1180,9 @@ function offsetIn(root: Node, node: Node, off: number): number {
 }
 
 /** "Open on GitHub" (DeploySpec decision 13): the declaration's lines in the build's commit, in a
- *  tab of its own. */
-function githubAnchor(href: string, commit: string): string {
-  return `<a class="link editor-link gh-link" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="These lines at ${escapeHtml(commit.slice(0, 7))}, the commit of the build shown, on GitHub">Open on GitHub</a>`;
+ *  tab of its own; outside the project, in its package's repository at the revision shown (`what`:
+ *  the package and its revision in words). */
+function githubAnchor(href: string, commit: string, what?: string): string {
+  const title = what ? `These lines of ${what}, on GitHub` : `These lines at ${commit.slice(0, 7)}, the commit of the build shown, on GitHub`;
+  return `<a class="link editor-link gh-link" href="${escapeHtml(href)}" target="_blank" rel="noopener" title="${escapeHtml(title)}">Open on GitHub</a>`;
 }

@@ -27,6 +27,8 @@ import type { Identity } from "./versions.ts";
 import type { LastHad, LostAnswer } from "../shared/lostfound.ts";
 import type { HistoryDiff } from "../shared/pastgraph.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
+import { outsideSource } from "./outside.ts";
+import type { OutsideFile } from "./outside.ts";
 
 /** What the endpoints read: the live server has it all. */
 /** Who makes a move: a person or an agent by name, and someone invited by a personal link by the
@@ -63,6 +65,11 @@ export interface HistoryWorld {
   /** the branch followed and its builds (DeploySpec), what agents are told beside the snapshots;
    *  null for a workspace */
   following?(): DeployStatus | null;
+  /** a module outside the project as it is now — its file in its package or in Lean's core
+   *  (server/outside.ts) — and the project's toolchain now: what a past build shows of an outside
+   *  declaration where its package is at that build's revision (HistorySpec decision 24); null
+   *  where it is not found */
+  outsideNow?(module: string): { file: OutsideFile; toolchain: string } | null;
 }
 
 const no = (status: number, error: string): Answer => ({ status, body: { error } });
@@ -138,16 +145,43 @@ export async function snapshotParts(w: HistoryWorld, id: number): Promise<Parts>
 /** Module `module`'s text at snapshot `id`'s build (GET /source; HistorySpec decision 23): the
  *  text its build was compiled from, with its Lake hash and how it was matched to the build, or
  *  why it is not kept. Never another text. */
-export function pastSource(h: History, id: number, module: string): Answer {
+export function pastSource(h: History, id: number, module: string, outsideNow?: HistoryWorld["outsideNow"]): Answer {
   const s = h.get(id)!;
   const t = h.textOf(id, module);
   const build = { snapshot: id, at: s.at, commit: s.commit };
+  // a module of the outside world that build referred to (HistorySpec decision 24)
+  if (!t && outsideNow && !h.modulesOf(id).includes(module) && h.outsideModulesOf(id).has(module)) return pastOutside(s, module, outsideNow);
   if (!t) {
     const why = h.sourcesOf(id) === null ? "the texts of this build are still being looked for" : h.modulesOf(id).includes(module) ? "its module has no file of the project" : `the build has no module ${module.slice(0, 300)}`;
     return { status: 404, body: { error: `The text of ${module.slice(0, 300)} at this build is not kept: ${why}.`, kept: false, why, ...build } };
   }
   if (t.text === null) return { status: 404, body: { error: `The text of ${module} at this build is not kept: ${t.ref.why ?? "it was not found"}.`, kept: false, why: t.ref.why ?? null, file: t.ref.file, ...build } };
   return { status: 200, body: { module, file: t.ref.file, text: t.text, lake: t.ref.lake ?? null, check: t.ref.check, from: t.ref.from ?? null, ...build } };
+}
+
+/** A short revision, as the answers say it: a commit's first seven characters, a release whole. */
+const shortRev = (r: string | null | undefined) => (!r ? "an unrecorded revision" : /^[0-9a-f]{40,64}$/.test(r) ? r.slice(0, 7) : r);
+
+/** Outside module `module`'s text at snapshot `s`'s build (HistorySpec decision 24, the owner's of
+ *  2026-10-20): outside sources are not kept per build, so it is the file as it is now where its
+ *  package is at the revision that build had — the lake-manifest's `rev` then, recorded with the
+ *  snapshot; for Lean's core, its toolchain — and otherwise not kept, said so with both revisions.
+ *  `check: "rev"`: matched to the build by its package's revision. */
+export function pastOutside(s: SnapshotInfo, module: string, outsideNow: NonNullable<HistoryWorld["outsideNow"]>): Answer {
+  const build = { snapshot: s.id, at: s.at, commit: s.commit };
+  const no = (why: string, file?: string): Answer => ({ status: 404, body: { error: `The text of ${module.slice(0, 300)} at this build was not kept: ${why}.`, kept: false, why, outside: true, ...(file ? { file } : {}), ...build } });
+  const now = outsideNow(module);
+  if (!now) return no("outside sources are not kept per build, and its file is not found outside the project now");
+  const p = now.file.package;
+  const revs = s.packages?.revs;
+  const then = p.core ? s.toolchain : revs && Object.hasOwn(revs, p.name) ? revs[p.name] : null;
+  const rev = p.core ? now.toolchain : p.rev;
+  if (!p.core && !s.packages) return no(`outside sources are not kept per build, and the revisions of this build's packages were not recorded`, now.file.file);
+  if (!then || !rev || then !== rev)
+    return no(`outside sources are not kept per build, and ${p.core ? `the toolchain, whose core it is in, was ${then} then and is ${rev} now` : `${p.name} was at ${shortRev(then)} then and is at ${shortRev(rev)} now`}`, now.file.file);
+  const src = outsideSource(now.file);
+  if (!src) return no("outside sources are not kept per build, and its file cannot be read now", now.file.file);
+  return { status: 200, body: { module, file: src.file, text: src.text, lake: null, check: "rev", from: "outside", outside: src.outside, ...build } };
 }
 
 /** A snapshot named in the query, `id` (or another key): the snapshot, or why not. The latest
@@ -232,7 +266,8 @@ export async function historyAnswer(w: HistoryWorld, a: Ask, refuse: (a: Ask) =>
     if (typeof id !== "number") return id;
     const module = a.query.get("module") ?? "";
     if (!module || module.length > 2000) return no(400, "Say which module: module=<its name>.");
-    return pastSource(h, id, module);
+    // asked of the world as a method: the live server's reads its own state
+    return pastSource(h, id, module, w.outsideNow && ((m) => w.outsideNow!(m)));
   }
   if (path === "/diff") {
     const from = snapshotOf(w, a, "from", false);
@@ -308,6 +343,7 @@ export function historyWorld(world: Partial<HistoryWorld>): HistoryWorld {
     lastHad: (name) => world.lastHad?.(name) ?? null,
     archiveEntries: (keys, on, who) => world.archiveEntries?.(keys, on, who) ?? { status: 404, body: { error: "not found" } },
     following: () => world.following?.() ?? null,
+    outsideNow: (module) => world.outsideNow?.(module) ?? null,
   };
 }
 

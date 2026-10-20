@@ -11,7 +11,8 @@ import { renderHover } from "../src/web/src/highlight.ts";
 import { isDeclName, LeanHover } from "../src/server/hover.ts";
 import { openProject } from "../src/server/project.ts";
 import { lakeTextHash } from "../src/server/status.ts";
-import { copyFixture } from "./fixturecopy.ts";
+import { copyFixture, fixtureToolchain } from "./fixturecopy.ts";
+import { OutsideSources } from "../src/server/outside.ts";
 
 test("only names are written into Lean source", () => {
   for (const ok of ["Nat.le_add_right", "Fixture.Point.size", "Foo.«bar baz»", "x₁'", "Prod.fst", "_private.Foo.0.bar"]) assert.ok(isDeclName(ok), ok);
@@ -193,6 +194,41 @@ test("hover asks Lean, reads the build, and writes nothing into the project", { 
     const afterwards = listing(join(dir, ".lake"));
     assert.deepEqual([...afterwards.keys()].sort(), [...before.keys()].sort(), "files appeared or vanished under .lake");
     for (const [f, t] of before) assert.equal(afterwards.get(f), t, `${f} was written`);
+  } finally {
+    started?.stop();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(state, { recursive: true, force: true });
+  }
+});
+
+test("a file of Lean's core is opened by the same Lean, by its resolved path: its hovers, nothing written into the toolchain or the project", { skip: !haveLake && "no lake" }, async () => {
+  // the source window shows outside declarations too (ReviewSpec, "The source window", the owner's
+  // decision of 2026-10-20): the same language server, started in the cache's folder, builds nothing
+  const dir = copyFixture("vp-hover-core-");
+  const state = mkdtempSync(join(tmpdir(), "vp-hover-core-state-"));
+  let started: LeanHover | null = null;
+  try {
+    execFileSync("lake", ["build"], { cwd: dir, stdio: "ignore" });
+    const before = listing(join(dir, ".lake"));
+    const p = openProject(dir, [], true);
+    const f = new OutsideSources(dir, fixtureToolchain).find("Init.Prelude");
+    assert.ok(f, "Init.Prelude is in the toolchain's sources");
+    const was = statSync(f.path).mtimeMs;
+    const hover = new LeanHover(p, state);
+    started = hover;
+    const text = readFileSync(f.path, "utf8");
+    const lines = text.split("\n");
+    const line = lines.findIndex((l) => /^inductive Nat where/.test(l));
+    assert.ok(line > 0);
+    const file = { name: `${f.package.name}: ${f.file}`, path: f.path };
+    let a = await hover.hover(file, text, lakeTextHash(text), line, "inductive N".length, 60000);
+    for (let k = 0; a.pending && k < 30; k++) a = await hover.hover(file, text, lakeTextHash(text), line, "inductive N".length, 60000);
+    assert.match(a.contents ?? "", /Nat/, JSON.stringify(a));
+    assert.ok(hover.state().files.some((x) => x.file === "Lean: Init/Prelude.lean"), "named by its package, not by where it is");
+    hover.stop();
+    assert.equal(statSync(f.path).mtimeMs, was, "the toolchain's file is not written");
+    const afterwards = listing(join(dir, ".lake"));
+    assert.deepEqual([...afterwards.keys()].sort(), [...before.keys()].sort(), "files appeared or vanished under .lake");
   } finally {
     started?.stop();
     rmSync(dir, { recursive: true, force: true });

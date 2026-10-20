@@ -38,8 +38,10 @@ import type { DocSettings } from "./settings.ts";
  *  (2026-10-12): the board's order, a section's declarations, notes and sections in one list
  *  (`items`), the document's first ones too; the notes the view shows (`NoteEntry`), a declaration's
  *  own under it (`DeclEntry.notes`), their images and clips as figures; a declaration a note names
- *  linked where the document prints it (an inline `decl`). */
-export const DOC_VERSION = 10;
+ *  linked where the document prints it (an inline `decl`). 11 (2026-10-20): a declaration from outside
+ *  the project that is key for a target printed as the project's are, from its package's source
+ *  (`DeclEntry.package`; `textCut: "outside"`), the rest of the outside world counted as before. */
+export const DOC_VERSION = 11;
 
 /** One token of highlighted code: its kind (shared/lexer.ts) and its text, never a newline. A
  *  pair, so that a long listing stays small as JSON. `elided` stands for a proof left out: `:= …`
@@ -62,22 +64,26 @@ export interface CodeBlock {
    *  (`edited`), the pass has not read it (`unread`: it is off, still running, or failed on the
    *  module), or the text is a past build's (`past`: the pass reads the latest build alone). Its
    *  `by` blocks are left out, data too, and a proof written as a term stays. Absent where the
-   *  pass's places were used, and for anything but a definition. The document does not say it; the
-   *  export's notes do. */
-  textCut?: "edited" | "unread" | "past";
+   *  pass's places were used, and for anything but a definition. A declaration outside the project is
+   *  always read so (`outside`): the usage pass reads the project alone. The document does not say
+   *  it; the export's notes do. */
+  textCut?: "edited" | "unread" | "past" | "outside";
   /** where the text comes from: the compiled source (of a past build, the text that build compiled,
-   *  as the history keeps it); the present source, in a file changed since it was compiled; the
-   *  graph's statement, where there is no source to read (outside the project, a file that cannot be
-   *  read, a past build's text not kept) */
+   *  as the history keeps it; outside the project, its package's file at the revision the build had);
+   *  the present source, in a file changed since it was compiled (outside the project, a package at
+   *  another revision now); the graph's statement, where there is no source to read (a file that
+   *  cannot be read or is not found, a past build's text not kept): outside the project, its name
+   *  alone, the graph keeping no statement of it */
   from: "source" | "edited" | "statement";
   /** a past build's text, matched to the build by the places it recorded (its imports, where each
    *  declaration starts and ends, its doc comments and names) since its hash was not kept
    *  (HistorySpec decisions 21 and 22). The document counts these on its head card, not one by one;
    *  absent where the text's hash is the build's, and on the latest build */
   places?: true;
-  /** a past build whose text of the declaration is not kept (HistorySpec decision 21): its statement
-   *  as the build recorded it is printed (`from: "statement"`), and the document says, under it,
-   *  that its text of that build is not kept. Never the latest build's text in its place. */
+  /** a past build whose text of the declaration is not kept (HistorySpec decision 21; outside the
+   *  project, decision 24: its package is at another revision now): its statement as the build
+   *  recorded it is printed (`from: "statement"`), and the document says, under it, that its text of
+   *  that build is not kept. Never the latest build's text in its place. */
   notKept?: true;
 }
 
@@ -156,8 +162,13 @@ export interface DeclEntry {
   short: string;
   kind: string;
   module: string;
-  /** its file in the project, relative */
+  /** its file in the project, relative; outside it, in its package */
   file: string | null;
+  /** from outside the project (a key declaration: ExportSpec decision 8, the owner's decision of
+   *  2026-10-20), and the package it is written in, by its name in the lake-manifest (`Lean` for
+   *  Lean's core) where its source was found; both absent for the project's */
+  external?: true;
+  package?: string;
   /** where it starts in that file, 1-based */
   line: number | null;
   /** what it is, for a reader: its docstring, as prose; null where it has none */

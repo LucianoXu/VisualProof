@@ -73,6 +73,9 @@ import type { AgentWho } from "./presence.ts";
 import type { ReviewStore } from "./review.ts";
 import { ReviewApi } from "./reviewapi.ts";
 import { lakeTextHash } from "./status.ts";
+import { whereOf } from "./outside.ts";
+import type { OutsideFile } from "./outside.ts";
+import type { OutsideWhere } from "../shared/outside.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
 import type { Views } from "./views.ts";
 import type { Talk } from "./talk.ts";
@@ -208,6 +211,14 @@ export interface World {
   shownCommit?(): { hash: string; branch: string } | null | undefined;
   /** the branch followed and its builds (DeploySpec); null for a workspace */
   following?(): DeployStatus | null;
+  /** a module outside the project an outside declaration of the graph on show is in (ReviewSpec,
+   *  "The source window", the owner's decision of 2026-10-20; server/outside.ts): its file, and
+   *  whether its package is at another revision than the graph was read at; undefined where no
+   *  outside declaration is in it, null where its file is not found */
+  outsideFile?(module: string): { file: OutsideFile; changed: boolean } | null | undefined;
+  /** any module outside the project as it is now, and the toolchain: a past build's outside source
+   *  (HistorySpec decision 24; server/historyapi.ts, `pastOutside`) */
+  outsideNow?(module: string): { file: OutsideFile; toolchain: string } | null;
 }
 
 /** Lean, asked about a name where a module is imported (server/hover.ts): what its hover says
@@ -428,6 +439,22 @@ export class AgentApi {
     const compiled = v.modules.get(module)?.compiled ?? null;
     const hash = lakeTextHash(text);
     return { rel, lines: text.split("\n"), edited: !!compiled && hash !== compiled, hash };
+  }
+
+  /** The file of a module outside the project, as the source window reads it (server/outside.ts):
+   *  its path in its package, its lines, its package and revision; `edited` where the package is at
+   *  another revision than the graph was read at. Null where no outside declaration of the graph is
+   *  in it, or its file is not found or cannot be read. */
+  outsideText(module: string): { rel: string; lines: string[]; edited: boolean; hash: string; outside: OutsideWhere } | null {
+    const o = this.world.outsideFile?.(module);
+    if (!o) return null;
+    let text: string;
+    try {
+      text = readFileSync(o.file.path, "utf8");
+    } catch {
+      return null;
+    }
+    return { rel: o.file.file, lines: text.split("\n"), edited: o.changed, hash: lakeTextHash(text), outside: whereOf(o.file, o.changed) };
   }
 
   /** The context declaration `name` of `module` is written in, as the elaborator has it (the usage

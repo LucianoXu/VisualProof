@@ -15,7 +15,7 @@ import { itemsShownOn } from "../shared/noteplace.ts";
 import { buildDoc, DocInputError, docNotes } from "../shared/doc/build.ts";
 import { boardSpots } from "./boardspots.ts";
 import { outlineOf } from "../shared/doc/outline.ts";
-import { planDoc } from "../shared/doc/sections.ts";
+import { outsideKeys, planDoc } from "../shared/doc/sections.ts";
 import { docFiles, figureFiles, figureNotes } from "./figures.ts";
 import type { DocInput, DocSource, DocView } from "../shared/doc/build.ts";
 import { renderLatex } from "../shared/doc/latex.ts";
@@ -89,9 +89,14 @@ async function docInput(api: AgentApi, view: unknown, settings: unknown, retired
   const files = await docFiles(api.world.library, [...notes, ...(rec.notes ?? [])].map((n) => n.carries));
   if (at !== null) return pastInput(api, v, at, rec, docView, st.settings, files);
   const root = api.world.project.root;
-  // each module's text as it is now, read once per document
+  // each module's text as it is now, read once per document; outside the project, its package's
+  // file (ExportSpec decision 8: an outside key declaration is printed)
   const source = (module: string): DocSource | null => {
     const m = v.modules.get(module);
+    if (!m) {
+      const o = api.outsideText(module);
+      return o && { lines: o.lines, edited: o.edited, contexts: null, hash: o.hash };
+    }
     const rel = api.world.project.files.get(module) ?? m?.file;
     if (!rel) return null;
     try {
@@ -111,6 +116,10 @@ async function docInput(api: AgentApi, view: unknown, settings: unknown, retired
       settings: st.settings,
       source,
       fileOf: (module) => v.modules.get(module)?.file ?? null,
+      outside: (module) => {
+        const o = v.modules.has(module) ? null : api.world.outsideFile?.(module);
+        return o ? { file: o.file.file, package: o.file.package.name } : null;
+      },
       // a branch's build is of its commit, not of what is checked out meanwhile (DeploySpec)
       build: { fingerprint: api.world.graph?.fingerprint ?? null, commit: shownOr(api.world.shownCommit?.(), root) },
       ...(tv !== undefined ? { titles: titleContext(api.world) } : {}),
@@ -153,6 +162,7 @@ function pastInput(api: AgentApi, v: View, at: number, rec: ViewData, view: DocV
       settings,
       source: b.source,
       fileOf: b.fileOf,
+      outside: b.outside,
       build: { fingerprint: s.fingerprint, commit: c && { hash: c.hash, branch: c.branch, ...(c.dirty ? { dirty: true } : {}), ...(c.guessed ? { guessed: true } : {}) }, toolchain: s.toolchain },
       past: { snapshot: at, at: s.at, when: fullWhen(s.at), ...(s.approx ? { approx: true } : {}) },
       titles: titleContext(api.world),
@@ -228,7 +238,7 @@ export function exportOutline(api: AgentApi, view: string, version?: unknown): A
     review = reviewThen(review, b.past.nowName);
   }
   const set = evaluate(rec.scope, { g, review });
-  const plan = planDoc(g, set, rec.clustering, rec.hidden[rec.clustering] ?? []);
+  const plan = planDoc(g, set, rec.clustering, rec.hidden[rec.clustering] ?? [], outsideKeys(g, review));
   const board = boardSpots({ g, review, rec, memory, whole, notes, ...(past ? { past } : {}) });
   return ok({ view: rec.id, ...(at !== null ? { version: at } : {}), outline: outlineOf(plan, g, board) });
 }

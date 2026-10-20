@@ -19,6 +19,11 @@
 //   history/sources/<sha256>.gz       one text of a project file (server/sourcestore.ts)
 //   history/snapshots/<id>.json.gz    a snapshot's manifest: module → content hash, and module →
 //                                     the text its build compiled (`sources`)
+//
+// The sources outside the project — the packages', Lean's core's — are not kept (HistorySpec
+// decision 24, the owner's of 2026-10-20): a snapshot records each package's revision as the
+// lake-manifest pinned it (`packages`; the core's is its toolchain), and a past build shows an
+// outside declaration's source only where its package is at that revision now.
 //   history/index.jsonl               one line per snapshot (SnapshotInfo), appended; the last line
 //                                     of an id is what it is (a build read again supersedes)
 //
@@ -73,6 +78,10 @@ export interface SnapshotInfo {
   /** the VisualProof version that read it, last (UpdateSpec decision 10): absent for a snapshot
    *  read before 0.4 */
   tool?: string;
+  /** each package's revision as the lake-manifest pinned it for this build (HistorySpec decision 24):
+   *  as it was read (`from: "read"`), or, for a snapshot read before 0.7.0, from its commit's
+   *  lake-manifest.json (`"commit"`, backfilled); absent where neither is known */
+  packages?: { revs: Record<string, string>; from: "read" | "commit" };
 }
 
 /** A unit as a snapshot keeps it: what a card shows, the versions' parts, its axioms by name. */
@@ -114,6 +123,9 @@ interface ExternalRecord {
   kind: Kind;
   module: string;
   ax: string[];
+  /** its place in its package's source (since 0.7.0): what a past build shows of it where its
+   *  package is at the same revision now (HistorySpec decision 24) */
+  range?: [number, number, number, number];
 }
 
 interface Manifest {
@@ -173,6 +185,38 @@ export function commitNow(root: string): SnapshotInfo["commit"] {
   const branch = git(root, "rev-parse", "--abbrev-ref", "HEAD");
   const status = git(root, "status", "--porcelain", "--untracked-files=no", "--", "*.lean");
   return { hash, branch: branch && branch !== "HEAD" ? branch : null, ...(status ? { dirty: true } : {}) };
+}
+
+/** Each package's revision as a lake-manifest's text pins it (a past build's, from its commit):
+ *  name → rev; null where the text is not a manifest. */
+export function manifestRevisions(text: string): Record<string, string> | null {
+  try {
+    const m = JSON.parse(text) as { packages?: unknown };
+    if (!Array.isArray(m.packages)) return null;
+    const out: Record<string, string> = {};
+    for (const p of m.packages as { name?: unknown; rev?: unknown }[]) if (typeof p?.name === "string" && p.name && typeof p.rev === "string" && p.rev) out[p.name] = p.rev;
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+/** Give the snapshots read before 0.7.0 recorded them their packages' revisions (HistorySpec
+ *  decision 24): each one's commit's lake-manifest.json, where its commit is known (not guessed) and
+ *  its `.lean` files were that commit's (not dirty); read-only git, once (a snapshot given them is
+ *  not looked at again). How many were given theirs. */
+export function backfillPackages(h: History, root: string): number {
+  let n = 0;
+  for (const s of h.list()) {
+    const c = s.commit;
+    if (s.packages || !c || c.guessed || c.dirty || !/^[0-9a-f]{7,64}$/.test(c.hash)) continue;
+    const text = git(root, "show", `${c.hash}:./lake-manifest.json`);
+    const revs = text === null ? null : manifestRevisions(text);
+    if (!revs) continue;
+    h.annotate(s.id, { packages: { revs, from: "commit" } });
+    n++;
+  }
+  return n;
 }
 
 /** The project's git source and the commit checked out, as a page may show them (an artwork's foot,
@@ -300,7 +344,7 @@ function records(g: RawGraph): { modules: ModuleRecord[]; externals: ExternalRec
       else r.out.push([src, at.get(dst)!, m]);
     }
   }
-  const externals = g.externals.map((e) => ({ name: e.name, kind: e.kind, module: e.module, ax: axNames(e.ax) })).sort((a, b) => (a.name < b.name ? -1 : 1));
+  const externals = g.externals.map((e) => ({ name: e.name, kind: e.kind, module: e.module, ax: axNames(e.ax), ...(e.range ? { range: e.range } : {}) })).sort((a, b) => (a.name < b.name ? -1 : 1));
   return { modules: [...byModule.values()].sort((a, b) => (a.module < b.module ? -1 : 1)), externals, edges };
 }
 
@@ -428,7 +472,7 @@ export class History {
    *  written now took: asked only where the snapshot is written; a build read again keeps the text
    *  it was found to have before for a module whose file was edited since, its Lake hash being the
    *  same. */
-  record(g: RawGraph, o: { at: number; fingerprint: string; commit: SnapshotInfo["commit"]; toolchain: string; missing: string[]; imported?: boolean; approx?: boolean; read?: string; sources?: () => { map: SourceMap; written: number }; tool?: string }): { info: SnapshotInfo; fresh: boolean; written: boolean; before: SnapGraph | null } {
+  record(g: RawGraph, o: { at: number; fingerprint: string; commit: SnapshotInfo["commit"]; toolchain: string; missing: string[]; imported?: boolean; approx?: boolean; read?: string; sources?: () => { map: SourceMap; written: number }; tool?: string; packages?: Record<string, string> }): { info: SnapshotInfo; fresh: boolean; written: boolean; before: SnapGraph | null } {
     mkdirSync(this.modDir, { recursive: true });
     mkdirSync(this.snapDir, { recursive: true });
     const at = new Date(o.at).toISOString();
@@ -494,6 +538,8 @@ export class History {
       ...(same?.renames ? { renames: same.renames } : {}),
       ...(texts ? { sources: texts } : {}),
       ...(o.tool ? { tool: o.tool } : {}),
+      // the packages' revisions as read now; a build read again before 0.7.0 keeps what was found
+      ...(o.packages ? { packages: { revs: o.packages, from: "read" as const } } : same?.packages ? { packages: same.packages } : {}),
     };
     this.save(info);
     this.readOf(id).add(o.fingerprint);
@@ -507,7 +553,7 @@ export class History {
   }
 
   /** Say more of a snapshot (the renames found against the one before, its texts backfilled). */
-  annotate(id: number, more: Partial<Pick<SnapshotInfo, "renames" | "sources">>): void {
+  annotate(id: number, more: Partial<Pick<SnapshotInfo, "renames" | "sources" | "packages">>): void {
     const s = this.infos.get(id);
     if (s) this.save({ ...s, ...more });
   }
@@ -545,6 +591,12 @@ export class History {
     if (!ref) return null;
     const text = ref.blob ? this.sources.text(ref.blob) : null;
     return { ref: ref.blob && text === null ? { ...ref, blob: undefined, why: "its kept text cannot be read" } : ref, text };
+  }
+
+  /** The modules snapshot `id`'s outside declarations are in. */
+  outsideModulesOf(id: number): Set<string> {
+    const g = this.graph(id);
+    return new Set(g ? g.nodes.slice(g.projectCount).map((v) => v.module) : []);
   }
 
   /** The modules snapshot `id` holds. */
@@ -598,7 +650,7 @@ export class History {
       nodes.push(...r.nodes);
     }
     const projectCount = nodes.length;
-    for (const e of externals) nodes.push({ name: e.name, kind: e.kind, module: e.module, type: "", ax: e.ax, hash: "", ext: true });
+    for (const e of externals) nodes.push({ name: e.name, kind: e.kind, module: e.module, type: "", ax: e.ax, hash: "", ext: true, ...(e.range ? { range: e.range } : {}) });
     const index = new Map(nodes.map((v, i) => [v.name, i]));
     const edges: [number, number, number][] = [];
     recs.forEach((r, k) => {
@@ -834,7 +886,7 @@ export function pageGraph(g: SnapGraph, identity: Identity) {
     return k;
   };
   const nodes = g.nodes.map((v) => {
-    if (v.ext) return { name: v.name, kind: v.kind, module: v.module, ax: axOf(v.ax), ext: true as const };
+    if (v.ext) return { name: v.name, kind: v.kind, module: v.module, ax: axOf(v.ax), ext: true as const, ...(v.range ? { range: v.range } : {}) };
     const { ax, hash, shape: _s, refs: _r, ...rest } = v;
     return { ...rest, ax: axOf(ax), hash: snapVersion(v, identity), ...(v.shape ? { kernel: hash } : {}) };
   });

@@ -99,7 +99,15 @@ export function pastGraph(snap: SnapshotNodes, edges: Int32Array, now: Graph, di
   const thenName = new Map(diff.renamed.map(([a, b]) => [b, a]));
   const removed = new Set(diff.removed);
   const changed = new Set(diff.changed.map((n) => thenName.get(n) ?? n));
-  const nodes = snap.nodes;
+  // a snapshot read before 0.7.0 recorded no place for its outside declarations: where its package
+  // is at the same revision now, the place now is the place then, and only there is its source shown
+  // (HistorySpec decision 24; the server says which), so it takes the place now
+  const nodes = snap.nodes.map((v, i) => {
+    if (i < P || v.range) return v;
+    const j = now.byName.get(v.name);
+    const r = j !== undefined && now.isExt(j) ? now.nodes[j].range : undefined;
+    return r ? { ...v, range: r } : v;
+  });
   const meta: ViewMeta = {
     schema: 1,
     layoutVersion: now.meta.layoutVersion,

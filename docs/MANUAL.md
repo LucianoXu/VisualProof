@@ -338,7 +338,9 @@ to a team. It needs git, besides elan.
   shows it at once.
 - **Open on GitHub**: where the remote is github.com, the source window links each declaration to
   its lines in the build's commit (`blob/<commit>/<file>#L12-L17`), where the text shown is that
-  commit's; the popover links the branch and each commit.
+  commit's; the popover links the branch and each commit. A declaration from outside the project is
+  linked in its package's repository at the revision the lake-manifest pins, whether a branch is
+  followed or not (Review, Source).
 - **Safety** ([SECURITY.md](../SECURITY.md)): **whoever can push to that branch runs code on this
   machine** — the lakefile, and what elaboration runs — as the server's user. Run it as a user of
   its own, give that user a deploy key that only reads the repository, and protect the branch.
@@ -906,6 +908,16 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   When the file has changed since it was compiled, the window shows the present text,
   found by name, under a warning, and opinions wait until the file is compiled again: the graph,
   and an opinion's hash, are about the compiled version.
+  **A declaration from outside the project** — Mathlib's, Batteries', any package's in
+  `.lake/packages/`, Lean's core's (`Init`, `Std`, `Lean`) — opens the same way (the owner's
+  decision, 2026-10-20): its file in its package, as Lake lays the package out, or in the
+  toolchain's `src/lean/`, at the place its `.olean` records, with Lean's hovers and names linked;
+  the title bar names the package and its revision (*mathlib at 089be84 ·
+  Mathlib/Logic/Basic.lean:120–126*, *Lean v4.35.0 · Init/Prelude.lean:…*), and **Open on GitHub**
+  opens those lines in the package's repository at that revision (Lean's core: `leanprover/lean4` at
+  the toolchain's tag), where it is on GitHub. Where the package is at another revision than when
+  the graph was read, the window shows its present text, found by name, under a warning. A
+  read-only reader reads these too.
 - On the canvas, the Status colours say what reviewers said about the present version (bluish
   green approved, a calm cobalt blue commented, orange stale, mid grey nobody yet, very light green
   trusted without review — in the dark theme a dim green, the quietest); the rows of a TCB list carry a dot of the same meaning. A target carries
@@ -955,7 +967,12 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   why where it would be given, the review being the latest build's. Its source window (Space,
   Source) shows the text that build was compiled from, with that build's line numbers and its names
   linked to the declarations of then; no Lean is asked there, a hover card showing the statement and doc then,
-  and where a text is not kept the window and the panel say so. A declaration renamed since is
+  and where a text is not kept the window and the panel say so. Outside the project nothing is kept
+  per build (the owner's decision, 2026-10-20): a past build shows an outside declaration's source —
+  its package's file as it is now — only where that package is at the revision the build had (the
+  lake-manifest's `rev` then; Lean's core: the same toolchain), and says otherwise that the build's
+  outside source was not kept. Each build records its packages' revisions; builds read before
+  0.7.0 take them from their commit's `lake-manifest.json`. A declaration renamed since is
   reached there by its name now, and what was said of it is read. What you make from a board of a
   past build keeps its build: Zoom in, a cluster's Zoom in and a target's key declarations open
   their view at that build (leaving the Time Machine for it); Export prints the board on show, at the
@@ -1124,8 +1141,8 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   another: one that would is left out. `scripts/artwork-batch.mjs` in VisualProof's repository
   makes such pictures of many projects in one go.
 - **The window** says which view it exports and what that holds — *Export the view "X": N
-  declarations in M sections*, and how many declarations from outside the project it holds, which
-  are not printed — then the document's **title** and **author line** as they will print, then the
+  declarations in M sections*, how many of them are key declarations from outside the project, and
+  how many declarations from outside the project it holds besides, which are not printed — then the document's **title** and **author line** as they will print, then the
   common settings: paper, text and code size, and whether a table of contents is printed.
   **Generate** typesets it
   (seconds; the window shows how long it has been going), then offers the **PDF**, the **LaTeX
@@ -1153,7 +1170,9 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
 - **What the document holds**: a head card (the project, the build's fingerprint, its commit and
   branch, the toolchain, what is trusted without review, and what the view holds from outside the
   project: *Also on this view: 300 declarations from outside the project (Mathlib 203, Init 97), not
-  printed*), then a table of contents in two columns (the sections with their pages, and the
+  printed*; a declaration from outside the project that is **key** for a target is printed, as the
+  project's are, from its package's source, in its cluster's section, its place naming its package —
+  the owner's decision, 2026-10-20), then a table of contents in two columns (the sections with their pages, and the
   declarations where the document is short; a setting can leave it out), and the body right after
   it, on the same page where there is room. Every declaration of the project the view holds,
   whatever is folded, is printed in **sections from the view's clusters as the board shows them**

@@ -53,7 +53,12 @@ Numbers missing below are withdrawn decisions.
      which is not printed ("Also on this view: 300 declarations from outside the project (Mathlib 203,
      Init 97), not printed"). No time of making. Then, by default, a two-column table of contents.
      The body follows on the same page; a section's head is kept with what follows it.
-   - **A declaration**: a plain heading (short name, full name, kind, place), its docstring as prose,
+   - **An outside declaration is printed only where it is key** (decision 1; the owner's decision
+     of 2026-10-20): key for a target, it is printed as a project declaration is, from its
+     package's source (Lean's core's for `Init`, `Std`, `Lean`…), in its cluster's section of the
+     board; the rest of the outside world stays counted on the head card.
+   - **A declaration**: a plain heading (short name, full name, kind, place — outside the project,
+     its file in its package, the package named), its docstring as prose,
      then its Lean code highlighted in the page's colours, without line numbers or context. **A
      definition's content is always printed and a proof never is**: a theorem is cut after its
      statement; proofs inside a definition are cut where the usage pass found them in the text

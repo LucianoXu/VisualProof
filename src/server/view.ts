@@ -79,7 +79,9 @@ function viewParts(p: Project, ex: Extraction): { nodes: ViewNode[]; edges: Int3
     if (n.proofs?.length) v.proofs = n.proofs;
     return v;
   });
-  for (const e of g.externals) nodes.push({ name: e.name, kind: e.kind, module: e.module, ax: e.ax, ext: true });
+  // an outside declaration's doc and place in its package's source, which the source window shows
+  // (ReviewSpec, "The source window", the owner's decision of 2026-10-20)
+  for (const e of g.externals) nodes.push({ name: e.name, kind: e.kind, module: e.module, ax: e.ax, ext: true, ...(e.doc ? { doc: e.doc } : {}), ...(e.range ? { range: e.range } : {}) });
   notationStatements(p, nodes);
 
   const edges = new Int32Array(g.edges.length * 3);

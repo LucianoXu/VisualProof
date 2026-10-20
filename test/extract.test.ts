@@ -10,7 +10,8 @@ import type { RawGraph } from "../src/shared/graph.ts";
 import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../src/shared/graph.ts";
 import { versionBase, versions } from "../src/server/versions.ts";
 import { History } from "../src/server/history.ts";
-import { copyFixture, extractor } from "./fixturecopy.ts";
+import { copyFixture, extractor, fixtureToolchain } from "./fixturecopy.ts";
+import { OutsideSources } from "../src/server/outside.ts";
 import { findRenames } from "../src/server/renames.ts";
 
 /** the extractor, compiled as the server runs it (test/fixturecopy.ts) */
@@ -74,6 +75,29 @@ test("a project reached through a symbolic link is the project: its modules are 
   } finally {
     rmSync(links, { recursive: true, force: true });
   }
+});
+
+test("an outside declaration has its doc and its place in its own source, which the server finds: Lean's core, in the toolchain", opts, () => {
+  // the source window shows it (ReviewSpec, "The source window", the owner's decision of 2026-10-20)
+  const ranged = g.externals.filter((e) => e.range);
+  assert.ok(ranged.length >= g.externals.length * 0.95, `${ranged.length} of ${g.externals.length} outside declarations have a place`);
+  const nat = g.externals.find((e) => e.name === "Nat")!;
+  assert.match(nat.doc ?? "", /natural numbers/);
+  const o = new OutsideSources(dir, fixtureToolchain);
+  const unnamed: string[] = [];
+  for (const e of ranged) {
+    const f = o.find(e.module);
+    assert.ok(f, `no file for ${e.module}`);
+    assert.equal(f.package.core, true, `${e.module} is Lean's`);
+    const lines = readFileSync(f.path, "utf8").split("\n");
+    const [from, , to] = e.range!;
+    assert.ok(from >= 1 && to >= from && to <= lines.length, `${e.name}: lines ${from}–${to} of ${lines.length}`);
+    // its place is its declaration, the name written there (an instance's may have none of its own)
+    if (e.kind !== "instance" && !lines.slice(from - 1, to).join("\n").includes(e.name.split(".").pop()!)) unnamed.push(e.name);
+  }
+  assert.deepEqual(unnamed, [], "places that do not name their declaration");
+  const at = nat.range!;
+  assert.match(readFileSync(o.find("Init.Prelude")!.path, "utf8").split("\n").slice(at[0] - 1, at[2]).join("\n"), /^inductive Nat where/m);
 });
 
 test("generated constants are folded, user declarations kept", opts, () => {

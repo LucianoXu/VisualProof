@@ -27,7 +27,7 @@ import { LAYOUT_VERSION, SITE_STMT } from "../src/shared/graph.ts";
 import { computeLayout } from "../src/shared/layout.ts";
 import { isPackedEdges, unpackEdges } from "../src/shared/edgecodec.ts";
 import { JSON_GZIP_AWAY_FROM, sendJson } from "../src/server/send.ts";
-import { site, SOURCE, stream } from "./site.ts";
+import { PKG_REV, PKG_SOURCE, site, SOURCE, stream } from "./site.ts";
 import type { Json } from "./site.ts";
 
 test("a body too large is answered 413, as JSON ({error, hint} on the agents' API), and the connection is closed", async () => {
@@ -430,7 +430,7 @@ test("only the graph's modules are served or given to Lean, whatever files the p
   try {
     const source = await S.ask("GET", "/api/source?module=M");
     assert.deepEqual([source.status, source.json?.file, source.json?.text], [200, "M.lean", SOURCE]);
-    for (const mod of ["_attic.Old", "Old", "ci.Axioms", "Axioms", "../M", "Init.Prelude"]) {
+    for (const mod of ["_attic.Old", "Old", "ci.Axioms", "Axioms", "../M", "Init.Data.Nat"]) {
       assert.equal((await S.ask("GET", `/api/source?module=${encodeURIComponent(mod)}`)).status, 404, mod);
       for (const route of ["/api/hover?line=0&character=0&", "/api/hover/describe?name=Nat&", "/api/hover/open?", "/api/hover/names?"])
         assert.equal((await S.ask(route.includes("open") || route.includes("names") ? "POST" : "GET", `${route}module=${encodeURIComponent(mod)}`, route.includes("names") ? [[0, 0]] : undefined)).status, 404, `${route} ${mod}`);
@@ -438,6 +438,44 @@ test("only the graph's modules are served or given to Lean, whatever files the p
     // the agents' API: a module given must be one of the graph's
     const agent = { "x-visualproof-name": "Claude", "x-visualproof-kind": "agent" };
     for (const mod of ["ci.Axioms", "_attic.Old", "Init.Prelude"]) assert.equal((await S.ask("GET", `/api/agent/describe?name=Nat&module=${mod}&wait=1000`, undefined, agent)).status, 400, mod);
+    assert.equal(S.hover.state().state, "off", "Lean was never started");
+  } finally {
+    await S.close();
+  }
+});
+
+test("outside the project, a module an outside declaration of the graph is in is served from its package, to read-only readers too; no other", async () => {
+  // ReviewSpec, "The source window" (the owner's decision of 2026-10-20); server/outside.ts
+  const key = "k".repeat(40);
+  const owner = { "x-visualproof-name": "Olivia", authorization: `Bearer ${key}` };
+  const S = await site({ outside: true, key });
+  try {
+    const src = await S.ask("GET", "/api/source?module=Pkg.Lemmas", undefined, owner);
+    assert.equal(src.status, 200);
+    assert.deepEqual([src.json?.module, src.json?.file, src.json?.text], ["Pkg.Lemmas", "Pkg/Lemmas.lean", PKG_SOURCE]);
+    assert.equal(src.json?.hash, lakeTextHash(PKG_SOURCE));
+    assert.deepEqual(src.json?.outside, { package: "pkg", core: false, rev: PKG_REV, github: { repo: "acme/pkg", rev: PKG_REV, path: "Pkg/Lemmas.lean" } });
+    assert.ok(!JSON.stringify(src.json).includes(S.dir), "nothing says where the package is on this machine");
+    // a module of the package no outside declaration of the graph is in, a name that is no module's
+    for (const mod of ["Pkg.Other", "Pkg", "Pkg.«..».Lemmas", ".lake.packages.pkg.Pkg.Lemmas"]) {
+      assert.equal((await S.ask("GET", `/api/source?module=${encodeURIComponent(mod)}`, undefined, owner)).status, 404, mod);
+      assert.equal((await S.ask("GET", `/api/hover?line=0&character=0&module=${encodeURIComponent(mod)}`, undefined, owner)).status, 404, mod);
+    }
+    // a read-only reader reads it as the project's sources
+    const made = await S.ask("POST", "/api/share/readonly", {}, owner);
+    const r = await fetch(S.base + made.json!.made.path, { redirect: "manual" });
+    const cookie = r.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+    const read = await S.ask("GET", "/api/source?module=Pkg.Lemmas", undefined, { cookie });
+    assert.deepEqual([read.status, read.json?.text], [200, PKG_SOURCE], "a read-only reader");
+    assert.equal((await S.ask("GET", "/api/source?module=Pkg.Lemmas")).status, 404, "nobody without the key");
+    // the agents' source and context: its text at its place, its package and revision
+    const agent = { ...owner, "x-visualproof-name": "Claude", "x-visualproof-kind": "agent" };
+    const a = await S.ask("GET", "/api/agent/source?name=Pkg.lemma", undefined, agent);
+    assert.equal(a.status, 200, JSON.stringify(a.json));
+    assert.deepEqual([a.json?.file, a.json?.compiled, a.json?.text, a.json?.context], ["Pkg/Lemmas.lean", true, "/-- A lemma of the package. -/\ntheorem lemma : True := trivial", "namespace Pkg"]);
+    assert.equal(a.json?.outside.rev, PKG_REV);
+    const c = await S.ask("GET", "/api/agent/context?name=Pkg.lemma", undefined, agent);
+    assert.deepEqual([c.status, c.json?.namespace, c.json?.precision], [200, "Pkg", "text"]);
     assert.equal(S.hover.state().state, "off", "Lean was never started");
   } finally {
     await S.close();

@@ -218,6 +218,10 @@ function blocks(bs: readonly Block[]): string {
  *  (ExportSpec decision 16): its statement as the build recorded it is printed instead. */
 export const NOT_KEPT_NOTE = "Its source text at this build is not kept: printed is its statement, as the build recorded it.";
 
+/** The same of a declaration outside the project (HistorySpec decision 24): outside sources are not
+ *  kept per build, and its package is at another revision now; the build kept no statement of it. */
+export const OUTSIDE_NOT_KEPT_NOTE = "Its source at this build was not kept: outside sources are not kept per build, and its package is at another revision now.";
+
 /** A declaration: its head, its full name and place, what it is, its code. `level`: its PDF
  *  bookmark's, one below its section's. */
 function decl(d: DeclEntry, level: number, refs: ReadonlyMap<number, Reference> = new Map()): string {
@@ -226,10 +230,12 @@ function decl(d: DeclEntry, level: number, refs: ReadonlyMap<number, Reference> 
   out.push(`\\vpBookmark{${id}}{${int(level)}}{${escapeLatex(bookmarkText(d.short))}}`);
   out.push(`\\begin{vpDecl}{${id}}{${escapeLatex(d.short)}}{${escapeLatex(d.kind)}}`);
   out.push(`\\vpFullName{${escapeName(d.name)}}`);
-  out.push(`\\vpPlace{${escapeName(d.module)}}{${d.file ? escapePath(d.file) : ""}}{${d.line ? int(d.line) : ""}}`);
+  // outside the project, its file in its package, the package named (ExportSpec decision 8)
+  const file = d.file ? `${d.file}${d.package ? ` (${d.package})` : ""}` : "";
+  out.push(`\\vpPlace{${escapeName(d.module)}}{${file ? escapePath(file) : ""}}{${d.line ? int(d.line) : ""}}`);
   if (d.doc) out.push(`\\begin{vpDocstring}`, blocks(d.doc), `\\end{vpDocstring}`);
   out.push(code(d.code));
-  if (d.code.notKept) out.push(`\\vpDeclNote{${escapeLatex(NOT_KEPT_NOTE)}}`);
+  if (d.code.notKept) out.push(`\\vpDeclNote{${escapeLatex(d.external ? OUTSIDE_NOT_KEPT_NOTE : NOT_KEPT_NOTE)}}`);
   if (d.papers) out.push(papers(d.papers, refs));
   // the notes attached to it, as its explanation
   for (const e of d.notes ?? []) out.push(note(e, refs));

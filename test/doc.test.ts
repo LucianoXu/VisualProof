@@ -251,7 +251,8 @@ function fixture() {
     { ...decl("Fixture.bounded", "def", "Fixture.Basic", "bounded", "Data whose invariant is proved by a lemma."), proofs: [[16, 61, 16, 70]] },
     // a name a writer could make LaTeX of, with no source to read: printed from the graph
     { name: ODD, kind: "def", module: "Fixture.Use", ax: 0, hash: "h-odd", type: "Nat → \\write18{rm -rf /} 100% #1 $x$ ^^5c" },
-    { name: "Nat", kind: "inductive", module: "Init.Prelude", ax: 0, ext: true },
+    // from outside, with its place in Lean's core (since 0.7.0)
+    { name: "Nat", kind: "inductive", module: "Init.Prelude", ax: 0, ext: true, doc: "The natural numbers.", range: [2, 0, 5, 18] },
     { name: "Nat.le_add_right", kind: "theorem", module: "Init.Data", ax: 0, ext: true },
   ];
   const at = (n: string) => nodes.findIndex((v) => v.name === n);
@@ -338,7 +339,7 @@ test("the document of a view: the head card with what it leaves out, sections fr
   const doc = buildDoc(input());
   // plain JSON, as an agent reads it, and nothing of targets, presets, contents or an appendix
   assert.deepEqual(JSON.parse(JSON.stringify(doc)), doc);
-  assert.equal(doc.version, 10);
+  assert.equal(doc.version, 11);
   assert.deepEqual(Object.keys(doc).sort(), ["count", "head", "items", "references", "settings", "version", "view"]);
   assert.deepEqual(doc.view, { id: "v1", title: "everything", scope: "all", clustering: "namespace", hidden: [] });
   // the head card: the project, the build and its commit, the toolchain, the trusted boundary, and
@@ -371,6 +372,44 @@ test("the document of a view: the head card with what it leaves out, sections fr
   const byFile = buildDoc(input({ view: { ...input().view, clustering: "module" } }));
   assert.deepEqual(outline(byFile.items).map(([t, l]) => [t, l]), [["Fixture", 1], ["Basic", 2], ["Use", 2]]);
   assert.deepEqual(declsIn(sectionsIn(sectionsIn(byFile.items)[0].items)[0].items).map((e) => e.name), ["Fixture.Point", "Fixture.Point.size", "Fixture.bounded", "Fixture.size_le"]);
+});
+
+test("an outside declaration key for a target is printed as the project's are, from its package's source; the rest of the outside world is counted", () => {
+  const { d, input, source } = fixture();
+  // the owner's decision of 2026-10-20 (ExportSpec decision 8): key declarations may be outside
+  record(d, { op: "key", target: "Fixture.main_thm", name: "Nat", by: "Alice", on: true }, "tc", "2026-10-08T09:30:00.000Z");
+  const PRELUDE = "prelude\n/-- The natural numbers. -/\ninductive Nat where\n  | zero\n  | succ (n : Nat)\n";
+  const withCore = (over: Partial<DocInput> = {}) =>
+    input({
+      source: (m) => (m === "Init.Prelude" ? { lines: PRELUDE.split("\n"), edited: false, contexts: null, hash: null } : source(m)),
+      outside: (m) => (m === "Init.Prelude" ? { file: "Init/Prelude.lean", package: "Lean" } : null),
+      ...over,
+    });
+  const doc = buildDoc(withCore());
+  const nat = printedDecls(doc).find((e) => e.name === "Nat")!;
+  assert.deepEqual([nat.external, nat.package, nat.file, nat.line, nat.module], [true, "Lean", "Init/Prelude.lean", 2, "Init.Prelude"]);
+  assert.equal(codeText(nat), "inductive Nat where\n  | zero\n  | succ (n : Nat)", "its source, its docstring printed as prose");
+  assert.deepEqual(nat.doc, parseMarkdown("The natural numbers."));
+  assert.deepEqual(doc.head.outside, { count: 1, by: [{ name: "Init", count: 1 }] }, "the rest, counted");
+  assert.equal(doc.count.declarations, 10);
+  // in the section of its cluster on the board: the outside world's
+  assert.ok(outline(doc.items).some(([title, , , names]) => title === "External" && names.includes("Nat")));
+  // typeset, its place names its package
+  assert.ok(renderLatex(doc).includes("\\vpPlace{Init.\\vpBreak{}Prelude}{Init/\\vpBreak{}Prelude.lean (Lean)}{2}"));
+  // the project's declarations say nothing of it
+  assert.ok(!Object.hasOwn(printedDecls(doc).find((e) => e.name === "Fixture.double")!, "external"));
+  // its source not found: its name alone, which the export's notes say
+  const bare = buildDoc(input());
+  const n2 = printedDecls(bare).find((e) => e.name === "Nat")!;
+  assert.deepEqual([codeText(n2), n2.external, n2.package, n2.file, n2.line], ["Nat", true, undefined, null, null]);
+  assert.ok(docNotes(bare).some((l) => /1 key declaration from outside the project is printed by name alone, their source not found: Nat\./.test(l)), docNotes(bare).join("\n"));
+  // not key, not printed: counted
+  const unkeyed = buildDoc(withCore({ review: emptyReview() }));
+  assert.ok(!printedDecls(unkeyed).some((e) => e.external));
+  assert.deepEqual(unkeyed.head.outside, { count: 2, by: [{ name: "Init", count: 2 }] });
+  // the plan says so too, as the Export window does
+  const { g } = fixture();
+  assert.equal(planDoc(g, new Uint8Array(g.n).fill(1), "namespace", [], new Uint8Array(g.n).fill(1)).keyOutside, 2);
 });
 
 test("the sections follow the view's hidden levels: what a hidden level holds is printed in its parent's section, the top level's under no heading", () => {

@@ -135,7 +135,7 @@ const byName = (doc: DocModel, name: string) => printedDecls(doc).find((e) => e.
 test("a past view's document is that build's: its declarations on the past board, in its sections, each with its text then; nothing new since", () => {
   const { past, input } = builds();
   const doc = buildDoc(input("ns(P)"));
-  assert.equal(doc.version, 10);
+  assert.equal(doc.version, 11);
   // the set: what the scope holds on the past graph, which does not hold P.fresh (new since)
   assert.equal(past.graph.byName.get("P.fresh"), undefined, "the past graph holds that build's declarations alone");
   assert.deepEqual(printedDecls(doc).map((e) => e.name).sort(), ["P.bounded", "P.lost", "P.size", "P.size_pos", "P.twice"]);

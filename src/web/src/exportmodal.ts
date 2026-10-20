@@ -35,7 +35,7 @@ export interface ExportView {
   /** the document's title (shared/views.ts, docTitle) */
   heading: string;
   fixed: boolean;
-  plan: Pick<DocPlan, "count" | "sectionCount" | "outside">;
+  plan: Pick<DocPlan, "count" | "sectionCount" | "outside"> & { keyOutside?: number };
   /** a preview of the view at another build than its own (the Time Machine): that build, a
    *  snapshot's id, or null for the latest; absent, the view's own build */
   version?: number | null;
@@ -242,7 +242,10 @@ export class ExportModal {
     const esc = escapeHtml;
     const p = v.plan;
     const by = p.outside.by.map((b) => `${b.name} ${b.count.toLocaleString()}`).join(", ");
-    const out = p.outside.count ? `<div class="ex-sum muted" title="${esc(by)}">${count(p.outside.count, "declaration")} from outside the project, not printed.</div>` : "";
+    // outside the project, what is key for a target is printed, from its package's source (ExportSpec
+    // decision 8, the owner's decision of 2026-10-20)
+    const key = p.keyOutside ? `<div class="ex-sum muted">${count(p.keyOutside, "key declaration")} from outside the project among them, printed from ${p.keyOutside === 1 ? "its package's" : "their packages'"} source.</div>` : "";
+    const out = key + (p.outside.count ? `<div class="ex-sum muted" title="${esc(by)}">${count(p.outside.count, "declaration")} from outside the project, not printed.</div>` : "");
     // a preview's build, which its title does not say (a view's own past build, its title does)
     const at = v.version === undefined ? "" : v.when ? ` at the build of <b>${esc(v.when)}</b>` : " at the latest build";
     return (

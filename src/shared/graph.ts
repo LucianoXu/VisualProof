@@ -27,7 +27,10 @@ export interface RawGraph {
   roots: string[];
   modules: { name: string; imports: string[] }[];
   nodes: RawNode[];
-  externals: { name: string; kind: Kind; module: string; ax: number }[];
+  /** `doc` and `range` as for a node, in the declaration's own package or Lean's core (the source
+   *  window shows it: ReviewSpec, "The source window", the owner's decision of 2026-10-20); absent
+   *  from an extraction made before 0.7.0 */
+  externals: { name: string; kind: Kind; module: string; ax: number; doc?: string; range?: [number, number, number, number] }[];
   /** [src, dst, sites]; dst indexes nodes, then externals */
   edges: [number, number, number][];
   axioms: string[];
@@ -105,7 +108,8 @@ export interface RawNode {
   proofs?: [number, number, number, number][];
 }
 
-/** One node as the page sees it. Externals carry `ext` and no card details. */
+/** One node as the page sees it. Externals carry `ext`, and of a card's details their doc and range
+ *  alone, in their own package's or Lean's source (since 0.7.0). */
 export interface ViewNode {
   name: string;
   kind: Kind;
