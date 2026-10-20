@@ -6,6 +6,7 @@
 
 import type { BuildDelta, BuildRev, BuildStatus } from "../../shared/build.ts";
 import type { ChatEvent, Invited, PrivateCount, StreamHello } from "../../shared/collab.ts";
+import type { PointerNews } from "../../shared/pointer.ts";
 import type { ViewMeta } from "../../shared/graph.ts";
 import type { ReviewRev } from "../../shared/review.ts";
 import { LiveBuild } from "./buildread.ts";
@@ -247,6 +248,8 @@ export function livePart(page: Page): LivePart {
       // the conversations are read again once the heartbeat named this page's stream: what of them
       // it is sent depends on the name (CollabSpec decision 13)
       void page.people.connected(hello).then(() => !reader && page.talk.connected());
+      // a stream of its own again: a read-only page says again whom it follows
+      page.pointers.connected();
       updatingTo = null;
       reloader.hello(hello.server);
       // the release this page's code is of, once it is the server's (GuideSpec decision 11): a page
@@ -263,6 +266,8 @@ export function livePart(page: Page): LivePart {
     });
     es.addEventListener("presence", (e) => page.people.setPeers(JSON.parse((e as MessageEvent).data)));
     es.addEventListener("private", (e) => page.people.setPrivateCount(JSON.parse((e as MessageEvent).data) as PrivateCount));
+    // where the others of this page's room point (the owner's decisions of 2026-10-20)
+    es.addEventListener("pointer", (e) => page.pointers.heard(JSON.parse((e as MessageEvent).data) as PointerNews));
     // the people invited by a personal link, as they are called now (CollabSpec decision 9): what
     // each did shows under that name, in Activity and on the notes
     es.addEventListener("people", (e) => {

@@ -272,6 +272,12 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     tall: "as on a larger screen (decision 18)",
     monitor: "as on a larger screen (decision 30)",
   },
+  // the room's pointers (the owner's decisions of 2026-10-20): each found again on the page's own
+  // layout, the mark at the edge of what holds one where it is
+  pointerMarks: {
+    tall: "as on a larger screen, at the edge of the panel or window that holds the pointer (decision 18)",
+    monitor: "as on a larger screen, at the edge of the panel or window that holds the pointer (decision 30)",
+  },
   meter: {
     tall: "as on a larger screen (decision 18)",
     monitor: "as on a larger screen (decision 30)",

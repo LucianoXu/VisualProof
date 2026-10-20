@@ -1160,6 +1160,35 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
   position: absolute; left: -5px; top: -5px; display: grid; place-items: center; width: 15px; height: 15px;
   border-radius: 50%; color: #fff; box-shadow: 0 0 0 1.5px var(--surface-solid); font: 700 9px/1 var(--font);
 }
+/* the pointers of the page's room (the owner's decisions of 2026-10-20; web/src/pointers.ts): over the
+   windows, the panels and the Export window, under what asks the reader something; every press goes
+   through but a mark's at an edge */
+#pointers { position: fixed; inset: 0; z-index: 43; pointer-events: none; overflow: hidden; }
+.ptr { position: absolute; left: 0; top: 0; transition: opacity 0.4s; will-change: transform; }
+.ptr[hidden], .ptr-edge[hidden], .ptr-sel[hidden] { display: none; }
+.ptr svg { display: block; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.35)); }
+.ptr-who {
+  position: absolute; left: 13px; top: 15px; padding: 1px 6px; border-radius: 8px; background: var(--c); color: #fff;
+  font: 600 10.5px/15px var(--font); white-space: nowrap; box-shadow: 0 0 0 1.5px var(--surface-solid);
+}
+.ptr-sel { position: absolute; background: color-mix(in srgb, var(--c) 26%, transparent); border-radius: 2px; box-shadow: 0 1.5px 0 0 var(--c); }
+.ptr-edge {
+  position: absolute; transform: translate(-50%, -50%); pointer-events: auto; padding: 2px 8px; border: 0; border-radius: 10px;
+  background: var(--c); color: #fff; font: 600 11px/16px var(--font); white-space: nowrap; cursor: pointer; opacity: 0.92;
+  box-shadow: 0 0 0 1.5px var(--surface-solid), var(--shadow-lg);
+}
+.ptr-edge.inert { pointer-events: none; cursor: default; }
+.ptr-edge:hover { opacity: 1; }
+.ptr-ripple {
+  position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--c);
+  background: color-mix(in srgb, var(--c) 18%, transparent); animation: ptr-ripple 0.8s ease-out forwards;
+}
+@keyframes ptr-ripple { from { opacity: 0.9; scale: 0.3; } to { opacity: 0; scale: 1.6; } }
+@media (prefers-reduced-motion: reduce) {
+  /* a still mark that fades */
+  .ptr-ripple { animation: ptr-fade 0.9s ease-out forwards; }
+}
+@keyframes ptr-fade { from { opacity: 0.9; } to { opacity: 0; } }
 /* someone following the reader (the owner's decision of 2026-10-20): the corner the others leave, in
    the reader's colour */
 .peer.follows { position: relative; }

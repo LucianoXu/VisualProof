@@ -23,6 +23,7 @@ import type { NotePlace } from "../../shared/sticky.ts";
 import type { PastSource, PastSourceMissing } from "./pastsource.ts";
 import type { OutsideWhere } from "../../shared/outside.ts";
 import type { AskAnswer, AskSent } from "../../shared/askfollow.ts";
+import type { PointerBody } from "../../shared/pointer.ts";
 
 /** The review as the server last told it: the replay of its logs at revision `rev` of the server's
  *  run `epoch`, and the lines of the logs that cannot be read (shared/review.ts). */
@@ -180,6 +181,9 @@ export interface DataSource {
   /** tell the others where this page is (CollabSpec decision 4), or only that it is here (a private
    *  page, decision 8), by the secret this page's event stream was given (`hello`) */
   presence(token: string, beat: Heartbeat): Promise<void>;
+  /** where this page's pointer is, for its room (POST /api/pointer, shared/pointer.ts): sent and let
+   *  go; a snapshot has no room */
+  pointer(body: PointerBody): void;
   /** what the server's timeline holds (CollabSpec decision 5); a snapshot has none */
   activity(): Promise<StoredEvent[]>;
   /** what this page may share (web/src/share.ts): the link that lets someone in, and whether
@@ -463,6 +467,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     privateSession: null,
     identity: async () => ({ mode: "none", name: null }),
     presence: async () => {},
+    pointer: () => {},
     undoLayout: async () => ({ error: "a snapshot shows the layout as it was" }),
     exportHead: async () => "a snapshot cannot typeset documents: export from the server",
     exportOutline: async () => "a snapshot of the page has no linear form: its document is the server's",
@@ -720,6 +725,12 @@ function serverSource(): DataSource {
       fetch("/api/layout/undo", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
+    // let go as soon as it is sent: what matters is the next one, some 60 ms later
+    pointer: (body) => {
+      void fetch("/api/pointer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+        .then((res) => void res.body?.cancel())
+        .catch(() => {});
+    },
     presence: (token, beat) => {
       const r = heartbeatRequest(token, beat, headers());
       // its answer let go: the browser holds the requests kept alive, 64 KB between them, until their

@@ -258,6 +258,9 @@ export const YOURS = [
   { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
   { id: "followingStrip", what: "the following strip: whom you follow, and its ✕", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
+  // a pointer of the room scrolled away (the owner's decisions of 2026-10-20): its mark at the edge of
+  // what holds it scrolls the reader's own view there; scrolling is never followed
+  { id: "pointerMarks", what: "the mark at the edge of a panel or window where another's pointer is scrolled away, which scrolls there", where: ".ptr-edge" },
   { id: "pointer", what: "the pointer's highlight" },
   { id: "meter", what: "the frame meter", keys: ["p"] },
 ] as const satisfies readonly Yours[];
@@ -274,8 +277,9 @@ type Bookkeeping = (typeof BOOKKEEPING)[number];
 export const FRAMES = ["#bar", "#viewbar", "#foot", "#windows", "#zoom"] as const;
 /** Elements of the page's skeleton that are no surface: the bar's words, and what passes —
  *  tooltips, hints, notes of others' changes, the loader, the artwork's frame and its ground (the
- *  pointer passes them to the board; its panel is the artwork part's). */
-export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art", "#art-sky"] as const;
+ *  pointer passes them to the board; its panel is the artwork part's), the others' pointers (their
+ *  marks at an edge are the reader's own: `pointerMarks`). */
+export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art", "#art-sky", "#pointers"] as const;
 
 export type Part = (typeof FOLLOWED)[number]["part"];
 type Of<P extends Part> = Extract<(typeof FOLLOWED)[number], { part: P }>;

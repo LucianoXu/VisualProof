@@ -32,7 +32,7 @@ import { readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 import { readBody, refused, sendFile, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
 import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
 import { shareAgents, sharePeople, shareReadOnly } from "./appshare.ts";
-import { ask, chat, chatNew, presence } from "./apptalk.ts";
+import { ask, chat, chatNew, pointer, presence } from "./apptalk.ts";
 import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsite.ts";
 import { agentRoute, exportRoute } from "./appagent.ts";
 import { git, graphParts, hover, source, status } from "./appgraph.ts";
@@ -310,6 +310,7 @@ export class App {
       if (path === "/api/identity" && req.method === "GET") return identityGet(this, req, res, link, reader);
       if (path === "/api/identity" && req.method === "POST") return identity(this, req, res);
       if (path === "/api/presence" && req.method === "POST") return presence(this, req, res, agent);
+      if (path === "/api/pointer" && req.method === "POST") return pointer(this, req, res);
       if (path === "/api/events") {
         const session = url.searchParams.get("session");
         // `build=delta`: the page takes the build status as changes (a page of 0.6.0 or later)

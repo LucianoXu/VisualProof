@@ -818,6 +818,50 @@ export class LinearForm {
     c.globalAlpha = 1;
   }
 
+  // ---------------------------------------------------------------- another reader's pointer
+
+  /** Where a point of the screen is on the line, as another page finds it again (web/src/pointers.ts;
+   *  the owner's decisions of 2026-10-20): the row at its height, by its key, how far down that row
+   *  (0–1), and how far right of the line in the outline's units; null off every row. */
+  pointAt(x: number, y: number): [string, number, number] | null {
+    if (!this.shown || this.t < 1) return null;
+    const box = this.el.getBoundingClientRect();
+    const v = this.view();
+    const oy = this.cam.y + (y - box.top - v.top) / this.cam.k;
+    for (const r of this.byY) {
+      const bottom = r.kind === "section" ? r.y0 + ROW : r.y1;
+      if (oy >= r.y0 && oy < bottom) return [keyOf(r), (oy - r.y0) / Math.max(1, bottom - r.y0), (x - box.left - v.x) / this.cam.k];
+    }
+    return null;
+  }
+
+  /** The point of the screen `pointAt` said, on this page's line: null where the row is not drawn
+   *  here (folded in a section, or not in this outline). */
+  screenOf([key, fy, dx]: [string, number, number]): [number, number] | null {
+    if (!this.shown || this.t < 1) return null;
+    const r = this.rows.find((q) => keyOf(q) === key);
+    if (!r || !this.byY.includes(r)) return null;
+    const box = this.el.getBoundingClientRect();
+    const v = this.view();
+    const bottom = r.kind === "section" ? r.y0 + ROW : r.y1;
+    return [box.left + v.x + dx * this.cam.k, box.top + v.top + (r.y0 + fy * (bottom - r.y0) - this.cam.y) * this.cam.k];
+  }
+
+  /** The room the line has on the screen. */
+  room(): { left: number; top: number; right: number; bottom: number } {
+    const box = this.el.getBoundingClientRect();
+    const { insets } = this.canvas.screen;
+    return { left: box.left + insets.left, top: box.top + insets.top, right: box.right - insets.right, bottom: box.bottom - insets.bottom };
+  }
+
+  /** Bring a row into view: this reader's own scrolling of the line. */
+  reveal(key: string): void {
+    const r = this.rows.find((q) => keyOf(q) === key);
+    if (!r) return;
+    this.cam = { ...this.cam, y: Math.max(0, r.cy - this.view().h / (3 * this.cam.k)) };
+    this.request();
+  }
+
   // ---------------------------------------------------------------- the pointer
 
   /** The row at a point of the screen: the one at its height (a section by its heading's row) whose

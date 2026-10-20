@@ -104,6 +104,9 @@ export interface PeopleHooks {
   askWhy?(): string | null;
   /** say something in passing (the page's line) */
   say?(text: string): void;
+  /** whom this reader follows, or who is here and whom they follow, changed: the rooms pointers are
+   *  shown in (web/src/pointers.ts) */
+  roomChanged?(): void;
 }
 
 /** What a read-only reader is told of whatever would change what is shared (CollabSpec decision 11). */
@@ -307,6 +310,7 @@ export class People {
     this.renderMe();
     this.renderPeers();
     this.beat();
+    this.hooks.roomChanged?.();
   }
 
   renderMe(): void {
@@ -358,6 +362,18 @@ export class People {
   private toldFollowing(): void {
     if (this.hidden) void this.beat();
     else this.report();
+    this.hooks.roomChanged?.();
+  }
+
+  /** This page as the server lists it: null while it is not listed (private, read-only, before its
+   *  first heartbeat). */
+  get listed(): Peer | null {
+    return this.me;
+  }
+
+  /** How many private readers follow this reader, as the server counts them. */
+  get privateFollowing(): number {
+    return this.privateFollowers;
   }
 
   /** The name's window, from the menu under it: give the name, or change it. */
@@ -558,6 +574,7 @@ export class People {
     this.privateFollowers = p.followers ?? 0;
     this.renderPeers();
     this.followersChanged();
+    this.hooks.roomChanged?.();
   }
 
   /** The name drawn again where who follows this reader changed. */
@@ -577,6 +594,7 @@ export class People {
     this.renderPeers();
     this.followersChanged();
     this.hooks.changed();
+    this.hooks.roomChanged?.();
     if (!this.followed) return;
     const p = this.people().find((x) => x.key === this.followed!.key);
     if (!p) {
