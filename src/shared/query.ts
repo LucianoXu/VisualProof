@@ -585,6 +585,14 @@ export function readsReview(q: Query): boolean {
   return false;
 }
 
+/** Whether the query reads one's own review (`mine(…)`): its set is each reader's own. */
+export function readsMine(q: Query): boolean {
+  if (q.op === "mine") return true;
+  if ((q.op === "tcb" || q.op === "uses" || q.op === "usedBy" || q.op === "refs") && q.of !== "selection" && !Array.isArray(q.of)) return readsMine(q.of);
+  if (q.op === "and" || q.op === "or" || q.op === "except") return readsMine(q.a) || readsMine(q.b);
+  return false;
+}
+
 /** The query with the selection replaced by `names`: what is lit now, as a scope (Zoom in). */
 export function withSelection(q: Query, names: string[]): Query {
   switch (q.op) {

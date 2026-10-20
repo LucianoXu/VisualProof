@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { boardSet, lightUp } from "../src/shared/board.ts";
 import { cleanView } from "../src/shared/collab.ts";
-import { cleanQuery, describe, describeCondition, evaluate, parseQuery, printQuery, QUERY_LIMITS, readsReview } from "../src/shared/query.ts";
+import { cleanQuery, describe, describeCondition, evaluate, parseQuery, printQuery, QUERY_LIMITS, readsMine, readsReview } from "../src/shared/query.ts";
 import { scopeTitle } from "../src/shared/titles.ts";
 import type { ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { emptyReview, record } from "../src/shared/review.ts";
@@ -150,8 +150,11 @@ test("the query: mine(…) read and printed canonically, in either form, its wor
   assert.equal(cleanQuery({ op: "mine", statuses: [] }), null);
   // its words count among the names, its parts among the parts, as status's do
   assert.throws(() => parseQuery(`mine(${Array.from({ length: QUERY_LIMITS.names + 1 }, () => "none").join(", ")})`), /names more than/);
-  // it reads the review: a board of it is computed again as opinions come
+  // it reads the review: a board of it is computed again as opinions come; and one's own, so that
+  // a board of it is each reader's set, its layout kept to the page
   assert.equal(readsReview(parseQuery("tcb(A) and mine(none)")), true);
+  assert.equal(readsMine(parseQuery("tcb(tcb(A) and mine(none))")), true);
+  assert.equal(readsMine(parseQuery("tcb(A) and status(unreviewed)")), false);
   // in words: "me" is whoever reads them
   assert.equal(describe(parseQuery("mine(none)")), "not reviewed by me");
   assert.equal(describe(parseQuery("mine(stale, commented)")), "stale of mine or commented on by me");

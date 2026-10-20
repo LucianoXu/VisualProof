@@ -316,7 +316,8 @@ then clears the selection; it never leaves a view.
 - Layout memory: per view and clustering, keyed by the set and the hidden levels; past builds key it
   by snapshot so it never mixes with the latest. A page recalls it exactly; on a changed set it lays
   out from the old memory and hands the new one over (at most 50 MB, the owner's decision of 2026-10-14; first wins). Handing over needs a
-  name (or a private reader); otherwise the layout stays local.
+  name (or a private reader); otherwise the layout stays local. A board whose scope reads `mine(…)`,
+  each reader's own set, keeps its layout local too.
 - Zoom in's scope is the lit query alone when it lies within the board, else it `and` the board's
   scope. Zoom in is disabled when nothing is lit or the board holds just that.
 

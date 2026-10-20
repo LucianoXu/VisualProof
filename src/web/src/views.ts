@@ -37,7 +37,7 @@ import type { BoardMemory, BoardSet } from "../../shared/board.ts";
 import type { ClusterMode, Layout, ViewMeta } from "../../shared/graph.ts";
 import type { PresenceView } from "../../shared/collab.ts";
 import { memoryOf } from "../../shared/layout.ts";
-import { parseQuery, printQuery, readsReview } from "../../shared/query.ts";
+import { parseQuery, printQuery, readsMine, readsReview } from "../../shared/query.ts";
 import type { Author, ReviewData } from "../../shared/review.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { namesOf } from "../../shared/titles.ts";
@@ -378,7 +378,9 @@ export class Views {
       // a preview hands nothing over: the memory is the view's own board's
       if (next && !b.preview) b.made[mode] = next;
       else delete b.made[mode];
-      if (!next || tries >= 2 || b.preview || this.hooks.handsOver?.() === false) return made(layout);
+      // a board whose scope reads mine(…) is each reader's own set: its layout stays the page's, as one
+      // without a name keeps it (ViewSpec, "Boards and layout memory")
+      if (!next || tries >= 2 || b.preview || this.hooks.handsOver?.() === false || readsMine(b.rec.scope)) return made(layout);
       const r = await this.api.post("memory", { id: b.id, mode, base: mem?.set ?? null, memory: next });
       if (r.accepted || r.error) {
         // taken (or the view is gone, and the picture is this page's alone)
