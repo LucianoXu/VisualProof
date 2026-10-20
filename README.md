@@ -9,9 +9,9 @@
 </p>
 <p align="center"><sub>Five Lean codebases, drawn by <code>visualproof artwork</code>.</sub></p>
 
-https://github.com/user-attachments/assets/98e435d6-f493-437d-b342-1833819c0b77
+https://github.com/user-attachments/assets/941b6599-5b4d-4364-aa81-fc25b8991eeb
 
-<p align="center"><sub>A review of Sphere-Packing-Lean in 74 seconds. The whole tour — four minutes in thirteen chapters, with captions — is in the page under <b>?</b> → Tips, and <a href="https://visualproof-demo.yingte.io/#tips">on the live demo</a>.</sub></p>
+<p align="center"><sub>A review of Sphere-Packing-Lean in 71 seconds. The whole tour — three and a half minutes in thirteen chapters, with captions — is in the page under <b>?</b> → Tips, and <a href="https://visualproof-demo.yingte.io/#tips">on the live demo</a>.</sub></p>
 
 [![VisualProof on flt-regular, from the live demo: the TCB of flt_regular, its key declarations approved, an approval recorded at a meeting, the review plan pinned beside it](docs/images/board.webp)](https://visualproof-demo.yingte.io)
 
