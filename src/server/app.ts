@@ -3,7 +3,6 @@
 // this server's own, an agent's token before the key, a personal or a read-only link, the key, then
 // what a read-only reader may ask — and answered by its route.
 
-import { historyAnswer } from "./historyapi.ts";
 import { gitSource } from "./history.ts";
 import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -11,22 +10,20 @@ import { join } from "node:path";
 import { WEB, WEBFONTS, bundleDir } from "./pipeline.ts";
 import { Live } from "./live.ts";
 import { isDeclName, LeanHover } from "./hover.ts";
-import { Identities, layoutAuthor } from "./identity.ts";
+import { Identities } from "./identity.ts";
 import type { GitSource } from "../shared/graph.ts";
-import { MAX_MEMORY_BYTES } from "./views.ts";
 import { validSession } from "../shared/collab.ts";
 import { lakeTextHash } from "./status.ts";
 import { Access, fromOwnPage, hostAllowed, KEY_PATH, urlHost } from "./access.ts";
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, taken } from "./invites.ts";
-import { AgentApi, needOf, refusal } from "./agent.ts";
+import { AgentApi } from "./agent.ts";
 import type { Caller } from "./agent.ts";
 import { bearerOf, looksLikeToken } from "./tokens.ts";
 import type { TokenRecord } from "./tokens.ts";
 import type { Answer } from "./agent.ts";
 import { Exporter } from "./export.ts";
-import { libraryApiOf } from "./library.ts";
-import { libraryRoute, pdfjsAsset, readUpload } from "./libraryroute.ts";
+import { pdfjsAsset, readUpload } from "./libraryroute.ts";
 import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { packageVersion } from "./doctor.ts";
 import { READONLY_PATH } from "./readonly.ts";
@@ -41,6 +38,7 @@ import { hostOf, packedGz, readBody, refused, sendDownload, sendFile, sendGz, se
 import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
 import { shareAgents, sharePeople, shareReadOnly } from "./appshare.ts";
 import { ask, chat, chatNew, presence } from "./apptalk.ts";
+import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsite.ts";
 
 /** The server's answers to requests: exported so that the tests serve them as the server does. */
 export class App {
@@ -191,38 +189,6 @@ export class App {
   nameless(req: IncomingMessage, what: string): { error: string; who: true } {
     const holder = this.ids.taken(req);
     return { error: holder ? `${taken(holder)} (Click your name.)` : `Say who you are first: ${what}.`, who: true };
-  }
-
-  /** The library's operations (server/library.ts), shared with the agents' API. */
-  private library() {
-    return libraryApiOf(this.live, () => ({
-      review: this.live.review,
-      project: this.live.project,
-      library: this.live.library,
-      graph: () => {
-        const v = this.agents.reviews.graph();
-        return "status" in v ? null : v;
-      },
-      // every file the library takes shows on the Project: a note carries it, on the ring
-      fileAdded: (f, who, note) => void this.live.views.fileAdded(f, { by: who.name, agent: who.agent, person: who.person ?? null }, note),
-    }));
-  }
-
-  /** A request about views (server/views.ts): read here, answered there. A private page's is
-   *  answered as its, recorded without its name (CollabSpec decision 8). */
-  private async views(req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-    const priv = this.ids.privateOf(req);
-    const person = this.ids.person(req);
-    const caller: Caller = { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person: person.id } : {}), ...(priv !== null ? { private: { session: priv || null } } : {}) };
-    let body: unknown = null;
-    if (req.method === "POST") {
-      // a board's layout memory is as large as the board; nothing else about views is
-      const r = await this.json(req, url.pathname.replace(/\/+$/, "") === "/api/views/memory" ? MAX_MEMORY_BYTES : 1 << 20);
-      if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-      body = r.body;
-    }
-    const a: Answer = this.live.views.handle({ method: req.method ?? "GET", path: url.pathname, query: url.searchParams, body, caller }, this.agents.level);
-    sendJson(res, a.body, a.status, a.headers);
   }
 
   /** A request's JSON body, or why it has none. A body larger than `limit` is answered here and
@@ -424,41 +390,9 @@ export class App {
       if (path === "/api/ask" || path === "/api/ask/answer") return ask(this, req, res, url);
       if (path === "/api/agent" || path.startsWith("/api/agent/")) return this.agent(req, res, url);
       // the views, each a shared board (ViewSpec.md)
-      if (path === "/api/views" || path.startsWith("/api/views/")) return this.views(req, res, url);
-      // the snapshots of the graph, one per build (HistorySpec.md): the Time Machine reads them; the
-      // moves, the lost-and-found and its archive
-      if (path === "/api/history" || path.startsWith("/api/history/")) {
-        let body: unknown = null;
-        if (req.method === "POST") {
-          // a name's every entry archived at once is a few hundred keys at most
-          const r = await this.json(req, 1 << 20);
-          if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-          body = r.body;
-        }
-        // a move, an archiving or a putting back is recorded as the review is: under the reader's
-        // name — a private reader's too (CollabSpec decision 8) — with the personal link of someone
-        // invited by one, whose moves go to their link's log (decision 9); by an agent at level full
-        const person = this.ids.person(req)?.id;
-        const a = await historyAnswer(live, { method: req.method ?? "GET", path, query: url.searchParams, body, caller: { name: this.ids.who(req), kind: this.ids.kind(req), ...(person ? { person } : {}) } }, (q) =>
-          q.caller.kind === "agent" ? refusal(this.agents.level, "full") : null,
-        );
-        // a snapshot's graph in parts, as the Time Machine takes it: compressed once, and tagged
-        if (a.gz) return sendGz(req, res, a.gz.body, a.gz.type);
-        return sendJson(res, a.body, a.status, a.headers);
-      }
-      // the library of papers and images, and the links into them (AttachmentSpec.md,
-      // server/libraryroute.ts)
-      if (path === "/api/library" || path.startsWith("/api/library/")) {
-        // a read-only reader (CollabSpec decision 11) is drawn what the notes show of a PDF, kept in
-        // the cache as it is drawn, and no other page or region of one: each would be drawn by
-        // Poppler and kept anew, whoever comes asking
-        if (reader !== undefined && (path === "/api/library/page" || path === "/api/library/clip")) {
-          const q = url.searchParams;
-          const region = path === "/api/library/clip" ? (q.get("region") ?? "").split(",").map(Number) : null;
-          if (!live.views.shows(q.get("sha") ?? "", Number(q.get("page")), region)) return sendJson(res, { error: "A read-only page is drawn what the notes show of the library: open the file itself.", readOnly: true }, 403);
-        }
-        return libraryRoute({ ids: this.ids, level: this.agents.level, api: this.library() }, req, res, url);
-      }
+      if (path === "/api/views" || path.startsWith("/api/views/")) return views(this, req, res, url);
+      if (path === "/api/history" || path.startsWith("/api/history/")) return history(this, req, res, url);
+      if (path === "/api/library" || path.startsWith("/api/library/")) return libraryRequest(this, req, res, url, reader);
       // an agent may use the page's own endpoints too: the same rules hold there (AgentSpec)
       const agent = this.ids.kind(req) === "agent";
       // the review (ReviewSpec.md): the whole of it, as a page takes it on, with the lines of its
@@ -470,24 +404,7 @@ export class App {
         const b = live.buildWhole();
         return sendRevision(req, res, live, b.tag, () => b.text);
       }
-      if (path === "/api/review" && req.method === "POST") {
-        // an opinion, a target, a trusted prefix or a key declaration is recorded under the
-        // reader's name (CollabSpec decision 3), not one in the body; what it is about is
-        // bound by the server (server/reviewapi.ts)
-        const me = this.ids.who(req);
-        if (!me) return sendJson(res, this.nameless(req, "what you record in the review is recorded under your name"), 401);
-        const person = this.ids.person(req)?.id ?? null;
-        return this.json(req, 1 << 20).then(({ body, error }) => {
-          if (error) return sendJson(res, { error: `The body is ${error}.` }, 400);
-          // an agent records here what its level allows, as through its own API (AgentSpec decision
-          // 9): an opinion as advice, the rest at full; in its own log, marked as an agent's
-          const no = agent ? refusal(this.agents.level, needOf(body)) : null;
-          if (no) return sendJson(res, no.body, no.status);
-          // someone invited by a personal link writes to the log of their link (shared/review.ts)
-          const a = this.agents.reviews.post(body, { name: me, agent, person });
-          sendJson(res, a.body, a.status);
-        });
-      }
+      if (path === "/api/review" && req.method === "POST") return reviewPost(this, req, res, agent);
       if (path === "/api/export" || path.startsWith("/api/export/")) return this.export(req, res, url, agent, reader !== undefined);
       if (path === "/api/identity" && req.method === "GET") return identityGet(this, req, res, link, reader);
       if (path === "/api/identity" && req.method === "POST") return identity(this, req, res);
@@ -503,19 +420,7 @@ export class App {
         const events = live.timeline.events.slice(-2000);
         return sendJson(res, { events: this.toldAll(req) ? events : events.map(withoutReasons) });
       }
-      // a layout batch an agent made, undone (AgentSpec decision 4): from a page's Activity, by anyone;
-      // by a private reader, without their name (CollabSpec decision 8)
-      if (path === "/api/layout/undo" && req.method === "POST") {
-        const priv = this.ids.privateOf(req) !== null;
-        const me = layoutAuthor({ name: this.ids.who(req), private: priv });
-        if (!me && !priv) return sendJson(res, { error: "Say who you are first.", who: true }, 401);
-        const no = agent ? refusal(this.agents.level, "full") : null;
-        if (no) return sendJson(res, no.body, no.status);
-        const r = await this.json(req, 4096);
-        if (r.error !== undefined) return sendJson(res, { error: r.error }, 400);
-        const a = this.agents.undo(me, agent, (r.body as { id?: unknown } | null)?.id);
-        return sendJson(res, a.body, a.status);
-      }
+      if (path === "/api/layout/undo" && req.method === "POST") return layoutUndo(this, req, res, agent);
       // the project's git source and commit as git says them now, not as the build was read (an
       // artwork's foot, ExportSpec decision 19; the owner's decision of 2026-10-15)
       if (path === "/api/git") {
