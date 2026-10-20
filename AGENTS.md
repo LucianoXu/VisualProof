@@ -13,15 +13,18 @@ The tool is in `src/`; paths of code in its comments and in `SPEC/` are relative
 - `src/extractor/` — the Lean programs that turn a built project into graph JSON (`Extract.lean`) and
   find the notation and context each command is written in (`Usage.lean`).
 - `src/server/` — the Node server: runs the extractor, lays out the graph, serves the page.
+  `main.ts` is the commands (their options in `options.ts`); `app.ts` the HTTP routes, by area
+  in `app*.ts`; `agent.ts` the agents' API, its endpoints by topic in `agent*.ts`.
 - `src/shared/` — code the server and the page both run (`shared/doc/`: the exported document).
-- `src/web/` — the viewer.
+- `src/web/` — the viewer: `src/main.ts` makes the page's parts in order, one per concern
+  (`src/page*.ts`); `src/page.ts` holds what they share.
 - `src/mcp/` — VisualProof's MCP server, which agents run on their own machine.
 - `src/assets/` — the exported document's style file and fonts.
 - `test/` — the tests (`npm test`); `test/fixture/` is a small Lean project whose TCBs are known,
   `test/golden/` its extraction as every supported toolchain must give it.
 - `SPEC/` — the specification and the decisions.
 - `docs/` — the documentation.
-- `scripts/` — scripts for development.
+- `scripts/` — scripts for development (`scripts/e2e/`: a change tried in a real browser).
 - `.github/` — CI.
 
 ## Invariants
