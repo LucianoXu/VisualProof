@@ -23,7 +23,9 @@ Output, schema 1:
             the parser and `_aux_` declarations it generates (decision 2), under a name of its
             own: the syntax kind it declares, or `<kind>.macro_rules` and the like for a rule
             (`leanName` is the Lean constant, `display` what a card calls it).
-  externals constants outside the project that a node refers to directly, folded the same way.
+  externals constants outside the project that a node refers to directly, folded the same way,
+            each with its doc and its range in its own package's or Lean's source, as the
+            `.olean` records them.
   edges     [src, dst, sites], `sites` a bit set: 1 = statement, 2 = definition body,
             4 = inside a proof, 8 = on grammar: into a notation unit that only declares syntax
             (flagged `grammar`), which no TCB follows. A macro or elaborator depends on the
@@ -1123,8 +1125,16 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
     let kind := match env.find? c with
       | some ci => kindOf env ci
       | none => "unknown"
-    extJs := extJs.push (Json.mkObj [("name", c.toString), ("kind", kind),
-      ("module", modName c), ("ax", nodeAx[nodes.size + j]!)])
+    let mut fields : List (String × Json) := [("name", c.toString), ("kind", kind),
+      ("module", modName c), ("ax", nodeAx[nodes.size + j]!)]
+    -- where it is written in its package or in Lean's core, as the `.olean` records it, and its
+    -- doc: the source window shows an outside declaration's source too (ReviewSpec, "The source
+    -- window", the owner's decision of 2026-10-20), which the server finds by its module
+    if let some d ← findDocString? env c then fields := fields ++ [("doc", Json.str d)]
+    if let some r ← findDeclarationRanges? c then
+      fields := fields ++ [("range", Json.arr #[r.range.pos.line, r.range.pos.column,
+        r.range.endPos.line, r.range.endPos.column])]
+    extJs := extJs.push (Json.mkObj fields)
   let metaUnits : Nat := nodes.foldl (init := 0) fun k c =>
     if !notationUnits.contains c && ((env.find? c).map isMetaDecl).getD false then k + 1 else k
   let axioms := (← get).axioms
