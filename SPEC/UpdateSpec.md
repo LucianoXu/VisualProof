@@ -217,8 +217,9 @@ The owner's decisions of 2026-10-16.
 - The supervisor's variables are read only by a supervised server. `VISUALPROOF_UPDATE_TEST_MS`
   shortens every wait for `npm run test:updates`, honoured only where npm's registry is a loopback
   address (`npm_config_registry`), as the test's is and a server's never is.
-- `server/main.ts`: `--updates`, the supervisor's start, `stop()`, `GET /api/updates`, the version
-  recorded at start (`recordVersion`); `/api/meta?v=&i=` refuses another process's version (409).
+- `server/main.ts`: the supervisor's start, `stop()`, the version recorded at start
+  (`recordVersion`); `server/options.ts`: `--updates`; `server/app.ts`: `GET /api/updates`;
+  `server/appgraph.ts`: `/api/meta?v=&i=` refuses another process's version (409).
 - `server/live.ts`: `instance`, `toolVersion`, `hello`'s `server`, `GraphInfo.instance`,
   `updatesChanged`, `end`; the build status's revisions counted per process (its epoch is
   `instance`), and a stream that does not ask for its changes (`build=delta`: a page from before

@@ -1,6 +1,6 @@
 // The agents' documentation (docs/agent-api/): an index, README.md — the rules and the topics — and
 // one Markdown file per topic, served as GET /api/agent/docs and GET /api/agent/docs/<topic>
-// (server/agent.ts), and by the MCP server as its docs tool and its resources. The topics below are
+// (server/agententry.ts), and by the MCP server as its docs tool and its resources. The topics below are
 // what the entry, the docs tool and the resources name; a test keeps them and the folder the same.
 
 import { readFileSync } from "node:fs";

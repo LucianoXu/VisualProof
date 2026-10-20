@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
-import { App } from "../src/server/main.ts";
+import { App } from "../src/server/app.ts";
 import { Access } from "../src/server/access.ts";
 import { Exporter } from "../src/server/export.ts";
 import { AgentApi } from "../src/server/agent.ts";

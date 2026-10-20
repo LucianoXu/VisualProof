@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
-import { doingOf } from "../src/server/agent.ts";
+import { doingOf } from "../src/server/agenttalk.ts";
 import type { Ask } from "../src/server/agent.ts";
 import { EARLIER_CHARS, EARLIER_MESSAGES, earlierOf, Talk } from "../src/server/talk.ts";
 import { renderMarkdown } from "../src/web/src/markdown.ts";

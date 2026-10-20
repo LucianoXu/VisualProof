@@ -279,10 +279,11 @@ otherwise).
   build status's `active` include a build going on; `reading` is an extraction or a graph being
   served (`installing`); the snapshot's commit is `deploy.commit()`; `shownCommit()`,
   `following()`; `stop()` ends the loop (a test's end).
-- server/main.ts: `--branch`, `--poll`, `--build-timeout`, `--mathlib-cache`, the checks before
-  anything runs (a folder with any of them is refused, naming them), `openDeployment` before
-  the project is read, the supervisor's site (`deploySiteOf`, without the network), the terminal's
-  lines, `GET /api/git`, the read-only reader's `GET /api/status`.
+- server/options.ts: `--branch`, `--poll`, `--build-timeout`, `--mathlib-cache`, the checks before
+  anything runs (a folder with any of them is refused, naming them); server/main.ts:
+  `openDeployment` before the project is read, the supervisor's site (`deploySiteOf`, without the
+  network), the terminal's lines; server/appgraph.ts: `GET /api/git`, the read-only reader's
+  `GET /api/status`.
 
 ### On disk (`<cache>/deploy/`)
 

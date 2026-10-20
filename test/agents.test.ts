@@ -18,6 +18,7 @@ import { reviewedBy } from "../src/shared/reviewqueue.ts";
 import { printQuery } from "../src/shared/query.ts";
 import { AgentApi, refusal } from "../src/server/agent.ts";
 import type { AgentLevel, Answer, Caller, World } from "../src/server/agent.ts";
+import { undo as undoBatch } from "../src/server/agentplaces.ts";
 import { Timeline } from "../src/server/events.ts";
 import type { NewEvent } from "../src/shared/timeline.ts";
 import { Identities } from "../src/server/identity.ts";
@@ -423,7 +424,7 @@ test("an agent's layout is one batch that can be undone; what someone moved sinc
     // a place beyond the parent's circle is brought in, as every page would bring it
     const far = json(await W.ask("POST", "/api/agent/pins", { pins: [{ name: "N.d", at: [200, 0] }] }));
     assert.ok(far.placed[0].at[0] < place.room && far.placed[0].at[0] > place.room - 0.5);
-    W.api.undo("Claude", true, far.id);
+    undoBatch(W.api, "Claude", true, far.id);
 
     // someone moves a afterwards
     W.w.places.apply([{ op: "pin", mode: "namespace", kind: "node", key: "N.a", at: [99, 99] }]);
@@ -440,7 +441,7 @@ test("an agent's layout is one batch that can be undone; what someone moved sinc
     // once only; and a person may undo from the page too (the same handler)
     assert.equal((await W.ask("POST", "/api/agent/undo", { id: r.id })).status, 409);
     const r2 = json(await W.ask("POST", "/api/agent/pins", { pins: [{ name: "N.f", at: [1, 1] }] }));
-    assert.equal(W.api.undo("Alice", false, r2.id).status, 200);
+    assert.equal(undoBatch(W.api, "Alice", false, r2.id).status, 200);
     assert.equal(pins()["N.f"], undefined);
     assert.equal((await W.ask("POST", "/api/agent/undo", { id: 12345 })).status, 404);
     // the activity says what moved and whether it was undone, without the operations

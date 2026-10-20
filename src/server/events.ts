@@ -4,7 +4,7 @@
 // target's TCB that changed (with the opinions that went stale by it) — and is told of re-layouts,
 // of targets taken off and of prefixes trusted or no longer trusted (the review's state keeps the
 // trusted list, not who changed it), and of what agents do beside their advice: notes, layout
-// batches and their undoing (server/agent.ts), and of views saved, renamed, deleted and laid out
+// batches and their undoing (server/agentplaces.ts), and of views saved, renamed, deleted and laid out
 // afresh (server/views.ts). Opinions, targets and key marks are in the review's logs
 // (server/review.ts); the page reads them from there.
 //
