@@ -30,7 +30,7 @@ import type { ClusterMode, GitSource, Layout, ViewMeta } from "../../shared/grap
 import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
-import { printQuery, readsReview, setOutside, withoutOutside } from "../../shared/query.ts";
+import { printQuery, readsReview } from "../../shared/query.ts";
 import { litKeyEdges } from "../../shared/keys.ts";
 import { keyMarked, keyMarks } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
@@ -39,7 +39,7 @@ import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewRev } 
 import { reviewCount, trustSplit } from "../../shared/reviewqueue.ts";
 import { noteExcerpt } from "../../shared/sticky.ts";
 import { briefWhen } from "../../shared/titles.ts";
-import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, PROJECT_SCOPE, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
+import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
@@ -54,7 +54,7 @@ import type { ModuleContexts } from "../../shared/context.ts";
 import type { DeclarationText } from "../../shared/excerpt.ts";
 import { Graph } from "../../shared/viewgraph.ts";
 import { escapeHtml } from "./highlight.ts";
-import { dragKeyName, dragMoves, isDragKey, lockedChoice, setLockedChoice } from "./drag.ts";
+import { dragMoves } from "./drag.ts";
 import { Notes } from "./notes.ts";
 import { Stickies } from "./sticky.ts";
 import { ProjectNotes } from "./projectnotes.ts";
@@ -76,13 +76,13 @@ import { FocusMenu, keptFocus, readerFocus } from "./focus.ts";
 import { kindDot, ringed } from "./axiomring.ts";
 import { keepFocus } from "./keepfocus.ts";
 import { Legend } from "./legend.ts";
-import { applyTheme, holdTheme, themeChoices } from "./theme.ts";
+import { holdTheme } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
 import type { LitCount } from "./selbar.ts";
-import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, followRenames, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
+import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, followRenames, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -129,8 +129,9 @@ import { buildWhen, TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
 import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
-import { $, MODE_NAME, toolName, MODE_HINT, RESTS_HINT, STEP_HINT, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
+import { $, MODE_NAME, toolName, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { toolbarPart } from "./pagetoolbar.ts";
 import { menuPart } from "./pagemenu.ts";
 import { notesPart } from "./pagenotes.ts";
 import { keysPart } from "./pagekeys.ts";
@@ -209,11 +210,6 @@ export interface MainPart {
   commit: () => void;
   pill: HTMLElement;
   buildPop: Popover;
-  toggleOutside: () => void;
-  eyesPop: Popover;
-  edgesBtn: HTMLElement;
-  toggleLock: () => void;
-  relayout: () => Promise<void>;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -1097,7 +1093,7 @@ async function boot(): Promise<void> {
         // a drag moves it only with the lock let go, or the drag key held on a locked layout
         tip.innerHTML =
           `<span class="dot cluster-dot"></span>${escapeHtml(cl.key.replace("⟨external⟩", "External"))}` +
-          ` <span class="tip-st">${cl.count.toLocaleString()} · ${what}${dragging() ? " · drag to move" : ""}</span>`;
+          ` <span class="tip-st">${cl.count.toLocaleString()} · ${what}${page.dragging() ? " · drag to move" : ""}</span>`;
       }
       tip.style.transform = `translate(${x + 14}px, ${y + 12}px)`;
       tip.hidden = false;
@@ -1283,7 +1279,7 @@ async function boot(): Promise<void> {
     holdTheme(a ? (a.style === "board" ? a.theme : "dark") : null);
     canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
     applyScheme();
-    syncEdges();
+    page.syncEdges();
     apply();
   };
   /** Of the bar in the artwork mode, Share and Search alone (the owner's decision of 2026-10-15): the
@@ -2550,35 +2546,6 @@ async function boot(): Promise<void> {
   };
   page.syncTool = syncTool;
 
-  // ---------------------------------------------------------------- toolbar
-
-  /** What a mode does, under its button while the pointer is on it (or it has the focus); null
-   *  puts it away. It is said nowhere else: the reader who knows the modes is not told again. Rests
-   *  on's button tells of the mode and each of its steps; a step's, of that step. */
-  const modeTip = (b: HTMLElement | null) => {
-    const tip = $("#mode-tip");
-    if (!b) return void (tip.hidden = true);
-    if (b.id === "rests-btn") {
-      tip.innerHTML =
-        `<b>Rests on</b> <span class="muted">· key 2, again for the next step</span><div>${escapeHtml(RESTS_HINT)}</div>` +
-        `<ul class="tip-steps">${STEPS.map((m) => `<li><b>${MODE_NAME[m]}</b>: ${escapeHtml(STEP_HINT[m])}${m === "tcb" ? ` <span class="muted">(where it starts)</span>` : ""}</li>`).join("")}</ul>`;
-    } else {
-      const m = b.dataset.mode as Tool;
-      const key = m === "plain" ? "key 1" : m === "apps" ? "key 3" : "a step of Rests on, key 2 steps";
-      tip.innerHTML = `<b>${MODE_NAME[m]}</b> <span class="muted">· ${key}</span><div>${escapeHtml(MODE_HINT[m])}</div>`;
-    }
-    tip.hidden = false;
-    const r = b.getBoundingClientRect();
-    tip.style.top = `${r.bottom + 8}px`;
-    tip.style.left = `${Math.max(8, Math.min(innerWidth - tip.offsetWidth - 8, r.left + r.width / 2 - tip.offsetWidth / 2))}px`;
-  };
-  for (const b of document.querySelectorAll<HTMLElement>("#lightup button")) {
-    b.addEventListener("pointerenter", () => modeTip(b));
-    b.addEventListener("pointerleave", () => modeTip(null));
-    b.addEventListener("focus", () => modeTip(b));
-    b.addEventListener("blur", () => modeTip(null));
-  }
-
   /** Something said for a moment where the hint is (below the review strip and the note of a kept
    *  view, where they show): the hint shows nothing otherwise. */
   const say = (text: string) => {
@@ -3580,135 +3547,7 @@ async function boot(): Promise<void> {
       renderBuild();
     });
   };
-
-  for (const b of document.querySelectorAll<HTMLElement>("#lightup [data-mode]")) {
-    b.addEventListener("click", () => readerMode(b.dataset.mode as Tool));
-  }
-  // Rests on: entered at the step last used; while it is the mode its steps are beside it
-  $("#rests-btn").addEventListener("click", () => {
-    if (!restsOn(S.mode)) readerMode(enterStep(S.restsOn));
-  });
-  for (const b of document.querySelectorAll<HTMLElement>("#board-pop [data-cluster]")) {
-    b.addEventListener("click", () => void sync.setClustering(b.dataset.cluster as ClusterMode));
-  }
-  /** The outside world on this board or not: a condition of its scope, everyone's (a target's
-   *  view's too: ViewSpec decision 28); the Project always holds it (decision 5). */
-  const toggleOutside = () => {
-    if (fixedScope(nav.board.rec)) return say(PROJECT_SCOPE);
-    void sync.setScope(setOutside(nav.board.rec.scope, withoutOutside(nav.board.rec.scope))).then((why) => why && say(why));
-  };
-  page.toggleOutside = toggleOutside;
-  // the depth of the whole board, one level at a time; the level shown is read from the folds, so
-  // it stays right after folding by hand
-  page.showLevel = () => {
-    if (!canvas.layout) return;
-    const max = canvas.maxDepth() + 1;
-    const now = canvas.openLevels();
-    $("#fold-level").textContent = now >= max ? "All open" : `${now} / ${max}`;
-    $<HTMLButtonElement>("#fold-less").disabled = now <= 0;
-    $<HTMLButtonElement>("#fold-more").disabled = now >= max;
-  };
-  $("#fold-less").addEventListener("click", () => canvas.stepLevels(-1));
-  $("#fold-more").addEventListener("click", () => canvas.stepLevels(1));
-  $("#zoom-in").addEventListener("click", () => canvas.zoomBy(1.6));
-  $("#zoom-out").addEventListener("click", () => canvas.zoomBy(1 / 1.6));
-  $("#zoom-fit").addEventListener("click", () => canvas.fit());
-  applyTheme();
-  themeChoices($("#theme-seg"));
-  // the lock, the edges and the theme, behind the eyes' ⋯ (decided 2026-10-08); their keys stay
-  const eyesPop = new Popover($("#eyes-btn"), $("#eyes-pop"));
-  page.eyesPop = eyesPop;
-  // the reader's eyes, at the bottom right: edges drawn (proof edges are no more: the owner's
-  // decision of 2026-10-15)
-  const edgesBtn = $("#edges-btn");
-  page.edgesBtn = edgesBtn;
-  const syncEdges = () => {
-    edgesBtn.classList.toggle("on", S.showEdges);
-    edgesBtn.setAttribute("aria-pressed", String(S.showEdges));
-    // an artwork's, while its mode is on (drawLook)
-    canvas.setEdges(page.artLook ? page.artLook.edges !== "none" : S.showEdges);
-  };
-  // what the board draws, which those following this reader see too (CollabSpec decision 4)
-  page.setEdges = (edges) => {
-    if (edges === S.showEdges) return;
-    S.showEdges = edges;
-    store.save();
-    syncEdges();
-    people.report();
-  };
-  edgesBtn.addEventListener("click", () => page.setEdges(!S.showEdges));
-  syncEdges();
-  // the layout locked, also the reader's own and kept in this browser (web/src/drag.ts): a drag pans
-  // the view, never moves a thing, unless the reader lets the lock go (decided 2026-10-09: panning
-  // is the default). The drag key — ⌘ on a Mac, where Ctrl+click is the right click, and Ctrl
-  // elsewhere — held does the other while it is held; the canvas reads the key at each press, and the
-  // button shows which way a drag goes now and names the key.
-  const lockBtn = $("#lock-btn");
-  page.locked = lockedChoice();
-  let held = false;
-  /** whether a drag on a declaration, a circle or a note moves it now */
-  const dragging = () => dragMoves(page.locked, held);
-  const syncLock = () => {
-    const on = !dragging();
-    lockBtn.classList.toggle("on", on);
-    lockBtn.classList.toggle("held", held);
-    lockBtn.querySelector(".eye-l")!.textContent = page.locked ? "Layout locked" : "Drag moves nodes";
-    // ⋯ says so while a drag moves things, which is not the default and is out of sight behind it,
-    // and while the drag key is held
-    $("#eyes-btn").classList.toggle("flag", !on);
-    $("#eyes-btn").classList.toggle("held", held);
-    lockBtn.setAttribute("aria-pressed", String(page.locked));
-    canvas.setLocked(page.locked);
-  };
-  const toggleLock = () => {
-    page.locked = !page.locked;
-    setLockedChoice(page.locked);
-    syncLock();
-  };
-  page.toggleLock = toggleLock;
-  lockBtn.addEventListener("click", toggleLock);
-  lockBtn.title =
-    "The lock, on by default: a drag pans the view, never a declaration, a circle or a note; clicks still select. " +
-    `Let it go and a drag moves them, for everyone on this board (l). Hold ${dragKeyName()} for the other way while held.`;
-  const holding = (e: KeyboardEvent) => isDragKey(e.key);
-  window.addEventListener("keydown", (e) => {
-    if (holding(e) && !held) {
-      held = true;
-      syncLock();
-    }
-  });
-  window.addEventListener("keyup", (e) => {
-    if (holding(e) && held) {
-      held = false;
-      syncLock();
-    }
-  });
-  // a key let go elsewhere (another window, another tab) is never heard of
-  window.addEventListener("blur", () => {
-    if (!held) return;
-    held = false;
-    syncLock();
-  });
-  syncLock();
-  // a fresh start for everyone on this board: its pins go (in both ways of clustering) and it is
-  // laid out anew — the Project's by the server; other boards keep theirs. It is done under a name,
-  // and the timeline says whose.
-  const relayout = async () => {
-    if (frozen()) return say(frozenWhy());
-    const title = views.title(nav.board.id);
-    if (!confirm(`Lay "${title}" out afresh for everyone on it? Its pins are dropped, for everyone, and everything on it moves. Other views keep theirs.`)) return;
-    if (!data.snapshot && !(await people.ensureLayout())) return;
-    const r = await sync.change("relayout", {});
-    if (r.error) say(r.error);
-    else if (data.snapshot) {
-      // no server to send the pins' going back: the board is laid out afresh here
-      views.ops(nav.board.id, [{ op: "clear" }]);
-      views.memory(nav.board.id, cm(), null, null);
-      void nav.redraw();
-    }
-  };
-  page.relayout = relayout;
-  $("#relayout").addEventListener("click", () => void relayout());
+  Object.assign(page, toolbarPart(page));
   Object.assign(page, menuPart(page));
   Object.assign(page, notesPart(page));
   Object.assign(page, keysPart(page));
