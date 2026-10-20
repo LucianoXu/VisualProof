@@ -232,6 +232,14 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     together), then what more targets rest on, then by name; or key declarations alone (◆ Key), or
     by kind. A row goes to its declaration, as a visitor where the board does not hold it (ViewSpec
     decision 27); rows the reader settled are faded.
+  - **Kept to one's own review** (the owner's decision of 2026-10-20): over the list, in review order
+    or ◆ Key, *Yours: All · Not reviewed · Stale · Commented*, each with how many it keeps — what
+    the reader has no opinion on (none given, or withdrawn), where theirs is on an earlier version,
+    what theirs comments on — by their own opinions alone (as the Mine scheme, CanvasSpec, "Colour
+    schemes"), the trusted key declarations, which need none, left out. A reading preference, as the
+    order is (CollabSpec, "Yours"), kept in the browser; whom they follow changes nothing of it. A
+    reader without a name has no review of their own, and no switch. Nothing of it joins the strip:
+    there is no personal progress beside the team's.
   - Keys: `a` approve (only ever: where the approval stands, nothing — decision 9), `m` comment
     (asking for text first), `k` key (ExportSpec decision 4). The
     panel says why a declaration is in the TCB: the shortest chain of references from the target.

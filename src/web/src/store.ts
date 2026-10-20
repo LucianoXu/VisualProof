@@ -41,6 +41,9 @@ export interface Saved {
   /** a target's TCB in the panel: in review order, its key declarations alone, or by kind as for
    *  any declaration */
   tcbOrder?: "review" | "kind" | "key";
+  /** a target's list kept to the reader's own review (web/src/reviewqueue.ts, OwnFilter): what they
+   *  have not reviewed, where theirs is stale, what they commented on; all where absent */
+  tcbOwn?: "none" | "stale" | "commented";
   showEdges: boolean;
   /** the views open as tabs, in order, and the one on show */
   tabs: Tab[];

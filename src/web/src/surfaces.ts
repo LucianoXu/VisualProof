@@ -206,7 +206,7 @@ export const YOURS = [
   { id: "windowPlaces", what: "where windows sit and how big they are (a drag on a title bar presses no control; the edges resize)", where: ".fl-rz" },
   { id: "scroll", what: "scroll positions: the wheel off the canvas, a scrollbar" },
   { id: "sections", what: "folded sections of the side panel, the panel and the lost-and-found", where: "[data-sec], #lostfound .lf-archived > summary" },
-  { id: "tcbOrder", what: "the TCB list's order", where: "[data-tcb-order]" },
+  { id: "tcbOrder", what: "the TCB list's order, and what of it is kept to by the reader's own review", where: "[data-tcb-order], [data-q-own]" },
   // the review box's opinions all folded or all shown (ReviewSpec, "One review box", the owner's
   // decision of 2026-10-20), a reading preference, and What changed under a stale one opened
   { id: "opinions", what: "the review box's opinions, all folded or all shown, and What changed under a stale one", where: "[data-rv-fold], [data-rv-changes] > summary" },

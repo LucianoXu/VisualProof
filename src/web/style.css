@@ -672,6 +672,11 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .seg.mini { padding: 2px; border-radius: 8px; }
 .seg.mini button { padding: 2px 8px; border-radius: 6px; font-size: 11.5px; }
 .q-note { font-size: 11.5px; margin: -2px 0 6px; }
+/* a target's list kept to the reader's own review (the owner's decision of 2026-10-20): beside the
+   order's switch, in its style, each with how many it keeps */
+.q-own { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 6px; font-size: 11.5px; }
+.q-own-n { color: var(--text-3); font-variant-numeric: tabular-nums; }
+.q-own .on .q-own-n { color: inherit; }
 .q-row .q-n { display: inline-block; min-width: 2.2em; margin-right: 6px; text-align: right; color: var(--text-3); font-variant-numeric: tabular-nums; }
 /* every row of the queue has its dot, so that the numbers line up: an open one for none yet */
 .q-row.rv-none::before {

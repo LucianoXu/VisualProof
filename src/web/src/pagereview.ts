@@ -137,7 +137,7 @@ export function reviewPart(page: Page): ReviewPart {
 
   // the review flow where the review has a focus (ViewSpec decision 28): the focus's review set in
   // review order, the next one to review, why a declaration is in it (web/src/reviewqueue.ts)
-  const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => page.people.name });
+  const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => page.people.name, me: () => page.readerAuthor() });
   /** The same on the graph on show, whatever build the board shows: how far each target's review has
    *  come is the review's now (the targets list, the views menu) */
   const flowNow = new ReviewFlow({ graph: () => page.present, review: () => page.review.data, reader: () => page.people.name });

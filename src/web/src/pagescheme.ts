@@ -28,6 +28,9 @@ export interface SchemePart {
   mineAuthor: () => Author | null;
   /** the followed reader whose opinions those are, by name; null where they are the reader's own */
   mineWhose: () => string | null;
+  /** the reader as their own opinions are kept, whoever they follow: by their link where they came
+   *  by one, else their name; null without one (a target's list kept to their own review) */
+  readerAuthor: () => Author | null;
   /** whose they are may have changed (the reader's name, following someone or no longer): what
    *  shows them is drawn again */
   mineChanged: () => void;
@@ -55,6 +58,9 @@ export function schemePart(page: Page): SchemePart {
       const id = page.people.followedKey!.startsWith("v:") ? invitedId(whose) : null;
       return id ? { by: whose, person: id } : { by: whose };
     }
+    return readerAuthor();
+  };
+  const readerAuthor = (): Author | null => {
     const me = page.people.name?.trim() || null;
     const person = page.people.person?.id ?? null;
     return person ? { by: me ?? "", person } : me ? { by: me } : null;
@@ -157,5 +163,5 @@ export function schemePart(page: Page): SchemePart {
     mineNone: () => mineAuthor() === null,
   });
 
-  return { syncStatus, ownScheme, applyScheme, chooseScheme, nextScheme, pointState, mineAuthor, mineWhose, mineChanged, legend };
+  return { syncStatus, ownScheme, applyScheme, chooseScheme, nextScheme, pointState, mineAuthor, mineWhose, readerAuthor, mineChanged, legend };
 }

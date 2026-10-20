@@ -4,7 +4,8 @@
 // a reader without a name has none to show, and the legend says so. The query `mine(approved |
 // commented | stale | none)` (ViewSpec, the query language), read and printed, bounded and
 // evaluated as `status(…)` is, against the reader's own review; for no reader (the server, an
-// agent) it holds nothing.
+// agent) it holds nothing. A target's review list kept to the reader's own review: what they have
+// not reviewed, where theirs is stale, what they commented on.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -14,7 +15,9 @@ import { cleanQuery, describe, describeCondition, evaluate, parseQuery, printQue
 import { scopeTitle } from "../src/shared/titles.ts";
 import type { ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { emptyReview, record } from "../src/shared/review.ts";
+import { SITE_BODY, SITE_STMT } from "../src/shared/graph.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
+import { ReviewFlow } from "../src/web/src/reviewqueue.ts";
 import { Legend } from "../src/web/src/legend.ts";
 import { mineCodes, mineLabel, SCHEMES_SHOWN, STATUSES, statusCodes } from "../src/web/src/status.ts";
 import type { Scheme } from "../src/web/src/status.ts";
@@ -185,4 +188,49 @@ test("the query evaluated: one reader's own review — Alice's and Bob's apart, 
   const all = boardSet(g, d, parseQuery("all"));
   assert.equal(lightUp(g, d, all, parseQuery("mine(stale)"), alice).count, 1);
   assert.equal(lightUp(g, d, all, parseQuery("mine(stale)")).count, 0);
+});
+
+test("a target's review list kept to one's own review: what I have not reviewed, mine stale, mine commented — with how many each keeps", () => {
+  // t's statement uses a and b; a uses c
+  const names = ["N.t", "N.a", "N.b", "N.c"];
+  const nodes: ViewNode[] = names.map((name) => ({ name, kind: name === "N.t" ? "theorem" : "def", module: "M", ax: 0, hash: `h-${name}` }));
+  const at0 = (n: string) => names.indexOf(n);
+  const edges = [at0("N.t"), at0("N.a"), SITE_STMT, at0("N.t"), at0("N.b"), SITE_STMT, at0("N.a"), at0("N.c"), SITE_BODY];
+  const g = new Graph({ nodes, projectCount: 4, axioms: [], axiomSets: [[]], layouts: {}, edgeCount: 3 } as unknown as ViewMeta, new Int32Array(edges));
+  const d = emptyReview();
+  d.targets["N.t"] = { by: "Alice", at: at(0) };
+  let k = 1;
+  const op = (name: string, by: string, verdict: "approve" | "comment", hash = `h-${name}`) =>
+    record(d, { op: "opinion", name, by, verdict, hash, ...(verdict === "comment" ? { comment: "why" } : {}) }, "tc", at(k++));
+  // Alice: approved c, commented on b, approved a before it changed; Bob approved t
+  op("N.c", "Alice", "approve");
+  op("N.b", "Alice", "comment");
+  op("N.a", "Alice", "approve", "h-old");
+  op("N.t", "Bob", "approve");
+  let me: { by: string } | null = { by: "Alice" };
+  const flow = new ReviewFlow({ graph: () => g, review: () => d, reader: () => me?.by ?? null, me: () => me });
+  const rows = (html: string) => [...html.matchAll(/data-walk="(\d+)"/g)].map((m) => names[Number(m[1])]);
+  const switcher = (html: string) => [...html.matchAll(/<button data-q-own="([a-z]*)" class="(on)?"[^>]*>([^<]*)(?:<span class="q-own-n">(\d+)<\/span>)?/g)].map((m) => `${m[3].trim()}${m[4] !== undefined ? ` ${m[4]}` : ""}${m[2] ? "*" : ""}`);
+  // all of it, in review order, the switch at its head: All, then each with its count
+  const all = flow.listHtml(0);
+  assert.deepEqual(rows(all), ["N.b", "N.c", "N.a", "N.t"]);
+  assert.deepEqual(switcher(all), ["All*", "Not reviewed 1", "Stale 1", "Commented 1"]);
+  // what she has not reviewed: t (Bob's approval is his)
+  const none = flow.listHtml(0, false, "none");
+  assert.deepEqual(rows(none), ["N.t"]);
+  assert.match(none, /1 of 4 you have not reviewed, in review order\./);
+  assert.deepEqual(switcher(none)[1], "Not reviewed 1*");
+  assert.deepEqual(rows(flow.listHtml(0, false, "stale")), ["N.a"]);
+  assert.deepEqual(rows(flow.listHtml(0, false, "commented")), ["N.b"]);
+  // Bob's own: everything but t
+  me = { by: "Bob" };
+  assert.deepEqual(rows(flow.listHtml(0, false, "none")), ["N.b", "N.c", "N.a"]);
+  assert.match(flow.listHtml(0, false, "commented"), /Nothing here you commented on\./);
+  // the key declarations alone, kept to it too (the target is key)
+  assert.deepEqual(rows(flow.listHtml(0, true, "none")), []);
+  // a reader without a name: no review of their own, no switch, the whole list
+  me = null;
+  const nameless = flow.listHtml(0, false, "none");
+  assert.doesNotMatch(nameless, /data-q-own/);
+  assert.deepEqual(rows(nameless), ["N.b", "N.c", "N.a", "N.t"]);
 });

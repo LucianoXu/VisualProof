@@ -12,6 +12,8 @@ import { markOf } from "../../shared/review.ts";
 import { needsReview, nonStandardAxiom, trustSplit } from "../../shared/reviewqueue.ts";
 import type { ReviewData } from "../../shared/review.ts";
 import type { ReviewBox } from "./reviewbox.ts";
+import { OWN_FILTERS } from "./reviewqueue.ts";
+import type { OwnFilter } from "./reviewqueue.ts";
 import { editorAnchor } from "./editor.ts";
 import { sectionHead } from "./targetlist.ts";
 import { holdFocus } from "./keepfocus.ts";
@@ -39,13 +41,18 @@ export interface PanelHooks {
   /** where the review has a focus, why the declaration is in its TCB, as HTML; "" otherwise
    *  (web/src/reviewqueue.ts) */
   why(i: number): string;
-  /** a target's TCB in review order, as HTML — its key declarations alone with `keyOnly`; null
-   *  when the declaration is not a target */
-  queue(i: number, keyOnly?: boolean): string | null;
+  /** a target's TCB in review order, as HTML — its key declarations alone with `keyOnly`, those
+   *  where the reader's own review stands so with `own` (web/src/reviewqueue.ts); null when the
+   *  declaration is not a target */
+  queue(i: number, keyOnly?: boolean, own?: OwnFilter | null): string | null;
   /** whether a target's TCB is listed in review order, by kind, or its key declarations alone, and
    *  changing it */
   listOrder(): "review" | "kind" | "key";
   setListOrder(order: "review" | "kind" | "key"): void;
+  /** what of a target's list the reader keeps to by their own review, and changing it (the owner's
+   *  decision of 2026-10-20): a reading preference of theirs, as the order is */
+  listOwn?(): OwnFilter | null;
+  setListOwn?(own: OwnFilter | null): void;
   /** the link that opens it in the reader's editor, at its compiled place; null when there is none */
   editorLink(i: number): string | null;
   /** whether a part of the panel is folded, and folding or opening it (web/src/store.ts) */
@@ -129,6 +136,14 @@ export class Panel {
       if (ref) {
         const i = this.g.byName.get(ref.dataset.ref!);
         if (i !== undefined) this.hooks.go(i);
+        return;
+      }
+      // the list kept to the reader's own review, or all of it
+      const own = t.closest<HTMLElement>("[data-q-own]");
+      if (own && this.current !== null) {
+        const f = own.dataset.qOwn as OwnFilter;
+        this.hooks.setListOwn?.(OWN_FILTERS.includes(f) ? f : null);
+        this.show(this.current);
         return;
       }
       const order = t.closest<HTMLElement>("[data-tcb-order]");
@@ -239,7 +254,7 @@ export class Panel {
     // the kinds
     const listOrder = this.hooks.listOrder();
     const keyOnly = listOrder === "key";
-    const queue = this.hooks.queue(i, keyOnly);
+    const queue = this.hooks.queue(i, keyOnly, this.hooks.listOwn?.() ?? null);
     const inOrder = queue !== null && listOrder !== "kind";
     const orderSwitch =
       queue === null

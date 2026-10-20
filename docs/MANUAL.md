@@ -864,7 +864,10 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   The strip is one line of progress, *Reviewing ★target · ◆ approved / K · approved / total*, with
   what is commented and stale, how many declarations agents comment on, and *All reviewed ✓* once
   your part is done; it has no button, and there is no *Next to review*. The target's panel lists
-  the TCB in review order — bottom-up, what several targets share first — or by kind. For each
+  the TCB in review order — bottom-up, what several targets share first — or by kind; over it,
+  **Yours: Not reviewed · Stale · Commented** keeps the list to your own review (what you have no
+  opinion on, where yours is on an earlier version, what you commented on), each with how many,
+  kept in this browser. For each
   declaration the panel says **why it is in the TCB**: the shortest chain of references from the
   target. Keys: `a` approve, `m` comment (it asks for the text first).
 - **Key declarations** ([ExportSpec.md](../SPEC/ExportSpec.md), decisions 1–4): a target's review set can

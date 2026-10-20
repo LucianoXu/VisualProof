@@ -266,9 +266,10 @@ Presence also carries `tabs` (the views a page has open, which the server then k
 takes it. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a
 part without a form does not typecheck.
 
-**Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order; the
-review box's opinions folded or shown (ReviewSpec, "One review box"); the outline's levels; "What
-changed"; the legend folded; the eyes' ⋯; the theme; the layout lock (`l`);
+**Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order and
+what of it is kept to by one's own review; the review box's opinions folded or shown (ReviewSpec,
+"One review box"); the outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme;
+the layout lock (`l`);
 zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
