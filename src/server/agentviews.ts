@@ -130,8 +130,8 @@ export function memoryProblem(world: Pick<World, "graph" | "review">, v: ViewDat
   return null;
 }
 
-/** How far from its parent's centre something of radius `r` may be placed (as server/agent.ts and
- *  the page keep a drop inside its parent's circle); Infinity at the top. */
+/** How far from its parent's centre something of radius `r` may be placed (as server/agentplaces.ts
+ *  and the page keep a drop inside its parent's circle); Infinity at the top. */
 function roomIn(L: Layout, parent: number, r: number): number {
   if (parent < 0) return Infinity;
   const P = L.clusters[parent];

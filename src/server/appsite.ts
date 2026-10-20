@@ -13,6 +13,7 @@ import type { Answer } from "./agent.ts";
 import { libraryApiOf } from "./library.ts";
 import { libraryRoute } from "./libraryroute.ts";
 import { sendGz, sendJson } from "./send.ts";
+import { undo } from "./agentplaces.ts";
 import type { App } from "./app.ts";
 
 /** POST /api/review: what a page records in the review, `{op, …}` (server/reviewapi.ts). */
@@ -62,7 +63,7 @@ export async function layoutUndo(app: App, req: IncomingMessage, res: ServerResp
   if (no) return sendJson(res, no.body, no.status);
   const r = await app.json(req, 4096);
   if (r.error !== undefined) return sendJson(res, { error: r.error }, 400);
-  const a = app.agents.undo(me, agent, (r.body as { id?: unknown } | null)?.id);
+  const a = undo(app.agents, me, agent, (r.body as { id?: unknown } | null)?.id);
   return sendJson(res, a.body, a.status);
 }
 

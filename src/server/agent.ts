@@ -43,8 +43,7 @@ import { addressOf } from "../shared/sharesnap.ts";
 import { encodeRecipe, readRecipe, RECIPE_PARAM, resolveRecipe, SAVE_PARAM } from "../shared/artrecipe.ts";
 import { exactContext } from "../shared/context.ts";
 import type { FileContext, ModuleContexts } from "../shared/context.ts";
-import type { ClusterMode, Layout } from "../shared/graph.ts";
-import { CLUSTER_MODES, invalidOps } from "../shared/places.ts";
+import type { ClusterMode } from "../shared/graph.ts";
 import type { PlaceOp, PlacesData } from "../shared/places.ts";
 import { evaluate } from "../shared/query.ts";
 import { advice, fresh, STANDARD_AXIOMS, trustedBy } from "../shared/review.ts";
@@ -98,6 +97,7 @@ import { MAX_NAMES, PARTS, context, declaration, declarations, moduleGet, refsGe
 import { MAX_OPINIONS, opinionPost, opinionsPost, withdrawPost } from "./agentadvice.ts";
 import { keyPost, keysGet, targetPost, targets, tcb, trustPost, why } from "./agenttcb.ts";
 import { companion, viewLink, viewPost } from "./agentfollow.ts";
+import { MAX_PINS, pins, place, undoPost } from "./agentplaces.ts";
 
 /** What agents may change on a server (`--agents`): nothing; advice and notes; or everything a
  *  person can do through the page, their opinions still advice (AgentSpec decision 9). */
@@ -266,9 +266,6 @@ export function needAgent(c: Caller): Answer | null {
   return fail(401, "Say who you are first.", "Send X-VisualProof-Name: <your name> (percent-encoded beyond ASCII), e.g. Claude.", { who: true });
 }
 
-const MAX_PINS = 500;
-/** a declaration's radius as the layout packs it (web/src/scene.ts, LEAF_R) */
-const LEAF_R = 5;
 /** The parameters of the export endpoints, as a GET takes them. */
 const EXPORT_PARAMS = {
   view: "the view's id (GET /api/agent/views lists them; project for the Project; POST /api/agent/views/open {scope} gives one for a query, e.g. key(T)). A view kept at a past build makes that build's document",
@@ -851,94 +848,6 @@ export class AgentApi {
     return ok({ now: new Date().toISOString(), events: kept.slice(-limit), more: Math.max(0, kept.length - limit) });
   }
 
-  private place(a: Ask): Answer {
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const mode = (a.query.get("mode") ?? "namespace") as ClusterMode;
-    if (!CLUSTER_MODES.includes(mode)) return fail(400, `mode ${mode} is neither namespace nor module.`, "Leave it out for namespace, the page's default.");
-    const hidden = this.projectHidden(mode);
-    const L = v.projectLayout(mode, hidden);
-    const near = a.query.get("near");
-    const point = near === null ? null : near.split(",").map(Number);
-    if (point && (point.length !== 2 || !point.every(Number.isFinite))) return fail(400, "near is x,y: two numbers in the parent's coordinates.", "e.g. near=12.5,-40: the siblings nearest that place come first.");
-    const cluster = a.query.get("cluster");
-    let me: { kind: "node" | "cluster"; index: number; key: string; parent: number; r: number; laidOut: [number, number] };
-    if (cluster !== null) {
-      const c = L.clusters.findIndex((x) => x.key === cluster);
-      if (c < 0) return fail(404, `There is no cluster ${cluster} by ${mode}.`, "Clusters are named by their full path, e.g. a namespace; GET /api/agent/place?name=<declaration> names its cluster.");
-      const cl = L.clusters[c];
-      me = { kind: "cluster", index: c, key: cl.key, parent: cl.parent, r: cl.r, laidOut: [cl.lx, cl.ly] };
-    } else {
-      const i = this.find(v, a.query.get("name"));
-      if (typeof i !== "number") return i;
-      me = { kind: "node", index: i, key: v.g.nodes[i].name, parent: L.cluster[i], r: LEAF_R, laidOut: [L.lx[i], L.ly[i]] };
-    }
-    const pin = this.pinOf(mode, me.kind, me.key);
-    // what else is in the parent, each where it is drawn: its pin, or where the layout put it
-    const inside = v.inside(mode, hidden, me.parent);
-    const sibs = [
-      ...inside.nodes.filter((j) => me.kind !== "node" || j !== me.index).map((j) => ({ kind: "node" as const, key: v.g.nodes[j].name, of: v.g.nodes[j].kind, r: LEAF_R, laidOut: [L.lx[j], L.ly[j]] as [number, number] })),
-      ...inside.clusters.filter((k) => me.kind !== "cluster" || k !== me.index).map((k) => ({ kind: "cluster" as const, key: L.clusters[k].key, of: null, r: L.clusters[k].r, laidOut: [L.clusters[k].lx, L.clusters[k].ly] as [number, number] })),
-    ].map((x) => {
-      const p = this.pinOf(mode, x.kind, x.key);
-      return { ...x, pin: p, at: p.at ?? x.laidOut };
-    });
-    const from = (point as [number, number] | null) ?? pin.at ?? me.laidOut;
-    // nearest first: what a pin there would crowd. The gap is the free space between the two
-    // circles, were this one at `from`; below zero they overlap
-    const gap = (x: { at: [number, number]; r: number }) => Math.hypot(x.at[0] - from[0], x.at[1] - from[1]) - x.r - me.r;
-    sibs.sort((x, y) => gap(x) - gap(y));
-    const limit = clampInt(a.query.get("limit"), 100, 0, 2000);
-    const room = roomIn(L, me.parent, me.r);
-    return ok({
-      mode,
-      kind: me.kind,
-      key: me.key,
-      parent: { ...this.parentOf(L, me.parent), room: shown(roomIn(L, me.parent, 0)) },
-      r: me.r,
-      room: shown(room),
-      laidOut: me.laidOut,
-      pinned: pin.at,
-      ...(pin.at ? { pinnedBy: pin.by } : {}),
-      siblings: {
-        total: sibs.length,
-        pinned: sibs.filter((x) => x.pin.at).length,
-        nearestTo: from,
-        more: Math.max(0, sibs.length - limit),
-        list: sibs.slice(0, limit).map((x) => ({
-          kind: x.kind,
-          key: x.key,
-          ...(x.of ? { declKind: x.of } : {}),
-          r: x.r,
-          at: x.at,
-          gap: Math.round(gap(x) * 10) / 10,
-          pinned: !!x.pin.at,
-          ...(x.pin.at ? { pinnedBy: x.pin.by, laidOut: x.laidOut } : {}),
-        })),
-      },
-    });
-  }
-
-  private parentOf(L: Layout, c: number): { cluster: string | null; r: number | null } {
-    return c >= 0 ? { cluster: L.clusters[c].key, r: L.clusters[c].r } : { cluster: null, r: null };
-  }
-
-  /** A pin, and who dropped it as far as the server knows (null: not recorded — it was dropped
-   *  before the server kept who). */
-  /** The levels the Project view hides by `mode` (ViewSpec decision 24); none where the world has
-   *  no views. */
-  private projectHidden(mode: ClusterMode): string[] {
-    return this.world.views?.book.get(PROJECT)?.hidden[mode] ?? [];
-  }
-
-  private pinOf(mode: ClusterMode, kind: "node" | "cluster", key: string): { at: [number, number] | null; by: { name: string | null; agent: boolean; at: string } | null } {
-    const P = this.world.places.data.layouts[mode];
-    const set = kind === "node" ? P.nodes : P.clusters;
-    if (!Object.hasOwn(set, key)) return { at: null, by: null };
-    const who = this.world.places.authorOf(mode, kind, key);
-    return { at: set[key], by: who ? { name: who.by, agent: !!who.agent, at: who.at } : null };
-  }
-
   // ---------------------------------------------------------------- what people do (level full)
 
   /** A link to a picture of the board (ExportSpec decision 20, drafted 2026-10-15): a recipe
@@ -994,103 +903,6 @@ export class AgentApi {
       left: res.left,
       note: "It holds no key: it opens for whoever is let in already, or for a script that enters with the key (scripts/artwork-batch.mjs). The page that opens it resolves the recipe again against its board, opens the artwork mode fitted to the whole board, and saves the files asked for on that machine; nothing comes back here.",
     });
-  }
-
-  private pins(a: Ask): Answer {
-    const no = needAgent(a.caller) ?? this.refuse(a.caller, "full");
-    if (no) return no;
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const b = body(a);
-    const mode = (b.mode ?? "namespace") as ClusterMode;
-    if (!CLUSTER_MODES.includes(mode)) return fail(400, "mode is namespace or module.", "Leave it out for namespace, the page's default.");
-    if (!Array.isArray(b.pins) || !b.pins.length || b.pins.length > MAX_PINS)
-      return fail(400, `pins is a list of 1 to ${MAX_PINS} {name or cluster, at: [x, y] or null}.`, "at is in the parent cluster's coordinates (GET /api/agent/place); null lets go of the pin.");
-    const L = v.projectLayout(mode, this.projectHidden(mode));
-    const keys = new Map(L.clusters.map((c, k) => [c.key, k]));
-    const ops: PlaceOp[] = [];
-    for (const p of b.pins as Record<string, unknown>[]) {
-      if (!p || typeof p !== "object") return fail(400, "Each pin is {name or cluster, at}.", "e.g. {\"name\": \"A.b\", \"at\": [12, -40]}.");
-      let kind: "node" | "cluster", key: string, room: number;
-      if (typeof p.cluster === "string") {
-        const c = keys.get(p.cluster);
-        if (c === undefined) return fail(404, `There is no cluster ${p.cluster} by ${mode}.`, "GET /api/agent/place?name=<declaration> names the cluster it is in.");
-        kind = "cluster";
-        key = p.cluster;
-        room = roomIn(L, L.clusters[c].parent, L.clusters[c].r);
-      } else {
-        const i = this.find(v, str(p.name));
-        if (typeof i !== "number") return i;
-        kind = "node";
-        key = v.g.nodes[i].name;
-        room = roomIn(L, L.cluster[i], LEAF_R);
-      }
-      if (p.at === null) ops.push({ op: "unpin", mode, kind, key });
-      else ops.push({ op: "pin", mode, kind, key, at: inside(p.at, room) });
-    }
-    const why = invalidOps(ops);
-    if (why) return fail(400, `The pins are not right (${why}).`, "at is [x, y], two finite numbers in the parent cluster's coordinates.");
-    const done = this.layout(a.caller.name!, true, ops);
-    // where each one went: a place beyond the parent's room is brought in, as a drag would be
-    return ok({ ...done, placed: ops.map((o) => (o.op === "pin" ? { key: o.key, at: o.at } : o.op === "unpin" ? { key: o.key, at: null } : null)).filter(Boolean) });
-  }
-
-  /** Drop and let go of pins as one batch (AgentSpec decision 4): applied as a page's drop is, and
-   *  recorded in the timeline with what each pin was before, so that it can be undone at once. */
-  private layout(by: string, agent: boolean, ops: PlaceOp[]): { ok: true; id: number | null; count: number } {
-    const P = this.world.places.data.layouts;
-    const id = (o: Exclude<PlaceOp, { op: "clear" }>) => `${o.mode}\u0000${o.kind}\u0000${o.key}`;
-    const pinOf = (o: Exclude<PlaceOp, { op: "clear" }>) => (o.kind === "node" ? P[o.mode].nodes : P[o.mode].clusters)[o.key] ?? null;
-    const moves = ops.filter((o): o is Exclude<PlaceOp, { op: "clear" }> => o.op !== "clear");
-    const before = new Map<string, { o: Exclude<PlaceOp, { op: "clear" }>; at: [number, number] | null }>();
-    for (const o of moves) if (!before.has(id(o))) before.set(id(o), { o, at: pinOf(o) });
-    if (!this.world.places.apply(moves, { by, agent })) return { ok: true, id: null, count: 0 };
-    this.world.placesChanged(moves, null, by);
-    const as = (o: Exclude<PlaceOp, { op: "clear" }>, at: [number, number] | null): PlaceOp =>
-      at ? { op: "pin", mode: o.mode, kind: o.kind, key: o.key, at } : { op: "unpin", mode: o.mode, kind: o.kind, key: o.key };
-    // what the batch left (each pin once, where it ended), and what puts back what was there
-    const after = [...before.values()].map(({ o }) => as(o, pinOf(o)));
-    const undo = [...before.values()].map(({ o, at }) => as(o, at));
-    const e = this.world.timeline.add({ kind: "layout", by, ...(agent ? { agent: true as const } : {}), count: before.size, ops: after, undo });
-    return { ok: true, id: e.id, count: before.size };
-  }
-
-  /** Undo a layout batch: every pin it set goes back to what it was, except where someone moved it
-   *  since — that one is left, and the answer (and the timeline) says so. `by` is null for a private
-   *  reader's undo (CollabSpec decision 8), recorded without a name. */
-  undo(by: string | null, agent: boolean, id: unknown): Answer {
-    if (typeof id !== "number" || !Number.isInteger(id)) return fail(400, "id is the layout batch's number.", "POST /api/agent/pins answers with it; GET /api/agent/activity lists layout events.");
-    const events = this.world.timeline.events;
-    const e = events.find((x) => x.id === id);
-    if (!e || e.kind !== "layout") return fail(404, `There is no layout batch #${id}.`, "GET /api/agent/activity lists layout events, each with its id.");
-    const done = events.find((x) => x.kind === "undo" && x.of === id);
-    if (done) return fail(409, `Layout batch #${id} was undone already, by ${(done as { by: string | null }).by ?? "someone"}.`, "Nothing to do.");
-    const P = this.world.places.data.layouts;
-    const restore: PlaceOp[] = [];
-    const kept: string[] = [];
-    e.ops.forEach((o, k) => {
-      if (o.op === "clear") return;
-      const now = (o.kind === "node" ? P[o.mode].nodes : P[o.mode].clusters)[o.key] ?? null;
-      const left = o.op === "pin" ? o.at : null;
-      const same = now === left || (!!now && !!left && now[0] === left[0] && now[1] === left[1]);
-      if (same) restore.push(e.undo[k]);
-      else kept.push(o.key);
-    });
-    if (restore.length && this.world.places.apply(restore, { by, agent })) this.world.placesChanged(restore, null, by);
-    const u = this.world.timeline.add({ kind: "undo", by, ...(agent ? { agent: true as const } : {}), of: id, restored: restore.length, kept });
-    return ok({
-      ok: true,
-      id: u.id,
-      restored: restore.length,
-      kept,
-      ...(kept.length ? { note: `${kept.length} left where they are: someone moved them since.` } : {}),
-    });
-  }
-
-  private undoPost(a: Ask): Answer {
-    const no = needAgent(a.caller) ?? this.refuse(a.caller, "full");
-    if (no) return no;
-    return this.undo(a.caller.name!, true, body(a).id);
   }
 
   // ---------------------------------------------------------------- the table
@@ -1264,7 +1076,7 @@ export class AgentApi {
         method: "GET", path: "/api/agent/place", about: "Where a declaration or a cluster is on the Project view (for another view: GET /api/agent/views/view), in its parent cluster's coordinates (origin the parent's centre), as laid out and as pinned (and by whom); and what else is in the parent — declarations and clusters, each with its radius, where it is and whether it is pinned — nearest first, so that a pin can go where nothing is.",
         params: { name: "a declaration — or —", cluster: "a cluster's key (its full path)", mode: "namespace (default) or module: the way of clustering", near: "optional x,y in the parent's coordinates: the siblings nearest there first (default: nearest the thing itself)", limit: "how many siblings (default 100, at most 2000; 0 for none)" },
         returns: "{mode, kind, key, parent: {cluster, r, room}, r, room, laidOut: [x, y], pinned: [x, y] | null, pinnedBy?: {name (null: someone — a private reader, or a page without a name), agent, at} | null, siblings: {total, pinned, nearestTo, more, list: [{kind, key, declKind?, r, at, gap (free space to it from nearestTo; < 0: overlap), pinned, pinnedBy?, laidOut?}]}}",
-        run: (a) => this.place(a),
+        run: (a) => place(this, a),
       },
       {
         method: "POST", path: "/api/agent/opinion", brief: "advice: approve or comment", needs: "advise", about: "Give advice on a declaration's present version: approve, or comment with what is wrong, unclear or worth checking. The server records the content hash and the text you judged. A later opinion replaces your earlier one. Never counted. A non-standard axiom a target rests on is advised on by its name, also where the graph has no declaration for it.",
@@ -1306,13 +1118,13 @@ export class AgentApi {
         method: "POST", path: "/api/agent/pins", needs: "full", about: "Drop or let go of pins on the Project view, as people drag (for another view: POST /api/agent/views/arrange): one batch, recorded in the timeline with what it replaced, undoable at once.",
         params: { mode: "namespace (default) or module", pins: `[{name or cluster, at: [x, y] in the parent's coordinates (GET /api/agent/place), or null to let go}], at most ${MAX_PINS}` },
         returns: "{ok, id (the batch, for undo; null when nothing changed), count}",
-        run: (a) => this.pins(a),
+        run: (a) => pins(this, a),
       },
       {
         method: "POST", path: "/api/agent/undo", needs: "full", about: "Undo a layout batch: its pins go back to what they were, except those someone moved since (listed as kept).",
         params: { id: "the batch's id" },
         returns: "{ok, id, restored, kept: [keys], note?}",
-        run: (a) => this.undoPost(a),
+        run: (a) => undoPost(this, a),
       },
       {
         method: "POST", path: "/api/agent/target", needs: "full", about: "Mark a declaration of the project as a target — a theorem whose TCB people review; no view comes with it, and a click on it (or view {review}) opens a temporary view of its TCB, linked to it — or take one off, as the panel's ☆ Mark as target does (its view, if any, stays, unlinked). Recorded in your review log under your name, marked as an agent's; the timeline shows it.",
@@ -1339,32 +1151,6 @@ export class AgentApi {
       ...historyEndpoints(this.world, (a) => this.refuse(a.caller, "full")),
     ];
   }
-}
-
-/** How far from its parent's centre something of radius `r` may be placed, as the page keeps a
- *  drop inside its parent's circle (web/src/scene.ts, `inside`): the circle less the room left for
- *  its label. Where the page folded the thing, it is smaller and may go further; this is the
- *  bound for every page. Infinity at the top, where nothing holds it. */
-function roomIn(L: Layout, parent: number, r: number): number {
-  if (parent < 0) return Infinity;
-  const P = L.clusters[parent];
-  return Math.max(0, P.r - (10 + Math.min(14, Math.sqrt(P.count))) - r);
-}
-
-/** A room as the API says it: to a tenth, never beyond it; null at the top, where nothing holds it. */
-function shown(room: number): number | null {
-  return Number.isFinite(room) ? Math.floor(room * 10) / 10 : null;
-}
-
-/** A place brought within `room` of the centre, a hair inside so that rounding keeps it there, as
- *  every page would bring it. Anything not a place is left for invalidOps to refuse. */
-function inside(at: unknown, room: number): [number, number] {
-  if (!Array.isArray(at) || at.length !== 2 || !at.every((x) => typeof x === "number" && Number.isFinite(x))) return at as [number, number];
-  const [x, y] = at as [number, number];
-  const d = Math.hypot(x, y);
-  if (d <= room) return [x, y];
-  const k = Math.max(0, room - 0.1) / d;
-  return [Math.round(x * k * 10) / 10, Math.round(y * k * 10) / 10];
 }
 
 /** Whether `path` is an endpoint's `pattern`: true where it is that path; where the pattern's last
