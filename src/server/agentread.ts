@@ -145,7 +145,7 @@ export async function declarations(api: AgentApi, a: Ask): Promise<Answer> {
 
 /** A declaration's answer with the parts asked for, each what its own endpoint answers — or, where
  *  that part could not be answered, its error with its `status`, listed in `failed`. */
-export async function withParts(api: AgentApi, v: View, i: number, a: Ask, include: Part[], deadline: number): Promise<Record<string, unknown>> {
+async function withParts(api: AgentApi, v: View, i: number, a: Ask, include: Part[], deadline: number): Promise<Record<string, unknown>> {
   const out = declarationOf(api, v, i, a.caller);
   const failed: Record<string, number> = {};
   const own = leanHome(api, v, v.g.nodes[i].leanName ?? v.g.nodes[i].name, i, "its own");
@@ -171,7 +171,7 @@ export async function withParts(api: AgentApi, v: View, i: number, a: Ask, inclu
 }
 
 /** Everything about one declaration, as GET declaration answers it without parts. */
-export function declarationOf(api: AgentApi, v: View, i: number, me: Caller): Record<string, unknown> {
+function declarationOf(api: AgentApi, v: View, i: number, me: Caller): Record<string, unknown> {
   const g = v.g;
   const n = g.nodes[i];
   const d = api.world.review.data;
@@ -253,7 +253,7 @@ export function source(api: AgentApi, a: Ask): Answer {
   return r.status === 200 ? ok({ ...(r.body as object), ...api.folded(v, a.query.get("name"), i) }) : r;
 }
 
-export function sourceOf(api: AgentApi, v: View, i: number): Answer {
+function sourceOf(api: AgentApi, v: View, i: number): Answer {
   const n = v.g.nodes[i];
   if (v.g.isExt(i)) return fail(404, `${n.name} is outside the project (${n.module}): there is no source here.`, `Ask Lean about it: GET /api/agent/describe or /api/agent/print?name=${encodeURIComponent(n.name)}.`);
   if (!n.range) return fail(404, `The graph records no place for ${n.name} in its file.`, "GET /api/agent/declaration gives its statement; /api/agent/print what Lean elaborated.");
@@ -287,7 +287,7 @@ export function sourceOf(api: AgentApi, v: View, i: number): Answer {
  *  Lean generated from a command; read from the text its module's build was compiled from, the
  *  context it is written in read from that text. A text not kept is said so, never stood in for
  *  by another. */
-export function pastSource(api: AgentApi, name: string | null, raw: string): Answer {
+function pastSource(api: AgentApi, name: string | null, raw: string): Answer {
   const h = api.world.history;
   if (!h) return fail(404, "This server keeps no history: it serves a saved graph.", "Leave snapshot out for the source as it was compiled last.");
   const id = Number(raw);
@@ -358,7 +358,7 @@ export function context(api: AgentApi, a: Ask): Answer {
 
 /** What is in force where a declaration is written, read from its file up to its text: the
  *  namespaces and sections around it, opens, variables, universes, options, local commands. */
-export function contextOf(api: AgentApi, v: View, i: number): Answer {
+function contextOf(api: AgentApi, v: View, i: number): Answer {
   const n = v.g.nodes[i];
   if (v.g.isExt(i)) return fail(404, `${n.name} is outside the project (${n.module}): there is no file here to read.`, `Ask Lean about it: GET /api/agent/print?name=${encodeURIComponent(n.name)}.`);
   if (!n.range) return fail(404, `The graph records no place for ${n.name} in its file.`, "GET /api/agent/print shows what Lean elaborated, every name in full.");
@@ -396,7 +396,7 @@ export function refsGet(api: AgentApi, a: Ask, dir: "uses" | "users"): Answer {
  *  reference sits — in the statement, a definition's body, a proof (of the declaration that makes
  *  it) — and whether what it names is trusted. Statement first, then body, then proof; the
  *  project before the outside world; then by name. Paged. */
-export function refs(api: AgentApi, v: View, i: number, dir: "uses" | "users", q: URLSearchParams): Answer {
+function refs(api: AgentApi, v: View, i: number, dir: "uses" | "users", q: URLSearchParams): Answer {
   const g = v.g;
   const where = q.get("where");
   const only = where === null || where === "" ? 0 : WHERE[where];
@@ -444,7 +444,7 @@ export function refs(api: AgentApi, v: View, i: number, dir: "uses" | "users", q
 }
 
 /** the most of a module's doc comments one answer carries, in UTF-16 units */
-export const MAX_MODULE_DOCS = 60_000;
+const MAX_MODULE_DOCS = 60_000;
 
 /** the most declarations one request reads, and the most advice one request gives */
 export const MAX_NAMES = 25;
@@ -452,13 +452,13 @@ export const MAX_NAMES = 25;
 /** what a declaration's answer can carry besides itself, each what its own endpoint answers */
 export const PARTS = ["source", "context", "uses", "users", "describe", "print"] as const;
 
-export type Part = (typeof PARTS)[number];
+type Part = (typeof PARTS)[number];
 
 /** where a reference sits, by its site bit */
-export const WHERE: Record<string, number> = { statement: SITE_STMT, body: SITE_BODY, proof: SITE_PROOF, grammar: SITE_GRAMMAR };
+const WHERE: Record<string, number> = { statement: SITE_STMT, body: SITE_BODY, proof: SITE_PROOF, grammar: SITE_GRAMMAR };
 
 /** The parts asked for with a declaration (`include=source,context,…`), or why they are refused. */
-export function parts(s: string | null): Part[] | Answer {
+function parts(s: string | null): Part[] | Answer {
   if (s === null || !s.trim()) return [];
   const asked = s.split(",").map((x) => x.trim()).filter(Boolean);
   const bad = asked.filter((x) => !(PARTS as readonly string[]).includes(x));
@@ -467,7 +467,7 @@ export function parts(s: string | null): Part[] | Answer {
 }
 
 /** Names separated by commas, as `names=a,b,c` gives them; a comma inside «…» is part of a name. */
-export function splitNames(s: string): string[] {
+function splitNames(s: string): string[] {
   const out: string[] = [];
   let cur = "", quoted = false;
   for (const c of s) {

@@ -80,7 +80,7 @@ export function place(api: AgentApi, a: Ask): Answer {
   });
 }
 
-export function parentOf(api: AgentApi, L: Layout, c: number): { cluster: string | null; r: number | null } {
+function parentOf(api: AgentApi, L: Layout, c: number): { cluster: string | null; r: number | null } {
   return c >= 0 ? { cluster: L.clusters[c].key, r: L.clusters[c].r } : { cluster: null, r: null };
 }
 
@@ -88,11 +88,11 @@ export function parentOf(api: AgentApi, L: Layout, c: number): { cluster: string
  *  before the server kept who). */
 /** The levels the Project view hides by `mode` (ViewSpec decision 24); none where the world has
  *  no views. */
-export function projectHidden(api: AgentApi, mode: ClusterMode): string[] {
+function projectHidden(api: AgentApi, mode: ClusterMode): string[] {
   return api.world.views?.book.get(PROJECT)?.hidden[mode] ?? [];
 }
 
-export function pinOf(api: AgentApi, mode: ClusterMode, kind: "node" | "cluster", key: string): { at: [number, number] | null; by: { name: string | null; agent: boolean; at: string } | null } {
+function pinOf(api: AgentApi, mode: ClusterMode, kind: "node" | "cluster", key: string): { at: [number, number] | null; by: { name: string | null; agent: boolean; at: string } | null } {
   const P = api.world.places.data.layouts[mode];
   const set = kind === "node" ? P.nodes : P.clusters;
   if (!Object.hasOwn(set, key)) return { at: null, by: null };
@@ -141,7 +141,7 @@ export function pins(api: AgentApi, a: Ask): Answer {
 
 /** Drop and let go of pins as one batch (AgentSpec decision 4): applied as a page's drop is, and
  *  recorded in the timeline with what each pin was before, so that it can be undone at once. */
-export function layout(api: AgentApi, by: string, agent: boolean, ops: PlaceOp[]): { ok: true; id: number | null; count: number } {
+function layout(api: AgentApi, by: string, agent: boolean, ops: PlaceOp[]): { ok: true; id: number | null; count: number } {
   const P = api.world.places.data.layouts;
   const id = (o: Exclude<PlaceOp, { op: "clear" }>) => `${o.mode}\u0000${o.kind}\u0000${o.key}`;
   const pinOf = (o: Exclude<PlaceOp, { op: "clear" }>) => (o.kind === "node" ? P[o.mode].nodes : P[o.mode].clusters)[o.key] ?? null;
@@ -200,26 +200,26 @@ export function undoPost(api: AgentApi, a: Ask): Answer {
 export const MAX_PINS = 500;
 
 /** a declaration's radius as the layout packs it (web/src/scene.ts, LEAF_R) */
-export const LEAF_R = 5;
+const LEAF_R = 5;
 
 /** How far from its parent's centre something of radius `r` may be placed, as the page keeps a
  *  drop inside its parent's circle (web/src/scene.ts, `inside`): the circle less the room left for
  *  its label. Where the page folded the thing, it is smaller and may go further; this is the
  *  bound for every page. Infinity at the top, where nothing holds it. */
-export function roomIn(L: Layout, parent: number, r: number): number {
+function roomIn(L: Layout, parent: number, r: number): number {
   if (parent < 0) return Infinity;
   const P = L.clusters[parent];
   return Math.max(0, P.r - (10 + Math.min(14, Math.sqrt(P.count))) - r);
 }
 
 /** A room as the API says it: to a tenth, never beyond it; null at the top, where nothing holds it. */
-export function shown(room: number): number | null {
+function shown(room: number): number | null {
   return Number.isFinite(room) ? Math.floor(room * 10) / 10 : null;
 }
 
 /** A place brought within `room` of the centre, a hair inside so that rounding keeps it there, as
  *  every page would bring it. Anything not a place is left for invalidOps to refuse. */
-export function inside(at: unknown, room: number): [number, number] {
+function inside(at: unknown, room: number): [number, number] {
   if (!Array.isArray(at) || at.length !== 2 || !at.every((x) => typeof x === "number" && Number.isFinite(x))) return at as [number, number];
   const [x, y] = at as [number, number];
   const d = Math.hypot(x, y);

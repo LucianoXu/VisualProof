@@ -168,7 +168,7 @@ export function viewPost(api: AgentApi, a: Ask): Answer {
 
 /** Where the agent would be with the fields of `b` over its own place, each checked as POST view
  *  takes it: where POST view puts it, and what POST view/link makes a link to. */
-export function goingTo(api: AgentApi, a: Ask, b: Record<string, unknown>): { place: PresenceView; temporary: string | null } | Answer {
+function goingTo(api: AgentApi, a: Ask, b: Record<string, unknown>): { place: PresenceView; temporary: string | null } | Answer {
   const v = api.graph();
   if (!(v instanceof View)) return v;
   const was = api.world.presence.agentView(whoOf(a.caller)) ?? { mode: "tcb", sel: null, source: false, clusterMode: "namespace", cam: null, view: null, scope: null, tabs: [] };
@@ -338,19 +338,19 @@ export async function viewLink(api: AgentApi, a: Ask): Promise<Answer> {
 }
 
 /** the longest the companion waits for someone to move, in seconds */
-export const MAX_COMPANION_WAIT = 60;
+const MAX_COMPANION_WAIT = 60;
 
 /** the tools, how a click selects, as the page names them (web/src/main.ts, MODE_NAME) */
 /** The page's tools by name (web/src/main.ts): the modes Selection and Used by, and the three steps
  *  of the mode Rests on, Uses, TCB and Keys (ViewSpec decision 20). */
-export const TOOL_NAMES: Record<string, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", apps: "Used by" };
+const TOOL_NAMES: Record<string, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", apps: "Used by" };
 
 /** Activity's kinds of event, as its filters name them (web/src/activity.ts) */
-export const ACTIVITY_WORDS: Record<string, string> = { review: "Review", build: "Builds", change: "Changes" };
+const ACTIVITY_WORDS: Record<string, string> = { review: "Review", build: "Builds", change: "Changes" };
 
 /** What `view {paper}` asks the reference window to show: a link's place, or a file at a page; null to
  *  close it; or why it cannot. */
-export function paperOf(d: ReviewData, raw: unknown): PaperWindow | null | string {
+function paperOf(d: ReviewData, raw: unknown): PaperWindow | null | string {
   if (raw === null || raw === false) return null;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return "paper is an object.";
   const o = raw as Record<string, unknown>;

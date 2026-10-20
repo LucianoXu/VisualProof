@@ -157,17 +157,17 @@ export function docs(api: AgentApi, a: Ask): Answer {
 }
 
 /** VisualProof's MCP server (AgentSpec decision 8), served to agents as it is */
-export const MCP_FILE = new URL("../mcp/visualproof-mcp.mjs", import.meta.url);
+const MCP_FILE = new URL("../mcp/visualproof-mcp.mjs", import.meta.url);
 
 /** What each level lets an agent do, as the entry says it (AgentSpec decision 9). */
-export const LEVEL_SAYS: Record<AgentLevel, string> = {
+const LEVEL_SAYS: Record<AgentLevel, string> = {
   read: "you read, show what you look at and typeset documents; you change nothing",
   advise: "you also give advice, write notes, add files and links to the library, and ask people to follow you",
   full: "you also do whatever a person can do through the page: targets, key declarations, trust, views, pins, the lost-and-found",
 };
 
 /** The endpoints the entry names, the most used first: each with its own line (`brief`). */
-export const ENTRY = [
+const ENTRY = [
   "GET /api/agent/companion",
   "GET /api/agent/search",
   "GET /api/agent/declaration",

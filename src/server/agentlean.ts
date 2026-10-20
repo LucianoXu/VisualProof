@@ -16,7 +16,7 @@ import { clampInt, fail, flag, ok } from "./agent.ts";
  *  module of the project imports it (View.homeOf): only the graph's own modules (meta.modules)
  *  are ever imported. Only a name that passes isDeclName gets this far: it is written into Lean
  *  source. */
-export function leanTarget(api: AgentApi, v: View, q: URLSearchParams): LeanTarget | Answer {
+function leanTarget(api: AgentApi, v: View, q: URLSearchParams): LeanTarget | Answer {
   const name = (q.get("name") ?? "").trim();
   if (!name) return fail(400, "name is missing.", "Give name=<a full Lean name>; GET /api/agent/search?q=<words> finds a declaration.");
   if (!isDeclName(name)) return fail(400, "name is not a Lean name.", "Give a full dotted name and nothing else, e.g. Nat.Prime.eq_one_or_self_of_dvd.");
@@ -54,7 +54,7 @@ export function leanHome(api: AgentApi, v: View, name: string, j: number, own: s
 }
 
 /** Lean says it knows no such name where the module is imported: what was meant, from the graph. */
-export function unknownToLean(api: AgentApi, v: View, t: LeanTarget, said?: string): Answer {
+function unknownToLean(api: AgentApi, v: View, t: LeanTarget, said?: string): Answer {
   const guesses = [...(t.under ? [t.under] : []), ...api.guess(v, t.name)].filter((x, k, xs) => xs.indexOf(x) === k).slice(0, 5);
   return fail(
     404,
@@ -67,7 +67,7 @@ export function unknownToLean(api: AgentApi, v: View, t: LeanTarget, said?: stri
 }
 
 /** Lean is still loading a module's imports: ask again. */
-export function loading(api: AgentApi, module: string, pending: unknown): Answer {
+function loading(api: AgentApi, module: string, pending: unknown): Answer {
   return fail(503, `Lean is still loading the imports of ${module}.`, "Ask again in a few seconds (Retry-After); the first question about a module can take a minute.", { pending, retryAfter: 5 }, { "retry-after": "5" });
 }
 
@@ -143,7 +143,7 @@ export const MAX_PRINT = 50_000;
 
 /** What Lean is asked about: a name, the module imported to ask, why that module, and the
  *  declaration of the graph the name is under, where it is not one itself. */
-export interface LeanTarget {
+interface LeanTarget {
   name: string;
   module: string;
   chosen: string;

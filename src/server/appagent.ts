@@ -5,9 +5,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { validSession } from "../shared/collab.ts";
-import type { Caller } from "./agent.ts";
+import type { Answer, Caller } from "./agent.ts";
 import type { TokenRecord } from "./tokens.ts";
-import type { Answer } from "./agent.ts";
 import { readUpload } from "./libraryroute.ts";
 import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { hostOf, sendDownload, sendGz, sendJson, sendText } from "./send.ts";

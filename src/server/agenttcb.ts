@@ -38,7 +38,7 @@ export function targets(api: AgentApi, a: Ask): Answer {
  *  member of its queue, the axioms the graph has no declaration for included; and its key
  *  declarations alone (ExportSpec decision 4), those that need review, the target among them, the
  *  trusted ones counted apart. */
-export function counts(api: AgentApi, v: View, root: number, q: Queue, me: Caller) {
+function counts(api: AgentApi, v: View, root: number, q: Queue, me: Caller) {
   const d = api.world.review.data;
   const c = { needReview: 0, approved: 0, commented: 0, stale: 0, unreviewed: 0, advised: 0, agentComments: 0, advisedByYou: 0 };
   const count = (name: string, hash: string | undefined) => {
@@ -249,7 +249,7 @@ export function why(api: AgentApi, a: Ask): Answer {
  *  and bound as the page's requests are (server/reviewapi.ts), appended to the agent's own log
  *  under its name and marked, so that the page and the timeline say it was an agent's. The answer
  *  is the event written, or that nothing changed. */
-export function record(api: AgentApi, me: Caller, op: Record<string, unknown>, hint?: (status: number) => string | null): Answer {
+function record(api: AgentApi, me: Caller, op: Record<string, unknown>, hint?: (status: number) => string | null): Answer {
   const r = api.reviews.post(op, { name: me.name!, agent: true });
   const b = r.body as { error?: string; hint?: string; change?: unknown; event?: Record<string, unknown> };
   if (r.status !== 200) return fail(r.status, b.error ?? "Refused.", hint?.(r.status) ?? b.hint ?? "GET /api/agent describes this endpoint.");
@@ -258,12 +258,12 @@ export function record(api: AgentApi, me: Caller, op: Record<string, unknown>, h
 }
 
 /** The writes of level full say who makes them, that it is an agent, and that its level allows. */
-export function full(api: AgentApi, a: Ask): Answer | null {
+function full(api: AgentApi, a: Ask): Answer | null {
   return needAgent(a.caller) ?? api.refuse(a.caller, "full");
 }
 
 /** `on` as a request gives it: true unless it says false. */
-export function onOf(api: AgentApi, b: Record<string, unknown>): boolean | Answer {
+function onOf(api: AgentApi, b: Record<string, unknown>): boolean | Answer {
   if (b.on === undefined) return true;
   return typeof b.on === "boolean" ? b.on : fail(400, "on is true or false.", "Leave it out to mark; false takes the mark off.");
 }

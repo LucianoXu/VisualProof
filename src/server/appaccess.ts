@@ -46,7 +46,7 @@ export function enterReadOnly(app: App, req: IncomingMessage, res: ServerRespons
 
 /** Whether the key's cookie or a personal link in force lets a request in: someone who sees the
  *  site's people, and may be told who revoked a link. */
-export function letIn(app: App, req: IncomingMessage): boolean {
+function letIn(app: App, req: IncomingMessage): boolean {
   return !!app.ids.person(req) || app.access?.admit(req, "/") === "in";
 }
 

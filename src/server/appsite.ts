@@ -8,8 +8,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { layoutAuthor } from "./identity.ts";
 import { MAX_MEMORY_BYTES } from "./views.ts";
 import { needOf, refusal } from "./agent.ts";
-import type { Caller } from "./agent.ts";
-import type { Answer } from "./agent.ts";
+import type { Answer, Caller } from "./agent.ts";
 import { libraryApiOf } from "./library.ts";
 import { libraryRoute } from "./libraryroute.ts";
 import { sendGz, sendJson } from "./send.ts";
@@ -92,7 +91,7 @@ export async function history(app: App, req: IncomingMessage, res: ServerRespons
 }
 
 /** The library's operations (server/library.ts), shared with the agents' API. */
-export function library(app: App) {
+function library(app: App) {
   return libraryApiOf(app.live, () => ({
     review: app.live.review,
     project: app.live.project,

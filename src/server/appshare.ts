@@ -104,7 +104,7 @@ export async function sharePeople(app: App, req: IncomingMessage, res: ServerRes
  *  Whoever else asks is refused: its maker, a guest, an agent; a read-only reader's page posts
  *  nothing here (server/readonlygate.ts). Asked for by POST, as an agent's prompt is, so that the
  *  browser sends its Origin and the link names the server as the page reached it. */
-export async function myLink(app: App, req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
+async function myLink(app: App, req: IncomingMessage, res: ServerResponse, path: string): Promise<void> {
   const p = app.ids.person(req);
   if (!p) return sendJson(res, { error: "A personal link is shown to its holder alone, in a browser it let in: this page came by none.", holder: false }, 403);
   if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);

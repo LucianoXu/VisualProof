@@ -62,7 +62,7 @@ export function opinionsPost(api: AgentApi, a: Ask): Answer {
 /** Check and record one piece of advice: the answer is `{recorded}`, or why it is refused. What
  *  it is about — the declaration's hash and the text judged — is bound as the page's opinions are
  *  (server/reviewapi.ts). */
-export function advise(api: AgentApi, v: View, b: Record<string, unknown>, me: Caller): Answer {
+function advise(api: AgentApi, v: View, b: Record<string, unknown>, me: Caller): Answer {
   const name = str(b.name)?.trim() ?? "";
   // an axiom the target rests on that the graph has no declaration for is advised on by its name
   const named = !v.g.byName.has(name) && v.meta.axioms.includes(name) && !STANDARD_AXIOMS.includes(name);

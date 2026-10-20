@@ -37,7 +37,7 @@ import { body, fail, needAgent, ok } from "./agent.ts";
  *  request names none — the past build it is kept at, if it is (HistorySpec decision 19) — else
  *  the one `raw` names, as the Time Machine shows a view at another build than its own (null, 0 or
  *  the latest's id: the latest). Null for the latest build; or the answer why it cannot be had. */
-export function exportAt(api: AgentApi, rec: ViewData, raw: unknown): number | null | Answer {
+function exportAt(api: AgentApi, rec: ViewData, raw: unknown): number | null | Answer {
   if (raw === undefined || raw === "") return api.world.views?.pastOf(rec) ?? null;
   if (raw === null || raw === 0 || raw === "0" || raw === "null" || raw === "latest") return null;
   const id = typeof raw === "number" ? raw : typeof raw === "string" && /^\d{1,9}$/.test(raw) ? Number(raw) : NaN;
@@ -51,7 +51,7 @@ export function exportAt(api: AgentApi, rec: ViewData, raw: unknown): number | n
  *  (exportAt; `raw` what the request named): that build where it is a past one; the build the view
  *  is kept at where the request named none, as its title says it everywhere; none for the latest
  *  named. */
-export function titleVersion(api: AgentApi, rec: ViewData, at: number | null, raw: unknown): number | undefined {
+function titleVersion(api: AgentApi, rec: ViewData, at: number | null, raw: unknown): number | undefined {
   return at ?? (raw === undefined || raw === "" ? rec.version : undefined);
 }
 
@@ -61,7 +61,7 @@ export function titleVersion(api: AgentApi, rec: ViewData, at: number | null, ra
  *  figures of those notes need of the library; or the answer why not. What was asked of a
  *  document until 2026-10-09 — targets, a preset, a content — is refused, and told what to ask
  *  instead. */
-export async function docInput(api: AgentApi, view: unknown, settings: unknown, retired: Record<string, unknown> = {}, version?: unknown): Promise<{ input: DocInput } | Answer> {
+async function docInput(api: AgentApi, view: unknown, settings: unknown, retired: Record<string, unknown> = {}, version?: unknown): Promise<{ input: DocInput } | Answer> {
   const old = ["targets", "preset", "content"].filter((k) => retired[k] !== undefined);
   if (old.length) return fail(400, `A document is a view's now (2026-10-09): ${old.join(", ")} ${old.length === 1 ? "is" : "are"} no longer taken.`, VIEW_HINT);
   const v = api.graph();
@@ -124,7 +124,7 @@ export async function docInput(api: AgentApi, view: unknown, settings: unknown, 
  *  board's graph is that build's past graph, as the page makes it (server/pastdoc.ts), the review
  *  read there under the names then too, the board laid out as the Time Machine lays it out; its
  *  texts that build's, as the history keeps them. */
-export function pastInput(api: AgentApi, v: View, at: number, rec: ViewData, view: DocView, settings: DocInput["settings"], files: DocInput["files"]): { input: DocInput } | Answer {
+function pastInput(api: AgentApi, v: View, at: number, rec: ViewData, view: DocView, settings: DocInput["settings"], files: DocInput["files"]): { input: DocInput } | Answer {
   const h = api.world.history;
   if (!h) return fail(404, "This server keeps no history: it serves a saved graph, and has no past build to print.", "Export the view at the latest build: version null.");
   // the texts of a build kept before the history kept them are found once, at start (HistorySpec
@@ -168,7 +168,7 @@ export function pastInput(api: AgentApi, v: View, at: number, rec: ViewData, vie
  *  holds on that build's graph `v` or its past graph (the owner's decision, 2026-10-10). Someone
  *  invited by a personal link by the name they go by now, as the server's links say it, else the
  *  review's logs. */
-export function viewAuthors(api: AgentApi, rec: ViewData, at: number | null, v: View): string[] {
+function viewAuthors(api: AgentApi, rec: ViewData, at: number | null, v: View): string[] {
   const people = new Map((api.world.people?.() ?? []).map((p) => [p.id, p.name]));
   const logs = api.world.review.data.people;
   const nameOf = (id: string) => people.get(id) ?? (Object.hasOwn(logs, id) ? logs[id].name : null);
@@ -396,20 +396,20 @@ export const EXPORT_PARAMS = {
 
 /** What an export's notes say where no page had laid the view's board out for what it holds now
  *  (server/boardspots.ts): the order is the board the server laid out. */
-export const FRESH_BOARD =
+const FRESH_BOARD =
   "No page had laid out this view's board for what it holds now: the document follows the board as the server laid it out from the view's memory, by the rules a page follows, which is the board a page will show when it next opens the view.";
 
 /** What a request is told of a view to export. */
-export const VIEW_HINT =
+const VIEW_HINT =
   "Export a view, by its id: {view, settings}. What the view holds is what the document prints. A target's key document is its Key view: POST /api/agent/views/open {\"scope\": \"key(<target>)\"}, then export that view; the full review set is a view of its scope, tcb(<target>) except trusted or (uses(<target>) and kind(axiom) and nonstandard), opened the same way; any other view is a curated set.";
 
 /** Whose typesetting job a request starts: an agent's own token, else its name. */
-export function jobOwner(c: Caller): string {
+function jobOwner(c: Caller): string {
   return c.token ? `token:${c.token.id}` : `name:${c.name ?? ""}`;
 }
 
 /** What an agent asks next about a job: how it is doing while it runs, its files once it is done. */
-export function jobLinks(job: ExportJob): Record<string, unknown> {
+function jobLinks(job: ExportJob): Record<string, unknown> {
   const at = (what: string) => `/api/agent/export/file?id=${job.id}&what=${what}`;
   if (job.state === "running") return { next: `GET /api/agent/export/job?id=${job.id}` };
   if (job.state === "done") return { files: { pdf: at("pdf"), tex: at("tex"), sty: at("sty"), zip: at("zip") } };
@@ -420,7 +420,7 @@ export function jobLinks(job: ExportJob): Record<string, unknown> {
  *  told to take no lock), asked at most once every ten seconds. Null where git is not there or the
  *  project is not a repository. */
 /** The commit a document of the graph on show is of: a branch's build's, else what git says now. */
-export function shownOr(shown: { hash: string; branch: string } | null | undefined, root: string): { hash: string; branch: string | null } | null {
+function shownOr(shown: { hash: string; branch: string } | null | undefined, root: string): { hash: string; branch: string | null } | null {
   return shown === undefined ? commitOf(root) : shown;
 }
 
@@ -439,4 +439,4 @@ export function commitOf(root: string): { hash: string; branch: string | null } 
   return commit;
 }
 
-export const commits = new Map<string, { at: number; commit: { hash: string; branch: string | null } | null }>();
+const commits = new Map<string, { at: number; commit: { hash: string; branch: string | null } | null }>();
