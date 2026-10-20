@@ -787,7 +787,8 @@ export class Live {
     this.nodeIndex = new Map(this.base.names.map((n, i) => [n, i]));
     this.outside = new Set(ex.graph.externals.map((e) => e.name));
     // the revisions its outside declarations were read at: those of the manifest it was extracted
-    // with (server/extract.ts, fingerprint), as it is now
+    // with (server/extract.ts, fingerprint), as it is now; the packages and the toolchain as they are
+    this.outsideSources.forget();
     this.outsideRead = this.saved ? null : { packages: this.outsideSources.revisions(), toolchain: this.project.toolchain };
     // the history first: the renames found against the build before are migrated, so that the
     // versions served are made under them (HistorySpec.md)

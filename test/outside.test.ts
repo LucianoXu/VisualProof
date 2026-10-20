@@ -142,6 +142,13 @@ test("the manifest and the toolchain are read again when they change: a branch f
   assert.equal(o.find("Deep.A"), null, "a package no longer listed");
   tc = "leanprover/lean4:v4.36.0";
   assert.equal(o.find("Init.Core")!.package.rev, "v4.36.0");
+  // a module built since, the manifest as it was: found once a new graph is read
+  put(join(root, ".lake", "packages", "mathlib", "Mathlib", "New.lean"), "def Mathlib.n := 1\n");
+  assert.equal(o.find("Mathlib.New"), null);
+  put(join(root, ".lake", "packages", "mathlib", ".lake", "build", "lib", "lean", "Mathlib", "New.olean"));
+  assert.equal(o.find("Mathlib.New"), null, "what was not found stays so while nothing is read again");
+  o.forget();
+  assert.equal(o.find("Mathlib.New")!.file, "Mathlib/New.lean");
 });
 
 test("what the page and the agents are told: the file, its text and hash, the package, its revision and the link at it", () => {

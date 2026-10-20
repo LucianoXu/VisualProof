@@ -114,6 +114,9 @@ test("a past build shows an outside declaration's source only where its package 
   const none = h.record(graph(), opts(T0 + 120_000, "f3", "leanprover/lean4:v4.35.0")).info;
   assert.match((pastSource(h, none.id, "Mathlib.Logic.Basic", P.now).body as { why: string }).why, /revisions of this build's packages were not recorded/);
   assert.equal(pastSource(h, same.id, "Mathlib.Other", P.now).status, 404);
+  // a package named as what every object has is no revision of the build's
+  const proto = h.record(graph(), opts(T0 + 180_000, "f4", "leanprover/lean4:v4.35.0", {})).info;
+  assert.match((pastSource(h, proto.id, "Mathlib.Logic.Basic", (m) => { const n = P.now(m); return n && { ...n, file: { ...n.file, package: { ...n.file.package, name: "constructor" } } }; }).body as { why: string }).why, /constructor was at an unrecorded revision then/);
   assert.doesNotMatch(JSON.stringify(pastSource(h, same.id, "Mathlib.Other", P.now).body), /outside sources/, "not one of the build's outside modules: answered as any module it does not have");
   // straight, as the agents' endpoint and the past document read it
   assert.equal(pastOutside(same, "Mathlib.Logic.Basic", P.now).status, 200);
@@ -122,7 +125,7 @@ test("a past build shows an outside declaration's source only where its package 
     history: h,
     identity: () => ownName,
     project: { toolchain: "leanprover/lean4:v4.35.0" },
-    outsideNow(m: string) {
+    outsideNow(this: { project: { toolchain: string } }, m: string) {
       return this.project.toolchain ? P.now(m) : null;
     },
   } as unknown as HistoryWorld;

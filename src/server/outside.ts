@@ -135,6 +135,14 @@ export class OutsideSources {
     this.sysroot = sysroot;
   }
 
+  /** Forget what was read and found: a new graph is read (a build may have fetched a package, or
+   *  installed a toolchain, the manifest unchanged), and what was not found may be there now. */
+  forget(): void {
+    this.read = null;
+    this.cores.clear();
+    this.found.clear();
+  }
+
   /** The packages the manifest lists, read again where it changed since. */
   packages(): OutsidePackage[] {
     const manifest = join(this.root, "lake-manifest.json");

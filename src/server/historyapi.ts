@@ -173,7 +173,8 @@ export function pastOutside(s: SnapshotInfo, module: string, outsideNow: NonNull
   const now = outsideNow(module);
   if (!now) return no("outside sources are not kept per build, and its file is not found outside the project now");
   const p = now.file.package;
-  const then = p.core ? s.toolchain : (s.packages?.revs[p.name] ?? null);
+  const revs = s.packages?.revs;
+  const then = p.core ? s.toolchain : revs && Object.hasOwn(revs, p.name) ? revs[p.name] : null;
   const rev = p.core ? now.toolchain : p.rev;
   if (!p.core && !s.packages) return no(`outside sources are not kept per build, and the revisions of this build's packages were not recorded`, now.file.file);
   if (!then || !rev || then !== rev)
