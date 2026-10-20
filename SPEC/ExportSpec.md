@@ -686,7 +686,7 @@ Numbers missing below are withdrawn decisions.
   box is free of every box already taken (`artCluster(c, "fit")`); then the rule's declarations.
   The board's own names (As shown) come after, as ever. A rule's name not written is not ticked
   in the panel's list.
-- **The endpoint** (server/agent.ts `artwork`; MCP: `export`, action `artwork`): the recipe checked
+- **The endpoint** (server/agentexport.ts `artwork`; MCP: `export`, action `artwork`): the recipe checked
   and resolved against the Project's layout in the view's clustering; the selection a
   declaration's, under its mode (`#mode=…&s=…`), the view's id where one is named; then
   `&art=<the recipe's JSON, base64url>&save=png,svg`. It answers what it named, so that an agent

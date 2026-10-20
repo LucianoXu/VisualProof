@@ -11,6 +11,7 @@ import type { Answer } from "./agent.ts";
 import { readUpload } from "./libraryroute.ts";
 import { UPLOAD_PATH } from "./agentlibrary.ts";
 import { hostOf, sendDownload, sendGz, sendJson, sendText } from "./send.ts";
+import { exportFile, exportHead, exportJob, exportOutline, exportStart } from "./agentexport.ts";
 import type { App } from "./app.ts";
 
 /** The exported document (ExportSpec decisions 5–16): POST /api/export starts typesetting the
@@ -27,7 +28,7 @@ export async function exportRoute(app: App, req: IncomingMessage, res: ServerRes
   const api = app.agents;
   // the document's outline, which the linear form draws: nothing is typeset for it
   if (path === "/api/export/outline") {
-    const o = api.exportOutline(url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
+    const o = exportOutline(api, url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
     return sendJson(res, o.body, o.status, o.headers);
   }
   if (!app.exporter) return sendJson(res, { error: "This server does not export documents." }, 404);
@@ -46,14 +47,14 @@ export async function exportRoute(app: App, req: IncomingMessage, res: ServerRes
     }
     let started: Answer | undefined;
     try {
-      started = await api.exportStart(r.body, caller);
+      started = await exportStart(api, r.body, caller);
     } finally {
       if (readOnly) app.bounds.exportStarted(started?.body);
     }
     a = started;
-  } else if (path === "/api/export/head") a = api.exportHead(url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
-  else if (path === "/api/export/job") a = api.exportJob(url.searchParams.get("id") ?? "", false);
-  else if (path === "/api/export/file") a = api.exportFile(url.searchParams.get("id") ?? "", url.searchParams.get("what"));
+  } else if (path === "/api/export/head") a = exportHead(api, url.searchParams.get("view") ?? "", url.searchParams.get("version") ?? undefined);
+  else if (path === "/api/export/job") a = exportJob(api, url.searchParams.get("id") ?? "", false);
+  else if (path === "/api/export/file") a = exportFile(api, url.searchParams.get("id") ?? "", url.searchParams.get("what"));
   else return sendJson(res, { error: "not found" }, 404);
   if (a.file) return sendDownload(res, a.file);
   // the agents' answer as it is: the page shows its error, and an agent that asked here its hint

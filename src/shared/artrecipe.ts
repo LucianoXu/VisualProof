@@ -2,7 +2,7 @@
 // picture of the board is, in words that hold on any project — a size by its name, names by a rule
 // ("the clusters to depth 1, and the targets"), targets and the selection by full name — so that
 // one recipe makes the same kind of picture of every codebase. An agent sends one
-// (POST /api/agent/artwork, server/agent.ts); the link it gets back carries it after `#`, and the
+// (POST /api/agent/artwork, server/agentexport.ts); the link it gets back carries it after `#`, and the
 // page that opens it resolves it against the board it opens on (web/src/main.ts, openRecipe) and
 // opens the artwork mode with what it says, saving the files where the link asks.
 
