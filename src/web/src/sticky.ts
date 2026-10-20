@@ -55,7 +55,7 @@
 // space, a project note takes its place there under the board's clustering; let go where no cluster
 // is, it goes on the ring at that angle; a view note let go there stays at that spot of the board. A
 // drag on the card moves the card alone, never the note's place. A double-click on the card edits the
-// note, a right click on either opens its menu. What a note's changes do is web/src/main.ts's: they go
+// note, a right click on either opens its menu. What a note's changes do is web/src/pagenotes.ts's: they go
 // out as operations, the view's or the project's notes'.
 
 import type { ClusterMode, Layout, ViewNode } from "../../shared/graph.ts";

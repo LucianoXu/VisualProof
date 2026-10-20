@@ -336,7 +336,7 @@ test("the mark: a holder's page in presence, their opinions to agents, and the n
     assert.deepEqual(other.last("people"), [{ id, name: "Robert", was: ["Bob"] }]);
     // what agents are told: his opinions and his place, marked
     await S.ask("POST", "/api/review", { op: "opinion", name: "N.a", verdict: "approve" }, { cookie });
-    // pages are told it as a change they apply, each event read back as its log was (web/src/main.ts)
+    // pages are told it as a change they apply, each event read back as its log was (web/src/pagereview.ts)
     await other.until(() => !!other.last("review-delta"));
     const delta = other.last("review-delta")!.events as Json[];
     assert.deepEqual(delta.map((e) => [e.op, e.by, e.person]), [["opinion", "Robert", id]]);

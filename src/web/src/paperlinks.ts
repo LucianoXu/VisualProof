@@ -1,7 +1,7 @@
 // The references on the page (AttachmentSpec decisions 5–9): the library (web/src/library.ts) and
 // the reference window (web/src/paperwin.ts), and what ties them to the rest of the page — the links
 // a declaration's or a cluster's panel lists, the pairing of the reference window with a source
-// window, and the window's state as presence carries it. web/src/main.ts makes one, and calls it
+// window, and the window's state as presence carries it. web/src/pagepanels.ts makes one, and the page calls it
 // where the page changes: the panel drawn, a source window opened or stepping, the review changing,
 // a followed reader moving.
 //

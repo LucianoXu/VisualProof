@@ -410,7 +410,7 @@ test("the event stream says the build status's revision and then its changes, th
     // loader)
     assert.deepEqual((await S.ask("GET", "/api/status")).json!.build, third);
     assert.deepEqual((await S.ask("GET", "/api/status?brief")).json!.build, { active: false, progress: null, counts: third.counts });
-    // the page's stream, as main.ts opens it: build=delta
+    // the page's stream, as web/src/pagelive.ts opens it: build=delta
     const es = stream(S.port, "/api/events?session=aaaaaaaa1111&build=delta");
     await es.until(() => !!es.last("hello"));
     assert.deepEqual(es.last("build-rev"), { epoch: live.instance, rev: 4 });

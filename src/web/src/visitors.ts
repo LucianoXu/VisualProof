@@ -18,7 +18,7 @@
 //
 // This file holds the trail, the temporary clusters a set of visitors needs and how they are packed,
 // where the outermost of them is put in a cluster of the board, and the references a visitor's edges
-// draw, all as pure functions; web/src/visits.ts lays them on the board's scene, web/src/main.ts
+// draw, all as pure functions; web/src/visits.ts lays them on the board's scene, web/src/pageselection.ts
 // keeps the trail of the board on show and web/src/canvas.ts draws it.
 
 import { packEnclose, packSiblings } from "d3-hierarchy";

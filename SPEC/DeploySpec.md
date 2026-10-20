@@ -319,8 +319,8 @@ otherwise).
   /api/status` `deploy`; `GraphInfo.commit`; `GET /api/agent/history` `following` (agents; the
   page's `GET /api/history` has none).
 - The page: web/src/buildpop.ts (`deployHtml`, the popover's part; `deployWaiting`, the loading
-  page; `stepPill`), web/src/main.ts (the pill, the loader, the `deploy` event), web/src/sourcewin.ts
-  ("Open on GitHub", `githubLink` and `builtCommit` hooks).
+  page; `stepPill`), web/src/pagelive.ts (the pill, the `deploy` event), web/src/main.ts (the loader),
+  web/src/sourcewin.ts ("Open on GitHub", `githubLink` and `builtCommit` hooks).
 
 ### Known limits, left as they are
 

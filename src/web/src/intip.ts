@@ -13,7 +13,7 @@ import type { Tip } from "./tips.ts";
 import type { TipState } from "./tipstate.ts";
 
 /** The rules: where each shows its tip, on a larger screen and on a phone (decision 9: at most
- *  eight). The page says when (web/src/main.ts, `offerTip`). */
+ *  eight). The page says when (web/src/page.ts, `offerTip`). */
 export const RULES: Record<string, { at: string; phone?: string }> = {
   "selection-replace": { at: "#lightup [data-mode=plain]" },
   "tcb-first": { at: "#rests-steps [data-mode=tcb]", phone: "#panel .p-tcb" },

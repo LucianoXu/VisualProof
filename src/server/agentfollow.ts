@@ -340,8 +340,8 @@ export async function viewLink(api: AgentApi, a: Ask): Promise<Answer> {
 /** the longest the companion waits for someone to move, in seconds */
 const MAX_COMPANION_WAIT = 60;
 
-/** the tools, how a click selects, as the page names them (web/src/main.ts, MODE_NAME) */
-/** The page's tools by name (web/src/main.ts): the modes Selection and Used by, and the three steps
+/** the tools, how a click selects, as the page names them (web/src/page.ts, MODE_NAME) */
+/** The page's tools by name (web/src/page.ts): the modes Selection and Used by, and the three steps
  *  of the mode Rests on, Uses, TCB and Keys (ViewSpec decision 20). */
 const TOOL_NAMES: Record<string, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", apps: "Used by" };
 

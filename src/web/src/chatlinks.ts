@@ -2,7 +2,7 @@
 // 2026-10-19). A link of this site never shows as its address: it is a chip naming what it leads to
 // — a declaration, a cluster, a note; for what someone saw, the view, the tool and the selection
 // ("Case II · Rests on · `Foo.bar` +2") — in a message and in the box it is written in. A click on
-// one goes there in the page, without a reload, as a share link is applied (web/src/main.ts). Any
+// one goes there in the page, without a reload, as a share link is applied (web/src/pageaddress.ts). Any
 // other http(s) link opens in a new tab, its host shown beside it.
 //
 // The chip is drawn from the link alone: the names it holds, and the view's title or the note's

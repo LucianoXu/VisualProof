@@ -22,7 +22,7 @@ export interface Tip {
   since: string;
   /** the controls it is about, as web/src/surfaces.ts declares them, or keys ("key:k") */
   about: string[];
-  /** its Show me (decision 7): an action done on the reader's own page (web/src/main.ts, `showMe`;
+  /** its Show me (decision 7): an action done on the reader's own page (web/src/pageguide.ts, `showMe`;
    *  the TCB step's three views, `tcb-three`, and the sheet's About, `help-about`, are the guide's) */
   showMe?: string;
   /** its clip's id: assets/tips/<clip>.light.mp4 — the phone's gestures alone; the film shows the

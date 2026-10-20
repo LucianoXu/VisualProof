@@ -586,7 +586,7 @@ Numbers missing below are withdrawn decisions.
   while it moves. Each step has a turn: a newer one (leaving before the mode has come, a followed
   reader's arriving) cancels the older's waits. A frame that changes its shape — the size, the
   orientation, the window — eases the same way, the camera keeping what it held.
-- **The board drawn with the settings** (web/src/main.ts, `drawLook`): `body.framing` puts the panels
+- **The board drawn with the settings** (web/src/pageart.ts, `drawLook`): `body.framing` puts the panels
   and the legend away; the theme is set on `<html>` (`applyTheme` restores the reader's); the colouring
   and the edges are the canvas's (`setScheme`, `setEdges`), the reader's own kept under them;
   `body[data-art-bg]` paints a checkerboard for transparent; `body.art-nonotes` hides the notes. The
@@ -661,7 +661,7 @@ Numbers missing below are withdrawn decisions.
   frame in from its corners, 10 px text and an 11 px bold wordmark in the page's `--grad` colours,
   scaled with the picture. The source line (artwork `sourceLine`: "github.com/A/B · main @ 1a2b3c4",
   "(modified)" where a `.lean` file differs) is asked of the server whenever the mode comes (`GET
-  /api/git`, web/src/main.ts `gitNow`), which reads the remote (`origin`, else the first) and the
+  /api/git`, web/src/pageart.ts `gitNow`), which reads the remote (`origin`, else the first) and the
   commit then (server/history.ts `gitSource`, read-only; the address without scheme, user name,
   password, port or `.git`, and none for a path on the machine). They are not kept with the view,
   whose cache would hold them as the build was read (the owner's decision of 2026-10-15). A snapshot
@@ -691,7 +691,7 @@ Numbers missing below are withdrawn decisions.
   declaration's, under its mode (`#mode=…&s=…`), the view's id where one is named; then
   `&art=<the recipe's JSON, base64url>&save=png,svg`. It answers what it named, so that an agent
   sees a rule's outcome before anyone opens the link.
-- **The page** (web/src/main.ts `openRecipe`): after the board its address opened (and a snapshot,
+- **The page** (web/src/pageart.ts `openRecipe`): after the board its address opened (and a snapshot,
   where the link has one), the recipe is resolved against the board on show (`canvas.layout`) and
   the mode opened with it (artframe `open(given)`, which resolves once the mode has come: its look
   applied, so the git commit asked for as it came, `gitAsked`, is this mode's); the address goes

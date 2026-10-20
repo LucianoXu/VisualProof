@@ -97,7 +97,7 @@ export function keepStripClear(strip: HTMLElement, win: HTMLElement): void {
 }
 
 export interface ChatWindowHooks {
-  /** the canvas's insets (web/src/main.ts): the side panel's right, the bars' foot */
+  /** the canvas's insets (web/src/pagelayout.ts): the side panel's right, the bars' foot */
   insets(): { left: number; top: number };
   /** the window opened, or was opened again from its pill: the thread shows */
   expanded(): void;

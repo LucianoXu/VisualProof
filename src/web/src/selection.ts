@@ -15,7 +15,7 @@
 //
 // Everything here is without the page, so that it can be tested: what a pick's query is and what
 // it says in words, reading picks back from a query (an address, a reader followed, an agent), what
-// a click or a shift-click does to the list, and how key 2 steps through Rests on. main.ts keeps the
+// a click or a shift-click does to the list, and how key 2 steps through Rests on. pageselection.ts keeps the
 // list and the thing the panel tells of; web/src/selbar.ts shows the list.
 
 import type { Cluster, ClusterMode, Layout } from "../../shared/graph.ts";

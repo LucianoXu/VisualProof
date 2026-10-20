@@ -146,7 +146,7 @@ const EDGE_PX = 12;
 const SHEETS = ["panel", "activity", "lostfound"];
 const DOCKED = "#windows > :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden])";
 
-/** A tall screen's board room, in px from the screen's edges (web/src/main.ts, the canvas's insets):
+/** A tall screen's board room, in px from the screen's edges (web/src/pagelayout.ts, the canvas's insets):
  *  the whole width; under the view bar, the review strip and the selection bar; above the sheet or the
  *  windows docked in its place, or above the legend's line where nothing is there. `--room-bottom`
  *  tells the legend, the zoom's box and what sits low on the board where that is. */
@@ -312,7 +312,7 @@ export class Phone {
     this.btn.setAttribute("aria-expanded", "true");
   }
 
-  /** The modes, as their buttons have them (web/src/main.ts): Selection, Rests on's three steps
+  /** The modes, as their buttons have them (web/src/pagetoolbar.ts): Selection, Rests on's three steps
    *  under its name, Used by; the one in use ticked. */
   private modes(): string {
     let rows = `<div class="more-h">Mode · what a tap selects</div>`;

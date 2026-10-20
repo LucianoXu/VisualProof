@@ -7,7 +7,7 @@
 // its own where an older page says nothing of them.
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { ART_NAMES_BYTES, ART_RULED_BYTES, ART_TARGETS_BYTES, cleanView, withoutArtwork } from "../src/shared/collab.ts";
 import type { ActivityView, ArtworkView, PresenceView } from "../src/shared/collab.ts";
@@ -82,9 +82,12 @@ test("the registry declares every surface of the page: each element of its skele
   // canvas's submenu, the windows' edges
   for (const cls of [".sw-win", ".pw-win", ".hcard", ".sticky-editor", ".cm-sub", ".fl-rz"]) assert.ok(parts(declared).some((s) => s.split(/[\s>]+/)[0].startsWith(cls)), cls);
   // every key the page's keyboard handler binds is a followed part's or the reader's own (Esc is
-  // apart: it stops following, web/src/people.ts)
-  const main = readFileSync(new URL("web/src/main.ts", root), "utf8");
-  const handler = main.slice(main.indexOf("// ---------------------------------------------------------------- keyboard"), main.indexOf("// a handle for diagnosis from the console"));
+  // apart: it stops following, web/src/people.ts); the handler is one of the page's parts
+  // (web/src/main.ts makes them, web/src/page*.ts), and ends where its listener does
+  const web = new URL("web/src/", root);
+  const main = ["main.ts", ...readdirSync(web).filter((f) => /^page.*\.ts$/.test(f)).sort()].map((f) => readFileSync(new URL(f, web), "utf8")).join("\n");
+  const from = main.indexOf("// ---------------------------------------------------------------- keyboard");
+  const handler = main.slice(from, main.indexOf("\n  });\n", from));
   const bound = new Set([...handler.matchAll(/e\.key === "([^"]+)"/g)].map((m) => m[1]));
   assert.ok(bound.has("g") && bound.has("c") && bound.has("l"), "the handler was read");
   const keys = new Set<string>([...FOLLOWED.flatMap((p) => ("keys" in p ? [...p.keys] : [])), ...YOURS.flatMap((y) => ("keys" in y ? [...y.keys] : [])), "Escape"]);
@@ -358,7 +361,7 @@ function drawerEl() {
 }
 
 /** A follower's page: its Activity and lost-and-found as the page draws them, its colouring and
- *  edges, applied from a followed reader's presence as web/src/main.ts applies them. */
+ *  edges, applied from a followed reader's presence as web/src/pagefollow.ts applies them. */
 function follower(me: string | null = "Bob") {
   const actEl = drawerEl(), lostEl = drawerEl();
   const asked: (string | null)[] = [];

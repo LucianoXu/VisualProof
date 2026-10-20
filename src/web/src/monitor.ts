@@ -169,7 +169,7 @@ let splitEls: HTMLElement[] = [];
 let resizedHook: (() => void) | null = null;
 
 /** Each window where the work area puts it, the splitters at their edges, the page's variables;
- *  then the board's room, as the canvas's insets (web/src/main.ts) take it. Null off a monitor. */
+ *  then the board's room, as the canvas's insets (web/src/pagelayout.ts) take it. Null off a monitor. */
 export function monitorInsets(): { left: number; right: number; top: number; bottom: number } | null {
   if (!isMonitor()) return null;
   const { area, els } = current();
@@ -267,7 +267,7 @@ function changed(settled = true): void {
 }
 
 export interface MonitorHooks {
-  /** the board's room changed: the canvas's insets follow (web/src/main.ts) */
+  /** the board's room changed: the canvas's insets follow (web/src/pagelayout.ts) */
   resized(): void;
 }
 

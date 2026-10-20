@@ -21,6 +21,9 @@ import { decodeState, tipsIn, tipsPart } from "../src/web/src/state.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
+/** The page's wiring: web/src/main.ts and the parts it makes (web/src/page*.ts), where what one part
+ *  calls of another is the page's (`page.`). */
+const wiring = () => ["main.ts", ...readdirSync(new URL("src/web/src/", root)).filter((f) => /^page.*\.ts$/.test(f)).sort()].map((f) => read(`src/web/src/${f}`)).join("\n");
 
 test("the film is thirteen chapters, in the review's order, each a few words and a few sentences", () => {
   assert.deepEqual(TOUR.map((c) => c.id), ["target", "view", "arrange", "source", "keys", "checks", "review", "project", "share", "agent", "library", "export", "artwork"]);
@@ -216,7 +219,7 @@ test("each control a tip is about, and each place a rule shows its tip at, is on
 });
 
 test("each Show me is done, each rule is one of at most eight and shows one tip, each More is a heading", () => {
-  const main = read("src/web/src/main.ts");
+  const main = wiring();
   // the page's Show me actions: the cases of its showMe
   const body = main.slice(main.indexOf("const showMe = (action: string)"), main.indexOf("const canShowMe = (action: string)"));
   const done = new Set<string>([...GUIDE_SHOWS, ...[...body.matchAll(/case "([\w-]+)":/g)].map((m) => m[1])]);
@@ -315,7 +318,7 @@ test("a first visit is offered the tour, never given it: the welcome card once, 
   assert.equal(welcomeOf({ ...first, guided: true }), "none");
   assert.equal(welcomeOf({ ...first, welcomed: true, deepLink: true }), "none");
   // nothing starts the tour by itself: the page offers it, a press starts it
-  const main = read("src/web/src/main.ts");
+  const main = wiring();
   assert.ok(!main.includes("firstVisit") && !/guide\.start\(/.test(main), "the page never starts the tour");
   assert.match(main, /guide\.welcome\(deepLink\)/);
   const guide = read("src/web/src/guide.ts");
@@ -342,7 +345,7 @@ test("the dot on the help is kept in the browser until the help is opened", () =
   // the help is a menu: Tips, Keys, the tour, then the two Abouts; ? opens it
   const guide = read("src/web/src/guide.ts");
   for (const hm of ["tips", "keys", "tour", "repo"]) assert.ok(guide.includes(`data-hm="${hm}"`), hm);
-  assert.match(read("src/web/src/main.ts"), /e\.key === "\?"\) guide\.toggleMenu\(\)/);
+  assert.match(wiring(), /e\.key === "\?"\) (page\.)?guide\.toggleMenu\(\)/);
   assert.match(guide, /rel="noopener noreferrer"><span class="hm-h">About VisualProof/);
 });
 
@@ -447,9 +450,9 @@ test("a link opens the help's film, at its chapter: #tips, #tips=<chapter>, besi
   assert.equal(filmChapterOf("tcb"), null, "a chapter of the first cut: the start");
   assert.equal(filmChapterOf(null), null);
   // the page opens it, once it is there, and counts it a link to a place: no welcome card
-  const main = read("src/web/src/main.ts");
+  const main = wiring();
   assert.match(main, /const filmLink = tipsIn\(location\.hash\);/);
   assert.match(main, /const deepLink = filmLink !== undefined \|\|/);
-  assert.match(main, /if \(filmLink !== undefined\) guide\.openHelp\("tips", filmLink \? \{ chapter: filmLink \} : \{\}\);/);
-  assert.match(main, /const hash = "#" \+ encodeState\(current\(\)\) \+ filmPart;/);
+  assert.match(main, /if \(filmLink !== undefined\) (page\.)?guide\.openHelp\("tips", filmLink \? \{ chapter: filmLink \} : \{\}\);/);
+  assert.match(main, /const hash = "#" \+ encodeState\(current\(\)\) \+ (page\.)?filmPart;/);
 });

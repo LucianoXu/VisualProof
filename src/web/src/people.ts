@@ -418,7 +418,7 @@ export class People {
         // selection), wherever the focus is — on a button or a link of the window too; but in the
         // name's window or its menu it closes that, and in a field of a surface of the reader's own
         // — the conversation's box, the search box — it does what it does there, leaving the box or
-        // closing the search (web/src/main.ts): the next one stops following
+        // closing the search (web/src/pagekeys.ts): the next one stops following
         if (t?.closest?.(`#modal, ${MINE}`) || (typing(t) && inYours(t))) return;
         e.preventDefault();
         e.stopImmediatePropagation();

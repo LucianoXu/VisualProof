@@ -234,7 +234,7 @@ export function filmChapterOf(id: string | null | undefined): string | null {
 const WELCOME_IDLE_MS = 2000;
 
 /** The Show me actions the guide does itself (GuideSpec decision 7): the TCB step's three views, and
- *  the help menu's About; the page does the others (web/src/main.ts, `showMe`). */
+ *  the help menu's About; the page does the others (web/src/pageguide.ts, `showMe`). */
 export const GUIDE_SHOWS = ["tcb-three", "help-about"] as const;
 
 /** VisualProof's repository, which the help sheet links to (the owner's decision of 2026-10-16). */

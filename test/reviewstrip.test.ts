@@ -16,6 +16,8 @@ import { ReviewFlow } from "../src/web/src/reviewqueue.ts";
 
 const root = new URL("../src/", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
+/** The page's wiring: web/src/main.ts and the parts it makes (web/src/page*.ts). */
+const wiring = () => ["main.ts", ...readdirSync(new URL("web/src/", root)).filter((f) => /^page.*\.ts$/.test(f)).sort()].map((f) => read(`web/src/${f}`)).join("\n");
 const sources = (dir: string) =>
   readdirSync(new URL(dir, root))
     .filter((f) => f.endsWith(".ts"))
@@ -56,7 +58,7 @@ test("no Next to review anywhere: no button in the strip or the panel, no key, n
     assert.ok(!/lens-next|lens-advice|rv-next|data-rv-next|q-next|nextToReview|nextKeyFirst|nextAgentComment|canNext/.test(text), `${file} keeps a piece of it`);
   }
   // the keys: n and s do nothing; a, m and k stay
-  const main = read("web/src/main.ts");
+  const main = wiring();
   assert.doesNotMatch(main, /e\.key === "[ns]"/);
   for (const k of ["a", "m", "k"]) assert.match(main, new RegExp(`e\\.key === "${k}"`), `the key ${k} stays`);
   // the help sheet lists no n and no s
@@ -108,7 +110,7 @@ test("the strip is one line of progress: the target's name, the counts, what age
 });
 
 test("the strip shows wherever the review has a focus, and not without one", () => {
-  const main = read("web/src/main.ts");
+  const main = wiring();
   const at = main.indexOf("const renderStrip = () => {");
   const body = main.slice(at, main.indexOf("};", at));
   assert.match(body, /const r = reviewRoot\(\);/);

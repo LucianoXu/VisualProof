@@ -452,7 +452,7 @@ test("Follow starts following the asker as starting to follow does: their state 
     ] as Peer[]);
     people.follow("n:Bob");
     assert.deepEqual([people.followedKey, applied], ["n:Bob", ["Bob.place"]]);
-    // the banner on this page, wired to it as web/src/main.ts wires it
+    // the banner on this page, wired to it as web/src/pagepeople.ts wires it
     const { el, b, answered } = banner(t, null, {
       following: (k) => people.followedKey === k,
       present: (k) => people.people().some((p) => p.key === k),

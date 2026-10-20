@@ -1,7 +1,7 @@
 // The board's settings, in the ⚙ Board popover beside the side panel (ViewSpec decisions 8 and 17):
 // which view this is and whether it is kept, and its scope as chips — the set it starts from, then
 // each condition — that anyone on the board can add to, take from, or rewrite as text; a change is
-// everyone's at once. The Project's is said alone: it always holds everything (ViewSpec decision 5). Below them in the popover, the clustering, the depth and Re-layout (main.ts);
+// everyone's at once. The Project's is said alone: it always holds everything (ViewSpec decision 5). Below them in the popover, the clustering, the depth and Re-layout (pagetoolbar.ts);
 // the side panel keeps the cluster tree, with a note over it (`#board-note`).
 
 import { chainOf, describe, describeCondition, fromChain, parseQuery, printQuery, QueryError } from "../../shared/query.ts";

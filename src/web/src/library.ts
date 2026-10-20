@@ -171,7 +171,7 @@ export class Library {
       const t = e.target as HTMLInputElement;
       if (t.dataset.lbUpload !== undefined && t.files?.length) void this.upload([...t.files], t.dataset.lbUpload || null);
     });
-    // a file dropped on the list is added (dropped on the canvas, it makes a note: web/src/main.ts)
+    // a file dropped on the list is added (dropped on the canvas, it makes a note: web/src/pagenotes.ts)
     pop.addEventListener("dragover", (e) => {
       if (e.dataTransfer?.types.includes("Files")) {
         e.preventDefault();

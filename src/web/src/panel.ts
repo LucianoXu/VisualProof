@@ -21,7 +21,7 @@ export interface PanelHooks {
   /** go to a declaration: a click there with the tool (web/src/selection.ts), and the view flies
    *  there (CanvasSpec, "Navigation") */
   go(i: number): void;
-  /** a row of a target's review list: walking its TCB, the declaration alone (main.ts) */
+  /** a row of a target's review list: walking its TCB, the declaration alone (pagereview.ts) */
   walk(i: number): void;
   /** ring a declaration on the canvas without moving there; null takes the ring away */
   preview(i: number | null): void;

@@ -156,7 +156,7 @@ export function makeArtwork(prep: Prepared, review: ReviewData | null, project: 
   problems.push(...res.problems);
   if (problems.length) return { problems };
   const s = cleanSettings(res.look, { scheme: "kind", theme: "light" });
-  // the theme as the mode sets it (web/src/main.ts, drawLook): the board's style in the artwork's,
+  // the theme as the mode sets it (web/src/pageart.ts, drawLook): the board's style in the artwork's,
   // the cells and the starfield in the dark one
   const css = readFileSync(join(WEB, "style.css"), "utf8");
   const v = cssTheme(css, s.style === "board" ? s.theme === "dark" : true);
