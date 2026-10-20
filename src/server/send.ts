@@ -1,4 +1,4 @@
-// How the server sends what it answers (server/main.ts): JSON, the page's files, the graph's parts,
+// How the server sends what it answers (server/app.ts): JSON, the page's files, the graph's parts,
 // the whole of a revision, texts and downloads; and a body refused as too large while it comes.
 //
 // Pages are often far from the server (CollabSpec, "Far pages"): every byte counts, and what a
