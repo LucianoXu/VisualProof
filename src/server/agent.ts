@@ -87,7 +87,6 @@ import { noteNames } from "../shared/sticky.ts";
 import { focusOf, titleContext, viewEndpoints } from "./agentviews.ts";
 import type { ExportFile, ExportJob, Exporter } from "./export.ts";
 import type { HoverAnswer, PrintAnswer } from "./hover.ts";
-import { isDeclName } from "./hover.ts";
 import type { Kind } from "./identity.ts";
 import { agentKey } from "./presence.ts";
 import type { AgentWho } from "./presence.ts";
@@ -103,6 +102,7 @@ import { DOC_TOPICS } from "./agentdocs.ts";
 import { View } from "./agentgraph.ts";
 import { TALKING, conversation, doingOf, inbox, publicChannel, reply, status } from "./agenttalk.ts";
 import { docs, endpointList, index, mcpFile, mcpInstallGet, mcpTools } from "./agententry.ts";
+import { MAX_PRINT, MAX_WAIT, describe, describeOf, leanHome, print, printOf } from "./agentlean.ts";
 
 /** What agents may change on a server (`--agents`): nothing; advice and notes; or everything a
  *  person can do through the page, their opinions still advice (AgentSpec decision 9). */
@@ -284,11 +284,6 @@ const ACTIVITY_WORDS: Record<string, string> = { review: "Review", build: "Build
 const MAX_PINS = 500;
 /** a declaration's radius as the layout packs it (web/src/scene.ts, LEAF_R) */
 const LEAF_R = 5;
-/** the longest Lean is waited for, per question (per request, where one asks several) */
-const MAX_WAIT = 60_000;
-/** the most of what `#print` says that an answer carries, in UTF-16 units: a theorem's proof term,
- *  printed with `proofs=1`, can run to megabytes */
-const MAX_PRINT = 50_000;
 /** the most declarations one request reads, and the most advice one request gives */
 const MAX_NAMES = 25;
 const MAX_OPINIONS = 100;
@@ -332,7 +327,7 @@ interface Endpoint {
 
 export class AgentApi {
   readonly world: World;
-  private lean: Lean | null;
+  readonly lean: Lean | null;
   readonly level: AgentLevel;
   private view: View | null = null;
   readonly endpoints: Endpoint[];
@@ -409,13 +404,13 @@ export class AgentApi {
   }
 
   /** Up to five names like `name` (shared/declfind.ts, `guessNames`). */
-  private guess(v: View, name: string): string[] {
+  guess(v: View, name: string): string[] {
     return guessNames(v.g, v.index, name);
   }
 
   /** A declaration by its full name, or the answer that there is none (with what was meant). A
    *  name the graph folds into a declaration is that declaration (`folded` says so). */
-  private find(v: View, name: string | null | undefined, param = "name"): number | Answer {
+  find(v: View, name: string | null | undefined, param = "name"): number | Answer {
     if (typeof name !== "string" || !name.trim())
       return fail(400, `${param} is missing.`, `Give ${param}=<a declaration's full name>; GET /api/agent/search?q=<words> finds one.`);
     const i = v.g.byName.get(name.trim()) ?? this.foldedAt(v, name.trim());
@@ -1069,7 +1064,7 @@ export class AgentApi {
   private async withParts(v: View, i: number, a: Ask, include: Part[], deadline: number): Promise<Record<string, unknown>> {
     const out = this.declarationOf(v, i, a.caller);
     const failed: Record<string, number> = {};
-    const own = this.leanHome(v, v.g.nodes[i].leanName ?? v.g.nodes[i].name, i, "its own");
+    const own = leanHome(this, v, v.g.nodes[i].leanName ?? v.g.nodes[i].name, i, "its own");
     for (const p of include) {
       const left = deadline - Date.now();
       // Lean's parts wait for what is left of the request's wait
@@ -1079,8 +1074,8 @@ export class AgentApi {
         : p === "uses" || p === "users" ? this.refs(v, i, p, a.query)
         : !("module" in own) ? own
         : left < 500 ? fail(503, "Not asked: the request's wait ran out.", "Ask for this part again.", { retryAfter: 1 })
-        : p === "describe" ? await this.describeOf(v, own, left)
-        : await this.printOf(v, own, flag(a.query.get("proofs")), left);
+        : p === "describe" ? await describeOf(this, v, own, left)
+        : await printOf(this, v, own, flag(a.query.get("proofs")), left);
       if (r.status === 200) out[p] = r.body;
       else {
         out[p] = { status: r.status, ...(r.body as object) };
@@ -1593,132 +1588,6 @@ export class AgentApi {
       inTcb: true,
       chain: path.map((j, k) => ({ ...this.brief(v, j), ...(k ? { usedIn: `the ${via(path[k - 1], j)} of ${g.nodes[path[k - 1]].name}` } : {}) })),
       reviewPosition: at >= 0 ? { position: at + 1, of: order.length } : null,
-    });
-  }
-
-  /** The name Lean is asked about and the module imported to ask it: `module` when given (a module
-   *  of the project's graph), else the declaration's own; for a name the graph does not hold — a
-   *  constructor, a field, something a macro generated, all folded into the declaration that owns
-   *  them — the module of the nearest declaration its name is under; else the project's root
-   *  module, which imports all of it. A declaration of the outside world is asked about where a
-   *  module of the project imports it (View.homeOf): only the graph's own modules (meta.modules)
-   *  are ever imported. Only a name that passes isDeclName gets this far: it is written into Lean
-   *  source. */
-  private leanTarget(v: View, q: URLSearchParams): LeanTarget | Answer {
-    const name = (q.get("name") ?? "").trim();
-    if (!name) return fail(400, "name is missing.", "Give name=<a full Lean name>; GET /api/agent/search?q=<words> finds a declaration.");
-    if (!isDeclName(name)) return fail(400, "name is not a Lean name.", "Give a full dotted name and nothing else, e.g. Nat.Prime.eq_one_or_self_of_dvd.");
-    const given = q.get("module")?.trim() || null;
-    if (given) {
-      if (!isDeclName(given) || !v.modules.has(given))
-        return fail(400, `${given.slice(0, 300)} is not a module of the project's graph.`, "Give one of the project's modules, or leave module out: the declaration's own is used (for one of the outside world, a module of the project that imports it).");
-      return { name, module: given, chosen: "given" };
-    }
-    const i = v.g.byName.get(name);
-    // a notation unit is asked about by its Lean constant: its name is not one
-    if (i !== undefined) {
-      const lean = v.g.nodes[i].leanName;
-      const t = this.leanHome(v, lean ?? name, i, "its own");
-      return lean && "module" in t ? { ...t, unit: name } : t;
-    }
-    // generated from the command that writes a declaration: asked where that one is
-    const u = v.g.foldedInto.get(name);
-    if (u !== undefined) return this.leanHome(v, name, u, `that of ${v.g.nodes[u].name}, the declaration its command writes`, v.g.nodes[u].name);
-    for (let k = name.lastIndexOf("."); k > 0; k = name.lastIndexOf(".", k - 1)) {
-      const j = v.g.byName.get(name.slice(0, k));
-      if (j !== undefined) return this.leanHome(v, name, j, `that of ${v.g.nodes[j].name}, the declaration it is under`, v.g.nodes[j].name);
-    }
-    if (v.root) return { name, module: v.root, chosen: "the project's root module, which imports all of it" };
-    return this.find(v, name) as Answer;
-  }
-
-  /** Lean asked about `name` where declaration `j` is known: its own module (`own` says so), or for
-   *  one of the outside world a module of the project that imports it (View.homeOf). */
-  private leanHome(v: View, name: string, j: number, own: string, under?: string): LeanTarget | Answer {
-    if (!v.g.isExt(j)) return { name, module: v.g.nodes[j].module, chosen: own, ...(under ? { under } : {}) };
-    const h = v.homeOf(j);
-    if (!h) return fail(404, `There is no module of the project to ask Lean about ${name} in.`, "Give module=<a module of the project that imports it>.");
-    return { name, module: h.module, chosen: h.why, ...(under ? { under } : {}) };
-  }
-
-  /** Lean says it knows no such name where the module is imported: what was meant, from the graph. */
-  private unknownToLean(v: View, t: LeanTarget, said?: string): Answer {
-    const guesses = [...(t.under ? [t.under] : []), ...this.guess(v, t.name)].filter((x, k, xs) => xs.indexOf(x) === k).slice(0, 5);
-    return fail(
-      404,
-      `Lean knows no ${t.name} where ${t.module} is imported.`,
-      t.under
-        ? `GET /api/agent/print?name=${encodeURIComponent(t.under)} lists what ${t.under} holds (a structure's fields and constructor); or give the module that declares the name.`
-        : guesses.length ? `Did you mean ${guesses[0]}? Or give the module that declares it.` : "Give the module that declares it, or check the name with GET /api/agent/search.",
-      { didYouMean: guesses, ...(said ? { lean: said } : {}) },
-    );
-  }
-
-  /** Lean is still loading a module's imports: ask again. */
-  private loading(module: string, pending: unknown): Answer {
-    return fail(503, `Lean is still loading the imports of ${module}.`, "Ask again in a few seconds (Retry-After); the first question about a module can take a minute.", { pending, retryAfter: 5 }, { "retry-after": "5" });
-  }
-
-  private async describe(a: Ask): Promise<Answer> {
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const t = this.leanTarget(v, a.query);
-    if (!("module" in t)) return t;
-    return this.describeOf(v, t, clampInt(a.query.get("wait"), 20_000, 1000, MAX_WAIT));
-  }
-
-  private async describeOf(v: View, t: LeanTarget, wait: number): Promise<Answer> {
-    if (!this.lean) return fail(503, "There is no Lean to ask here.", "GET /api/agent/declaration gives the statement and docstring from the graph.");
-    const r = await this.lean.describe(t.module, t.name, wait);
-    if (r.pending) return this.loading(t.module, r.pending);
-    if (r.error) return fail(502, `Lean could not answer: ${r.error}`, "GET /api/agent/declaration gives the statement and docstring from the graph.");
-    if (!r.contents) return this.unknownToLean(v, t, r.refused);
-    return ok({ name: t.name, ...(t.unit ? { unit: t.unit } : {}), module: t.module, moduleChosen: t.chosen, inGraph: !!t.unit || v.g.byName.has(t.name), lean: r.contents });
-  }
-
-  private async print(a: Ask): Promise<Answer> {
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const t = this.leanTarget(v, a.query);
-    if (!("module" in t)) return t;
-    return this.printOf(v, t, flag(a.query.get("proofs")), clampInt(a.query.get("wait"), 20_000, 1000, MAX_WAIT));
-  }
-
-  /** What `#print` shows: the elaborated declaration with its value, every name in full. */
-  private async printOf(v: View, t: LeanTarget, proofs: boolean, wait: number): Promise<Answer> {
-    if (!this.lean) return fail(503, "There is no Lean to ask here.", "GET /api/agent/source gives the declaration's text.");
-    const r = await this.lean.print(t.module, t.name, proofs, wait);
-    if (r.pending) return this.loading(t.module, r.pending);
-    if (r.error || !r.messages) return fail(502, `Lean could not answer: ${r.error ?? "no messages"}`, "GET /api/agent/source gives the declaration's text.");
-    const errors = r.messages.filter((m) => m.severity === "error");
-    if (errors.length) {
-      if (errors.some((m) => /unknown (constant|identifier)/i.test(m.text))) return this.unknownToLean(v, t, errors[0].text);
-      return fail(422, `Lean could not print ${t.name}: ${errors[0].text.slice(0, 500)}`, "GET /api/agent/describe gives its signature; /api/agent/source its text.", { lean: errors.map((m) => m.text.slice(0, 2000)) });
-    }
-    let text = r.messages.filter((m) => m.severity === "information").map((m) => m.text).join("\n\n");
-    const length = text.length;
-    // cut at a line's end where there is one near the bound
-    if (length > MAX_PRINT) {
-      const nl = text.lastIndexOf("\n", MAX_PRINT);
-      text = text.slice(0, nl > MAX_PRINT * 0.8 ? nl : MAX_PRINT);
-    }
-    const warnings = r.messages.filter((m) => m.severity === "warning").map((m) => m.text);
-    // what the value is made of that the same command generated (a `module`'s code, a structure's
-    // projections): not shown here, and only asked for by name
-    const unit = v.g.byName.get(t.unit ?? t.name) ?? v.g.foldedInto.get(t.name);
-    const seeAlso = unit === undefined ? [] : (v.g.nodes[unit].also ?? []).filter((x) => x !== t.name && text.includes(x)).slice(0, 20);
-    return ok({
-      name: t.name,
-      // asked by a notation unit's name: `name` is its Lean constant, what Lean answered about
-      ...(t.unit ? { unit: t.unit } : {}),
-      module: t.module,
-      moduleChosen: t.chosen,
-      inGraph: !!t.unit || v.g.byName.has(t.name),
-      proofs,
-      lean: text,
-      ...(length > text.length ? { truncated: { shown: text.length, length }, note: proofs ? "Cut short: leave proofs out to see the statement and the definitions' values whole." : "Cut short." } : {}),
-      ...(warnings.length ? { warnings } : {}),
-      ...(seeAlso.length ? { seeAlso, seeAlsoNote: `This refers to ${seeAlso.join(", ")}, which Lean generated from the same command: GET /api/agent/print?name=<each> shows ${seeAlso.length > 1 ? "them" : "it"}.` } : {}),
     });
   }
 
@@ -2531,13 +2400,13 @@ export class AgentApi {
         method: "GET", path: "/api/agent/describe", about: "What Lean itself says about a name — its signature and doc, as a hover shows them. Any Lean name: a declaration of the graph, or a constructor, field or generated name (asked where the declaration it is under is imported). 503 with Retry-After while Lean loads.",
         params: { name: "a full Lean name, e.g. Nat.Prime.eq_one_or_self_of_dvd", module: "optional: the module to import (default: the declaration's own, else that of the declaration the name is under, else the project's root module)", wait: "how long to wait for Lean, ms (default 20000, at most 60000)" },
         returns: "{name, unit?, module, moduleChosen, inGraph, lean: markdown}",
-        run: (a) => this.describe(a),
+        run: (a) => describe(this, a),
       },
       {
         method: "GET", path: "/api/agent/print", brief: "Lean's #print of any name (/describe: its hover)", about: `What Lean's #print shows: the elaborated declaration with its value, every name in full — what a macro generated, the proposition a Prop-valued definition stands for, a structure's fields and constructor. Any Lean name, as describe. Proofs are shown as ⋯ unless proofs=1. At most ${MAX_PRINT.toLocaleString("en")} characters. 503 with Retry-After while Lean loads.`,
         params: { name: "a full Lean name", module: "optional, as for describe", proofs: "1: print proofs too (a theorem's value is its proof)", wait: "as for describe" },
         returns: "{name, unit?, module, moduleChosen, inGraph, proofs, lean: text, truncated?: {shown, length}, note?, warnings?, seeAlso?: [names Lean generated from the same command], seeAlsoNote?}",
-        run: (a) => this.print(a),
+        run: (a) => print(this, a),
       },
       {
         method: "GET", path: "/api/agent/targets", brief: "the targets, and how far each review has come", about: "The targets people review, each with how far its review has come.",
@@ -2715,17 +2584,6 @@ function inside(at: unknown, room: number): [number, number] {
   if (d <= room) return [x, y];
   const k = Math.max(0, room - 0.1) / d;
   return [Math.round(x * k * 10) / 10, Math.round(y * k * 10) / 10];
-}
-
-/** What Lean is asked about: a name, the module imported to ask, why that module, and the
- *  declaration of the graph the name is under, where it is not one itself. */
-interface LeanTarget {
-  name: string;
-  module: string;
-  chosen: string;
-  under?: string;
-  /** the notation unit asked about, where its Lean constant (`name`) is asked instead */
-  unit?: string;
 }
 
 /** Whether `path` is an endpoint's `pattern`: true where it is that path; where the pattern's last
