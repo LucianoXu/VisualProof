@@ -23,6 +23,7 @@ import type { NotePlace } from "../../shared/sticky.ts";
 import type { PastSource, PastSourceMissing } from "./pastsource.ts";
 import type { OutsideWhere } from "../../shared/outside.ts";
 import type { AskAnswer, AskSent } from "../../shared/askfollow.ts";
+import type { PointerBody } from "../../shared/pointer.ts";
 
 /** The review as the server last told it: the replay of its logs at revision `rev` of the server's
  *  run `epoch`, and the lines of the logs that cannot be read (shared/review.ts). */
@@ -180,6 +181,9 @@ export interface DataSource {
   /** tell the others where this page is (CollabSpec decision 4), or only that it is here (a private
    *  page, decision 8), by the secret this page's event stream was given (`hello`) */
   presence(token: string, beat: Heartbeat): Promise<void>;
+  /** where this page's pointer is, for its room (POST /api/pointer, shared/pointer.ts): sent and let
+   *  go; a snapshot has no room */
+  pointer(body: PointerBody): void;
   /** what the server's timeline holds (CollabSpec decision 5); a snapshot has none */
   activity(): Promise<StoredEvent[]>;
   /** what this page may share (web/src/share.ts): the link that lets someone in, and whether
@@ -317,13 +321,14 @@ export type ReadOnlyLinkShown = ReadOnlyLink & { link: string };
 
 /** What a page's heartbeat says (CollabSpec decision 4): where it is; or, from a private page
  *  (decision 8), only that it is here. */
-export type Heartbeat = { view: PresenceView | null; idle: boolean } | { private: true };
+export type Heartbeat = { view: PresenceView | null; idle: boolean } | { private: true; following?: string | null };
 
 /** A heartbeat as it goes to the server (POST /api/presence), from the headers the page's requests
- *  carry. A private page's carries its stream's secret and the flag, and nothing else: neither the
- *  name nor where the page is (CollabSpec decision 8). */
+ *  carry. A private page's carries its stream's secret and the flag, and whom it follows, and nothing
+ *  else: neither the name nor where the page is (CollabSpec decision 8); the reader it follows is
+ *  told that someone private does (the owner's decision of 2026-10-20). */
 export function heartbeatRequest(token: string, beat: Heartbeat, headers: Record<string, string>): { headers: Record<string, string>; body: string } {
-  if ("private" in beat) return { headers: { "content-type": "application/json" }, body: JSON.stringify({ token, private: true }) };
+  if ("private" in beat) return { headers: { "content-type": "application/json" }, body: JSON.stringify({ token, private: true, ...(beat.following ? { following: beat.following } : {}) }) };
   return { headers, body: JSON.stringify({ token, view: beat.view, idle: beat.idle }) };
 }
 
@@ -462,6 +467,7 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     privateSession: null,
     identity: async () => ({ mode: "none", name: null }),
     presence: async () => {},
+    pointer: () => {},
     undoLayout: async () => ({ error: "a snapshot shows the layout as it was" }),
     exportHead: async () => "a snapshot cannot typeset documents: export from the server",
     exportOutline: async () => "a snapshot of the page has no linear form: its document is the server's",
@@ -719,6 +725,12 @@ function serverSource(): DataSource {
       fetch("/api/layout/undo", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
+    // let go as soon as it is sent: what matters is the next one, some 60 ms later
+    pointer: (body) => {
+      void fetch("/api/pointer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+        .then((res) => void res.body?.cancel())
+        .catch(() => {});
+    },
     presence: (token, beat) => {
       const r = heartbeatRequest(token, beat, headers());
       // its answer let go: the browser holds the requests kept alive, 64 KB between them, until their
@@ -780,6 +792,11 @@ async function exportAnswer(r: Promise<Response>): Promise<ExportJobState | stri
   try {
     const res = await r;
     const b = (await res.json().catch(() => ({}))) as { job?: ExportJobState; error?: string };
+    // when the job was asked for, by this page's clock: its time by the server's, less how long ago
+    // that was by the server's clock as it answered (its Date, to the second)
+    const now = Date.parse(res.headers.get("date") ?? "");
+    const at = b.job?.at ? Date.parse(b.job.at) : NaN;
+    if (b.job && Number.isFinite(now) && Number.isFinite(at)) b.job.startedHere = Date.now() - Math.max(0, now - at);
     return b.job ?? b.error ?? `the server answered ${res.status}`;
   } catch {
     return "the server could not be reached";

@@ -22,6 +22,12 @@
 // afresh when it goes private and when it shows itself again (server/live.ts), so its entries under
 // either id say nothing of the other.
 //
+// Who follows whom (the owner's decision of 2026-10-20): a listed page says it in its place
+// (`following`, as shared/collab.ts personKey names the person followed), which every page reads; a
+// private page says it alone, and is counted for the person it follows (`privateFollowers`), which
+// only that person's pages are told (server/live.ts). A read-only page says nothing, and is seen by
+// nobody (CollabSpec decision 11); an agent follows nobody.
+//
 // What an agent asks to follow the people it helps (GET /api/agent/companion) waits for the list to
 // change: `rev` counts the changes that matter to it — someone came, went, moved, went idle, an
 // agent went offline or came back — and leaves out a camera that moved, which a page reports
@@ -49,6 +55,8 @@ interface Entry {
   verified?: true;
   /** a private page's: counted, never listed */
   private?: true;
+  /** whom a private page follows (personKey): counted for them, never told who */
+  following?: string;
 }
 
 /** An agent with a token in force: listed until the token ends. */
@@ -104,9 +112,10 @@ export class Presence {
   private notify(): void {
     const list = this.list();
     this.send(list);
-    // neither a camera that pans nor what an agent does while online is a move; an agent going
-    // offline or coming back is, and so is a private reader coming or going
-    const sig = JSON.stringify([this.privateCount(), list.map((p) => ({ ...p, view: p.view ? { ...p.view, cam: null } : null, talk: p.talk ? p.talk.state === "offline" : undefined }))]);
+    // neither a camera that pans nor what an agent does while online is a move, nor whom a page
+    // follows, which agents are not told; an agent going offline or coming back is, and so is a
+    // private reader coming or going
+    const sig = JSON.stringify([this.privateCount(), list.map((p) => ({ ...p, view: p.view ? { ...p.view, cam: null, following: undefined } : null, talk: p.talk ? p.talk.state === "offline" : undefined }))]);
     if (sig === this.lastSig) return;
     this.lastSig = sig;
     this.rev++;
@@ -141,13 +150,21 @@ export class Presence {
     if (!same) this.notify();
   }
 
-  /** A private page's heartbeat (CollabSpec decision 8): it is here, and that is all that is kept
-   *  of it — no name, no place, never idle. */
-  beatPrivate(id: string): void {
+  /** A private page's heartbeat (CollabSpec decision 8): it is here, and whom it follows, and that
+   *  is all that is kept of it — no name, no place, never idle. */
+  beatPrivate(id: string, following: string | null = null): void {
     if (this.closed.has(id)) return;
     const was = this.sessions.get(id);
-    this.sessions.set(id, { name: null, view: null, idle: false, seen: Date.now(), agent: false, private: true });
-    if (!was?.private) this.notify();
+    this.sessions.set(id, { name: null, view: null, idle: false, seen: Date.now(), agent: false, private: true, ...(following ? { following } : {}) });
+    if (!was?.private || was.following !== (following ?? undefined)) this.notify();
+  }
+
+  /** How many private pages follow each person, by personKey: what that person's pages alone are
+   *  told (server/live.ts), never who. */
+  privateFollowers(): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const e of this.sessions.values()) if (e.private && e.following) out.set(e.following, (out.get(e.following) ?? 0) + 1);
+    return out;
   }
 
   /** A page named afresh as it went private or showed itself again (server/live.ts): its entry under

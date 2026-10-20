@@ -4,13 +4,14 @@
 // one with its maker, a new conversation there. Agents do all of it through their API.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { cleanView, madeBy, nameKey, withoutArtwork } from "../shared/collab.ts";
+import { agentPlace, cleanFollowing, cleanView, madeBy, nameKey } from "../shared/collab.ts";
 import type { TokenRecord } from "./tokens.ts";
 import { forPages, MAX_PERSON, PUBLIC, THREAD } from "./talk.ts";
 import { mentioned } from "../shared/mentions.ts";
 import type { Answer } from "./agent.ts";
 import { sendJson } from "./send.ts";
 import { placeOf } from "./agentfollow.ts";
+import { BODY_MAX } from "../shared/pointer.ts";
 import type { App } from "./app.ts";
 
 /** where a reader is: the others see it (CollabSpec decision 4); of a private reader, only that
@@ -19,16 +20,31 @@ export async function presence(app: App, req: IncomingMessage, res: ServerRespon
   const live = app.live;
   const r = await app.json(req, 16384);
   if (r.error !== undefined) return sendJson(res, { error: r.error }, 400);
-  const b = (r.body ?? {}) as { token?: unknown; view?: unknown; idle?: unknown; private?: unknown };
+  const b = (r.body ?? {}) as { token?: unknown; view?: unknown; idle?: unknown; private?: unknown; following?: unknown };
   // an agent is one entry by its name (server/presence.ts), never private; a page speaks for
   // its own event stream only, by the secret the stream was given (`hello`)
   const name = app.ids.who(req);
   const priv = !agent && b.private === true;
-  // agents have no artwork (ExportSpec decision 19): the page draws it
-  if (agent && name) live.presence.agentBeat(name, withoutArtwork(cleanView(b.view)));
-  else if (!live.beat(b.token, priv ? null : name, priv ? null : cleanView(b.view), !priv && b.idle === true, priv, !!app.ids.person(req), name))
+  // agents have no artwork (ExportSpec decision 19) nor Export window — the page draws them — and
+  // follow nobody; a private page says whom it follows and nothing else, so that the reader it
+  // follows is told it is followed, by someone (the owner's decision of 2026-10-20)
+  if (agent && name) live.presence.agentBeat(name, agentPlace(cleanView(b.view)));
+  else if (!live.beat(b.token, priv ? null : name, priv ? null : cleanView(b.view), !priv && b.idle === true, priv, !!app.ids.person(req), name, priv ? cleanFollowing(b.following) : null))
     return sendJson(res, { error: "This heartbeat is not from an open event stream of this page's: it is sent with the token the stream says hello with.", stream: false }, 403);
   return sendJson(res, { ok: true });
+}
+
+/** Where a page's pointer is, and what text it has selected (CollabSpec decision 4, the owner's
+ *  decisions of 2026-10-20; shared/pointer.ts): relayed to the pages of its room by its stream's
+ *  secret, as a heartbeat is, and kept nowhere; a read-only page says whom it follows. 403 where no
+ *  open stream has the secret (an agent has none). */
+export async function pointer(app: App, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const r = await app.json(req, BODY_MAX);
+  if (r.error !== undefined) return sendJson(res, { error: r.error }, 400);
+  const b = (r.body && typeof r.body === "object" ? r.body : {}) as Record<string, unknown>;
+  const to = app.live.pointer(b.token, b);
+  if (to === null) return sendJson(res, { error: "This pointer is not from an open event stream of this page's: it is sent with the token the stream says hello with.", stream: false }, 403);
+  return sendJson(res, { ok: true, to });
 }
 
 /** The conversations (CollabSpec decision 13, AgentSpec decision 8), for pages: a channel read

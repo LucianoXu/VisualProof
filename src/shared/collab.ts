@@ -1,6 +1,9 @@
 // What the server and the page share about the people on a server (CollabSpec.md): names, the
 // colour each name has, and what a reader tells the others about where they are.
 
+import { readSettings } from "./doc/settings.ts";
+import type { DocSettings } from "./doc/settings.ts";
+
 /** the most characters a name may have */
 export const MAX_NAME = 60;
 
@@ -114,6 +117,23 @@ export function colorOf(name: string): string {
   return `hsl(${hue} 62% 46%)`;
 }
 
+/** Who a page or an agent is among the people: one person per name — an agent and a person of the
+ *  same name are two, and so are a guest and someone invited by a personal link — and a page without
+ *  a name on its own. An agent is its presence entry, which the server keeps one per token, or one
+ *  per name for an agent without a token (server/presence.ts): an agent that gives the name of one
+ *  with a token is another, so that nobody can speak for an agent with a token by giving its name
+ *  (AgentSpec, "Presence") — lead the people following it, or speak in its channels. What
+ *  following follows, what a page says it follows (PresenceView `following`), and a request to
+ *  follow asks to follow (web/src/askfollow.ts). */
+export function personKey(p: { id: string; name: string | null; agent?: boolean; verified?: boolean }): string {
+  return p.agent ? `a:${p.id}` : p.name ? `${p.verified ? "v" : "n"}:${p.name}` : `s:${p.id}`;
+}
+
+/** Whom a page says it follows, as personKey names them, checked; null where it is none. */
+export function cleanFollowing(x: unknown): string | null {
+  return typeof x === "string" && x.length <= 200 && /^[avns]:[^\u0000-\u001f\u007f]+$/.test(x) ? x : null;
+}
+
 /** the most source windows a reader pins at once (web/src/sources.ts): a few declarations side by
  *  side, not a wall of them */
 export const MAX_PINNED = 6;
@@ -151,6 +171,11 @@ export interface PresenceView {
   scope: string | null;
   /** the views the reader has open (their tabs): a view nobody keeps lives while one is */
   tabs: string[];
+  /** whom the reader follows, as personKey names them (the owner's decision of 2026-10-20: each page
+   *  says whom it follows, so that the followed see who follows them): bookkeeping, as `tabs` is,
+   *  which no follower takes; absent where they follow nobody, and from an agent, which follows
+   *  nobody */
+  following?: string;
   /** in the Time Machine (HistorySpec decision 18): the snapshot the reader browses, on their view;
    *  a follower opens the same */
   history?: { snapshot: number };
@@ -184,6 +209,55 @@ export interface PresenceView {
   /** the artwork mode (ExportSpec decision 19): its settings, the board drawn with them, and what its
    *  frame holds; null where it is off */
   artwork?: ArtworkView | null;
+  /** the Export window (ExportSpec decision 5; followed, the owner's decision of 2026-10-20): open or
+   *  closed, its settings and the document it typesets; an agent has none */
+  export?: ExportWindowView;
+}
+
+/** The settings the Export window sets (web/src/exportmodal.ts): the rest keep their defaults. */
+export type ExportSettings = Pick<DocSettings, "paper" | "fontSize" | "codeSize" | "contents">;
+export const EXPORT_SETTINGS: readonly (keyof ExportSettings)[] = ["paper", "fontSize", "codeSize", "contents"];
+
+/** The document the Export window shows being typeset, or typeset (server/export.ts): its job by its
+ *  id — "" before the server answered, or where it refused — what it is doing, and why it failed,
+ *  in a few words. Whoever follows reads the rest of it by the id (GET /api/export/job), and its
+ *  files: the same files, from the export's cache. */
+export interface ExportJobView {
+  id: string;
+  state: "running" | "done" | "failed";
+  error?: string;
+}
+
+/** The Export window as presence carries it: open or closed; open, its settings and the job it
+ *  shows. Which view it exports is the view on show, which the view's part carries; its title and
+ *  author line are the server's to say, to the follower too. */
+export interface ExportWindowView {
+  open: boolean;
+  settings?: ExportSettings;
+  job?: ExportJobView;
+}
+
+/** the most characters of a job's failure presence carries: the rest is its job's to tell */
+const EXPORT_ERROR_MAX = 500;
+
+/** The Export window as a page sent it, checked; null where it is not one. Settings out of range
+ *  are not carried (readSettings, as POST /api/export reads them), nor a job that is none. */
+export function cleanExport(v: unknown): ExportWindowView | null {
+  if (!v || typeof v !== "object" || typeof (v as Record<string, unknown>).open !== "boolean") return null;
+  const o = v as Record<string, unknown>;
+  if (!o.open) return { open: false };
+  const raw = o.settings && typeof o.settings === "object" && !Array.isArray(o.settings) ? (o.settings as Record<string, unknown>) : null;
+  const read = raw ? readSettings(Object.fromEntries(EXPORT_SETTINGS.filter((k) => k in raw).map((k) => [k, raw[k]]))) : null;
+  const settings = read && "settings" in read ? (Object.fromEntries(EXPORT_SETTINGS.map((k) => [k, read.settings[k]])) as ExportSettings) : null;
+  const j = o.job && typeof o.job === "object" ? (o.job as Record<string, unknown>) : null;
+  const state = j && ["running", "done", "failed"].includes(j.state as string) ? (j.state as ExportJobView["state"]) : null;
+  const id = j && typeof j.id === "string" && /^(?:[0-9a-f]{32})?$/.test(j.id) ? j.id : null;
+  // a job is known by its id, but one refused before it was one, or not yet answered
+  const job: ExportJobView | null =
+    state && id !== null && (id || state !== "done")
+      ? { id, state, ...(state === "failed" && typeof j!.error === "string" ? { error: cutShort(j!.error.replace(/[\u0000-\u001f\u007f]+/g, " "), EXPORT_ERROR_MAX) } : {}) }
+      : null;
+  return { open: true, ...(settings ? { settings } : {}), ...(job ? { job } : {}) };
 }
 
 /** An artwork's settings (ExportSpec decision 19, web/src/artwork.ts): the picture's size in pixels,
@@ -318,10 +392,12 @@ export interface ArtworkView extends ArtworkLook {
 /** the most pixels a side of an artwork has */
 export const ART_MAX_SIDE = 16384;
 
-/** A place with no artwork in it: an agent's (ExportSpec decision 19, agents have no artwork). */
-export function withoutArtwork(v: PresenceView | null): PresenceView | null {
-  if (!v || !("artwork" in v)) return v;
-  const { artwork: _artwork, ...rest } = v;
+/** A place as an agent's is: no artwork (ExportSpec decision 19, agents have none), no Export window
+ *  (an agent exports through its API), and nobody followed (agents follow nobody; both the owner's
+ *  decisions of 2026-10-20). */
+export function agentPlace(v: PresenceView | null): PresenceView | null {
+  if (!v || !("artwork" in v || "export" in v || "following" in v)) return v;
+  const { artwork: _artwork, export: _export, following: _following, ...rest } = v;
   return rest;
 }
 
@@ -514,6 +590,9 @@ export interface StreamHello {
  *  beside the list of the others (`private`): a count, never who. */
 export interface PrivateCount {
   count: number;
+  /** how many of them follow this page's reader (the owner's decision of 2026-10-20): told to that
+   *  reader's pages alone, never who; absent where none does */
+  followers?: number;
 }
 
 /** A view as a page sent it, checked and bounded; null when it is not one. */
@@ -579,6 +658,7 @@ export function cleanView(v: unknown): PresenceView | null {
     view: str(o.view, 300),
     scope: str(o.scope, 4000),
     tabs: Array.isArray(o.tabs) ? o.tabs.slice(0, 50).map((t) => str(t, 300)).filter((t): t is string => t !== null) : [],
+    ...(cleanFollowing(o.following) ? { following: cleanFollowing(o.following)! } : {}),
     ...(snapshot !== null ? { history: { snapshot } } : {}),
     ...(o.focus === null || str(o.focus) ? { focus: o.focus as string | null } : {}),
     ...(visitors.length ? { visitors } : {}),
@@ -589,5 +669,6 @@ export function cleanView(v: unknown): PresenceView | null {
     ...(typeof o.edges === "boolean" ? { edges: o.edges } : {}),
     ...(typeof o.linear === "boolean" ? { linear: o.linear } : {}),
     ...(o.artwork === null ? { artwork: null } : cleanArtwork(o.artwork) ? { artwork: cleanArtwork(o.artwork) } : {}),
+    ...(cleanExport(o.export) ? { export: cleanExport(o.export)! } : {}),
   };
 }

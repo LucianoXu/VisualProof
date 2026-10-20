@@ -54,6 +54,7 @@ import { schemePart } from "./pagescheme.ts";
 import { followPart } from "./pagefollow.ts";
 import { talkPart } from "./pagetalk.ts";
 import { peoplePart } from "./pagepeople.ts";
+import { pointerPart } from "./pagepointer.ts";
 import { tabsPart } from "./pagetabs.ts";
 import { sharePart } from "./pageshare.ts";
 import { timelinePart } from "./pagetimeline.ts";
@@ -190,6 +191,7 @@ async function boot(): Promise<void> {
   Object.assign(page, followPart(page));
   Object.assign(page, talkPart(page));
   Object.assign(page, peoplePart(page));
+  Object.assign(page, pointerPart(page));
   Object.assign(page, tabsPart(page));
   Object.assign(page, sharePart(page));
   Object.assign(page, timelinePart(page));

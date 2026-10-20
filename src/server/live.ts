@@ -15,8 +15,10 @@
 
 import { randomBytes } from "node:crypto";
 import type { ServerResponse } from "node:http";
-import type { ChatEvent, ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
-import { madeBy, nameKey, sameName } from "../shared/collab.ts";
+import type { ChatEvent, ChatMessage, Invited, Peer, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
+import { cleanFollowing, madeBy, nameKey, personKey, sameName } from "../shared/collab.ts";
+import { cleanPointer, RELAY_PER_S, roomOf } from "../shared/pointer.ts";
+import type { PointerNews, RoomPage } from "../shared/pointer.ts";
 import type { ViewMeta } from "../shared/graph.ts";
 import { prepare } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
@@ -122,6 +124,11 @@ interface Stream {
   /** a read-only reader's (CollabSpec decision 11): the read-only link it came by, whose revoking
    *  ends the stream, or "public" (--public); null for anyone else */
   readOnly: string | null;
+  /** whom its page follows (personKey), as its heartbeats say it — a read-only page's as it says it
+   *  to be sent the pointers of its room (the owner's decisions of 2026-10-20) */
+  follows: string | null;
+  /** when its pointer was last relayed, the last second's: RELAY_PER_S at most */
+  relayed: number[];
   /** the name its page goes by, a private page's too: its personal link's or the proxy's from the
    *  start, a guest's from its heartbeats (an event stream carries no header of the page's); null
    *  for none. Which messages of the channels it is sent depends on it (CollabSpec decision 13) */
@@ -404,7 +411,7 @@ export class Live {
       return;
     }
     this.send("presence", this.presence.list());
-    this.send("private", { count: this.presence.privateCount() } satisfies PrivateCount);
+    this.sendPrivate();
     this.presenceTimer = setTimeout(() => {
       this.presenceTimer = null;
       if (this.presenceDirty) {
@@ -415,20 +422,85 @@ export class Live {
     this.presenceTimer.unref?.();
   }
 
+  /** How many private readers there are, as each page is told it (`private`): with how many of them
+   *  follow its reader, which that reader's pages alone are told (the owner's decision of
+   *  2026-10-20) — a private page, or a read-only one, is followed by nobody. */
+  private privateOf(st: Stream, listed: Map<string, Peer>, followers: Map<string, number>, count: number): PrivateCount {
+    const me = st.private || st.readOnly !== null ? undefined : listed.get(st.id);
+    const n = me ? (followers.get(personKey(me)) ?? 0) : 0;
+    return { count, ...(n ? { followers: n } : {}) };
+  }
+
+  /** Every page is told how many private readers there are, and how many of them follow its reader:
+   *  one text for all the pages nobody private follows, one per count for the others. */
+  private sendPrivate(): void {
+    if (!this.streams.size) return;
+    const listed = new Map(this.presence.list().map((p) => [p.id, p]));
+    const followers = this.presence.privateFollowers();
+    const count = this.presence.privateCount();
+    const texts = new Map<number, string>();
+    for (const st of [...this.streams.values()]) {
+      const p = this.privateOf(st, listed, followers, count);
+      const n = p.followers ?? 0;
+      let text = texts.get(n);
+      if (text === undefined) texts.set(n, (text = `event: private\ndata: ${JSON.stringify(p)}\n\n`));
+      this.push(st, text);
+    }
+  }
+
+  /** What one page is told of the private readers now. */
+  private privateNow(st: Stream): PrivateCount {
+    return this.privateOf(st, new Map(this.presence.list().map((p) => [p.id, p])), this.presence.privateFollowers(), this.presence.privateCount());
+  }
+
   /** A page's heartbeat, by the secret its stream was given: false when no open stream has it (a
    *  stream that closed, a guess), and nothing changes. A private page's (`priv`, CollabSpec
-   *  decision 8) is counted and nothing more is kept of it: not its name, not where it is.
-   *  `verified`: the page of someone invited by a personal link (decision 9). */
-  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false, who: string | null = name): boolean {
+   *  decision 8) is counted, with whom it follows (`following`), and nothing more is kept of it: not
+   *  its name, not where it is. `verified`: the page of someone invited by a personal link (decision
+   *  9). */
+  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false, who: string | null = name, following: string | null = null): boolean {
     const s = typeof token === "string" ? this.byToken.get(token) : undefined;
     if (!s) return false;
     // the name the page goes by, said by its heartbeat's request, a private page's too (`who`): what
     // of the channels its stream is sent (CollabSpec decision 13)
     if (s.readOnly === null) s.name = who;
-    if (s.private !== priv) this.rename(s, priv, name, view, idle, verified);
-    else if (priv) this.presence.beatPrivate(s.id);
+    // whom it follows: its room's pointers are relayed to it (pointer)
+    s.follows = priv ? following : (view?.following ?? null);
+    if (s.private !== priv) {
+      this.rename(s, priv, name, view, idle, verified);
+      if (priv && following) this.presence.beatPrivate(s.id, following);
+    } else if (priv) this.presence.beatPrivate(s.id, following);
     else this.presence.beat(s.id, name, view, idle, false, verified);
     return true;
+  }
+
+  /** A page's pointer, by its stream's secret (POST /api/pointer; shared/pointer.ts): relayed at once
+   *  to the pages of its room — whom it follows, who follows it, who follows the one it follows —
+   *  and kept nowhere. A private or read-only page's is relayed to nobody, but a read-only page says
+   *  whom it follows here, as it sends no heartbeat (CollabSpec decision 11), so as to be sent its
+   *  room's; it is counted nowhere. Beyond RELAY_PER_S a second a page's are dropped. Answers the
+   *  pages it went to, or null where no open stream has the secret. */
+  pointer(token: unknown, body: Record<string, unknown>, now = Date.now()): number | null {
+    const s = typeof token === "string" ? this.byToken.get(token) : undefined;
+    if (!s) return null;
+    if (s.readOnly !== null) {
+      if ("following" in body) s.follows = cleanFollowing(body.following);
+      return 0;
+    }
+    if (s.private) return 0;
+    s.relayed = s.relayed.filter((t) => now - t < 1000);
+    if (s.relayed.length >= RELAY_PER_S) return 0;
+    s.relayed.push(now);
+    const listed = new Map(this.presence.list().map((p) => [p.id, p]));
+    const page = (st: Stream): RoomPage => {
+      const p = st.private || st.readOnly !== null ? undefined : listed.get(st.id);
+      return { id: st.id, key: p ? personKey(p) : null, follows: st.follows };
+    };
+    const to = new Set(roomOf(page(s), [...this.streams.values()].map(page)));
+    if (!to.size) return 0;
+    const text = `event: pointer\ndata: ${JSON.stringify({ from: s.id, ...cleanPointer(body) } satisfies PointerNews)}\n\n`;
+    for (const st of [...this.streams.values()]) if (to.has(st.id)) this.push(st, text);
+    return to.size;
   }
 
   /** A page went private, or showed itself again (CollabSpec decision 8): its stream gets a new
@@ -452,7 +524,7 @@ export class Live {
     }
     this.presence.renamed(old, s.id, priv, name, view, idle, verified);
     this.write(s.res, "presence", this.presence.list());
-    this.write(s.res, "private", { count: this.presence.privateCount() } satisfies PrivateCount);
+    this.write(s.res, "private", this.privateNow(s));
   }
 
   /** The file of a module of the graph on show, relative to the project (meta.modules): the only
@@ -1371,7 +1443,7 @@ export class Live {
       connection: "keep-alive",
     });
     res.write("retry: 2000\n\n");
-    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, name: readOnly === null ? name : null, toldAll, room: Infinity, after: 0, buildDeltas };
+    const st: Stream = { res, id: randomBytes(9).toString("base64url"), token: randomBytes(24).toString("base64url"), session, private: false, person, readOnly, follows: null, relayed: [], name: readOnly === null ? name : null, toldAll, room: Infinity, after: 0, buildDeltas };
     this.streams.set(res, st);
     this.byToken.set(st.token, st);
     this.presence.open(st.id);
@@ -1379,7 +1451,7 @@ export class Live {
     this.write(res, "hello", this.helloOf(st));
     if (this.updateStatus) this.write(res, "updates", this.updateStatus(st.toldAll));
     this.write(res, "presence", this.presence.list());
-    this.write(res, "private", { count: this.presence.privateCount() } satisfies PrivateCount);
+    this.write(res, "private", this.privateNow(st));
     this.write(res, "people", this.invites.people());
     // the views as they are: a page that was away (a restart, a lost connection) catches up, and
     // reads again the boards it has open

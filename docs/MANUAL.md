@@ -1171,7 +1171,8 @@ a PDF viewer. **The view is the specification**: what it holds is what the docum
   sources** (a zip: the `.tex`, `visualproof.sty`, the fonts and a README) and the `.tex` and
   `.sty` alone, with the export's notes folded beneath (which definitions had their proofs found by
   reading their text, below). The settings are remembered in this browser. A view of more than
-  2,000 declarations of the project is narrowed first.
+  2,000 declarations of the project is narrowed first. Those following you see the window as you
+  do — its settings, the progress, the downloads — and Share's *Exactly what I see* carries it.
 - **A view of a past build** (decision 16) makes that build's document: what its board shows, the
   declarations of that build its scope holds, in
   its sections, each with the text that build compiled — where that text is not kept, its statement
@@ -1333,12 +1334,18 @@ what each one looks at stays their own.
   someone else has your link. A link made before 0.6.0, when the server kept only a digest of it,
   cannot be shown: make it anew to have it here. Then **Visibility** (CollabSpec decision 8).
   *Visible*, the default: the others see you and where you look, and can follow you. *Private*: your page tells nobody where you are; you are
-  not in the bar nor in "Also here", and nobody can follow you (you may still follow others). The
+  not in the bar nor in "Also here", and nobody can follow you (you may still follow others: whom
+  you follow sees one more follower, "+1 private", and nothing else of you). The
   others see only how many private readers there are ("+2 private", beside the initials). What you
   change of the layout — pins, folds, re-layouts, scopes, the views you make, rename or delete — is
   shared as anyone's, but shows as *someone's*, here and to agents; your opinions, targets, key
   marks and trust keep your name, and need one. Private, your dot beside the name is hollow and an
   eye is struck through. The browser keeps the choice for all its tabs; it changes at once.
+- **Who follows you**: when people follow you, your name carries a mark with how many — "2 follow
+  you" — the people by name and the private readers only counted ("Bob, +1 private"); rest on your
+  name, or open its menu, to see them, and their initials carry a small mark in your colour. Readers
+  by a read-only link are never counted (nobody sees them). Nothing tells you when someone starts or
+  stops following.
 - **Who else is here**: their initials beside your name, faded when they are away. Rest on one to
   see where they are; click for their menu, **Follow** them or **Ask … to follow me** (an agent's
   menu: **Follow**, and **Talk** with it, in its private channel if it is yours, else by mentioning
@@ -1346,14 +1353,31 @@ what each one looks at stays their own.
   (CollabSpec decision 4): you take their view (in a tab opened for it if need be), their build in
   the Time Machine, camera, tool, selection and focus, what their panel tells of, their source
   windows and reference window (each opened, collapsed and closed with theirs, placed as your
-  screen places them), Activity and the lost-and-found open or closed with Activity's filters, and
-  their colouring and edges. Changing any of these ends following, as acting on what
-  you are shown does (a button of the panel, typing a comment), and Esc. Nothing of yours ends it:
+  screen places them), Activity and the lost-and-found open or closed with Activity's filters,
+  their colouring and edges, and their Export window — open or closed with theirs (yours, open as
+  you start, gives way to it), with their settings, and the document they generate: its progress,
+  then the same downloads, offered to you too. Changing any of these ends following, as acting on what
+  you are shown does (a button of the panel, typing a comment, a setting or a download of the Export
+  window), and Esc. Nothing of yours ends it:
   where windows sit, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
-  Export, Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
-  selecting text, copying it. When it ends, what you were shown stays, yours. On the canvas their
+  Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
+  selecting text, copying it. When it ends, what you were shown stays, yours: the Export window too,
+  with the settings it showed. On the canvas their
   selection carries a ring of their colour with their initials; the panel says who else is looking
   at a declaration.
+- **Pointers in a room** (CollabSpec decision 4): while you follow someone, or someone follows you,
+  you see the pointers of the others in your room — whom you follow, who follows you, who follows the
+  same person as you — each in its owner's colour with their initials, and they see yours, fading
+  two seconds after it stops; at most five at once. Each sits on what it points at as your page shows
+  it — the same token of a source window, the same row of a panel, the same spot of the board —
+  whatever your screen's size and however you scrolled; text selected shows highlighted in its
+  owner's colour, and a click of the person you follow as a ripple. A pointer on something your view
+  scrolled away shows as a mark at the edge ("↓ Alice"): click it to scroll there (scrolling is never
+  followed); on a phone, a pointer in the side panel shows by the drawer's button. Nothing of it ends
+  following. A private reader's pointer is never shown, nor a read-only reader's; a private reader
+  sees the others', and a read-only reader those of a room the person they follow is in through
+  someone else (nobody knows a read-only reader follows). There is no setting to hide your pointer:
+  going private ends being followed.
 - **Asking others to follow you** (CollabSpec decision 10), to show them something: **Ask everyone
   to follow me** in the menu under your name, or **Ask … to follow me** in a person's menu (all
   their pages), once every 30 s, with a name and visible. Each page asked shows a banner at the top,

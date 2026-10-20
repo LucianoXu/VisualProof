@@ -23,6 +23,9 @@ export function readOnlyAllows(method: string, path: string): boolean {
   if (method === "POST" && (path === "/api/hover/open" || path === "/api/hover/names")) return true;
   // the printed document of a view as it is shared (bounded below)
   if (method === "POST" && path === "/api/export") return true;
+  // whom the page follows, so as to be sent the pointers of its room (the owner's decisions of
+  // 2026-10-20): its own pointer is relayed to nobody, and it is counted nowhere
+  if (method === "POST" && path === "/api/pointer") return true;
   return false;
 }
 

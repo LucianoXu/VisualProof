@@ -61,7 +61,7 @@ export async function companion(api: AgentApi, a: Ask): Promise<Answer> {
     people: out,
     privateCount: P.privateCount(),
     agents,
-    note: "privateCount: how many people are here privately — not listed, not followable, nothing known of where they are. Each person's place is that of their liveliest page: the view, the tool (how a click selects), what is selected (a query), the declaration their panel tells of, whether its source window is open (and collapsed), the source windows they pinned (pinned: declaration, collapsed), and, where their page says them, Activity (open, kind, who, mine: whose targets), the lost-and-found (lostAndFound.open), the colouring (kind or status), edges — all of which those following them see too. idle: no input for five minutes, or the page in the background. verified: invited by a personal link, so the name is theirs. To look where someone looks, POST /api/agent/view with their view and declaration; ?wait=<s>&since=<rev> waits for the next change (at most 60 s).",
+    note: "privateCount: how many people are here privately — not listed, not followable, nothing known of where they are. Each person's place is that of their liveliest page: the view, the tool (how a click selects), what is selected (a query), the declaration their panel tells of, whether its source window is open (and collapsed), the source windows they pinned (pinned: declaration, collapsed), and, where their page says them, Activity (open, kind, who, mine: whose targets), the lost-and-found (lostAndFound.open), the colouring (kind or status), edges, the Export window (export: open, its settings, the document typeset by its job's id) — all of which those following them see too. idle: no input for five minutes, or the page in the background. verified: invited by a personal link, so the name is theirs. To look where someone looks, POST /api/agent/view with their view and declaration; ?wait=<s>&since=<rev> waits for the next change (at most 60 s).",
   });
 }
 
@@ -70,7 +70,8 @@ export async function companion(api: AgentApi, a: Ask): Promise<Answer> {
  *  each collapsed or not (decided 2026-10-09: what a follower's windows mirror), the build it
  *  browses in the Time Machine (HistorySpec decision 18), and what else those following it see
  *  (CollabSpec decision 4, the owner's decision of 2026-10-11): Activity and its filters, the
- *  lost-and-found, the colouring, the edges — each where the page says it (an agent says none). */
+ *  lost-and-found, the colouring, the edges, and the Export window (the owner's decision of
+ *  2026-10-20) — each where the page says it (an agent says none). */
 export function placeOf(api: AgentApi, v: PresenceView): {
   view: string;
   viewTitle: string | null;
@@ -106,6 +107,11 @@ export function placeOf(api: AgentApi, v: PresenceView): {
       : "";
   const drawn =
     (v.scheme ? `, coloured by ${v.scheme === "mine" ? "their own review (Mine)" : v.scheme}` : "") + (v.edges === false ? ", edges hidden" : "");
+  // the Export window, followed too (the owner's decision of 2026-10-20)
+  const job = v.export?.job;
+  const exporting = v.export?.open
+    ? `, with the Export window open${job?.state === "running" ? ", its document being typeset" : job?.state === "done" ? ", its document typeset" : job?.state === "failed" ? ", its typesetting failed" : ""}`
+    : "";
   return {
     view: v.view ?? PROJECT,
     viewTitle: title,
@@ -123,7 +129,8 @@ export function placeOf(api: AgentApi, v: PresenceView): {
     ...(v.lostFound ? { lostAndFound: { open: v.lostFound.open } } : {}),
     ...(v.scheme ? { colouring: v.scheme } : {}),
     ...(v.edges !== undefined ? { edges: v.edges } : {}),
-    inWords: words + then + shownBy + drawn + ".",
+    ...(v.export ? { export: v.export } : {}),
+    inWords: words + then + shownBy + drawn + exporting + ".",
   };
 }
 

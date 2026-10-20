@@ -95,6 +95,8 @@ export function peoplePart(page: Page): PeoplePart {
       return true;
     },
     asked: (p) => askMark(asking.tally.stateOf(p.sessions.map((x) => x.id)), p.name ?? "This reader"),
+    // the room pointers are shown in (web/src/pointers.ts), made after this part
+    roomChanged: () => page.pointers?.roomChanged(),
     askAll: () => void asking.ask(null),
     askWhy: () => (reader ? READ_ONLY : asking.why(true)),
   });

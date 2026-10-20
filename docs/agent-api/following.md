@@ -31,11 +31,14 @@ MCP: `companion`.
 | `pinned` | pinned source windows, first pinned first, `{declaration, collapsed}`; followers mirror them (an agent pins none) |
 | `history` | `{snapshot, built}`: the build they browse in the Time Machine |
 | `activity`, `lostAndFound`, `colouring`, `edges` | what else followers take, where their page says it (a page from before, and an agent, say none): `activity` `{open, kind, who, mine?}` (kind: all, review, build, change; who: all, agents, people; `mine`: the person whose targets it keeps to); `lostAndFound` `{open}`; `colouring` `kind`, `status` or `mine` (their own review); edges drawn or not |
+| `export` | their Export window, which followers see too: `{open}`; open, its `settings` (`paper`, `fontSize`, `codeSize`, `contents`) and the document typeset, `job` `{id, state, error?}` — `GET /api/agent/export/job?id=` reads it, its files are yours to fetch ([export](export.md)) |
 | `inWords` | the place in words; of the row above, only what differs from a fresh page |
 
 `wait=<s>` (≤ 60) waits until someone comes, goes, goes idle or moves (view, selection,
 declaration, tool, a source window pinned, collapsed or closed, Activity, lost-and-found,
-colouring, edges; no camera pan), then answers. `since=<rev>`, your last `rev`: a
+colouring, edges, the Export window; no camera pan), then answers. Whom people follow is not said:
+you follow nobody, and your presence shows nothing of who follows you; nor do you have a pointer
+(people in a room see one another's). `since=<rev>`, your last `rev`: a
 change you have not seen answers at once; `changed`: whether `rev` moved. To follow someone: wait,
 then `POST view` with their view and declaration.
 

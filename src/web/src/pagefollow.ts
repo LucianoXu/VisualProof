@@ -58,6 +58,8 @@ export function followPart(page: Page): FollowPart {
       colouring: () => ({ scheme: page.ownScheme() }),
       edges: () => ({ edges: S.showEdges }),
       linear: () => ({ linear: page.linear.shown }),
+      // the Export window (the owner's decision of 2026-10-20): open or closed, its settings, its job
+      export: () => ({ export: page.exportModal.state() }),
       artwork: () => ({ artwork: page.art.view() }),
     },
     // what this page shows is this reader's own once following ends, so it is kept as shown: the
@@ -72,11 +74,17 @@ export function followPart(page: Page): FollowPart {
       },
       edges: (v) => page.setEdges(v.edges!),
       linear: (v) => (v.linear ? void page.linear.show("followed") : page.linear.hide("reader", "followed")),
+      // their Export window over this reader's own, which it replaces; read from a snapshot (a page
+      // that has none: Export makes pictures alone there), nothing
+      export: (v) => {
+        if (!page.data.snapshot) page.exportModal.follow(v.export ?? null);
+      },
       artwork: (v) => page.art.follow(v.artwork ?? null),
     },
   };
-  /** Where this page is: what the others are told, and what Share tells an agent. */
-  const whereIAm = (): PresenceView => presenceOf(parts.read, page.nav.tabs.map((t) => t.id));
+  /** Where this page is: what the others are told, and what Share tells an agent; and whom it
+   *  follows, which the followed are told (the owner's decision of 2026-10-20). */
+  const whereIAm = (): PresenceView => presenceOf(parts.read, page.nav.tabs.map((t) => t.id), page.people.followedKey);
   /** Go where a reader's followed state says (CollabSpec decision 4): their view (a tab opened for it
    *  if need be), their tool, their selection (from before selections were queries, or from an agent
    *  that does not say: what their panel tells of, under their tool), camera and source window — the

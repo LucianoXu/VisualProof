@@ -23,11 +23,12 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
    folds and the tools they open stay theirs. "Surfaces" is the authoritative list, and
    web/src/surfaces.ts its registry: presence carries exactly the followed parts, and what ends
    following derives from it. A new surface (popover, drawer, window, key) is declared in both
-   before it ships. Others' pointers are never drawn.
+   before it ships. Others' pointers are drawn only in a room (below).
    - **Starting to follow** applies the followed state at once: Activity closes or opens (with the
      followed reader's filters) as theirs is; the follower's source windows mirror theirs, at most
      six pinned on the follower's side, their own included; "My targets" becomes the followed
-     reader's ("Alice's targets").
+     reader's ("Alice's targets"); the follower's Export window, open or not, is replaced by the
+     followed reader's, closed where theirs is (the owner's decision of 2026-10-20).
    - **Changing anything followed ends following**, as does acting on what is shown (a control of a
      followed surface, typing in a field of one), so nothing moves under a comment being written.
      Reading (scrolling, selecting or copying text, hovering) never ends it. A tool of the reader's
@@ -36,6 +37,43 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
    - **When following ends**, the follower keeps what their page shows, as their own.
    - A part the followed page does not report (an agent reports no Activity, lost-and-found,
      colouring or edges) leaves the follower's own in place.
+   - **Pointers in a room** (the owner's decisions of 2026-10-20, which reverse "others' pointers
+     are never drawn" for the room). A reader and those who follow them directly are a room: each
+     sees the pointers and text selections of the others in it — the followed reader their
+     followers', the followers the followed reader's and one another's. Only direct relations count:
+     where Carol follows Alice who follows Pat, Carol is in Alice's room and Alice in Pat's; Carol
+     sees nothing of Pat's, Pat nothing of Carol's.
+     - **Anchored to what is under the pointer**, never to the screen, so that it holds across
+       screen sizes and the reader's own scrolling (the owner's rule: relative to the panel first,
+       then to the canvas): in a source window by line and column of its text (the gutter's numbers
+       are no text); in the reference window by the page and the place on it; on a followed surface
+       (the side panel, the panel, Activity, the lost-and-found, the review strip, the Export
+       window, the artwork's panel) by the element under it — by what it is (its id, a `data-`
+       attribute, a class) else its place — and the place in it; on the linear form by its row;
+       elsewhere over the board by the board's coordinates, which the followed camera shows alike.
+       Over a surface of the reader's own (Share, a menu, the name's window), or what a page does
+       not show, it is not drawn. A text selection — in a source window, the reference window's
+       text, a panel's — is two such points, highlighted in its reader's colour.
+     - **Drawn** as a cursor in the reader's colour with their initials, which fades two seconds
+       after it stops (only while it moves, then); at most five others' at once on any page, those
+       that moved last; gone when the room is (following ends). The followed reader's clicks show as
+       a light ripple in their colour where they land (under reduced motion, a still mark that
+       fades); a follower's do not — a click mostly ends their following — but their selections do.
+     - **Out of view**: a place scrolled away in the reader's own scrolling (never followed) shows a
+       small mark at the edge of what holds it, in the other's colour ("↓ Alice"), which a click
+       scrolls there; on the board, whose camera is followed, the mark only says where. On a phone,
+       where a surface is not shown at the moment, the mark is by the nearest place that leads there
+       (the side panel's drawer button, which a click opens; a window collapsed to its pill), else
+       nothing.
+     - **Who is shown**: never a private reader's pointer (it would show them), nor a read-only
+       reader's; agents have none. A private follower sees the room's, and counts as a follower, so
+       that the followed reader's page sends its pointer. A read-only follower is seen by nobody
+       (decision 11), so it never makes a page send: it is sent the pointers of a room its followed
+       reader is in through others. *Open*: whether a page followed by read-only readers alone sends
+       its pointer, which the server would have to ask of it — telling it that someone unseen
+       follows. There is no setting to hide one's own: whoever is followed is watched anyway.
+     - **Nothing of it ends following**: the pointers let every press through, and the marks at an
+       edge are the reader's own.
 5. **The timeline** (Activity) records what changes the shared state: the review's events and the
    library's files and links (read from the review's logs, so the logs bring their own history);
    builds, failed and fixed files, `sorry` appearing or going; per target, a TCB change and the
@@ -86,7 +124,8 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      the page's own address.
 8. **Visibility: Visible or Private**, per browser, effective at once. A private page tells nothing
    of where its reader is; they are not listed, cannot be followed or ask to be, but may follow
-   others; the others see only a count ("+2 private"). Their layout changes are shared and recorded
+   others (the reader they follow counts them among their followers, "+1 private": "What the page
+   shows"); the others see only a count ("+2 private"). Their layout changes are shared and recorded
    without a name ("someone"); their review keeps their name and needs one. Agents are always
    visible.
 9. **Identity: guests and invited people.** A guest comes by the key's link and gives a name:
@@ -231,6 +270,15 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
 
 - **Presence**: up to five initials beside the reader's name (more as "+N"), coloured by the name,
   faded after five minutes idle or with the page hidden, then the private readers as "+N private".
+- **Pointers** (decision 4): the pointers and text selections of the reader's room, in their
+  colours, with their initials.
+- **Who follows me** (the owner's decision of 2026-10-20): each page says whom it follows, so the
+  reader's own name carries a mark when people follow them, with how many: the people, and the
+  private readers counted only ("2 follow you: Bob, +1 private"); read-only readers never, as nobody
+  sees them (decision 11). Hovering the name lists them, and its menu says it at its top. Among the
+  others' initials, those following the reader carry a small mark in the reader's colour, "follows
+  you" in their tooltip. Nothing is said when someone starts following, or stops. Agents follow
+  nobody; an agent can be followed, and its page-less presence shows nothing of it.
 - **On the canvas**: a ring in another reader's colour around what they selected, with their
   initials; several readers on one declaration share the ring.
 - **In the panel**: "Also here: Alice, Bob" under the declaration's name.
@@ -260,32 +308,36 @@ step; the rest each on its own once the place is reached.
 | colouring | the legend's Kind, Status or Mine (the followed reader's own opinions: CanvasSpec, "Colour schemes") | `scheme` | `c` |
 | edges | edges drawn | `edges` | `g` |
 | linear | the board drawn as its document's outline, the linear form (ExportSpec decision 18) | `linear` | `o` |
+| export | the Export window (ExportSpec decision 5; the owner's decision of 2026-10-20): open or closed, which view it exports (the one on show) and what its document holds, every setting, the title and author line; the document typeset — Generate's progress, then the same downloads, from the export's cache | `export` (`open`, `settings`, `job`: `{id, state, error?}`) | |
 | artwork | the artwork mode: on or off, its settings (the board drawn with them) and its frame (ExportSpec decision 19, the owner's decision of 2026-10-14) | `artwork` | |
 
-Presence also carries `tabs` (the views a page has open, which the server then keeps); no follower
-takes it. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a
+Presence also carries `tabs` (the views a page has open, which the server then keeps) and
+`following` (whom the page follows: "Who follows me", "What the page shows"); no follower takes
+them. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a
 part without a form does not typecheck.
 
 **Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order and
 what of it is kept to by one's own review; the review box's opinions folded or shown (ReviewSpec,
 "One review box"); the outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme;
 the layout lock (`l`);
-zoom, find and the box tool of the reference window; Share and its switch; Export; Help (`?`); the
+zoom, find and the box tool of the reference window; Share and its switch; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
 others' initials and a person's menu; the request banner; the conversation window (decision 13) and
-the following strip; hover cards; the pointer's highlight; the frame meter (`p`). A
+the following strip; hover cards; the pointer's highlight; the mark at an edge of another's pointer
+scrolled away; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.
 
 **No surface**: the frames (bars, footer, windows' layer), whose blank parts count as the canvas;
-words, tooltips and hints, the notes of others' changes, the loader.
+words, tooltips and hints, the notes of others' changes, the loader; the room's pointers, their
+selections and ripples (decision 4), which every press goes through.
 
 ### Following ends
 
 - **A press** counts in the innermost surface: on a control that changes a followed part, wherever
   it is, it ends following; in a surface of the reader's own, never; on a followed surface (side
-  panel, panel, source and reference windows, Activity, lost-and-found, review strip), only on a
-  control, not on text or a scrollbar; outside every surface (the canvas), always. A double-click
+  panel, panel, source and reference windows, Activity, lost-and-found, review strip, the Export
+  window), only on a control, not on text or a scrollbar; outside every surface (the canvas), always. A double-click
   on a source or reference window's title bar ends it; the wheel, on the canvas only; Back and
   Forward too.
 - The presence bar, a person's menu, the following strip, the conversation window, the name's menu
@@ -307,18 +359,19 @@ The owner's report of 2026-10-17: following a reader whose Export window was ope
 left the follower's board in the linear form with nothing on the screen to leave it by. Decision 4
 says the follower keeps what their page shows; this says, part by part, how what they keep is theirs:
 **nothing following brought stays on the screen without a control of the follower's own that puts it
-away**. The first five points are what 0.4.3 does; the last three are open.
+away**. The first five points are what 0.4.3 does, the sixth what 0.8.0 does; of the last three,
+the second is closed and the others are open.
 
 - **Kept, with their own controls**: the place — the view and its tab, the build browsed (the Time
   Machine's ✕, `t`, Esc), the camera, the tool, the selection, the focus, the visitors, the panel; the
   source and reference windows (ReviewSpec: nothing on the screen changes as following ends); Activity
-  and the lost-and-found (their ✕, Esc); the colouring and the edges, kept in the browser as the
-  reader's own choice.
+  and the lost-and-found (their ✕, Esc); the Export window (its ✕, Close, Esc); the colouring and the
+  edges, kept in the browser as the reader's own choice.
 - **The linear form**, kept (ExportSpec decision 18), is asked for by nobody on the follower's page:
-  ⋯ → *Linear form* and `o` put it away, and so does the follower's own Export window as it closes —
-  the form the followed reader's Export window drew goes as theirs goes. Nothing on the screen saying
-  so, the page says it once as following ends ("The board stays in the linear form you followed: o,
-  or ⋯ at the bottom → Linear form, puts it away.").
+  ⋯ → *Linear form* and `o` put it away, and so does the Export window as it closes — the follower's
+  own now, where following ended with the followed reader's open (below). Where no Export window is
+  open to say so, the page says it once as following ends ("The board stays in the linear form you
+  followed: o, or ⋯ at the bottom → Linear form, puts it away.").
 - **The artwork mode**, kept with its panel (ExportSpec decision 19): Done and Esc leave it, the camera
   back where it was when the mode came; its settings are not the follower's until they change one.
 - **The ways out stay in reach while following**, wherever the followed reader's page takes the
@@ -327,16 +380,20 @@ away**. The first five points are what 0.4.3 does; the last three are open.
   own); a person's menu opens over the Export window and the artwork's panel.
 - **Nothing comes after the end**: a step begun while following (opening the followed reader's view)
   takes nothing more of theirs once following has ended — neither their build nor their windows.
+- **The Export window** (the owner's decision of 2026-10-20) is followed: the follower sees the
+  followed reader's, open or not, with its settings and the document typeset. Their own, open when
+  following starts, is replaced by it; opening or closing it, a setting, Generate, a download, Close
+  end following; when following ends, the window as it shows — open, with those settings and that
+  document, its progress followed to its end — is the follower's own, and Close puts it away with
+  the linear form it draws.
 - *Open*: **Esc and the linear form.** Esc closes what is open and leaves the Time Machine, then
   clears the selection (ViewSpec); it does not put the linear form away. Proposed: it does, after the
   Time Machine and before the selection, for every reader, so that Esc leaves every mode a page can
   be left in.
-- *Open*: **The follower's own Export window.** Opened while following, or open when following
-  starts, it draws the follower's board in the linear form where the followed reader's is not: the
-  reader's own over what they follow. By decision 4 (a tool of the reader's own that changes a
-  followed part is that part's control), opening it would end following, and following would close
-  it (it exports the view on show when it opened, which following leaves); today Export is the
-  reader's own whole, and neither happens.
+- *Closed by the owner's decision of 2026-10-20*: **the follower's own Export window.** The Export
+  window is followed (above, and "Surfaces"): opening it while following ends following, as a control
+  of a followed part does, and one open when following starts is replaced by the followed reader's,
+  so the reader's own never draws their board in the linear form over what they follow.
 - *Open*: **On a phone** Activity, the lost-and-found and the artwork's panel take the whole screen
   over the following strip: the follower does not see whom they follow, nor its ✕; a control of what
   covers it (its ✕, Done) ends following, closing it too. Proposed: the strip stays over them while
@@ -359,12 +416,22 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   the review and messages always take the caller's name.
 - **Presence**: one entry per open event stream. The stream's first event, `hello`, gives the page a
   public id and a secret token; a heartbeat counts only with that token, so no page speaks for
-  another. Heartbeats every 10 s, and at once when a followed part changes; an entry goes when its
-  stream closes or after 35 s of silence. The server checks every field and drops what is malformed,
-  and sends the whole list as one `presence` event at most every 500 ms.
-- **Private pages**: the heartbeat is `{token, private: true}` alone. The server keeps an unlisted,
-  empty entry and sends `private` (`{count}`) beside every `presence`. Going private or back gives
-  the stream a new public id, so nothing said under one ties to the other. A private page names no
+  another. Heartbeats every 10 s, and at once when a followed part changes or the page starts or
+  stops following; an entry goes when its stream closes or after 35 s of silence. The server checks
+  every field and drops what is malformed, and sends the whole list as one `presence` event at most
+  every 500 ms. Beside the followed parts ("Surfaces") a place carries bookkeeping no follower takes:
+  `tabs`, and `following`, whom the page follows (the owner's decision of 2026-10-20), named as the
+  pages tell people apart (shared/collab.ts `personKey`: `v:` and the name for someone invited by a
+  personal link, `n:` and the name for a guest or a proxy's name, `s:` and the page's id for a page
+  without a name, `a:` and the agent's id), at most 200 characters, absent for nobody. A page counts
+  the people whose pages say they follow its reader's key, each once, from the list. An agent's
+  place carries none (it follows nobody), nor an artwork; the agents' companion says nothing of it,
+  and whom a page follows is no move it waits for.
+- **Private pages**: the heartbeat is `{token, private: true}`, and `following` where the page
+  follows someone, alone. The server keeps an unlisted entry holding only that, and sends `private`
+  (`{count}`) beside every `presence`; to the pages of a person private pages follow, with
+  `followers`, how many do (never who). Going private or back gives the stream a new public id, so
+  nothing said under one ties to the other. A private page names no
   views, so the server holds the views it reads or opens, and those in its tabs when it went private,
   while a stream of its session is open and a minute after.
 - **Pins** travel as a view's operations (`pin`, `unpin`, `clear`, `fold`; `note`, `note-edit`,
@@ -448,12 +515,34 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   (server/readonlygate.ts): reads, the posts that only read (`/api/hover/open`, `/api/hover/names`)
   and `POST /api/export`; anything else is 403 `{readOnly: true}`. `/api/identity` tells the page
   `{readOnly: {by: "link" | "public"}}`, and the page offers nothing that writes, sends no
-  heartbeat, gives no name and has no conversation window; its stream carries no message.
+  heartbeat, gives no name and has no conversation window; its stream carries no message. It says
+  whom it follows on the pointers' route alone (below), so as to be sent its room's pointers: it is
+  counted nowhere, and its own pointer goes to nobody.
+- **Pointers in a room** (decision 4, the owner's decisions of 2026-10-20; shared/pointer.ts,
+  web/src/pointers.ts): a page in a room — following someone, or followed, by a person or a private
+  reader — sends `POST /api/pointer {token, at, sel, click?}` by its stream's secret, as a heartbeat
+  is sent, at most every 60 ms while followed (some 16 a second) and every 100 ms while following
+  (some 10), only when what it says changed; off a followed surface, or off the page, `at` is null.
+  The server checks every field (a place's kind, numbers in range, at most 16 steps of at most 160
+  characters each, 4 KB in all) and relays it at once as the event `pointer` (`{from, at, sel,
+  click?}`, `from` the page's public id) to the streams of its room alone — those whose reader it
+  follows (by personKey), those that follow its reader, those that follow the reader it follows —
+  at most 25 a second per page, the rest dropped, and keeps nothing: no log, no state beyond the last
+  second's count. A private or read-only page's is relayed to nobody (answered `{to: 0}`); a read-only
+  page sends `{token, following}` there instead, which its stream alone keeps; 403 for a secret no
+  open stream has. A place: `{b: [x, y]}` (the board), `{l: [row, down, right]}` (the linear form),
+  `{sw, lc: [line, column]}` (a source window's text, from its first line shown, the gutter not
+  counted), `{pw: [page, across, down]}` (the reference window), `{in, p, f}` (an element: its root —
+  an id, a source window by its declaration, the reference window —, the steps down, each `[attribute,
+  value, place]`, and where in it); a point of text the same with `o`, its offset in the element's text.
+  The page that is told checks again that the sender is of its room, and draws it each frame while it
+  shows: found again on its own layout, within what clips it.
 - **Requests to follow** (`POST /api/ask`, server/askfollow.ts): 401 without a name, 409 from a
   private page or for an agent, 404 for someone gone, 429 with `retryAfter` within 30 s, counted per
   person (link, else name) and per page. Nobody to ask makes no request and does not count. Answers:
   `follow`, `decline`, `timeout`, or `following` (sent at once, silently, by a page already
-  following the asker; the server does not know who follows whom). A replaced request, or one on a
+  following the asker, which knows it best: a private page's heartbeat says whom it follows only
+  every 10 s). A replaced request, or one on a
   page that closes, is answered `timeout`. A request ends when all answered or after 33 s (30 + 3 of
   grace); the asker closing or going private withdraws it. Held in memory only.
 - **The conversations** (decision 13, server/talk.ts): the public channel is

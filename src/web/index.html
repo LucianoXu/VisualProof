@@ -225,6 +225,10 @@
   </footer>
 
   <div id="notes"></div>
+  <!-- the pointers of this page's room, their text selections, a click's ripple, a mark at the edge
+       of what holds one scrolled away (web/src/pointers.ts): every press goes through but the
+       marks' -->
+  <div id="pointers" aria-hidden="true"></div>
   <!-- the canvas's menu: a right click, the ContextMenu key or Shift+F10 (web/src/ctxmenu.ts) -->
   <div id="ctxmenu" role="menu" aria-label="Actions" tabindex="-1" hidden></div>
   <!-- the floating windows, the one pressed or focused last in front (web/src/floatwin.ts): the

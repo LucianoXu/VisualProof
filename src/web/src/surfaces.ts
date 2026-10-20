@@ -100,7 +100,8 @@ export const FOLLOWED = [
     part: "tool",
     what: "the tool: Selection, Rests on and its step, Used by",
     fields: ["mode"],
-    changes: "#lightup",
+    // a phone's ⋯ holds the modes too (PhoneSpec decision 7): its items press #lightup's buttons
+    changes: "#lightup, #more-pop [data-mode-for]",
     keys: ["1", "2", "3"],
     place: true,
   },
@@ -158,7 +159,7 @@ export const FOLLOWED = [
     part: "activity",
     what: "Activity: open or closed, and its filters",
     fields: ["activity"],
-    changes: "#activity-btn, #activity .act-filters",
+    changes: "#activity-btn, #more-pop [data-for=activity-btn], #activity .act-filters",
     reads: "#activity",
   },
   {
@@ -188,6 +189,16 @@ export const FOLLOWED = [
     fields: ["linear"],
     changes: "#linear-btn",
     keys: ["o"],
+  },
+  {
+    part: "export",
+    what: "the Export window (ExportSpec decision 5; followed, the owner's decision of 2026-10-20): open or closed, which view it exports and what its document holds, its settings, title and author line, and the document typeset — Generate's progress, the downloads",
+    fields: ["export"],
+    // the bar's button, and a phone's ⋯ item for it, open or close it; every control in it changes it
+    // or acts on what it shows (a setting, Generate, a download, Close) — a check's words too, which
+    // press its box
+    changes: "#export-btn, #more-pop [data-for=export-btn], #export-modal .ex-check",
+    reads: "#export-modal",
   },
   {
     part: "artwork",
@@ -221,7 +232,6 @@ export const YOURS = [
   // reader's own next drag; what they select on a page is reading, which ends nothing
   { id: "paperTools", what: "zoom, find and the box tool in the reference window", where: "[data-pw-zoom], [data-pw-find], [data-pw-box], .pw-find" },
   { id: "share", what: "Share, and its switch Exactly what I see", where: "#share-btn, #share-pop" },
-  { id: "export", what: "Export", where: "#export-btn, #export-modal" },
   { id: "help", what: "Help: the ? menu and its sheet, its tips and its keys, the tour, a tip in place, What's new, the welcome of a first visit (GuideSpec)", where: "#help-btn, #help-menu, #help, #tour, #intip, #whatsnew, #welcome, [data-tip-open]", keys: ["?"] },
   // the tour film in the sheet (GuideSpec decision 6, web/src/tourfilm.ts): its keys play it, go
   // from chapter to chapter, turn its captions on or off, there alone
@@ -248,21 +258,28 @@ export const YOURS = [
   { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
   { id: "followingStrip", what: "the following strip: whom you follow, and its ✕", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
+  // a pointer of the room scrolled away (the owner's decisions of 2026-10-20): its mark at the edge of
+  // what holds it scrolls the reader's own view there; scrolling is never followed
+  { id: "pointerMarks", what: "the mark at the edge of a panel or window where another's pointer is scrolled away, which scrolls there", where: ".ptr-edge" },
   { id: "pointer", what: "the pointer's highlight" },
   { id: "meter", what: "the frame meter", keys: ["p"] },
 ] as const satisfies readonly Yours[];
 
 /** What presence carries that is no surface's state: the views the reader has open, by which the
- *  server keeps a view nobody keeps (server/views.ts). A follower takes nothing of it. */
-export const BOOKKEEPING = ["tabs"] as const satisfies readonly (keyof PresenceView)[];
+ *  server keeps a view nobody keeps (server/views.ts), and whom the reader follows, by which the
+ *  followed see who follows them (the owner's decision of 2026-10-20). A follower takes nothing of
+ *  it. */
+export const BOOKKEEPING = ["tabs", "following"] as const satisfies readonly (keyof PresenceView)[];
+type Bookkeeping = (typeof BOOKKEEPING)[number];
 
 /** The frames the surfaces sit in: their own blank parts are as anywhere else (a press there moves
  *  the reader, as on the canvas), and what is in them is declared each. */
 export const FRAMES = ["#bar", "#viewbar", "#foot", "#windows", "#zoom"] as const;
 /** Elements of the page's skeleton that are no surface: the bar's words, and what passes —
  *  tooltips, hints, notes of others' changes, the loader, the artwork's frame and its ground (the
- *  pointer passes them to the board; its panel is the artwork part's). */
-export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art", "#art-sky"] as const;
+ *  pointer passes them to the board; its panel is the artwork part's), the others' pointers (their
+ *  marks at an edge are the reader's own: `pointerMarks`). */
+export const NOT_SURFACES = ["#project", "#snapshot", "#progress", "#hint", "#mode-tip", "#tip", "#meter", "#notes", "#loader", "#art", "#art-sky", "#pointers"] as const;
 
 export type Part = (typeof FOLLOWED)[number]["part"];
 type Of<P extends Part> = Extract<(typeof FOLLOWED)[number], { part: P }>;
@@ -291,13 +308,14 @@ export interface PageParts {
 
 /** What this page shows of the followed parts, each read by the page: what those following see, and
  *  what a share link's snapshot holds. */
-export function followedOf(read: PageParts["read"]): Omit<PresenceView, "tabs"> {
-  return Object.assign({}, ...FOLLOWED.map((p) => read[p.part]())) as Omit<PresenceView, "tabs">;
+export function followedOf(read: PageParts["read"]): Omit<PresenceView, Bookkeeping> {
+  return Object.assign({}, ...FOLLOWED.map((p) => read[p.part]())) as Omit<PresenceView, Bookkeeping>;
 }
 
-/** Where this page is, as presence carries it: exactly the followed parts, and the bookkeeping. */
-export function presenceOf(read: PageParts["read"], tabs: string[]): PresenceView {
-  return { ...followedOf(read), tabs };
+/** Where this page is, as presence carries it: exactly the followed parts, and the bookkeeping — the
+ *  views it has open, and whom it follows (personKey), where it follows someone. */
+export function presenceOf(read: PageParts["read"], tabs: string[], following: string | null = null): PresenceView {
+  return { ...followedOf(read), tabs, ...(following ? { following } : {}) };
 }
 
 /** Apply a followed reader's parts that are not the place, each that their page said: one from
