@@ -90,14 +90,13 @@ import { applyTheme, holdTheme, themeChoices } from "./theme.ts";
 import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
-import { SearchBox } from "./search.ts";
 import { SelectionBar } from "./selbar.ts";
 import type { LitCount } from "./selbar.ts";
-import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, followRenames, keyTwo, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
+import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, enterStep, followRenames, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, STEPS, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
-import { routeKey, Sources } from "./sources.ts";
+import { Sources } from "./sources.ts";
 import { PAGE_VERSION, Reloader, takeKept } from "./reload.ts";
 import type { Kept } from "./reload.ts";
 import { pairTop } from "./paperdock.ts";
@@ -143,6 +142,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, MODE_HINT, RESTS_HINT, STEP_HINT, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { keysPart } from "./pagekeys.ts";
 import { guidePart } from "./pageguide.ts";
 
 /** What main.ts makes that the parts written so far read (until each is a part of its own). */
@@ -153,27 +153,49 @@ export interface MainPart {
   vg: () => Graph;
   toView: (i: number) => number;
   tm: TimeMachine;
+  pastShown: () => boolean;
   isTarget: (name: string) => boolean;
   reviewRoot: () => number | null;
   keysFor: (r: Root, target?: string | null) => KeysOf;
   pickDecl: (name: string, target?: string | null) => Pick;
+  reviewBox: ReviewBox;
+  toggleKey: (i?: number | null) => void;
   litOn: (q: Query) => Lit;
+  papers: Papers;
   sources: Sources<SourceWindow>;
   showSelected: () => void;
   canvas: GraphCanvas;
   linear: LinearForm;
+  ART_KEYS: Set<string>;
+  trust: Trust;
+  boardPop: Popover;
+  trustPop: Popover;
   ownScheme: () => Scheme;
   chooseScheme: (s: Scheme) => void;
   people: People;
+  tabs: Tabs;
+  focusMenu: FocusMenu;
   exportModal: ExportModal;
+  activity: Activity;
+  lostDrawer: LostAndFound;
   apply: () => void;
   syncTool: () => void;
+  say: (text: string) => void;
+  readerMode: (m: Tool) => void;
+  clear: () => void;
   visitOn: (i: number, from: number | null) => void;
   reveal: (i: number) => void;
+  go: (i: number) => void;
   openTimeMachine: (at?: TimeMachineAt) => Promise<boolean>;
   writeAddress: (push: boolean) => void;
   commit: () => void;
+  pill: HTMLElement;
+  buildPop: Popover;
+  toggleOutside: () => void;
   eyesPop: Popover;
+  edgesBtn: HTMLElement;
+  toggleLock: () => void;
+  menuOnSelection: () => void;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -417,6 +439,7 @@ async function boot(): Promise<void> {
    *  a board as any other (the owner's decision of 2026-10-10), but for the review: a past build is
    *  not reviewed. Its document is that build's (ExportSpec decision 16). */
   const pastShown = (): boolean => !!nav.board?.past;
+  page.pastShown = pastShown;
   /** The board on show is a preview of its view at another build than its own (web/src/views.ts,
    *  `preview`): the Time Machine browsing it, or its build while that cannot be read. Nothing
    *  arranges it there: the view's own board is another. */
@@ -629,6 +652,7 @@ async function boot(): Promise<void> {
     go: (i) => go(i),
     openSource: (name, from, to, quoted, root) => openSourceAt(name, from, to, quoted, root),
   });
+  page.reviewBox = reviewBox;
   if (kept) reviewBox.restoreDrafts(kept.review);
   /** What declaration `i` of the board's graph is called now: on a past graph, the name a rename
    *  since gave it, which the review, the views' records and their scopes speak (HistorySpec decision
@@ -665,6 +689,7 @@ async function boot(): Promise<void> {
       void submit({ op: "key", target, name: page.g.nodes[i].name, on: !keyMarked(page.review.data, target, page.g.nodes[i].name) }).then((why) => why && say(why));
     });
   };
+  page.toggleKey = toggleKey;
 
   /** What a query lights up on the board on show: computed on the whole graph the board was taken
    *  from, then cut to what the board holds (shared/board.ts, lightUp). */
@@ -723,6 +748,7 @@ async function boot(): Promise<void> {
     clip: (c, text) => clipToNote(c, text),
     attach: (note, c) => attachTo(note, c),
   });
+  page.papers = papers;
 
   const panel = new Panel($("#panel"), page.g, reviewBox, {
     links: (i) => papers.declHtml(i),
@@ -1153,6 +1179,7 @@ async function boot(): Promise<void> {
    *  what is out of reach — all but Share and Search; and the keys that still act. */
   const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
   const ART_KEYS = new Set(["/", "1", "2", "3", "f", "+", "=", "-", "_", "e", "[", "]", "l"]);
+  page.ART_KEYS = ART_KEYS;
   // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
   page.artLook = null;
@@ -1268,6 +1295,7 @@ async function boot(): Promise<void> {
     submit,
     show: (p) => goToPrefix(p),
   });
+  page.trust = trust;
 
   // The side panel holds the targets and the cluster tree; over the tree, two buttons open the rest
   // beside it (decided 2026-10-08, the page made simpler): the board's settings (⚙ Board: its scope,
@@ -1276,12 +1304,14 @@ async function boot(): Promise<void> {
     place: () => besideSide($("#board-btn"), $("#board-pop")),
     changed: (open) => (open ? boardPanel.render() : boardPanel.reset()),
   });
+  page.boardPop = boardPop;
   const trustPop = new Popover($("#trusted-btn"), $("#trust-list"), {
     place: () => besideSide($("#trusted-btn"), $("#trust-list")),
     // the question it asks, and the name that question may ask for, are part of it
     keep: "#trust-pop, #modal",
     changed: (open) => open && trust.render(),
   });
+  page.trustPop = trustPop;
   /** The Trusted button: a shield, and how many prefixes are trusted. */
   const renderTrusted = () => {
     const n = page.review.data.trusted.length;
@@ -1999,6 +2029,7 @@ async function boot(): Promise<void> {
     },
     link: (t) => linkTo(t),
   });
+  page.tabs = tabs;
 
   // the review's focus on the board on show, in the view's header (ViewSpec decision 28;
   // web/src/focus.ts): the view's own, everyone's, or the reader's, theirs as the camera is
@@ -2025,6 +2056,7 @@ async function boot(): Promise<void> {
     },
     canSet: () => !frozen(),
   });
+  page.focusMenu = focusMenu;
 
   // the targets at the top of the side panel, each opening its view (web/src/targetlist.ts)
   const targetList = new TargetList($("#targets"), {
@@ -2250,6 +2282,7 @@ async function boot(): Promise<void> {
       return r.error ?? null;
     },
   });
+  page.activity = activity;
 
   // ---------------------------------------------------------------- the lost-and-found
 
@@ -2268,7 +2301,7 @@ async function boot(): Promise<void> {
     comment: (text, name) => reviewBox.comment(text, name),
     // Attach to…: a declaration of the graph, picked with the search, by its name now (a board of a
     // past build searches its own graph)
-    pick: (prompt) => searchBox.pick(prompt).then((i) => (i === null ? null : declNow(i))),
+    pick: (prompt) => page.searchBox.pick(prompt).then((i) => (i === null ? null : declNow(i))),
     timeMachine: (at) => timeMachine(at),
     ensureName: () => people.ensure(),
     nameLost: () => people.lost(),
@@ -2282,6 +2315,7 @@ async function boot(): Promise<void> {
       if (!pop.hidden) renderPop();
     },
   });
+  page.lostDrawer = lostDrawer;
 
   // ---------------------------------------------------------------- into the Time Machine
 
@@ -2521,6 +2555,7 @@ async function boot(): Promise<void> {
       hint.classList.remove("say", "below");
     }, 3500);
   };
+  page.say = say;
 
   /** What a query lights up on the board, for what a click covers (web/src/selection.ts). */
   const setOn = (q: Query) => litOn(q).set;
@@ -2609,6 +2644,7 @@ async function boot(): Promise<void> {
     }
     setMode(m);
   };
+  page.readerMode = readerMode;
 
   /** Nothing selected; the visitors go with the selection (ViewSpec decision 27). */
   const clear = () => {
@@ -2617,6 +2653,7 @@ async function boot(): Promise<void> {
     page.visitors = [];
     apply();
   };
+  page.clear = clear;
 
   // ---------------------------------------------------------------- visitors
   //
@@ -2735,6 +2772,7 @@ async function boot(): Promise<void> {
     reveal(i);
     commit();
   };
+  page.go = go;
   /** Go to a cluster of the board (a row of a cluster's panel): a click there with the tool. */
   const goCluster = (c: number) => {
     page.picks = [pickCluster(c)];
@@ -2752,7 +2790,7 @@ async function boot(): Promise<void> {
     page.g = G;
     panel.g = page.g;
     reviewBox.g = page.g;
-    searchBox.setGraph(page.g);
+    page.searchBox.setGraph(page.g);
     if (sources.all.some((w) => w.g !== G)) {
       for (const w of sources.all) w.g = G;
       sources.redraw((name) => G.byName.get(name));
@@ -3177,6 +3215,7 @@ async function boot(): Promise<void> {
   // ---------------------------------------------------------------- build status
 
   const pill = $("#build");
+  page.pill = pill;
   const pop = $("#build-pop");
   const bar = $<HTMLElement>("#progress > div");
   const shortName = (m: string) => m.split(".").slice(-2).join(".");
@@ -3288,6 +3327,7 @@ async function boot(): Promise<void> {
   // the build-status popover (HistorySpec decision 15, web/src/buildpop.ts): it closes on a press
   // elsewhere, Esc, or the pill again
   const buildPop = new Popover(pill, pop, { changed: (open) => open && renderPop() });
+  page.buildPop = buildPop;
   pop.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     const b = t.closest<HTMLElement>("[data-module]");
@@ -3512,6 +3552,7 @@ async function boot(): Promise<void> {
     if (fixedScope(nav.board.rec)) return say(PROJECT_SCOPE);
     void sync.setScope(setOutside(nav.board.rec.scope, withoutOutside(nav.board.rec.scope))).then((why) => why && say(why));
   };
+  page.toggleOutside = toggleOutside;
   // the depth of the whole board, one level at a time; the level shown is read from the folds, so
   // it stays right after folding by hand
   page.showLevel = () => {
@@ -3535,6 +3576,7 @@ async function boot(): Promise<void> {
   // the reader's eyes, at the bottom right: edges drawn (proof edges are no more: the owner's
   // decision of 2026-10-15)
   const edgesBtn = $("#edges-btn");
+  page.edgesBtn = edgesBtn;
   const syncEdges = () => {
     edgesBtn.classList.toggle("on", S.showEdges);
     edgesBtn.setAttribute("aria-pressed", String(S.showEdges));
@@ -3578,6 +3620,7 @@ async function boot(): Promise<void> {
     setLockedChoice(page.locked);
     syncLock();
   };
+  page.toggleLock = toggleLock;
   lockBtn.addEventListener("click", toggleLock);
   lockBtn.title =
     "The lock, on by default: a drag pans the view, never a declaration, a circle or a note; clicks still select. " +
@@ -3768,6 +3811,7 @@ async function boot(): Promise<void> {
     const [x, y] = inside(at);
     openMenu(t, x, y, canvas.toWorld(x, y), true);
   };
+  page.menuOnSelection = menuOnSelection;
   /** Copy text to the clipboard; where the browser refuses (a page not served securely), through a
    *  field selected for the moment. */
   const copyText = async (text: string, said = `Copied ${text}`) => {
@@ -4363,174 +4407,7 @@ async function boot(): Promise<void> {
       }
     }
   };
-
-  // ---------------------------------------------------------------- search
-
-  const input = $<HTMLInputElement>("#search");
-  const searchBox = new SearchBox(input, $("#results"), page.g, { go: (i) => go(i) });
-
-  // a file chosen by a button that is a label holding a hidden file field (the library's Upload, a
-  // missing file's Add it…): Enter or Space on it opens the chooser, as a click does — the control's
-  // own press, not a key of the page's
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      const t = e.target as HTMLElement | null;
-      const press = e.key === "Enter" || e.key === " ";
-      const field = press && t?.matches?.("label[role=button]") ? t.querySelector<HTMLInputElement>("input[type=file]") : null;
-      if (!field) return;
-      e.preventDefault();
-      e.stopPropagation();
-      field.click();
-    },
-    true,
-  );
-
-  // ---------------------------------------------------------------- keyboard
-
-  window.addEventListener("keydown", (e) => {
-    // the source window the key is pressed in, if any: its keys are its own (web/src/sources.ts,
-    // routeKey), the rest are the page's as anywhere — the windows are not modal
-    const win = sources.at(e.target);
-    // typing into a field: the keys are text; Esc only leaves the field — inside a source window,
-    // for the window, where the next Esc closes it
-    if (typing(e.target) || typing(document.activeElement)) {
-      if (e.key === "Escape" && e.target !== input && !$("#modal").contains(e.target as Node)) {
-        if (win) win.el.focus();
-        else (e.target as HTMLElement).blur();
-      }
-      return;
-    }
-    // the conversation's window keeps its keys (Enter and Space on its buttons and links); Esc there
-    // stops following (web/src/people.ts)
-    if ((e.target as Element | null)?.closest?.("#following:not([hidden])")) return;
-    if (exportModal.isOpen) {
-      if (e.key === "Escape") exportModal.close();
-      return;
-    }
-    if (!$("#modal").hidden || !$("#help").hidden) return;
-    // the canvas's menu, on what is selected
-    if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
-      e.preventDefault();
-      menuOnSelection();
-      return;
-    }
-    // in the artwork mode, the keys that act on the board alone: Search, the tool, the zoom, the
-    // outside world, the levels, the lock — not those that open what the mode puts away
-    if (page.artLook && !ART_KEYS.has(e.key)) return;
-    // with Ctrl or ⌘ a letter is the browser's (Ctrl L, Ctrl F, …), and the drag key held is the lock's
-    if ((e.ctrlKey || e.metaKey) && e.key.length === 1) return;
-    const route = routeKey(e.key, win !== null, !!(e.target as Element | null)?.closest?.("button, a[href], summary, select"));
-    // Space on a window's button or link presses it
-    if (route === "press") return;
-    // and on any button reached from the keyboard, as everywhere (surfaces.ts: Enter or Space on a
-    // control presses it); on one the pointer pressed last, where the focus stays, Space is the page's
-    // key for the source
-    if (e.key === " " && (e.target as Element | null)?.matches?.(":focus-visible") && (e.target as Element).closest("button, summary")) return;
-    if (win && route === "close") {
-      e.preventDefault();
-      sources.close(win);
-      return;
-    }
-    if (win && route === "own") {
-      // approve, comment on or mark key the window's own declaration, as its buttons do: in a pinned
-      // window that is not the selection
-      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-      e.preventDefault();
-      if (e.key === "k") toggleKey(win.decl);
-      else reviewBox.give(e.key === "a" ? "approve" : "comment", win.decl, win.el);
-      return;
-    }
-    if (e.key === "/") {
-      e.preventDefault();
-      searchBox.focus();
-    } else if (e.key === "1") readerMode("plain");
-    // Rests on, at the step last used; pressed again, its next step (web/src/selection.ts, keyTwo)
-    else if (e.key === "2") readerMode(keyTwo(S.mode, S.restsOn));
-    else if (e.key === "3") readerMode("apps");
-    else if (e.key === " ") {
-      // Space opens and closes the source window that follows the selection, and opens it again
-      // from its pill (CanvasSpec, "Hover, click, drag"); on a past board, the text of that build.
-      // Closing it closes the reference window paired beside it too (AttachmentSpec decision 8)
-      e.preventDefault();
-      const p = sources.following;
-      const together = !!p && !p.collapsed && papers.besideOf(p);
-      sources.toggle(selected());
-      if (together && !sources.following) papers.win.close();
-    } else if (e.key === "Escape") {
-      // what passes first: a question about trust, a popover, the views menu or the focus's, a list
-      // of the Time Machine; then the source window that follows the selection, the timeline, the
-      // Time Machine, and the selection. A pinned window closes by Esc with the focus in it, or by
-      // its ✕.
-      if (trust.open) trust.close();
-      else if (buildPop.open) buildPop.toggle(false);
-      else if (tabs.open) tabs.toggle(false);
-      else if (focusMenu.open) focusMenu.toggle(false);
-      else if (boardPop.open || trustPop.open || eyesPop.open) for (const p of [boardPop, trustPop, eyesPop]) p.toggle(false);
-      else if (tm.listShown) tm.closeListNow();
-      else if (sources.following) sources.close(sources.following);
-      else if (activity.open) activity.toggle(false);
-      else if (lostDrawer.open) lostDrawer.toggle(false);
-      else if (tm.active) void tm.close();
-      else if (page.picks.length || page.shown) {
-        clear();
-        commit();
-      }
-    } else if (e.key === "f") canvas.fit();
-    else if (e.key === "+" || e.key === "=") canvas.zoomBy(1.6);
-    else if (e.key === "-" || e.key === "_") canvas.zoomBy(1 / 1.6);
-    else if (e.key === "e") toggleOutside();
-    else if (e.key === "g") edgesBtn.click();
-    else if (e.key === "o") linear.toggle();
-    else if (e.key === "c") chooseScheme(ownScheme() === "kind" ? "status" : "kind");
-    else if (e.key === "l") toggleLock();
-    else if (e.key === "[") canvas.stepLevels(-1);
-    else if (e.key === "]") canvas.stepLevels(1);
-    else if (e.key === "p") {
-      // a frame meter, to check the canvas keeps up on this machine
-      const m = $("#meter");
-      m.hidden = !m.hidden;
-      if (!m.hidden) {
-        const tick = () => {
-          if (m.hidden) return;
-          const st = canvas.stats();
-          m.textContent = `${st.fps} fps · draw ${st.drawMs} ms · ${st.dots} dots · ${st.circles} circles · ${st.bundles} bundles${st.awake ? " · moving" : ""}`;
-          setTimeout(tick, 250);
-        };
-        tick();
-      }
-    }
-    else if (e.key === "b" && !data.snapshot) pill.click();
-    // the Time Machine (HistorySpec decisions 15–19): t opens it on the view on show — at the build
-    // the view is kept at, else the latest — and leaves it; ← and → step from build to build, Home
-    // and End go to the first and the last
-    else if (e.key === "t" && !data.snapshot && !e.altKey) {
-      if (tm.active) void tm.close();
-      else void openTimeMachine(nav.board.rec.version !== undefined ? { snapshot: nav.board.rec.version } : {});
-    } else if (tm.active && !e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
-      e.preventDefault();
-      tm.step(e.key === "ArrowLeft" ? -1 : 1);
-      page.didTip("first-time-machine");
-    } else if (tm.active && (e.key === "Home" || e.key === "End")) {
-      e.preventDefault();
-      tm.end(e.key === "End");
-    }
-    else if ((e.key === "a" || e.key === "m") && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) {
-      // the review: approve or comment on the selection, as the buttons in the source window that
-      // follows it if that is open, else the panel's (a comment not yet written focuses the box: the
-      // key is not typed into it). A comment is m: c is the colour scheme's, and m is a comment's
-      // key in Jira, and with Ctrl+Alt in Word and Google Docs. There is no key to walk a review (the
-      // owner's decision of 2026-10-12): people go from name to name in the source window.
-      e.preventDefault();
-      const i = selected();
-      const f = sources.following;
-      // a past build is not reviewed: said where the key was pressed, as the review box says it
-      if (i !== null && pastShown()) say(PAST_REVIEW);
-      else if (i !== null) reviewBox.give(e.key === "a" ? "approve" : "comment", i, f && !f.collapsed ? f.el : $("#panel"));
-    }
-    else if (e.key === "k" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat) toggleKey();
-    else if (e.key === "?") page.guide.toggleMenu();
-  });
+  Object.assign(page, keysPart(page));
 
   // a handle for diagnosis from the console: window.visualproof.canvas
   // and the Time Machine's hook, as the build-status popover and the lost-and-found call it
