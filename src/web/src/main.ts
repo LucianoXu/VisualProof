@@ -31,19 +31,17 @@ import { SITE_BODY, SITE_STMT } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
 import { printQuery, readsReview } from "../../shared/query.ts";
-import { litKeyEdges } from "../../shared/keys.ts";
 import { keyMarked, keyMarks } from "../../shared/review.ts";
 import type { Query } from "../../shared/query.ts";
 import { applyEvent, covers, emptyReview, logFileName, problemsText, readEvent, validPersonId } from "../../shared/review.ts";
 import type { ReviewChange, ReviewData, ReviewEvent, ReviewRequest, ReviewWhole } from "../../shared/review.ts";
-import { reviewCount, trustSplit } from "../../shared/reviewqueue.ts";
+import { reviewCount } from "../../shared/reviewqueue.ts";
 import { noteExcerpt } from "../../shared/sticky.ts";
 import { briefWhen } from "../../shared/titles.ts";
 import { docTitle, fixedScope, focusFrom, linkRefused, PROJECT, titleOfScope, versionName, viewFocus } from "../../shared/views.ts";
 import { BoardPanel } from "./boardpanel.ts";
 import { BoardSync } from "./boardsync.ts";
 import { GraphCanvas } from "./canvas.ts";
-import type { VisitorPoint } from "./canvas.ts";
 import { ClusterPanel } from "./clusterpanel.ts";
 import { dataSource } from "./data.ts";
 import { WholeReview } from "./reviewread.ts";
@@ -78,8 +76,7 @@ import { besideSide, Popover } from "./popover.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
-import type { LitCount } from "./selbar.ts";
-import { click, clusterIndex, clusterOn, clusterPick, clusterSet, declPick, edgeMode, followRenames, pickWords, readSelection, remove, restsOn, retool, sameShown, selectionQuery, selectionText, shownOf, TOOLS } from "./selection.ts";
+import { clusterIndex, clusterOn, clusterPick, declPick, readSelection, remove, restsOn, selectionQuery, selectionText, shownOf, TOOLS } from "./selection.ts";
 import type { KeysOf, Pick, Root, Tool } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
@@ -91,7 +88,7 @@ import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, linkOf, PAST_LINK } from "../../shared/library.ts";
 import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut, writeSnapshot } from "../../shared/sharesnap.ts";
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
-import { STATUS_LABEL, STATUSES, statusCodes, statusState } from "./status.ts";
+import { STATUS_LABEL, STATUSES, statusCodes } from "./status.ts";
 import type { Scheme } from "./status.ts";
 import { Tabs } from "./tabs.ts";
 import { Share } from "./share.ts";
@@ -109,13 +106,13 @@ import type { ArtSettings } from "./artwork.ts";
 import { sourceLine, titleOf, untilStill } from "./artwork.ts";
 import type { ExportHooks } from "./exportmodal.ts";
 import { TargetList, targetStep } from "./targetlist.ts";
-import { clusterPrefix, SHIELD, Trust } from "./trust.ts";
+import { SHIELD, Trust } from "./trust.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
 import { Store } from "./store.ts";
 import { typing } from "./typing.ts";
 import { VERIFIED } from "./verified.ts";
 import { ViewNav } from "./viewnav.ts";
-import { readVisitors, shareVisitors, stillVisiting, visit, visitorEdges } from "./visitors.ts";
+import { readVisitors, shareVisitors } from "./visitors.ts";
 import type { Place } from "./viewnav.ts";
 import { Views } from "./views.ts";
 import { LayoutQueue } from "./layoutqueue.ts";
@@ -127,6 +124,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, MODE_NAME, toolName, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { selectionPart } from "./pageselection.ts";
 import { addressPart } from "./pageaddress.ts";
 import { livePart } from "./pagelive.ts";
 import { toolbarPart } from "./pagetoolbar.ts";
@@ -151,6 +149,7 @@ export interface MainPart {
   pastShown: () => boolean;
   frozen: () => boolean;
   frozenWhy: () => string;
+  openDerived: (scope: string, to: Place | null, clustering?: ClusterMode, focus?: string | null) => Promise<boolean | string>;
   edits: Map<string, boolean>;
   served: Map<string, string[] | null>;
   servedContexts: Map<string, { contexts: ModuleContexts | null; hash: string | null }>;
@@ -165,9 +164,13 @@ export interface MainPart {
   pickCluster: (c: number) => Pick;
   reviewBox: ReviewBox;
   declNow: (i: number) => string;
+  clickedDecls: () => number[];
+  keyMarking: () => { target: string; fresh: number; already: number; names: string[] } | null;
   toggleKey: (i?: number | null) => void;
   litOn: (q: Query) => Lit;
+  zoomOf: (q: Query | null, lit?: Lit | null) => Query | null;
   papers: Papers;
+  selBar: SelectionBar;
   sources: Sources<SourceWindow>;
   shownCluster: () => number;
   showSelected: () => void;
@@ -184,9 +187,13 @@ export interface MainPart {
   outline: Outline;
   sync: BoardSync;
   hideLevel: (key: string) => void;
+  syncInsets: () => void;
+  renderStrip: () => void;
+  syncFocus: () => void;
   syncStatus: () => void;
   ownScheme: () => Scheme;
   chooseScheme: (s: Scheme) => void;
+  legend: Legend;
   parts: PageParts;
   talk: Talk;
   chipFor: (url: string) => Chip | null;
@@ -204,24 +211,10 @@ export interface MainPart {
   activity: Activity;
   lostDrawer: LostAndFound;
   timeMachine: (at?: TimeMachineAt) => void;
-  followSelection: () => boolean;
-  selectionFollowed: () => void;
   wholeReview: WholeReview<ReviewWhole>;
   takeChange: (c: ReviewChange) => void;
-  apply: () => void;
-  syncTool: () => void;
   say: (text: string) => void;
-  clickOn: (p: Pick, shift: boolean) => boolean;
-  useTool: (m: Tool) => void;
-  readerMode: (m: Tool) => void;
-  clear: () => void;
-  visitorOf: (i: number) => number;
-  visitOn: (i: number, from: number | null) => void;
-  reveal: (i: number) => void;
-  go: (i: number) => void;
   openTimeMachine: (at?: TimeMachineAt) => Promise<boolean>;
-  place: (p: Place, fresh: boolean) => void;
-  goToModule: (m: string) => void;
 }
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
@@ -406,8 +399,8 @@ async function boot(): Promise<void> {
   await projectNotes.load();
   const nav = new ViewNav(views, store, {
     show: (b, L) => showBoard(b, L),
-    place: (p, fresh) => place(p, fresh),
-    here: () => here(),
+    place: (p, fresh) => page.place(p, fresh),
+    here: () => page.here(),
     // the address is written by the step that showed the view (one entry), or replaced after
     changed: () => {
       syncBusy();
@@ -444,7 +437,7 @@ async function boot(): Promise<void> {
       people.report();
       syncPast();
     },
-    go: (name) => goName(name),
+    go: (name) => page.goName(name),
     say: (text) => say(text),
     keep: async (snapshot) => {
       if (reader) return READ_ONLY;
@@ -456,7 +449,7 @@ async function boot(): Promise<void> {
     saveAs: (snapshot) => saveVersion(snapshot),
     frozen: () => (reader ? READ_ONLY : null),
     following: () => people.following,
-    newBuild: (from, to) => void newBuild(from, to),
+    newBuild: (from, to) => void page.newBuild(from, to),
   });
   page.tm = tm;
   /** The board on show is of a past graph: a view kept at a past build, or the Time Machine's. It is
@@ -500,6 +493,7 @@ async function boot(): Promise<void> {
     if (leaving && r === true) renderTabs();
     return r;
   };
+  page.openDerived = openDerived;
   // which modules' present text is not the text the graph was read from (its declarations' places,
   // statements and hashes are about the compiled one): found out from the served source's hash
   page.compiled = new Map(page.meta.modules.map((m) => [m.name, m.compiled]));
@@ -622,14 +616,14 @@ async function boot(): Promise<void> {
     if (S.mode === "plain") return;
     S.mode = "plain";
     store.save();
-    syncTool();
+    page.syncTool();
   };
   /** Walking a target's TCB (a row of its review list, the strip's target): the declaration alone,
    *  under the Selection tool whatever the tool was (ViewSpec decision 15); Rests on or Used by then
    *  show it and the rest of the board. */
   const walk = (i: number) => {
     toSelection();
-    go(i);
+    page.go(i);
   };
 
   const reviewBox = new ReviewBox(page.g, {
@@ -683,7 +677,7 @@ async function boot(): Promise<void> {
             });
           },
         }),
-    go: (i) => go(i),
+    go: (i) => page.go(i),
     openSource: (name, from, to, quoted, root) => openSourceAt(name, from, to, quoted, root),
   });
   page.reviewBox = reviewBox;
@@ -699,6 +693,7 @@ async function boot(): Promise<void> {
       const j = p.root && "decl" in p.root ? page.g.byName.get(p.root.decl) : undefined;
       return j === undefined ? [] : [j];
     });
+  page.clickedDecls = clickedDecls;
   /** What "Mark selected as key" would mark where the review has a focus (web/src/selbar.ts): the
    *  declarations clicked that the focus's TCB holds, trusted or not (ExportSpec decision 1), not key
    *  yet; null where there is no focus. */
@@ -710,6 +705,7 @@ async function boot(): Promise<void> {
     const already = xs.filter((j) => flow.isKey(r, j)).length;
     return { target: page.g.short(r), fresh: xs.length - already, already, names: xs.filter((j) => !flow.isKey(r, j)).map((j) => page.g.nodes[j].name) };
   };
+  page.keyMarking = keyMarking;
   /** Mark or unmark a declaration as key for the focus (k): the one in the panel, or in the source
    *  window the key was pressed in. */
   const toggleKey = (i = selected()) => {
@@ -734,6 +730,7 @@ async function boot(): Promise<void> {
    *  holds exactly that; null when it would hold nothing, or just what this board holds. */
   const zoomOf = (q: Query | null, lit: Lit | null = q && litOn(q)): Query | null =>
     q && lit && zoomScope(q, nav.board.rec.scope, lit, nav.board.bs);
+  page.zoomOf = zoomOf;
 
   /** Where the lead from the selection meets the panel: its left edge, level with the
    *  declaration's name while that is in sight; null while the panel is away. */
@@ -761,13 +758,13 @@ async function boot(): Promise<void> {
     goDecl: (name) => {
       const i = page.g.byName.get(name) ?? page.g.foldedInto.get(name);
       if (i === undefined) say(`${name} is not in the graph on show.`);
-      else go(i);
+      else page.go(i);
     },
     goCluster: (kind, key) => {
       if ((kind === "file") !== (cm() === "module")) return say(`${key} is a cluster by ${kind === "file" ? "file" : "namespace"}: this board is clustered by ${cm() === "module" ? "file" : "namespace"}.`);
       const c = clusterIndex(canvas.layout, key);
       if (c < 0) say(`${key} is not a cluster of this board.`);
-      else goCluster(c);
+      else page.goCluster(c);
     },
     headers: () => ({ "content-type": "application/json", ...(data.name ? { "x-visualproof-name": encodeURIComponent(data.name) } : {}), ...(data.privateSession ? { "x-visualproof-private": data.privateSession } : {}) }),
     ensureName: async () => (await people.ensure()) !== null,
@@ -787,7 +784,7 @@ async function boot(): Promise<void> {
 
   const panel = new Panel($("#panel"), page.g, reviewBox, {
     links: (i) => papers.declHtml(i),
-    go: (i) => go(i),
+    go: (i) => page.go(i),
     walk: (i) => walk(i),
     reviewData: () => boardReview(),
     openSource: (i) => void sources.show(i),
@@ -799,7 +796,7 @@ async function boot(): Promise<void> {
     },
     isPinned: (i) => !frozen() && toView(i) >= 0 && canvas.isPinned(toView(i)),
     close: () => {
-      clear();
+      page.clear();
       page.commit();
     },
     // a past build's files are not the build status of now
@@ -854,12 +851,12 @@ async function boot(): Promise<void> {
     reviewData: () => boardReview(),
     isFolded: (c) => canvas.folded.has(c),
     toggleFold: (c) => canvas.toggleFold(c),
-    goCluster: (c) => goCluster(c),
-    go: (i) => go(i),
+    goCluster: (c) => page.goCluster(c),
+    go: (i) => page.go(i),
     preview: (i) => canvas.preview(i === null || toView(i) < 0 ? null : toView(i)),
     previewCluster: (c) => canvas.previewCluster(c),
-    zoom: (c) => void zoomCluster(c),
-    canZoom: (c) => !reader && clusterScope(c) !== null,
+    zoom: (c) => void page.zoomCluster(c),
+    canZoom: (c) => !reader && page.clusterScope(c) !== null,
     hide: (c) => hideLevel(canvas.layout.clusters[c].key),
     trust: (c) => trust.state(canvas.layout.clusters[c], cm()),
     trustClicked: (c, anchor) => trust.clicked(canvas.layout.clusters[c], cm(), anchor),
@@ -867,9 +864,9 @@ async function boot(): Promise<void> {
     fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
     stateLabel: (st) => STATE_LABEL[st],
     modulesUnder: (prefix) => page.g.meta.modules.filter((m) => m.name === prefix || m.name.startsWith(prefix + ".")).map((m) => m.name),
-    goToModule: (m) => goToModule(m),
+    goToModule: (m) => page.goToModule(m),
     close: () => {
-      clear();
+      page.clear();
       page.commit();
     },
     links: (key, mode) => papers.clusterHtml(key, mode),
@@ -883,18 +880,18 @@ async function boot(): Promise<void> {
       const to = shownOf(page.picks[k]);
       if (!to) return;
       page.shown = to;
-      apply();
-      revealShown();
+      page.apply();
+      page.revealShown();
       page.commit();
     },
     remove: (k) => {
       ({ picks: page.picks, shown: page.shown } = remove(page.picks, page.shown, k));
-      apply();
+      page.apply();
       page.commit();
     },
-    zoom: () => void zoomIn(),
+    zoom: () => void page.zoomIn(),
     clear: () => {
-      clear();
+      page.clear();
       page.commit();
     },
     markKeys: () => {
@@ -902,6 +899,7 @@ async function boot(): Promise<void> {
       if (m) void reviewBox.markKeys(m.names).then((why) => why && say(why));
     },
   });
+  page.selBar = selBar;
 
   // the source windows (ReviewSpec, "The source window"; web/src/sources.ts): the one that follows
   // the selection, opened in the middle of the screen each time, and those the reader pinned; a
@@ -913,7 +911,7 @@ async function boot(): Promise<void> {
   const sourceHooks: SourceHooks = {
     go: (name) => {
       const j = page.g.byName.get(name);
-      if (j !== undefined) go(j);
+      if (j !== undefined) page.go(j);
     },
     // a past build's files are not the build status of now
     fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
@@ -972,7 +970,7 @@ async function boot(): Promise<void> {
     let w = here?.decl === j ? here : sources.all.find((p) => p.decl === j) ?? null;
     if (w) sources.reveal(w);
     else {
-      if (selected() !== j) go(j);
+      if (selected() !== j) page.go(j);
       w = sources.show(j);
     }
     w.showLines(from, to, quoted);
@@ -1003,7 +1001,7 @@ async function boot(): Promise<void> {
     panel.show(i);
     sources.follow(i);
     sources.redrawReviews();
-    const k = i === null ? -1 : visitorOf(i);
+    const k = i === null ? -1 : page.visitorOf(i);
     canvas.setLead(i !== null && toView(i) >= 0 ? { kind: "node", i: toView(i) } : k >= 0 ? { kind: "visitor", k } : null, leadEnd);
     // an opinion given on an earlier version, its What changed closed (web/src/tips.ts, stale-opinion)
     if ($("#panel details[data-rv-changes]:not([open])")) page.offerTip("stale-opinion");
@@ -1047,14 +1045,14 @@ async function boot(): Promise<void> {
     covers: overlays,
     // a click with the tool (web/src/selection.ts); a double-click on a cluster folds or opens it,
     // which the canvas does itself
-    nodeClick: (j, shift) => void clickOn(pickDecl(vg().nodes[j].name), shift),
+    nodeClick: (j, shift) => void page.clickOn(pickDecl(vg().nodes[j].name), shift),
     // a visitor is a declaration as any: clicked with the tool (ViewSpec decision 27)
     visitorClick: (k, shift) => {
-      if (page.visitors[k]) clickOn(pickDecl(page.visitors[k].name), shift);
+      if (page.visitors[k]) page.clickOn(pickDecl(page.visitors[k].name), shift);
     },
-    clusterClick: (c, shift) => void clickOn(pickCluster(c), shift),
+    clusterClick: (c, shift) => void page.clickOn(pickCluster(c), shift),
     backgroundClick: () => {
-      clear();
+      page.clear();
       page.commit();
     },
     hover: (t, x, y) => {
@@ -1150,7 +1148,7 @@ async function boot(): Promise<void> {
     resolve: (name) => (page.g.byName.has(name) ? name : null),
     go: (name) => {
       const i = page.g.byName.get(name);
-      if (i !== undefined) go(i);
+      if (i !== undefined) page.go(i);
     },
     moves: (h) => !frozen() && dragMoves(page.locked, h),
     setOpen: (id, _kind, open) => page.setNoteOpen(id, open),
@@ -1187,8 +1185,8 @@ async function boot(): Promise<void> {
     lit: (i) => !!canvas.active?.[i],
     edgeLit: (u, v, site) => canvas.edgeLit(u, v, site),
     keyLinks: () => canvas.keyLinks,
-    selectDecl: (i, shift) => void clickOn(pickDecl(vg().nodes[i].name), shift),
-    selectSection: (c, shift) => void clickOn(pickCluster(c), shift),
+    selectDecl: (i, shift) => void page.clickOn(pickDecl(vg().nodes[i].name), shift),
+    selectSection: (c, shift) => void page.clickOn(pickCluster(c), shift),
     frozen: () => (frozen() ? frozenWhy() : null),
     edges: () => S.showEdges,
     moveNote: (id, key, world, detach) => stickies.moveInto(id, key, world, detach),
@@ -1289,7 +1287,7 @@ async function boot(): Promise<void> {
     canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
     applyScheme();
     page.syncEdges();
-    apply();
+    page.apply();
   };
   /** Of the bar in the artwork mode, Share and Search alone (the owner's decision of 2026-10-15): the
    *  rest is out of reach until the mode is left, by the pointer and by the keyboard — but the people
@@ -1332,7 +1330,7 @@ async function boot(): Promise<void> {
         .map((t) => ({ name: t.name, count: (d) => reviewCount(page.g, d, t.i) })),
     ensureReviewer: () => people.ensure(),
     submit,
-    show: (p) => goToPrefix(p),
+    show: (p) => page.goToPrefix(p),
   });
   page.trust = trust;
 
@@ -1363,7 +1361,7 @@ async function boot(): Promise<void> {
   const outline = new Outline($("#outline"), {
     // a row is its cluster: clicked with the tool, and gone to
     select: (c, shift) => {
-      if (clickOn(pickCluster(c), shift) && shownCluster() === c) canvas.flyToCluster(c);
+      if (page.clickOn(pickCluster(c), shift) && shownCluster() === c) canvas.flyToCluster(c);
     },
     picked: (c) => page.picks.some((p) => !!p.root && clusterOn(p.root, canvas.layout, cm()) === c),
     toggleFold: (c) => canvas.toggleFold(c),
@@ -1421,7 +1419,7 @@ async function boot(): Promise<void> {
     focusChanged: () => {
       const was = page.focusWas;
       syncFocus();
-      if (page.focusWas !== was) apply();
+      if (page.focusWas !== was) page.apply();
     },
     // a target linked elsewhere, or its view deleted: its panel says so
     linksChanged: () => showSelected(),
@@ -1521,6 +1519,7 @@ async function boot(): Promise<void> {
     // panel (it does not move while the reader moves it, nor when a source window opens)
     chatWin.layout();
   };
+  page.syncInsets = syncInsets;
 
   /** The review strip, wherever the review has a focus (ReviewSpec, "Reviewing a target"; ViewSpec
    *  decision 28): it stays while the reader goes from one declaration to the next. */
@@ -1530,6 +1529,7 @@ async function boot(): Promise<void> {
     bar.hidden = r === null;
     if (r !== null) flow.renderStrip(r);
   };
+  page.renderStrip = renderStrip;
   /** The focus may have changed (the reader's choice, the view's, the targets, the board's set): what
    *  depends on it follows, and the header says it. */
   const syncFocus = () => {
@@ -1541,6 +1541,7 @@ async function boot(): Promise<void> {
     }
     focusMenu.render();
   };
+  page.syncFocus = syncFocus;
 
   /** The review and the build on the canvas: the targets' stars, and where each declaration of
    *  the board stands (web/src/status.ts) — its colour in the Status scheme, the clusters' progress
@@ -1605,6 +1606,7 @@ async function boot(): Promise<void> {
     },
     keyEdges: () => S.mode === "keys",
   });
+  page.legend = legend;
   /** What those following this reader see (CollabSpec decision 4, the owner's decision of
    *  2026-10-11: what you see is followed), part by part as web/src/surfaces.ts declares them: how
    *  each is read into presence, and how a followed reader's is applied here — the place's parts
@@ -1684,7 +1686,7 @@ async function boot(): Promise<void> {
     go: (name) => {
       people.unfollow();
       const i = page.g.byName.get(name);
-      if (i !== undefined) go(i);
+      if (i !== undefined) page.go(i);
     },
     open: (hash) => {
       people.unfollow();
@@ -1880,10 +1882,10 @@ async function boot(): Promise<void> {
     const to: Place = { mode, picks: selectionText(chosen), shown: v.sel ? { decl: v.sel } : shownOf(chosen.at(-1)), cam: v.cam, ...(v.focus !== undefined ? { focus: v.focus } : {}), visitors: readVisitors(v.visitors) };
     // views are not switched in the Time Machine: it is left first, and opened again there
     if (tm.active && id !== tm.view) await tm.close();
-    if (id === nav.board.id) place(to, false);
+    if (id === nav.board.id) page.place(to, false);
     else if (!(id && (await nav.select(id, to))) && scope) await nav.open(scope, to);
     const reached = nav.board.id === id || (scope !== null && nav.query() === scope);
-    if (once && !reached) place(to, false);
+    if (once && !reached) page.place(to, false);
     // following ended while their view was being opened (the reader's own act): nothing more of the
     // followed reader's is taken — their build, their windows —, and the windows the reader has
     // opened since are their own, nothing of the followed reader's closing them (CollabSpec, "What
@@ -2090,7 +2092,7 @@ async function boot(): Promise<void> {
     short: (name) => views.titles().names?.decl(name) ?? short(name),
     choose: (f) => {
       page.mine = f;
-      apply();
+      page.apply();
       page.writeAddress(false);
     },
     setView: async (f) => {
@@ -2102,7 +2104,7 @@ async function boot(): Promise<void> {
       nav.board.rec.focus = f;
       // the reader's focus is the view's now: nothing of their own is left
       page.mine = undefined;
-      apply();
+      page.apply();
       page.writeAddress(false);
       return null;
     },
@@ -2295,11 +2297,11 @@ async function boot(): Promise<void> {
         }
         return false;
       }),
-    showPrefix: (p) => goToPrefix(p),
+    showPrefix: (p) => page.goToPrefix(p),
     has: (name) => page.g.byName.has(name),
     go: (name) => {
       const i = page.g.byName.get(name);
-      if (i !== undefined) go(i);
+      if (i !== undefined) page.go(i);
     },
     comment: (text, name) => reviewBox.comment(text, name),
     openOpinion: (r) => reviewBox.jump(r, null, null),
@@ -2308,7 +2310,7 @@ async function boot(): Promise<void> {
       const i = page.g.byName.get(name);
       if (i !== undefined) reviewTarget(i);
     },
-    goToModule: (m) => goToModule(m),
+    goToModule: (m) => page.goToModule(m),
     hasView: (id) => !!views.summary(id),
     openView: (id) => void openView(id),
     viewTitle: (id) => views.title(id),
@@ -2346,7 +2348,7 @@ async function boot(): Promise<void> {
     has: (name) => page.g.byName.has(name),
     go: (name) => {
       const i = page.g.byName.get(name);
-      if (i !== undefined) go(i);
+      if (i !== undefined) page.go(i);
     },
     hasView: (id) => !!views.summary(id),
     openView: (id) => void openView(id),
@@ -2378,51 +2380,13 @@ async function boot(): Promise<void> {
    *  Show in history, all come here. */
   const timeMachine = (at?: TimeMachineAt): void => void openTimeMachine(at);
   page.timeMachine = timeMachine;
-
-  /** What the reader selected follows a rename of it (web/src/selection.ts, followRenames): a build
-   *  that renamed it, or a move that says so, which may come before or after the new graph. True
-   *  where it did; the board is drawn again by the caller. */
-  const followSelection = (): boolean => {
-    // the renames in force, and those the builds read since the page opened found of declarations
-    // nothing was said of, which are in the history alone (HistorySpec decision 10)
-    const renamed: Record<string, string> = Object.assign(Object.create(null), page.review.data.renamed);
-    for (const [from, to] of buildRenames) if (!Object.hasOwn(renamed, to)) renamed[to] = from;
-    const r = followRenames(page.picks, page.shown, renamed, (name) => page.present.byName.has(name));
-    if (r.picks === page.picks && r.shown === page.shown) return false;
-    ({ picks: page.picks, shown: page.shown } = r);
-    return true;
-  };
-  page.followSelection = followSelection;
-  /** The renames the history found from each build to the next one read while the page is open,
-   *  old name → new (GET /api/history/diff): what the selection follows besides the renames in force */
-  const buildRenames = new Map<string, string>();
-  /** A new build was read (the Time Machine read the list again, web/src/timemachine.ts): its renames
-   *  are asked for, and the selection follows them, whether the new graph is on show yet or not. */
-  const newBuild = async (from: number, to: number) => {
-    try {
-      const r = await fetch(`/api/history/diff?from=${from}&to=${to}&most=20000`);
-      const d = r.ok ? ((await r.json()) as { renamed?: unknown }) : null;
-      if (!Array.isArray(d?.renamed)) return;
-      for (const p of d.renamed) if (Array.isArray(p) && typeof p[0] === "string" && typeof p[1] === "string") buildRenames.set(p[0], p[1]);
-    } catch {
-      return;
-    }
-    if (!followSelection()) return;
-    apply();
-    selectionFollowed();
-  };
-  /** Where a selection that followed a rename is told: the address, and those following. */
-  const selectionFollowed = () => {
-    page.writeAddress(false);
-    people.report();
-  };
-  page.selectionFollowed = selectionFollowed;
+  Object.assign(page, selectionPart(page));
 
   /** The review changed, once per change whoever made it (this reader, someone else, the logs on disk):
    *  everything that shows it follows. A board whose scope reads the review (trusted, statuses,
    *  advice) may hold another set now: the board on show is drawn again at once. */
   const reviewChanged = () => {
-    const followed = followSelection();
+    const followed = page.followSelection();
     targetTcbs.clear();
     views.reviewChanged();
     if (views.board(nav.board.id) !== nav.board) void nav.redraw().then(() => boardPanel.render());
@@ -2432,14 +2396,14 @@ async function boot(): Promise<void> {
     // what is lit reads the review when a pick does (key declarations, trust, statuses), and the
     // key graph's edges under Keys always: lit again; else what shows the review is drawn again
     const q = selectionQuery(page.picks);
-    if (followed || S.mode === "keys" || (q && readsReview(q))) apply();
+    if (followed || S.mode === "keys" || (q && readsReview(q))) page.apply();
     else {
       outline.render();
       // a visitor's colour by status, and its diamond, are the review's too
-      drawVisitors();
+      page.drawVisitors();
       renderStrip();
       showSelected();
-      renderSelBar();
+      page.renderSelBar();
     }
     activity.changed();
     boardPanel.render();
@@ -2447,7 +2411,7 @@ async function boot(): Promise<void> {
     papers.refresh();
     // what notes carry is drawn from the library's records, which are the review's
     stickies.render();
-    if (followed) selectionFollowed();
+    if (followed) page.selectionFollowed();
   };
   /** The whole review (where this page holds another revision than the server's, or events came in
    *  between): taken unless this page holds that revision already. */
@@ -2486,89 +2450,6 @@ async function boot(): Promise<void> {
   };
   page.takeChange = takeChange;
 
-  /** How many are lit on the board as the selection bar counts them: what is not trusted, the
-   *  trusted apart (TCBSpec decision 7, ViewSpec decision 14). */
-  const litCount = (lit: Lit | null): LitCount => (lit ? trustSplit(vg(), boardReview(), lit.set) : { counted: 0, trusted: 0 });
-  /** The selection bar: its picks, what is lit, Zoom in, and where the review has a focus what "Mark
-   *  selected as key" would mark — which the review changes, so it is drawn again with it. */
-  const renderSelBar = (q = selectionQuery(page.picks), lit: Lit | null = q && litOn(q)) =>
-    selBar.render(page.picks, page.picks.findIndex((p) => !!page.shown && sameShown(shownOf(p), page.shown)), litCount(lit), zoomOf(q, lit) !== null, keyMarking());
-
-  /** What is selected, lit and shown: the selection's query evaluated on the whole graph and cut to
-   *  the board (decided 2026-10-07: what is lit is exactly that set; the owner's decision,
-   *  2026-10-08: on the whole graph, so that a path through what the board leaves out counts), the
-   *  rings on its picks' roots, the panel, the selection bar. */
-  const apply = () => {
-    const G = vg();
-    syncFocus();
-    const q = selectionQuery(page.picks);
-    const lit = q && litOn(q);
-    // under Keys, the key graph's edges among what is lit instead of the references among it
-    const keyEdges = S.mode === "keys" && lit && lit.count ? keyEdgesOn(lit) : null;
-    // the picks' roots, on this board: declarations, and clusters of its clustering
-    const decls: number[] = [], clusters: number[] = [];
-    for (const p of page.picks) {
-      if (!p.root) continue;
-      if ("decl" in p.root) {
-        const j = G.byName.get(p.root.decl);
-        if (j !== undefined) decls.push(j);
-      } else {
-        const c = clusterOn(p.root, canvas.layout, cm());
-        if (c >= 0) clusters.push(c);
-      }
-    }
-    // an artwork's look (ExportSpec decision 19): its targets alone, the rest faded; or nothing of the
-    // selection, which stays the reader's
-    if (page.artLook?.targets === "highlight") {
-      const alone = new Uint8Array(G.n);
-      for (let i = 0; i < G.n; i++) if (canvas.isTarget(i)) alone[i] = 1;
-      canvas.setActivation(edgeMode(page.picks), [], alone, [], null);
-    } else if (page.artLook && !page.artLook.selection) canvas.setActivation(edgeMode(page.picks), [], null, [], null);
-    else canvas.setActivation(edgeMode(page.picks), decls, lit?.set ?? null, clusters, keyEdges);
-    linear.request();
-    drawVisitors();
-    renderSelBar(q, lit);
-    syncTool();
-    showSelected();
-    outline.render();
-    renderStrip();
-    syncInsets();
-  };
-  page.apply = apply;
-
-  /** The key graph's edges among what is lit (shared/keys.ts, litKeyEdges), as pairs in the board's
-   *  numbering: where the review has a focus its target's key graph, elsewhere every target's — the
-   *  union over the targets whose key declarations are lit. */
-  const keyEdgesOn = (lit: Lit): number[] => {
-    const r = reviewRoot();
-    const roots = r !== null ? [r] : Object.keys(page.review.data.targets).map((n) => page.g.byName.get(n)).filter((i): i is number => i !== undefined);
-    const on = (i: number) => {
-      const j = toView(i);
-      return j >= 0 && lit.set[j] === 1;
-    };
-    return litKeyEdges(roots.map((t) => flow.keys(t)), on).flatMap(([a, b]) => [toView(a), toView(b)]);
-  };
-
-  /** The tool on the mode buttons: Selection, Rests on with its steps beside it while it is the mode,
-   *  Used by. The legend's edge key says what the edges are under the tool. */
-  let keyLegend = false;
-  const syncTool = () => {
-    for (const b of document.querySelectorAll<HTMLElement>("#lightup [data-mode]")) {
-      b.classList.toggle("on", b.dataset.mode === S.mode);
-      b.setAttribute("aria-pressed", String(b.dataset.mode === S.mode));
-    }
-    const rests = restsOn(S.mode);
-    $("#rests").classList.toggle("on", rests);
-    $("#rests-btn").setAttribute("aria-pressed", String(rests));
-    $("#rests-steps").hidden = !rests;
-    document.body.dataset.mode = S.mode;
-    if (keyLegend !== (S.mode === "keys")) {
-      keyLegend = S.mode === "keys";
-      legend.render();
-    }
-  };
-  page.syncTool = syncTool;
-
   /** Something said for a moment where the hint is (below the review strip and the note of a kept
    *  view, where they show): the hint shows nothing otherwise. */
   const say = (text: string) => {
@@ -2586,50 +2467,6 @@ async function boot(): Promise<void> {
     }, 3500);
   };
   page.say = say;
-
-  /** What a query lights up on the board, for what a click covers (web/src/selection.ts). */
-  const setOn = (q: Query) => litOn(q).set;
-
-  /** A click with the tool (web/src/selection.ts, click): the selection becomes that pick, or with
-   *  shift under Selection that one pick goes in or out; one step in the history. False when it
-   *  changed nothing: a picked cluster covers it already, which the hint says. */
-  const clickOn = (p: Pick, shift: boolean): boolean => {
-    const r = click(page.picks, page.shown, p, shift, setOn);
-    if (r.covered) {
-      const names = views.titles().names ?? undefined;
-      say(`${pickWords(p, names)} is inside ${pickWords(r.covered, names)}, which is selected: nothing changed.`);
-      return false;
-    }
-    const before = page.picks.length;
-    page.picks = r.picks;
-    page.shown = r.shown;
-    apply();
-    page.commit();
-    tipsOnClick(p, shift, before);
-    return true;
-  };
-  page.clickOn = clickOn;
-
-  /** The tips in place a reader's click may be the moment of (GuideSpec decision 9; web/src/tips.ts
-   *  says each rule): under Selection, what was selected replaced three times in 20 s; under Rests
-   *  on · TCB, a theorem's TCB lit by the reader's own click, and the fifth such pick ever, no other
-   *  step having been chosen. */
-  let replaced: number[] = [];
-  const tipsOnClick = (p: Pick, shift: boolean, before: number) => {
-    const decl = p.root && "decl" in p.root ? p.root.decl : null;
-    if (S.mode === "plain") {
-      if (shift) return page.didTip("selection-replace");
-      if (!decl || !before) return;
-      const now = Date.now();
-      replaced = [...replaced.filter((t) => now - t < 20_000), now];
-      if (replaced.length >= 3) page.offerTip("selection-replace");
-    } else if (S.mode === "tcb" && decl) {
-      const i = page.g.byName.get(decl);
-      const q = selectionQuery(page.picks);
-      if (i !== undefined && page.g.nodes[i].kind === "theorem" && q && litOn(q).count > 1) page.offerTip("tcb-first");
-      if (page.countTip("tcb-picks", "rests-only-tcb") >= 5) page.offerTip("rests-only-tcb");
-    }
-  };
   /** The tips in place what is recorded may be the moment of: a target's second declaration
    *  approved on a view focused on it, while it has no key declaration; a key marked ends that. */
   let approvedInFocus = 0;
@@ -2640,179 +2477,6 @@ async function boot(): Promise<void> {
     const i = page.g.byName.get(op.name);
     if (r === null || i === undefined || !flow.inReview(r, i) || keyMarks(page.review.data, page.g.nodes[r].name).length) return;
     if (++approvedInFocus >= 2) page.offerTip("key-in-target");
-  };
-
-  /** The tool in force: kept, with the step of Rests on it is (the step entering Rests on resumes,
-   *  a reading preference of this browser). */
-  const useTool = (m: Tool) => {
-    S.mode = m;
-    if (restsOn(m)) S.restsOn = m;
-    store.save();
-  };
-  page.useTool = useTool;
-
-  /** The tool (decided 2026-10-07): how the next click selects. With something selected, the
-   *  pick last clicked is selected again under it, alone (web/src/selection.ts, retool): one step
-   *  in the history. With nothing selected, only the tool changes, without a step. */
-  const setMode = (m: Tool) => {
-    if (m === S.mode) return;
-    useTool(m);
-    syncTool();
-    const r = retool(page.picks, page.shown, m, (root) => keysFor(root));
-    if (r.picks === page.picks) return page.writeAddress(false);
-    page.picks = r.picks;
-    page.shown = r.shown;
-    apply();
-    page.commit();
-  };
-
-  /** The tool chosen by the reader, by a mode's button or key: another step of Rests on than TCB
-   *  is what two tips in place teach (web/src/tips.ts, tcb-first and rests-only-tcb) — the tour and
-   *  Show me choose it otherwise, and teach nothing of it. */
-  const readerMode = (m: Tool) => {
-    if (m === "keys" || m === "deps" || m === "refs") {
-      page.didTip("tcb-first");
-      page.didTip("rests-only-tcb");
-    }
-    setMode(m);
-  };
-  page.readerMode = readerMode;
-
-  /** Nothing selected; the visitors go with the selection (ViewSpec decision 27). */
-  const clear = () => {
-    page.picks = [];
-    page.shown = null;
-    page.visitors = [];
-    apply();
-  };
-  page.clear = clear;
-
-  // ---------------------------------------------------------------- visitors
-  //
-  // A declaration gone to that the board on show does not hold is a visitor on it (ViewSpec decision
-  // 27; web/src/visitors.ts): the reader's own, in its own place in the cluster hierarchy — temporary
-  // clusters added for the levels the board does not draw — drawn by the canvas with its edges to what
-  // the board holds. The trail goes with the selection cleared or another board; one the board comes
-  // to hold is a member, and leaves it.
-
-  /** The trail's index of declaration `i` (the whole graph's numbering), or -1. */
-  const visitorOf = (i: number): number => {
-    const name = page.g.nodes[i]?.name;
-    return name === undefined ? -1 : page.visitors.findIndex((v) => v.name === name);
-  };
-  page.visitorOf = visitorOf;
-  /** Declaration `i`, which the board does not hold, a visitor on it, the newest of the trail,
-   *  reached from `from` where that is on the board or a visitor. Its place is the canvas's to choose
-   *  (drawVisitors); one that is a visitor already keeps its own. */
-  const visitOn = (i: number, from: number | null) => {
-    const reached = from !== null && from !== i && (toView(from) >= 0 || visitorOf(from) >= 0);
-    page.visitors = visit(page.visitors, { name: page.g.nodes[i].name, from: reached ? page.g.nodes[from!].name : null, place: null });
-  };
-  page.visitOn = visitOn;
-  /** What the board does not hold of where the reader is — the selection's declarations and what the
-   *  panel tells of — made visitors where they are not yet (a link, a tab come back to, an agent
-   *  followed, which says nothing of visitors). True where one was made. */
-  const ensureVisitors = (): boolean => {
-    const want = new Set(clickedDecls());
-    const i = selected();
-    if (i !== null) want.add(i);
-    let made = false;
-    for (const j of want) {
-      if (toView(j) >= 0 || visitorOf(j) >= 0) continue;
-      visitOn(j, null);
-      made = true;
-    }
-    return made;
-  };
-  /** The visitors on the canvas, those selected ringed (and the folded clusters round them open for
-   *  the reader): each with its colour in either scheme, its marks and its edges. Those the board
-   *  holds now, or its graph does not have, are no visitors. The places the canvas chose are kept in
-   *  the trail, which presence carries to followers. */
-  const drawVisitors = () => {
-    page.visitors = stillVisiting(page.visitors, (n) => {
-      const i = page.g.byName.get(n);
-      return i !== undefined && toView(i) < 0;
-    });
-    const r = reviewRoot();
-    const targets = boardReview().targets;
-    const index = new Map(page.visitors.map((v, k) => [v.name, k]));
-    const points: VisitorPoint[] = page.visitors.map((v) => {
-      const i = page.g.byName.get(v.name)!;
-      const node = page.g.nodes[i];
-      const edges = visitorEdges(page.g, i, toView, (u) => index.get(page.g.nodes[u].name) ?? -1);
-      return {
-        name: v.name,
-        label: page.g.short(i),
-        module: node.module,
-        ext: page.g.isExt(i),
-        place: v.place,
-        kind: page.g.isExt(i) ? "external" : node.kind,
-        axiom: ringed(node.kind),
-        status: statusState(boardReview(), page.g, i, page.g.isExt(i) || pastShown() ? undefined : page.fileIndex.get(node.module), page.g.axiomsOf(i).includes("sorryAx")),
-        target: Object.hasOwn(targets, v.name),
-        key: r !== null && r !== i && flow.isKey(r, i),
-        board: edges.board,
-        visitors: edges.visitors,
-      };
-    });
-    const sel = new Set([...clickedDecls(), ...(selected() !== null ? [selected()!] : [])].map((j) => visitorOf(j)).filter((k) => k >= 0));
-    const places = canvas.setVisitors(points, [...sel], nav.board?.rec.hidden[cm()] ?? []);
-    page.visitors = page.visitors.map((v, k) => {
-      const p = places[k];
-      return p && (v.place?.in !== p.in || v.place.at[0] !== p.at[0] || v.place.at[1] !== p.at[1]) ? { ...v, place: p } : v;
-    });
-    // a note attached to a visitor shows beside it
-    stickies.render();
-  };
-
-  /** Bring a declaration into view: open what hides it, fly to it. `i` in the whole graph's
-   *  numbering. */
-  const reveal = (i: number) => {
-    const j = toView(i);
-    // a visitor: brought into view where it is out of it
-    if (j < 0) {
-      const at = canvas.visitorPos(visitorOf(i));
-      if (!at) return;
-      const [x, y] = at;
-      const [sx, sy] = canvas.toScreen(x, y);
-      const I = canvas.insets;
-      const W = document.documentElement.clientWidth, H = document.documentElement.clientHeight;
-      if (sx < I.left + 20 || sx > W - I.right - 120 || sy < I.top + 20 || sy > H - I.bottom - 20) canvas.flyToPoint(x, y);
-      return;
-    }
-    if (canvas.nodeRep[j] >= 0) canvas.toggleFold(canvas.nodeRep[j]);
-    canvas.flyTo(j);
-  };
-  page.reveal = reveal;
-  /** Bring what the panel tells of into view. */
-  const revealShown = () => {
-    const i = selected();
-    if (i !== null) return reveal(i);
-    const c = shownCluster();
-    if (c >= 0) canvas.flyToCluster(c);
-  };
-
-  /** Go to a declaration (CanvasSpec, "Navigation"): a click there with the tool, and the view
-   *  flies there; one step in the history. One the board does not hold is a visitor on it (ViewSpec
-   *  decision 27), beside the declaration the reader comes from: navigation never leaves the board,
-   *  and on a board of a past build the visitor is of that build. */
-  const go = (i: number) => {
-    if (toView(i) < 0) visitOn(i, selected());
-    const p = pickDecl(page.g.nodes[i].name);
-    page.picks = [p];
-    page.shown = shownOf(p);
-    apply();
-    reveal(i);
-    page.commit();
-  };
-  page.go = go;
-  /** Go to a cluster of the board (a row of a cluster's panel): a click there with the tool. */
-  const goCluster = (c: number) => {
-    page.picks = [pickCluster(c)];
-    page.shown = shownOf(page.picks[0]);
-    apply();
-    canvas.flyToCluster(c);
-    page.commit();
   };
 
   /** The board on show is of another graph (a past build's, or the graph on show again): what
@@ -2844,15 +2508,6 @@ async function boot(): Promise<void> {
     syncInsets();
   };
 
-  /** Go to a declaration of the board's graph, by name — a visitor where the board does not hold it;
-   *  false where the graph does not have it. */
-  const goName = (name: string): boolean => {
-    const i = page.g.byName.get(name);
-    if (i === undefined) return false;
-    go(i);
-    return true;
-  };
-
   /** Views are not switched in the Time Machine (HistorySpec decision 16): true, and the reader is
    *  told so, while it is open. */
   const noSwitch = (): boolean => {
@@ -2871,7 +2526,7 @@ async function boot(): Promise<void> {
     }
     if (!(await tm.open({ snapshot: at.snapshot }))) return false;
     page.offerTip("first-time-machine");
-    if (!at.name || goName(at.name)) return true;
+    if (!at.name || page.goName(at.name)) return true;
     say(`${at.name} is not in the graph of that build.`);
     return true;
   };
@@ -2891,7 +2546,7 @@ async function boot(): Promise<void> {
     const r = await views.post("create", { name, from: nav.board.id, version: snapshot });
     if (r.who) people.lost();
     if (!r.view) return r.error ?? "The view could not be made.";
-    const at = here();
+    const at = page.here();
     await views.load();
     const id = r.view.id;
     const ok = await tm.leaveFor(() => nav.show(id, at));
@@ -2941,64 +2596,8 @@ async function boot(): Promise<void> {
     syncPeers();
     boardPanel.render();
     renderHidden();
-    apply();
+    page.apply();
     syncPast();
-  };
-
-  /** Take a place on the board on show: the tool, the selection, what the panel tells of, and the
-   *  camera — or, without one, what the panel tells of (flown to from the whole board, when the
-   *  board is new), or the whole board. */
-  const place = (p: Place, fresh: boolean) => {
-    if (TOOLS.includes(p.mode)) useTool(p.mode);
-    else store.save();
-    page.picks = readSelection(p.picks);
-    page.shown = p.shown ?? null;
-    // the reader's own focus there, where they chose one (a place kept by an older page has none)
-    page.mine = p.focus === null || typeof p.focus === "string" ? p.focus : undefined;
-    // a followed reader's visitors, where they are on their board (ViewSpec decision 27)
-    if (p.visitors) page.visitors = p.visitors;
-    apply();
-    if (p.cam) {
-      canvas.cam = { ...p.cam };
-      canvas.request();
-    } else if (fresh) canvas.fit(false);
-    // what the board does not hold of where the reader is, visitors in their places
-    if (ensureVisitors()) apply();
-    if (!p.cam && (selected() !== null || shownCluster() >= 0)) revealShown();
-  };
-  page.place = place;
-  const here = (): Place => ({ cam: { ...canvas.cam }, mode: S.mode, picks: selectionText(page.picks), shown: page.shown, ...(page.mine !== undefined ? { focus: page.mine } : {}) });
-
-  /** Zoom in: a view of what is lit, in a tab of its own, with the same selection; at the board's
-   *  build (from the Time Machine too, which is left for it), focused as this view is (ViewSpec
-   *  decision 28), and, where it is new, clustered as this board is, as a cluster's Zoom in is (one
-   *  found open keeps its own). */
-  const zoomIn = async () => {
-    const q = zoomOf(selectionQuery(page.picks));
-    if (!q) return;
-    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(page.picks), shown: page.shown, cam: null }, cm());
-    if (typeof r === "string") say(r);
-    else if (r) {
-      canvas.fit(false);
-      page.commit();
-    }
-  };
-  /** The scope of a view of a cluster alone (its panel's Zoom in): what of it this board holds, as
-   *  Zoom in has it; null when that is the whole board. */
-  const clusterScope = (c: number): Query | null => zoomOf(clusterSet(canvas.layout.clusters[c].key, cm()));
-  /** Zoom in on a cluster: a view of it alone, in a tab, clustered as this board is (a folder is
-   *  shown by file), with the same selection; at the board's build. */
-  const zoomCluster = async (c: number) => {
-    const mode = cm();
-    const scope = clusterScope(c);
-    if (!scope) return;
-    const r = await openDerived(printQuery(scope), { mode: S.mode, picks: selectionText(page.picks), shown: page.shown, cam: null }, mode);
-    if (typeof r === "string") return say(r);
-    if (!r) return;
-    // a view found open has its own clustering: it is given this board's, unless it is a preview
-    if (cm() !== mode && !frozen()) await sync.setClustering(mode);
-    canvas.fit(false);
-    page.commit();
   };
 
   /** Open a target's view (ViewSpec decision 29): the view it is linked to, with a click on the
@@ -3019,7 +2618,7 @@ async function boot(): Promise<void> {
     // the board on show
     if ((linked !== undefined && targetStep(linked, nav.board.id) === null) || (linked === undefined && reader)) {
       page.mine = name;
-      go(i);
+      page.go(i);
       page.writeAddress(false);
       return;
     }
@@ -3030,7 +2629,7 @@ async function boot(): Promise<void> {
       void nav.select(linked, to).then((ok) => {
         if (ok) page.commit();
         // its view deleted meanwhile: the target on the board on show
-        else go(i);
+        else page.go(i);
       });
       return;
     }
@@ -3066,7 +2665,7 @@ async function boot(): Promise<void> {
     if (!rec.targets?.includes(name)) rec.targets = [...(rec.targets ?? []), name];
     if (rec.targets.length === 1) rec.focus = name;
     rec.kept = true;
-    apply();
+    page.apply();
     renderTabs();
     say(`★${short(name)} is linked to this view now: clicking ★${short(name)} opens it.`);
     return null;
@@ -3078,36 +2677,6 @@ async function boot(): Promise<void> {
     if (b) walk(Number(b.dataset.go));
   });
   Object.assign(page, livePart(page));
-
-  /** Show a file: its cluster where the board clusters by file, else its first declaration. The
-   *  clustering is the board's, everyone's: going somewhere does not change it. A file the board
-   *  does not hold is shown by its first declaration, a visitor (ViewSpec decision 27). */
-  const goToModule = (m: string) => {
-    const c = canvas.layout.clusters.findIndex((cl) => cl.key === m);
-    if (c >= 0) {
-      if (canvas.folded.has(c)) canvas.toggleFold(c);
-      return canvas.flyToCluster(c);
-    }
-    const i = page.g.nodes.findIndex((v, j) => v.module === m && !page.g.isExt(j));
-    if (i < 0) return;
-    if (toView(i) >= 0) return canvas.flyTo(toView(i));
-    go(i);
-  };
-  page.goToModule = goToModule;
-
-  /** Show what a trusted prefix covers: its cluster on this board if it is one here, or else the
-   *  first declaration it covers (gone to, so that it shows where the outside world is hidden). */
-  const goToPrefix = (p: string) => {
-    // the cluster that stands for the prefix as the outline's rows do: outside the project, a
-    // cluster by namespace is not what a prefix trusts there
-    const c = canvas.layout.clusters.findIndex((cl) => clusterPrefix(cl, cm()) === p);
-    if (c >= 0 && (!canvas.layout.clusters[c].ext || nav.board.bs.outside || !nav.board.bs.whole)) {
-      if (canvas.folded.has(c)) canvas.toggleFold(c);
-      return canvas.flyToCluster(c);
-    }
-    const i = page.g.nodes.findIndex((v, j) => covers(p, v.name, v.module, page.g.isExt(j)));
-    if (i >= 0) go(i);
-  };
   Object.assign(page, toolbarPart(page));
   Object.assign(page, menuPart(page));
   Object.assign(page, notesPart(page));
