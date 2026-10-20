@@ -86,7 +86,8 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      the page's own address.
 8. **Visibility: Visible or Private**, per browser, effective at once. A private page tells nothing
    of where its reader is; they are not listed, cannot be followed or ask to be, but may follow
-   others; the others see only a count ("+2 private"). Their layout changes are shared and recorded
+   others (the reader they follow counts them among their followers, "+1 private": "What the page
+   shows"); the others see only a count ("+2 private"). Their layout changes are shared and recorded
    without a name ("someone"); their review keeps their name and needs one. Agents are always
    visible.
 9. **Identity: guests and invited people.** A guest comes by the key's link and gives a name:
@@ -231,6 +232,13 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
 
 - **Presence**: up to five initials beside the reader's name (more as "+N"), coloured by the name,
   faded after five minutes idle or with the page hidden, then the private readers as "+N private".
+- **Who follows me** (the owner's decision of 2026-10-20): each page says whom it follows, so the
+  reader's own name carries a mark when people follow them, with how many: the people, and the
+  private readers counted only ("2 follow you: Bob, +1 private"); read-only readers never, as nobody
+  sees them (decision 11). Hovering the name lists them, and its menu says it at its top. Among the
+  others' initials, those following the reader carry a small mark in the reader's colour, "follows
+  you" in their tooltip. Nothing is said when someone starts following, or stops. Agents follow
+  nobody; an agent can be followed, and its page-less presence shows nothing of it.
 - **On the canvas**: a ring in another reader's colour around what they selected, with their
   initials; several readers on one declaration share the ring.
 - **In the panel**: "Also here: Alice, Bob" under the declaration's name.
@@ -359,12 +367,22 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   the review and messages always take the caller's name.
 - **Presence**: one entry per open event stream. The stream's first event, `hello`, gives the page a
   public id and a secret token; a heartbeat counts only with that token, so no page speaks for
-  another. Heartbeats every 10 s, and at once when a followed part changes; an entry goes when its
-  stream closes or after 35 s of silence. The server checks every field and drops what is malformed,
-  and sends the whole list as one `presence` event at most every 500 ms.
-- **Private pages**: the heartbeat is `{token, private: true}` alone. The server keeps an unlisted,
-  empty entry and sends `private` (`{count}`) beside every `presence`. Going private or back gives
-  the stream a new public id, so nothing said under one ties to the other. A private page names no
+  another. Heartbeats every 10 s, and at once when a followed part changes or the page starts or
+  stops following; an entry goes when its stream closes or after 35 s of silence. The server checks
+  every field and drops what is malformed, and sends the whole list as one `presence` event at most
+  every 500 ms. Beside the followed parts ("Surfaces") a place carries bookkeeping no follower takes:
+  `tabs`, and `following`, whom the page follows (the owner's decision of 2026-10-20), named as the
+  pages tell people apart (shared/collab.ts `personKey`: `v:` and the name for someone invited by a
+  personal link, `n:` and the name for a guest or a proxy's name, `s:` and the page's id for a page
+  without a name, `a:` and the agent's id), at most 200 characters, absent for nobody. A page counts
+  the people whose pages say they follow its reader's key, each once, from the list. An agent's
+  place carries none (it follows nobody), nor an artwork; the agents' companion says nothing of it,
+  and whom a page follows is no move it waits for.
+- **Private pages**: the heartbeat is `{token, private: true}`, and `following` where the page
+  follows someone, alone. The server keeps an unlisted entry holding only that, and sends `private`
+  (`{count}`) beside every `presence`; to the pages of a person private pages follow, with
+  `followers`, how many do (never who). Going private or back gives the stream a new public id, so
+  nothing said under one ties to the other. A private page names no
   views, so the server holds the views it reads or opens, and those in its tabs when it went private,
   while a stream of its session is open and a minute after.
 - **Pins** travel as a view's operations (`pin`, `unpin`, `clear`, `fold`; `note`, `note-edit`,
@@ -453,7 +471,8 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   private page or for an agent, 404 for someone gone, 429 with `retryAfter` within 30 s, counted per
   person (link, else name) and per page. Nobody to ask makes no request and does not count. Answers:
   `follow`, `decline`, `timeout`, or `following` (sent at once, silently, by a page already
-  following the asker; the server does not know who follows whom). A replaced request, or one on a
+  following the asker, which knows it best: a private page's heartbeat says whom it follows only
+  every 10 s). A replaced request, or one on a
   page that closes, is answered `timeout`. A request ends when all answered or after 33 s (30 + 3 of
   grace); the asker closing or going private withdraws it. Held in memory only.
 - **The conversations** (decision 13, server/talk.ts): the public channel is

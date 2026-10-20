@@ -262,7 +262,7 @@ export function livePart(page: Page): LivePart {
       renderBuild();
     });
     es.addEventListener("presence", (e) => page.people.setPeers(JSON.parse((e as MessageEvent).data)));
-    es.addEventListener("private", (e) => page.people.setPrivateCount((JSON.parse((e as MessageEvent).data) as PrivateCount).count));
+    es.addEventListener("private", (e) => page.people.setPrivateCount(JSON.parse((e as MessageEvent).data) as PrivateCount));
     // the people invited by a personal link, as they are called now (CollabSpec decision 9): what
     // each did shows under that name, in Activity and on the notes
     es.addEventListener("people", (e) => {

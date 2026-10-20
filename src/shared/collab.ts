@@ -114,6 +114,23 @@ export function colorOf(name: string): string {
   return `hsl(${hue} 62% 46%)`;
 }
 
+/** Who a page or an agent is among the people: one person per name — an agent and a person of the
+ *  same name are two, and so are a guest and someone invited by a personal link — and a page without
+ *  a name on its own. An agent is its presence entry, which the server keeps one per token, or one
+ *  per name for an agent without a token (server/presence.ts): an agent that gives the name of one
+ *  with a token is another, so that nobody can speak for an agent with a token by giving its name
+ *  (AgentSpec, "Presence") — lead the people following it, or speak in its channels. What
+ *  following follows, what a page says it follows (PresenceView `following`), and a request to
+ *  follow asks to follow (web/src/askfollow.ts). */
+export function personKey(p: { id: string; name: string | null; agent?: boolean; verified?: boolean }): string {
+  return p.agent ? `a:${p.id}` : p.name ? `${p.verified ? "v" : "n"}:${p.name}` : `s:${p.id}`;
+}
+
+/** Whom a page says it follows, as personKey names them, checked; null where it is none. */
+export function cleanFollowing(x: unknown): string | null {
+  return typeof x === "string" && x.length <= 200 && /^[avns]:[^\u0000-\u001f\u007f]+$/.test(x) ? x : null;
+}
+
 /** the most source windows a reader pins at once (web/src/sources.ts): a few declarations side by
  *  side, not a wall of them */
 export const MAX_PINNED = 6;
@@ -151,6 +168,11 @@ export interface PresenceView {
   scope: string | null;
   /** the views the reader has open (their tabs): a view nobody keeps lives while one is */
   tabs: string[];
+  /** whom the reader follows, as personKey names them (the owner's decision of 2026-10-20: each page
+   *  says whom it follows, so that the followed see who follows them): bookkeeping, as `tabs` is,
+   *  which no follower takes; absent where they follow nobody, and from an agent, which follows
+   *  nobody */
+  following?: string;
   /** in the Time Machine (HistorySpec decision 18): the snapshot the reader browses, on their view;
    *  a follower opens the same */
   history?: { snapshot: number };
@@ -318,10 +340,11 @@ export interface ArtworkView extends ArtworkLook {
 /** the most pixels a side of an artwork has */
 export const ART_MAX_SIDE = 16384;
 
-/** A place with no artwork in it: an agent's (ExportSpec decision 19, agents have no artwork). */
-export function withoutArtwork(v: PresenceView | null): PresenceView | null {
-  if (!v || !("artwork" in v)) return v;
-  const { artwork: _artwork, ...rest } = v;
+/** A place as an agent's is: no artwork (ExportSpec decision 19, agents have none), and nobody
+ *  followed (agents follow nobody, the owner's decision of 2026-10-20). */
+export function agentPlace(v: PresenceView | null): PresenceView | null {
+  if (!v || !("artwork" in v || "following" in v)) return v;
+  const { artwork: _artwork, following: _following, ...rest } = v;
   return rest;
 }
 
@@ -514,6 +537,9 @@ export interface StreamHello {
  *  beside the list of the others (`private`): a count, never who. */
 export interface PrivateCount {
   count: number;
+  /** how many of them follow this page's reader (the owner's decision of 2026-10-20): told to that
+   *  reader's pages alone, never who; absent where none does */
+  followers?: number;
 }
 
 /** A view as a page sent it, checked and bounded; null when it is not one. */
@@ -579,6 +605,7 @@ export function cleanView(v: unknown): PresenceView | null {
     view: str(o.view, 300),
     scope: str(o.scope, 4000),
     tabs: Array.isArray(o.tabs) ? o.tabs.slice(0, 50).map((t) => str(t, 300)).filter((t): t is string => t !== null) : [],
+    ...(cleanFollowing(o.following) ? { following: cleanFollowing(o.following)! } : {}),
     ...(snapshot !== null ? { history: { snapshot } } : {}),
     ...(o.focus === null || str(o.focus) ? { focus: o.focus as string | null } : {}),
     ...(visitors.length ? { visitors } : {}),

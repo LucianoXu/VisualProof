@@ -253,8 +253,11 @@ export const YOURS = [
 ] as const satisfies readonly Yours[];
 
 /** What presence carries that is no surface's state: the views the reader has open, by which the
- *  server keeps a view nobody keeps (server/views.ts). A follower takes nothing of it. */
-export const BOOKKEEPING = ["tabs"] as const satisfies readonly (keyof PresenceView)[];
+ *  server keeps a view nobody keeps (server/views.ts), and whom the reader follows, by which the
+ *  followed see who follows them (the owner's decision of 2026-10-20). A follower takes nothing of
+ *  it. */
+export const BOOKKEEPING = ["tabs", "following"] as const satisfies readonly (keyof PresenceView)[];
+type Bookkeeping = (typeof BOOKKEEPING)[number];
 
 /** The frames the surfaces sit in: their own blank parts are as anywhere else (a press there moves
  *  the reader, as on the canvas), and what is in them is declared each. */
@@ -291,13 +294,14 @@ export interface PageParts {
 
 /** What this page shows of the followed parts, each read by the page: what those following see, and
  *  what a share link's snapshot holds. */
-export function followedOf(read: PageParts["read"]): Omit<PresenceView, "tabs"> {
-  return Object.assign({}, ...FOLLOWED.map((p) => read[p.part]())) as Omit<PresenceView, "tabs">;
+export function followedOf(read: PageParts["read"]): Omit<PresenceView, Bookkeeping> {
+  return Object.assign({}, ...FOLLOWED.map((p) => read[p.part]())) as Omit<PresenceView, Bookkeeping>;
 }
 
-/** Where this page is, as presence carries it: exactly the followed parts, and the bookkeeping. */
-export function presenceOf(read: PageParts["read"], tabs: string[]): PresenceView {
-  return { ...followedOf(read), tabs };
+/** Where this page is, as presence carries it: exactly the followed parts, and the bookkeeping — the
+ *  views it has open, and whom it follows (personKey), where it follows someone. */
+export function presenceOf(read: PageParts["read"], tabs: string[], following: string | null = null): PresenceView {
+  return { ...followedOf(read), tabs, ...(following ? { following } : {}) };
 }
 
 /** Apply a followed reader's parts that are not the place, each that their page said: one from

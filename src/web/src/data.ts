@@ -317,13 +317,14 @@ export type ReadOnlyLinkShown = ReadOnlyLink & { link: string };
 
 /** What a page's heartbeat says (CollabSpec decision 4): where it is; or, from a private page
  *  (decision 8), only that it is here. */
-export type Heartbeat = { view: PresenceView | null; idle: boolean } | { private: true };
+export type Heartbeat = { view: PresenceView | null; idle: boolean } | { private: true; following?: string | null };
 
 /** A heartbeat as it goes to the server (POST /api/presence), from the headers the page's requests
- *  carry. A private page's carries its stream's secret and the flag, and nothing else: neither the
- *  name nor where the page is (CollabSpec decision 8). */
+ *  carry. A private page's carries its stream's secret and the flag, and whom it follows, and nothing
+ *  else: neither the name nor where the page is (CollabSpec decision 8); the reader it follows is
+ *  told that someone private does (the owner's decision of 2026-10-20). */
 export function heartbeatRequest(token: string, beat: Heartbeat, headers: Record<string, string>): { headers: Record<string, string>; body: string } {
-  if ("private" in beat) return { headers: { "content-type": "application/json" }, body: JSON.stringify({ token, private: true }) };
+  if ("private" in beat) return { headers: { "content-type": "application/json" }, body: JSON.stringify({ token, private: true, ...(beat.following ? { following: beat.following } : {}) }) };
   return { headers, body: JSON.stringify({ token, view: beat.view, idle: beat.idle }) };
 }
 

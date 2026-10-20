@@ -291,7 +291,7 @@ export class Phone {
   }
 
   private open(): void {
-    const label = (id: string, fallback: string) => (id === "who" ? `Your name: ${document.getElementById("who")!.textContent?.trim() || "set it"}` : fallback);
+    const label = (id: string, fallback: string) => (id === "who" ? `Your name: ${document.querySelector("#who .who-n")?.textContent?.trim() || "set it"}` : fallback);
     const icon = (id: string) => OWN_ICON[id] ?? document.getElementById(id)?.querySelector("svg")?.outerHTML ?? `<svg viewBox="0 0 16 16"></svg>`;
     /** a badge of the button's, shown on its item too: its count, the conversations' mark */
     const shown = (badge: string, cls: string) => {
@@ -301,6 +301,11 @@ export class Phone {
     const badges: Record<string, () => string> = {
       "activity-btn": () => shown("activity-badge", "act-badge"),
       "talk-btn": () => shown("talk-badge", "act-badge") + shown("talk-at", "talk-at"),
+      // who follows the reader (the owner's decision of 2026-10-20), as the name's mark says it
+      who: () => {
+        const said = document.getElementById("who-fol")?.getAttribute("aria-label");
+        return said ? `<span class="more-fol">${said}</span>` : "";
+      },
     };
     this.pop.innerHTML = this.modes() + ITEMS.map(({ id, label: l }) => {
       // a button the page does not offer is no item: the reader's name before the page knows it,

@@ -15,8 +15,8 @@
 
 import { randomBytes } from "node:crypto";
 import type { ServerResponse } from "node:http";
-import type { ChatEvent, ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
-import { madeBy, nameKey, sameName } from "../shared/collab.ts";
+import type { ChatEvent, ChatMessage, Invited, Peer, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
+import { madeBy, nameKey, personKey, sameName } from "../shared/collab.ts";
 import type { ViewMeta } from "../shared/graph.ts";
 import { prepare } from "./pipeline.ts";
 import type { Prepared } from "./pipeline.ts";
@@ -404,7 +404,7 @@ export class Live {
       return;
     }
     this.send("presence", this.presence.list());
-    this.send("private", { count: this.presence.privateCount() } satisfies PrivateCount);
+    this.sendPrivate();
     this.presenceTimer = setTimeout(() => {
       this.presenceTimer = null;
       if (this.presenceDirty) {
@@ -415,18 +415,52 @@ export class Live {
     this.presenceTimer.unref?.();
   }
 
+  /** How many private readers there are, as each page is told it (`private`): with how many of them
+   *  follow its reader, which that reader's pages alone are told (the owner's decision of
+   *  2026-10-20) — a private page, or a read-only one, is followed by nobody. */
+  private privateOf(st: Stream, listed: Map<string, Peer>, followers: Map<string, number>, count: number): PrivateCount {
+    const me = st.private || st.readOnly !== null ? undefined : listed.get(st.id);
+    const n = me ? (followers.get(personKey(me)) ?? 0) : 0;
+    return { count, ...(n ? { followers: n } : {}) };
+  }
+
+  /** Every page is told how many private readers there are, and how many of them follow its reader:
+   *  one text for all the pages nobody private follows, one per count for the others. */
+  private sendPrivate(): void {
+    if (!this.streams.size) return;
+    const listed = new Map(this.presence.list().map((p) => [p.id, p]));
+    const followers = this.presence.privateFollowers();
+    const count = this.presence.privateCount();
+    const texts = new Map<number, string>();
+    for (const st of [...this.streams.values()]) {
+      const p = this.privateOf(st, listed, followers, count);
+      const n = p.followers ?? 0;
+      let text = texts.get(n);
+      if (text === undefined) texts.set(n, (text = `event: private\ndata: ${JSON.stringify(p)}\n\n`));
+      this.push(st, text);
+    }
+  }
+
+  /** What one page is told of the private readers now. */
+  private privateNow(st: Stream): PrivateCount {
+    return this.privateOf(st, new Map(this.presence.list().map((p) => [p.id, p])), this.presence.privateFollowers(), this.presence.privateCount());
+  }
+
   /** A page's heartbeat, by the secret its stream was given: false when no open stream has it (a
    *  stream that closed, a guess), and nothing changes. A private page's (`priv`, CollabSpec
-   *  decision 8) is counted and nothing more is kept of it: not its name, not where it is.
-   *  `verified`: the page of someone invited by a personal link (decision 9). */
-  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false, who: string | null = name): boolean {
+   *  decision 8) is counted, with whom it follows (`following`), and nothing more is kept of it: not
+   *  its name, not where it is. `verified`: the page of someone invited by a personal link (decision
+   *  9). */
+  beat(token: unknown, name: string | null, view: PresenceView | null, idle: boolean, priv = false, verified = false, who: string | null = name, following: string | null = null): boolean {
     const s = typeof token === "string" ? this.byToken.get(token) : undefined;
     if (!s) return false;
     // the name the page goes by, said by its heartbeat's request, a private page's too (`who`): what
     // of the channels its stream is sent (CollabSpec decision 13)
     if (s.readOnly === null) s.name = who;
-    if (s.private !== priv) this.rename(s, priv, name, view, idle, verified);
-    else if (priv) this.presence.beatPrivate(s.id);
+    if (s.private !== priv) {
+      this.rename(s, priv, name, view, idle, verified);
+      if (priv && following) this.presence.beatPrivate(s.id, following);
+    } else if (priv) this.presence.beatPrivate(s.id, following);
     else this.presence.beat(s.id, name, view, idle, false, verified);
     return true;
   }
@@ -452,7 +486,7 @@ export class Live {
     }
     this.presence.renamed(old, s.id, priv, name, view, idle, verified);
     this.write(s.res, "presence", this.presence.list());
-    this.write(s.res, "private", { count: this.presence.privateCount() } satisfies PrivateCount);
+    this.write(s.res, "private", this.privateNow(s));
   }
 
   /** The file of a module of the graph on show, relative to the project (meta.modules): the only
@@ -1379,7 +1413,7 @@ export class Live {
     this.write(res, "hello", this.helloOf(st));
     if (this.updateStatus) this.write(res, "updates", this.updateStatus(st.toldAll));
     this.write(res, "presence", this.presence.list());
-    this.write(res, "private", { count: this.presence.privateCount() } satisfies PrivateCount);
+    this.write(res, "private", this.privateNow(st));
     this.write(res, "people", this.invites.people());
     // the views as they are: a page that was away (a restart, a lost connection) catches up, and
     // reads again the boards it has open

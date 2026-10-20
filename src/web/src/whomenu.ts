@@ -4,7 +4,8 @@
 // that window to them alone (decision 9, the owner's decision of 2026-10-19; web/src/mylink.ts),
 // asking everyone to follow this reader (decision 10, the owner's decision of 2026-10-12;
 // web/src/askfollow.ts), and whether the others see this reader — Visible, the default, or
-// Private. It opens on a click on the name and closes on a click elsewhere or Esc, and works with
+// Private. At its top, who follows this reader, where someone does (the owner's decision of
+// 2026-10-20): the people by name, the private readers counted. It opens on a click on the name and closes on a click elsewhere or Esc, and works with
 // the keyboard as a menu does (menuKey): the arrows, Home and End move between its items, Enter or
 // Space chooses one, Tab leaves it.
 
@@ -64,6 +65,27 @@ export interface WhoMenuHooks {
   askAll?(): void;
   /** why this reader cannot ask now — private, asked a moment ago, nobody here — or null */
   askWhy?(): string | null;
+  /** who follows this reader: the people, each named as the page names them, and how many private
+   *  readers do (the owner's decision of 2026-10-20) */
+  followers?(): Followers;
+}
+
+/** Who follows a reader, as the page shows it: the people, each named as text ("Bob ✓"), and the
+ *  private readers, counted. */
+export interface Followers {
+  names: string[];
+  private: number;
+}
+
+/** "2 follow you", or null where nobody does. */
+export function followersCount(f: Followers): string | null {
+  const n = f.names.length + f.private;
+  return n ? `${n} follow${n === 1 ? "s" : ""} you` : null;
+}
+
+/** Who follows, in a line: "Bob, Carol ✓, +1 private". */
+export function followersLine(f: Followers): string {
+  return [...f.names, ...(f.private ? [`+${f.private} private`] : [])].join(", ");
 }
 
 /** What asking everyone does, in a line. */
@@ -75,7 +97,11 @@ export function menuHtml(h: WhoMenuHooks): string {
   const name = h.name();
   const vis = h.visibility();
   const person = h.mode() === "person";
+  const f = h.followers?.();
+  const said = f ? followersCount(f) : null;
   return (
+    // who follows this reader, which nothing to choose: a heading and a line
+    (said ? `<div class="wm-h" id="wm-fol">${said}</div><div class="wm-note wm-fol" aria-labelledby="wm-fol">${escapeHtml(followersLine(f!))}</div><div class="wm-sep" role="separator"></div>` : "") +
     (h.mode() === "header"
       ? `<div class="wm-note">${name ? `Signed in as <b>${escapeHtml(name)}</b>` : "Not signed in"}: your name is the sign-in's, in front of this server.</div>`
       : `<button type="button" role="menuitem" class="wm-item" data-act="rename"><span class="wm-t">${name ? "Change name…" : "Set your name…"}</span>` +

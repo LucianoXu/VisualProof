@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { ART_NAMES_BYTES, ART_RULED_BYTES, ART_TARGETS_BYTES, cleanView, withoutArtwork } from "../src/shared/collab.ts";
+import { agentPlace, ART_NAMES_BYTES, ART_RULED_BYTES, ART_TARGETS_BYTES, cleanView } from "../src/shared/collab.ts";
 import type { ActivityView, ArtworkView, PresenceView } from "../src/shared/collab.ts";
 import { Activity } from "../src/web/src/activity.ts";
 import type { ActivityHooks } from "../src/web/src/activity.ts";
@@ -153,9 +153,11 @@ const ART: ArtworkView = {
 };
 
 test("presence carries exactly the followed parts, and the views a page holds open; the server keeps every one of them", () => {
-  const v = presenceOf(reading(), ["v1", "v2"]);
+  const v = presenceOf(reading(), ["v1", "v2"], "n:Alice");
   assert.deepEqual(Object.keys(v).sort(), [...PRESENCE_FIELDS].sort());
-  assert.deepEqual([...BOOKKEEPING], ["tabs"]);
+  // the views a page holds open, and whom it follows (the owner's decision of 2026-10-20): no part's
+  assert.deepEqual([...BOOKKEEPING], ["tabs", "following"]);
+  assert.ok(!("following" in presenceOf(reading(), ["v1"])), "said only where the page follows someone");
   assert.equal(new Set(PRESENCE_FIELDS).size, PRESENCE_FIELDS.length, "a field is one part's");
   // as the server takes it: nothing dropped, nothing added
   assert.deepEqual(cleanView(JSON.parse(JSON.stringify(v))), v);
@@ -210,10 +212,11 @@ test("presence carries exactly the followed parts, and the views a page holds op
   assert.ok(Buffer.byteLength(JSON.stringify(ruled)) <= ART_RULED_BYTES && ruled.length > 10, `${ruled.length} names`);
   const { ruledNames: _ruled, ...unruled } = ART;
   assert.deepEqual(cleanView({ ...v, artwork: unruled })!.artwork!.ruledNames, []);
-  // an agent's presence carries none: agents have no artwork
-  const { artwork: _artwork, ...rest } = cleanView(v)!;
-  assert.deepEqual(withoutArtwork(cleanView(v)), rest);
-  assert.ok(!("artwork" in withoutArtwork(cleanView(v))!));
+  // an agent's presence carries none: agents have no artwork, and follow nobody
+  const { artwork: _artwork, following: _following, ...rest } = cleanView(v)!;
+  assert.deepEqual(agentPlace(cleanView(v)), rest);
+  assert.ok(!("artwork" in agentPlace(cleanView(v))!));
+  assert.ok(!("following" in agentPlace(cleanView({ ...v, following: "n:Alice" }))!));
 });
 
 test("the artwork is followed (ExportSpec decision 19): on with the other's settings and frame, changed with them, off with theirs", () => {

@@ -10,16 +10,23 @@
 // someone shows the following strip, which says whom and stops it.
 //
 // A reader may be private (CollabSpec decision 8), from the menu under their name (web/src/whomenu.ts):
-// the page then says nothing of where they are — its heartbeat says only that it is here — and they
-// are neither listed nor followed; the bar shows how many private readers there are ("+2 private").
+// the page then says nothing of where they are — its heartbeat says only that it is here, and whom it
+// follows — and they are neither listed nor followed; the bar shows how many private readers there
+// are ("+2 private").
+//
+// Who follows this reader (the owner's decision of 2026-10-20): every page says whom it follows, and
+// the reader's name carries a mark with how many do — the people, and the private readers the server
+// counts for them ("+1 private"); read-only readers are seen by nobody, and never counted — its
+// tooltip and its menu naming them; their initials among the others carry a mark too. Nothing is said
+// when someone starts following.
 //
 // A reader who came by a personal link (CollabSpec decision 9) is who the link says: their name is
 // the link's, changed through the server, and carries a ✓ here and wherever the others see it. A
 // guest — who came by the key's link — gives any name but one a link's holder goes by: the server
 // says so when the name is given, and the window asks for another.
 
-import { colorOf, initials, validName } from "../../shared/collab.ts";
-import type { Peer, PersonInvite, PresenceView, StreamHello } from "../../shared/collab.ts";
+import { colorOf, initials, personKey, validName } from "../../shared/collab.ts";
+import type { Peer, PersonInvite, PresenceView, PrivateCount, StreamHello } from "../../shared/collab.ts";
 import { agentName, BOT } from "./agentmark.ts";
 import { stateWords } from "./talk.ts";
 import type { DataSource } from "./data.ts";
@@ -30,8 +37,8 @@ import type { Store } from "./store.ts";
 import { doubleClickActs, inYours, keyActs, pressActs, WHEEL } from "./surfaces.ts";
 import { typing } from "./typing.ts";
 import { VERIFIED } from "./verified.ts";
-import { WhoMenu } from "./whomenu.ts";
-import type { NameMode } from "./whomenu.ts";
+import { followersCount, followersLine, WhoMenu } from "./whomenu.ts";
+import type { Followers, NameMode } from "./whomenu.ts";
 
 const BEAT_MS = 10_000;
 const IDLE_MS = 5 * 60_000;
@@ -114,16 +121,23 @@ interface Person {
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 
-/** Who a page or an agent is among the people: one person per name — an agent and a person of the
- *  same name are two, and so are a guest and someone invited by a personal link — and a page without
- *  a name on its own. An agent is its presence entry, which the server keeps one per token, or one
- *  per name for an agent without a token (server/presence.ts): an agent that gives the name of one
- *  with a token is another, so that nobody can speak for an agent with a token by giving its name
- *  (AgentSpec, "Presence") — lead the people following it, or speak in its channels. What
- *  following follows, and a request to follow asks to follow (web/src/askfollow.ts). */
-export function personKey(p: { id: string; name: string | null; agent?: boolean; verified?: boolean }): string {
-  return p.agent ? `a:${p.id}` : p.name ? `${p.verified ? "v" : "n"}:${p.name}` : `s:${p.id}`;
+/** Who a page or an agent is among the people (shared/collab.ts). */
+export { personKey };
+
+/** The people among `peers` who follow the reader whose page is listed as `me` (the owner's decision
+ *  of 2026-10-20), by personKey: those a page of whom says it follows them. Nobody follows a reader
+ *  who is not listed — private, read-only, or not yet named by the server — and agents follow
+ *  nobody. */
+export function followerKeys(peers: readonly Peer[], me: Peer | null): Set<string> {
+  const out = new Set<string>();
+  if (!me) return out;
+  const mine = personKey(me);
+  for (const p of peers) if (!p.agent && p.id !== me.id && p.view?.following === mine) out.add(personKey(p));
+  return out;
 }
+
+/** the mark of people following the reader, beside their name and on their followers' initials */
+const FOLLOWED_MARK = `<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><circle cx="8" cy="5.2" r="2.6" fill="currentColor"/><path d="M3.2 13.6c.5-2.9 2.4-4.5 4.8-4.5s4.3 1.6 4.8 4.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 /** A session id that needs no secure context (crypto.randomUUID does): what this page calls itself
  *  in its event stream's address, so that the server keeps its streams few; nobody else is told it. */
@@ -168,6 +182,13 @@ export class People {
   private hidden: boolean;
   /** how many private readers the server counts: this page among them once its hello says so */
   private privateAll = 0;
+  /** how many of them follow this reader, as the server counts them for this page */
+  private privateFollowers = 0;
+  /** this page as the server lists it, with the others: null while it is not listed (private,
+   *  read-only, before its first heartbeat) */
+  private me: Peer | null = null;
+  /** who follows this reader, as last drawn: the name is drawn again when it changes */
+  private followersDrawn = "";
   private menu: WhoMenu;
   /** the personal link this reader came by, shown to them in the name's window */
   private myLink: MyLink;
@@ -195,6 +216,7 @@ export class People {
       myLink: () => void this.myLink.open(),
       setVisibility: (v) => this.setPrivate(v === "private"),
       ...(hooks.askAll ? { askAll: () => hooks.askAll!(), askWhy: () => hooks.askWhy?.() ?? null } : {}),
+      followers: () => this.followers(),
     });
   }
 
@@ -290,7 +312,13 @@ export class People {
   renderMe(): void {
     const who = $("#who");
     who.hidden = this.mode === "none";
-    who.innerHTML = escapeHtml(this.name ?? (this.mode === "header" ? "Not signed in" : "Set your name")) + (this.mode === "person" ? VERIFIED : "") + (this.hidden ? HIDDEN : "");
+    // who follows this reader: a mark with how many, which the tooltip and the menu name
+    const f = this.followers();
+    const said = followersCount(f);
+    const line = followersLine(f);
+    const mark = said ? `<span class="who-fol" id="who-fol" aria-label="${escapeHtml(said)}">${FOLLOWED_MARK}<b>${f.names.length + f.private}</b></span>` : "";
+    this.followersDrawn = this.followersSig(f);
+    who.innerHTML = `<span class="who-n">${escapeHtml(this.name ?? (this.mode === "header" ? "Not signed in" : "Set your name"))}</span>` + (this.mode === "person" ? VERIFIED : "") + (this.hidden ? HIDDEN : "") + mark;
     who.classList.toggle("unset", !this.name);
     who.classList.toggle("private", this.hidden);
     who.style.setProperty("--me", this.name ? colorOf(this.name) : "var(--text-3)");
@@ -303,8 +331,33 @@ export class People {
           ? `${records}; you came by a personal link, so it is yours (✓) — click to change it, or your visibility`
           : this.name
             ? `${records} — click to change it, or your visibility`
-            : "Give the name your opinions are recorded under — click to give it, or for your visibility");
+            : "Give the name your opinions are recorded under — click to give it, or for your visibility") +
+      (said ? ` · ${said}: ${line}` : "");
     this.menu.render();
+  }
+
+  /** Who follows this reader (the owner's decision of 2026-10-20): the people, named as the page
+   *  names them, and the private readers the server counts; nobody, while this reader is private. */
+  followers(): Followers {
+    if (this.hidden) return { names: [], private: 0 };
+    const keys = followerKeys(this.peers, this.me);
+    return {
+      names: this.people()
+        .filter((p) => keys.has(p.key))
+        .map((p) => (p.name ? this.nameOf(p) : "a reader without a name")),
+      private: this.privateFollowers,
+    };
+  }
+
+  private followersSig(f: Followers): string {
+    return JSON.stringify(f);
+  }
+
+  /** Whom this page follows changed: the server is told at once — by a private page too, whose
+   *  heartbeat says only that — so that the reader it follows sees it. */
+  private toldFollowing(): void {
+    if (this.hidden) void this.beat();
+    else this.report();
   }
 
   /** The name's window, from the menu under it: give the name, or change it. */
@@ -475,7 +528,7 @@ export class People {
     // a heartbeat speaks for this page's stream, by its secret: none before the stream said hello;
     // a private page's says that it is here, and nothing else (CollabSpec decision 8)
     if (!this.stream) return Promise.resolve();
-    return this.data.presence(this.stream.token, this.hidden ? { private: true } : { view: this.hooks.view(), idle: this.idle });
+    return this.data.presence(this.stream.token, this.hidden ? { private: true, following: this.followed?.key ?? null } : { view: this.hooks.view(), idle: this.idle });
   }
 
   /** The event stream (re)connected and was named, or was named afresh as this page went private or
@@ -498,10 +551,18 @@ export class People {
     return told;
   }
 
-  /** How many private readers the server counts (CollabSpec decision 8). */
-  setPrivateCount(n: number): void {
-    this.privateAll = n;
+  /** How many private readers the server counts (CollabSpec decision 8), and how many of them follow
+   *  this reader. */
+  setPrivateCount(p: PrivateCount): void {
+    this.privateAll = p.count;
+    this.privateFollowers = p.followers ?? 0;
     this.renderPeers();
+    this.followersChanged();
+  }
+
+  /** The name drawn again where who follows this reader changed. */
+  private followersChanged(): void {
+    if (this.followersSig(this.followers()) !== this.followersDrawn) this.renderMe();
   }
 
   /** The private readers but this one: the server counts this page too once its hello says so. */
@@ -512,7 +573,9 @@ export class People {
   /** The list of pages, as the server sends it. */
   setPeers(all: Peer[]): void {
     this.peers = all.filter((p) => p.id !== this.stream?.id);
+    this.me = all.find((p) => p.id === this.stream?.id) ?? null;
     this.renderPeers();
+    this.followersChanged();
     this.hooks.changed();
     if (!this.followed) return;
     const p = this.people().find((x) => x.key === this.followed!.key);
@@ -573,6 +636,9 @@ export class People {
     const box = $("#peers");
     const all = this.people();
     const hidden = this.privateOthers;
+    // those following this reader (the owner's decision of 2026-10-20), marked in this reader's colour
+    const following = this.hidden ? new Set<string>() : followerKeys(this.peers, this.me);
+    const me = this.name ? colorOf(this.name) : "var(--accent)";
     box.hidden = all.length === 0 && hidden === 0;
     const shown = all.slice(0, initialsShown(all.length, hidden > 0, isPhone()));
     box.innerHTML =
@@ -586,14 +652,15 @@ export class People {
           // what they made of this reader's request to follow, for a little while after
           const ask = p.agent ? null : (this.hooks.asked?.(p) ?? null);
           const does = !this.hooks.menu ? "click to follow" : p.agent ? `click to follow${s.talk ? " or talk with it" : " it"}` : "click to follow, or to ask them to follow you";
-          const tip = `${who}${where ? ` — ${where}` : ""}${s.idle && !s.talk ? " · away" : ""}${talk}${ask ? ` · ${ask.tip}` : ""} · ${does}`;
+          const fol = following.has(p.key);
+          const tip = `${who}${where ? ` — ${where}` : ""}${s.idle && !s.talk ? " · away" : ""}${talk}${fol ? " · follows you" : ""}${ask ? ` · ${ask.tip}` : ""} · ${does}`;
           const on = this.followed?.key === p.key ? " on" : "";
           const bot = p.agent ? `<span class="peer-bot">${BOT}</span>` : p.verified ? `<span class="peer-vf" aria-hidden="true">✓</span>` : "";
           const dot = s.talk ? `<span class="peer-dot st-${s.talk.state}"></span>` : "";
-          const mark = ask ? `<span class="peer-ask ${ask.cls}" aria-hidden="true">${ask.glyph}</span>` : "";
+          const mark = (ask ? `<span class="peer-ask ${ask.cls}" aria-hidden="true">${ask.glyph}</span>` : "") + (fol ? `<span class="peer-fol" style="--me:${me}" aria-hidden="true">${FOLLOWED_MARK}</span>` : "");
           const state = s.talk?.state === "offline" ? " offline" : s.idle ? " idle" : "";
           const menu = !this.hooks.menu ? "" : ` aria-haspopup="menu"`;
-          return `<button class="peer${p.agent ? " agent" : p.verified ? " verified" : ""}${state}${on}${ask ? " asked" : ""}" data-person="${escapeHtml(p.key)}" style="--c:${this.colorOf(p)}" title="${escapeHtml(tip)}"${menu}>${escapeHtml(this.label(p))}${bot}${dot}${mark}</button>`;
+          return `<button class="peer${p.agent ? " agent" : p.verified ? " verified" : ""}${state}${on}${ask ? " asked" : ""}${fol ? " follows" : ""}" data-person="${escapeHtml(p.key)}" style="--c:${this.colorOf(p)}" title="${escapeHtml(tip)}"${menu}>${escapeHtml(this.label(p))}${bot}${dot}${mark}</button>`;
         })
         .join("") +
       (all.length > shown.length
@@ -616,6 +683,7 @@ export class People {
     if (this.followed) this.hooks.unfollowed();
     this.followed = { key, name: this.nameOf(p) };
     this.applied = "";
+    this.toldFollowing();
     const box = $("#following");
     box.style.setProperty("--c", this.colorOf(p));
     this.renderStrip(p.agent);
@@ -631,6 +699,7 @@ export class People {
     this.followed = null;
     document.body.classList.remove("following");
     this.hooks.unfollowed();
+    this.toldFollowing();
     this.renderPeers();
     const box = $("#following");
     // the keys go back to the page: none stays with a button that is no longer shown

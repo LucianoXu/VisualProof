@@ -995,6 +995,19 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 /* a private reader (CollabSpec decision 8): their dot hollow, and an eye struck through */
 .who.private::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--me, var(--text-3)); }
 .who-hidden { margin-left: 6px; vertical-align: -2px; color: var(--text-2); }
+/* who follows the reader (the owner's decision of 2026-10-20): a mark after the name, with how many;
+   the name gives way to it, never the mark */
+#who { display: inline-flex; align-items: center; }
+#who::before { flex: none; }
+.who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#who > .vf, #who > .who-hidden { flex: none; }
+.who-fol {
+  flex: none; display: inline-flex; align-items: center; gap: 2px; margin-left: 7px; padding: 0 6px 0 4px; height: 18px;
+  border-radius: 9px; background: color-mix(in srgb, var(--me, var(--accent)) 16%, transparent); color: var(--me, var(--accent));
+  font: 600 11px/1 var(--font);
+}
+.who-fol svg { flex: none; }
+.wm-fol { padding-top: 0; color: var(--text); line-height: 1.4; }
 /* the menu under the name (web/src/whomenu.ts) */
 .who-wrap { position: relative; display: flex; min-width: 0; }
 .who-wrap:has(> #who[hidden]) { display: none; }
@@ -1146,6 +1159,14 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
   position: absolute; left: -5px; top: -5px; display: grid; place-items: center; width: 15px; height: 15px;
   border-radius: 50%; color: #fff; box-shadow: 0 0 0 1.5px var(--surface-solid); font: 700 9px/1 var(--font);
 }
+/* someone following the reader (the owner's decision of 2026-10-20): the corner the others leave, in
+   the reader's colour */
+.peer.follows { position: relative; }
+.peer-fol {
+  position: absolute; left: -5px; bottom: -5px; display: grid; place-items: center; width: 15px; height: 15px;
+  border-radius: 50%; background: var(--me); color: #fff; box-shadow: 0 0 0 1.5px var(--surface-solid);
+}
+.peer-fol svg { width: 10px; height: 10px; }
 .peer-ask.ask-follow { background: var(--st-ok); }
 .peer-ask.ask-decline { background: var(--bad); }
 .peer-ask.ask-timeout { background: var(--text-3); }
@@ -2860,6 +2881,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .more-item svg { flex: none; width: 18px; height: 18px; color: var(--text-2); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .more-item .act-badge, .more-item .talk-at { position: static; margin-left: auto; box-shadow: none; }
   .more-item .act-badge + .talk-at { margin-left: 4px; }
+  .more-item .more-fol { margin-left: auto; padding: 2px 8px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font: 600 12px var(--font); white-space: nowrap; }
   /* the modes, at the top of ⋯: each with what a tap selects under its name, the one in use ticked */
   #more-pop { max-height: calc(100dvh - 70px); overflow-y: auto; }
   .more-h { padding: 6px 12px 2px; font-size: 12px; font-weight: 600; color: var(--text-2); }

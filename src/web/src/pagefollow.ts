@@ -75,8 +75,9 @@ export function followPart(page: Page): FollowPart {
       artwork: (v) => page.art.follow(v.artwork ?? null),
     },
   };
-  /** Where this page is: what the others are told, and what Share tells an agent. */
-  const whereIAm = (): PresenceView => presenceOf(parts.read, page.nav.tabs.map((t) => t.id));
+  /** Where this page is: what the others are told, and what Share tells an agent; and whom it
+   *  follows, which the followed are told (the owner's decision of 2026-10-20). */
+  const whereIAm = (): PresenceView => presenceOf(parts.read, page.nav.tabs.map((t) => t.id), page.people.followedKey);
   /** Go where a reader's followed state says (CollabSpec decision 4): their view (a tab opened for it
    *  if need be), their tool, their selection (from before selections were queries, or from an agent
    *  that does not say: what their panel tells of, under their tool), camera and source window — the

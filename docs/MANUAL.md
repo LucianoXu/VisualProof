@@ -1333,12 +1333,18 @@ what each one looks at stays their own.
   someone else has your link. A link made before 0.6.0, when the server kept only a digest of it,
   cannot be shown: make it anew to have it here. Then **Visibility** (CollabSpec decision 8).
   *Visible*, the default: the others see you and where you look, and can follow you. *Private*: your page tells nobody where you are; you are
-  not in the bar nor in "Also here", and nobody can follow you (you may still follow others). The
+  not in the bar nor in "Also here", and nobody can follow you (you may still follow others: whom
+  you follow sees one more follower, "+1 private", and nothing else of you). The
   others see only how many private readers there are ("+2 private", beside the initials). What you
   change of the layout — pins, folds, re-layouts, scopes, the views you make, rename or delete — is
   shared as anyone's, but shows as *someone's*, here and to agents; your opinions, targets, key
   marks and trust keep your name, and need one. Private, your dot beside the name is hollow and an
   eye is struck through. The browser keeps the choice for all its tabs; it changes at once.
+- **Who follows you**: when people follow you, your name carries a mark with how many — "2 follow
+  you" — the people by name and the private readers only counted ("Bob, +1 private"); rest on your
+  name, or open its menu, to see them, and their initials carry a small mark in your colour. Readers
+  by a read-only link are never counted (nobody sees them). Nothing tells you when someone starts or
+  stops following.
 - **Who else is here**: their initials beside your name, faded when they are away. Rest on one to
   see where they are; click for their menu, **Follow** them or **Ask … to follow me** (an agent's
   menu: **Follow**, and **Talk** with it, in its private channel if it is yours, else by mentioning
