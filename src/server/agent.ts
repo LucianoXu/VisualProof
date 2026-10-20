@@ -44,14 +44,13 @@ import { encodeRecipe, readRecipe, RECIPE_PARAM, resolveRecipe, SAVE_PARAM } fro
 import { exactContext } from "../shared/context.ts";
 import type { FileContext, ModuleContexts } from "../shared/context.ts";
 import type { ClusterMode, Layout } from "../shared/graph.ts";
-import { SITE_STMT } from "../shared/graph.ts";
 import { CLUSTER_MODES, invalidOps } from "../shared/places.ts";
 import type { PlaceOp, PlacesData } from "../shared/places.ts";
 import { evaluate, parseQuery, printQuery, QueryError } from "../shared/query.ts";
-import { advice, adviceOf, covers, fresh, STANDARD_AXIOMS, statusOf, trustedBy } from "../shared/review.ts";
+import { advice, fresh, STANDARD_AXIOMS, trustedBy } from "../shared/review.ts";
 import type { Opinion, ReviewData } from "../shared/review.ts";
 import { fileOf, linkOf } from "../shared/library.ts";
-import { keyCounts, keyFirst, keyGraph, keyParts, statusCounts, topDown } from "../shared/keys.ts";
+import { keyGraph } from "../shared/keys.ts";
 import { authorLine, authorsOf, reviewTraces, viewTraces } from "../shared/doc/authors.ts";
 import { itemsShownOn } from "../shared/noteplace.ts";
 import { buildDoc, DocInputError, docNotes } from "../shared/doc/build.ts";
@@ -64,8 +63,7 @@ import { renderLatex } from "../shared/doc/latex.ts";
 import type { DocModel } from "../shared/doc/model.ts";
 import { readSettings, SETTINGS_HELP } from "../shared/doc/settings.ts";
 import type { KeyGraph } from "../shared/keys.ts";
-import { nonStandardAxiom, offBoard, whyChain } from "../shared/reviewqueue.ts";
-import type { Queue } from "../shared/reviewqueue.ts";
+import { nonStandardAxiom } from "../shared/reviewqueue.ts";
 import { reviewThen } from "../shared/pastgraph.ts";
 import { foldedAt, guessNames } from "../shared/declfind.ts";
 import { fullWhen } from "../shared/titles.ts";
@@ -100,6 +98,7 @@ import { docs, endpointList, index, mcpFile, mcpInstallGet, mcpTools } from "./a
 import { MAX_PRINT, describe, print } from "./agentlean.ts";
 import { MAX_NAMES, PARTS, context, declaration, declarations, moduleGet, refsGet, searchGet, source } from "./agentread.ts";
 import { MAX_OPINIONS, opinionPost, opinionsPost, withdrawPost } from "./agentadvice.ts";
+import { keyPost, keysGet, targetPost, targets, tcb, trustPost, why } from "./agenttcb.ts";
 
 /** What agents may change on a server (`--agents`): nothing; advice and notes; or everything a
  *  person can do through the page, their opinions still advice (AgentSpec decision 9). */
@@ -491,7 +490,7 @@ export class AgentApi {
   }
 
   /** `root`'s key graph over its TCB (shared/keys.ts). */
-  private keys(v: View, root: number): KeyGraph {
+  keys(v: View, root: number): KeyGraph {
     return keyGraph(v.g, this.world.review.data, root, v.order(root, this.world.review.data).order);
   }
 
@@ -500,7 +499,7 @@ export class AgentApi {
     return this.advisedOn(v.g.nodes[i].name, v.g.nodes[i].hash, me);
   }
 
-  private advisedOn(name: string, hash: string | undefined, me: Caller): boolean {
+  advisedOn(name: string, hash: string | undefined, me: Caller): boolean {
     return me.kind === "agent" && !!me.name && advice(this.world.review.data, name).some((o) => o.by === me.name && fresh(o, hash));
   }
 
@@ -918,238 +917,6 @@ export class AgentApi {
     };
   }
 
-  private targets(a: Ask): Answer {
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const d = this.world.review.data;
-    return ok({
-      targets: Object.entries(d.targets)
-        .sort((x, y) => (x[0] < y[0] ? -1 : 1))
-        .map(([name, t]) => {
-          const i = v.g.byName.get(name);
-          return {
-            name,
-            markedBy: t.by,
-            ...(t.agent ? { markedByAgent: true } : {}),
-            at: t.at,
-            inGraph: i !== undefined,
-            ...(i !== undefined ? { counts: this.counts(v, i, v.order(i, d), a.caller) } : {}),
-          };
-        }),
-    });
-  }
-
-  /** How far a target's review has come, people's (as the page counts it) and agents' apart: every
-   *  member of its queue, the axioms the graph has no declaration for included; and its key
-   *  declarations alone (ExportSpec decision 4), those that need review, the target among them, the
-   *  trusted ones counted apart. */
-  private counts(v: View, root: number, q: Queue, me: Caller) {
-    const d = this.world.review.data;
-    const c = { needReview: 0, approved: 0, commented: 0, stale: 0, unreviewed: 0, advised: 0, agentComments: 0, advisedByYou: 0 };
-    const count = (name: string, hash: string | undefined) => {
-      c.needReview++;
-      const s = statusOf(d, name, hash);
-      if (s === "approved") c.approved++;
-      else if (s === "commented") c.commented++;
-      else if (s === "stale") c.stale++;
-      else c.unreviewed++;
-      const adv = adviceOf(d, name, hash);
-      if (adv) c.advised++;
-      if (adv === "comment") c.agentComments++;
-      if (this.advisedOn(name, hash, me)) c.advisedByYou++;
-    };
-    for (const i of q.order) count(v.g.nodes[i].name, v.g.nodes[i].hash);
-    for (const x of offBoard(q)) count(x.name, undefined);
-    // the key declarations counted, without the key graph's walk (every target's, in `targets`)
-    return { ...c, key: keyCounts(v.g, d, keyParts(v.g, d, root, q.order, v.tcb(root))) };
-  }
-
-  private tcb(a: Ask): Answer {
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const root = this.find(v, a.query.get("target"), "target");
-    if (typeof root !== "number") return root;
-    const d = this.world.review.data;
-    const g = v.g;
-    const q = v.order(root, d);
-    const order = q.order;
-    const include = a.query.get("include")?.trim() || "review";
-    if (include !== "review" && include !== "trusted" && include !== "all")
-      return fail(400, `include is review, trusted or all, not ${include}.`, "review (the default): the members that need review, in review order; trusted: the members trusted without review; all: both, review's first.");
-    const keyParam = a.query.get("key")?.trim() || null;
-    if (keyParam !== null && keyParam !== "first" && keyParam !== "only")
-      return fail(400, `key is first or only, not ${keyParam}.`, "first: the key declarations first (the trusted ones first), then the rest in review order; only: the key declarations alone.");
-    if (keyParam && include !== "review") return fail(400, "key lists the key declarations with what needs review, the trusted ones among them, marked trusted.", "Leave include out with key.");
-    const kg = this.keys(v, root);
-    const isKey = new Set(kg.keys);
-    const todo = flag(a.query.get("todo"));
-    if (todo && include !== "review") return fail(400, "todo=1 lists what needs review and you have not advised on; the trusted members need no review.", "Leave todo out with include=trusted or all.");
-    if (todo && (a.caller.kind !== "agent" || !a.caller.name))
-      return fail(400, "todo=1 lists what you have not advised on: say who you are.", "Send X-VisualProof-Name and X-VisualProof-Kind: agent.");
-    // the trusted members: the project's own first (a layer trusted by name is worth knowing), then
-    // by what trusts them, then by name
-    const tcb = v.tcb(root);
-    const trustedRows: { i: number; by: string[] }[] = [];
-    for (let j = 0; j < g.n; j++) {
-      if (!tcb[j]) continue;
-      const t = this.trust(v, j);
-      if (t.trusted) trustedRows.push({ i: j, by: t.trustedBy });
-    }
-    trustedRows.sort((x, y) => Number(g.isExt(x.i)) - Number(g.isExt(y.i)) || (x.by[0] < y.by[0] ? -1 : x.by[0] > y.by[0] ? 1 : 0) || (g.nodes[x.i].name < g.nodes[y.i].name ? -1 : 1));
-    // a Map: a prefix may be called `constructor`
-    const byPrefix = new Map<string, number>();
-    let ownTrusted = 0;
-    for (const r of trustedRows) {
-      byPrefix.set(r.by[0], (byPrefix.get(r.by[0]) ?? 0) + 1);
-      if (!g.isExt(r.i)) ownTrusted++;
-    }
-    type Row = { review: true; i: number; k: number } | { review: false; i: number; k: number; by: string[] };
-    // the key declarations first (or alone), the trusted ones among them (ExportSpec decision 1):
-    // positions are still those of the review order, a trusted one's that of the trusted list
-    const listed = keyParam === "only" ? kg.keys : keyParam === "first" ? keyFirst(order, kg.keys) : order;
-    const at = new Map(order.map((i, k) => [i, k]));
-    const trustedAt = new Map(trustedRows.map((r, k) => [r.i, k]));
-    const row = (i: number): Row => (at.has(i) ? { review: true, i, k: at.get(i)! } : { review: false, i, k: trustedAt.get(i) ?? 0, by: this.trust(v, i).trustedBy });
-    const rows: Row[] = [
-      // a trusted key declaration needs no review: not among what todo=1 leaves to advise on
-      ...(include === "trusted" ? [] : listed.map(row).filter((r) => !todo || (r.review && !this.advised(v, r.i, a.caller)))),
-      ...(include === "review" ? [] : trustedRows.map((r, k) => ({ review: false as const, i: r.i, k, by: r.by }))),
-    ];
-    const offset = clampInt(a.query.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);
-    const limit = clampInt(a.query.get("limit"), 50, 1, 500);
-    const page = rows.slice(offset, offset + limit);
-    return ok({
-      target: g.nodes[root].name,
-      isTarget: !!d.targets[g.nodes[root].name],
-      order:
-        include === "trusted"
-          ? "trusted: the project's own first, then by the prefix that trusts them, then by name"
-          : (keyParam === "only"
-              ? "the key declarations alone, the trusted ones first (by the trusted list's position), then in review order; "
-              : keyParam === "first"
-                ? "the key declarations first, the trusted ones first (by the trusted list's position), then the rest, each in review order; "
-                : "") +
-            "review: the target's review set — the non-standard axioms it rests on first; then bottom-up: what a declaration uses comes before it; declarations that use each other together; then what more targets rest on; then by name" +
-            (include === "all" ? ". Then the trusted members: the project's own first, then by the prefix that trusts them, then by name" : ""),
-      counts: this.counts(v, root, q, a.caller),
-      trustedNotCounted: trustedRows.length,
-      // what the target rests on beyond Lean's three standard axioms, through statements, bodies or
-      // proofs: each needs review; one without a declaration in the graph is counted beside the list
-      axioms: q.axioms.map((x) => ({
-        name: x.name,
-        inGraph: x.node !== null,
-        status: statusOf(d, x.name, x.node === null ? undefined : g.nodes[x.node].hash),
-        usedIn: x.via.map((j) => g.nodes[j].name),
-      })),
-      ...(include !== "review" ? { trusted: { project: ownTrusted, external: trustedRows.length - ownTrusted, byPrefix: Object.fromEntries(byPrefix) } } : {}),
-      ...(todo ? { todo: true } : {}),
-      ...(keyParam ? { key: keyParam } : {}),
-      include,
-      offset,
-      limit,
-      total: rows.length,
-      next: offset + limit < rows.length ? offset + limit : null,
-      members: page.map((r) => {
-        const n = g.nodes[r.i];
-        if (!r.review) return { position: r.k + 1, ...this.brief(v, r.i), ...(isKey.has(r.i) ? { key: true } : {}), trusted: true, trustedBy: r.by };
-        return {
-          position: r.k + 1,
-          ...this.brief(v, r.i),
-          ...(isKey.has(r.i) ? { key: true } : {}),
-          status: statusOf(d, n.name, n.hash),
-          advice: advice(d, n.name)
-            .filter((o) => fresh(o, n.hash))
-            .map((o) => ({ by: o.by, verdict: o.verdict })),
-          youAdvised: this.advised(v, r.i, a.caller),
-        };
-      }),
-    });
-  }
-
-  /** A target's key declarations (ExportSpec decisions 1 and 3), top-down: each with what it rests
-   *  on beyond itself — its support, by review status, and the key declarations it rests on — and
-   *  the key graph's edges. A trusted one (the owner's decision of 2026-10-19) says what trusts it,
-   *  and has no status: it needs no review. */
-  private keysGet(a: Ask): Answer {
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const root = this.find(v, a.query.get("target"), "target");
-    if (typeof root !== "number") return root;
-    const g = v.g;
-    const d = this.world.review.data;
-    const target = g.nodes[root].name;
-    const members = a.query.get("members") === null || flag(a.query.get("members"));
-    const q = v.order(root, d);
-    const kg = this.keys(v, root);
-    const name = (j: number) => g.nodes[kg.keys[j]].name;
-    const marks = Object.hasOwn(d.keys, target) ? d.keys[target] : null;
-    const rests = kg.keys.map(() => [] as number[]);
-    for (const [x, y] of kg.edges) rests[x].push(y);
-    const top = topDown(kg);
-    const rank = new Map(top.map((j, k) => [j, k]));
-    // marks on what the TCB no longer holds: kept, counted for nothing until it is back
-    const inKeys = new Set(kg.keys.map((i) => g.nodes[i].name));
-    const outside = marks ? Object.keys(marks).filter((x) => !inKeys.has(x)).sort() : [];
-    const trusted = new Set(kg.trusted);
-    return ok({
-      target,
-      isTarget: Object.hasOwn(d.targets, target),
-      order: "top-down: the target, then each key declaration a layer below every key declaration that rests on it; within a layer, later in review order first",
-      note: "A member that is not key is supported by a key declaration when a chain of statement and body references leads to it from there through members of the TCB that are not key, trusted ones too; a support counts the members that need review. The key graph has an edge from one key declaration to another reached that way. A non-standard axiom the target rests on through proofs alone is the target's support (viaProof). A trusted key declaration needs no review: counts.key counts the others, its trusted apart.",
-      counts: { key: keyCounts(g, d, kg), all: statusCounts(g, d, q.order), offBoardAxioms: offBoard(q).length },
-      keys: top.map((j) => {
-        const i = kg.keys[j];
-        const n = g.nodes[i];
-        const mark = i !== root && marks && Object.hasOwn(marks, n.name) ? marks[n.name] : null;
-        return {
-          ...this.brief(v, i),
-          ...(i === root ? { target: true } : { markedBy: mark?.by ?? null, ...(mark?.agent ? { markedByAgent: true } : {}), markedAt: mark?.at ?? null }),
-          ...(trusted.has(i) ? { trusted: true, trustedBy: this.trust(v, i).trustedBy } : { status: statusOf(d, n.name, n.hash) }),
-          doc: n.doc ?? null,
-          restsOn: rests[j].sort((p, r) => rank.get(p)! - rank.get(r)!).map(name),
-          support: { ...statusCounts(g, d, kg.support[j]), ...(members ? { members: kg.support[j].map((m) => g.nodes[m].name) } : {}) },
-        };
-      }),
-      edges: kg.edges.map(([x, y]) => [name(x), name(y)]),
-      viaProof: kg.viaProof.map((i) => g.nodes[i].name),
-      ...(outside.length ? { marksOutsideTcb: outside } : {}),
-    });
-  }
-
-  private why(a: Ask): Answer {
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const root = this.find(v, a.query.get("target"), "target");
-    if (typeof root !== "number") return root;
-    const i = this.find(v, a.query.get("name"));
-    if (typeof i !== "number") return i;
-    const g = v.g;
-    const path = whyChain(g, root, i);
-    const q = v.order(root, this.world.review.data);
-    if (!path) {
-      // a non-standard axiom reached through a proof: in the review, not in the TCB
-      const ax = q.axioms.find((x) => x.node === i);
-      if (ax)
-        return ok({ target: g.nodes[root].name, name: g.nodes[i].name, inTcb: false, inReview: true, chain: null, usedIn: ax.via.map((j) => g.nodes[j].name), reviewPosition: { position: q.order.indexOf(i) + 1, of: q.order.length }, note: "A non-standard axiom the target rests on (through a proof): it needs review, whatever is trusted." });
-      return ok({ target: g.nodes[root].name, name: g.nodes[i].name, inTcb: false, chain: null, note: "Not in the TCB: nothing in the target's statement, nor in the body of a definition it reaches, refers to it (references inside proofs do not count)." });
-    }
-    // where each reference sits in the declaration that makes it
-    const via = (u: number, w: number) => {
-      let s = 0;
-      for (let e = g.outStart[u]; e < g.outStart[u + 1]; e++) if (g.outDst[e] === w) s |= g.outSite[e];
-      return s & SITE_STMT ? "statement" : "body";
-    };
-    const order = q.order;
-    const at = order.indexOf(i);
-    return ok({
-      target: g.nodes[root].name,
-      name: g.nodes[i].name,
-      inTcb: true,
-      chain: path.map((j, k) => ({ ...this.brief(v, j), ...(k ? { usedIn: `the ${via(path[k - 1], j)} of ${g.nodes[path[k - 1]].name}` } : {}) })),
-      reviewPosition: at >= 0 ? { position: at + 1, of: order.length } : null,
-    });
-  }
-
   private activity(a: Ask): Answer {
     const since = (a.query.get("since") ?? "").trim();
     const limit = clampInt(a.query.get("limit"), 100, 1, 1000);
@@ -1293,107 +1060,6 @@ export class AgentApi {
   }
 
   // ---------------------------------------------------------------- what people do (level full)
-
-  /** Record, as the agent's, what a person records from the page (AgentSpec decision 9): checked
-   *  and bound as the page's requests are (server/reviewapi.ts), appended to the agent's own log
-   *  under its name and marked, so that the page and the timeline say it was an agent's. The answer
-   *  is the event written, or that nothing changed. */
-  private record(me: Caller, op: Record<string, unknown>, hint?: (status: number) => string | null): Answer {
-    const r = this.reviews.post(op, { name: me.name!, agent: true });
-    const b = r.body as { error?: string; hint?: string; change?: unknown; event?: Record<string, unknown> };
-    if (r.status !== 200) return fail(r.status, b.error ?? "Refused.", hint?.(r.status) ?? b.hint ?? "GET /api/agent describes this endpoint.");
-    if (!b.change) return ok({ ok: true, changed: false, note: "Nothing changed: it was so already." });
-    return ok({ ok: true, changed: true, recorded: b.event });
-  }
-
-  /** The writes of level full say who makes them, that it is an agent, and that its level allows. */
-  private full(a: Ask): Answer | null {
-    return needAgent(a.caller) ?? this.refuse(a.caller, "full");
-  }
-
-  /** `on` as a request gives it: true unless it says false. */
-  private on(b: Record<string, unknown>): boolean | Answer {
-    if (b.on === undefined) return true;
-    return typeof b.on === "boolean" ? b.on : fail(400, "on is true or false.", "Leave it out to mark; false takes the mark off.");
-  }
-
-  /** A target marked, or taken off (ReviewSpec decision 4): a theorem whose TCB people review,
-   *  with no view until it is clicked or linked (ViewSpec decision 29). A target no longer in the
-   *  graph can still be taken off. */
-  private targetPost(a: Ask): Answer {
-    const no = this.full(a);
-    if (no) return no;
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const b = body(a);
-    const on = this.on(b);
-    if (typeof on !== "boolean") return on;
-    const d = this.world.review.data;
-    let name = str(b.name)?.trim() ?? "";
-    if (on || !Object.hasOwn(d.targets, name)) {
-      const i = this.find(v, name);
-      if (typeof i !== "number") return i;
-      name = v.g.nodes[i].name;
-    }
-    const r = this.record(a.caller, { op: "target", name, on }, (s) => (s === 404 ? "A target is a declaration of the project (GET /api/agent/search finds one), most often a theorem." : null));
-    if (r.status !== 200 || !on) return r;
-    return ok({ ...(r.body as object), view: this.world.views.book.viewOf(name)?.id ?? null, next: `POST /api/agent/view {"review": ${JSON.stringify(name)}} puts you on its view (a temporary view of its TCB, linked to it, where it has none); GET /api/agent/tcb?target=${name} lists its review set.` });
-  }
-
-  /** Key declarations of a target marked or unmarked (ExportSpec decision 1): one (`name`), or up
-   *  to MAX_OPINIONS at once (`names`), each answered on its own. */
-  private keyPost(a: Ask): Answer {
-    const no = this.full(a);
-    if (no) return no;
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const b = body(a);
-    const on = this.on(b);
-    if (typeof on !== "boolean") return on;
-    const d = this.world.review.data;
-    const t = this.find(v, str(b.target), "target");
-    if (typeof t !== "number") return t;
-    const target = v.g.nodes[t].name;
-    if (on && !Object.hasOwn(d.targets, target)) return fail(409, `${target} is not a target.`, `Key declarations are a target's: POST /api/agent/target {"name": ${JSON.stringify(target)}} marks it first.`);
-    const one = (raw: unknown): Answer => {
-      let name = str(raw)?.trim() ?? "";
-      // a mark on what has left the graph can still be taken off, by the name it was given
-      if (on || !Object.hasOwn(d.keys, target) || !Object.hasOwn(d.keys[target], name)) {
-        const i = this.find(v, name);
-        if (typeof i !== "number") return i;
-        name = v.g.nodes[i].name;
-      }
-      return this.record(a.caller, { op: "key", target, name, on }, (s) => (s === 409 ? `A key declaration is one of its target's TCB, trusted or not: GET /api/agent/tcb?target=${target}&include=all lists it.` : null));
-    };
-    if (b.names === undefined) return one(b.name);
-    if (!Array.isArray(b.names) || !b.names.length || b.names.length > MAX_OPINIONS)
-      return fail(400, `names is a list of 1 to ${MAX_OPINIONS} declarations' full names.`, 'Send {"target": …, "names": […], "on": true}, or one with name.');
-    const results = b.names.map((x, k) => {
-      const r = one(x);
-      return { index: k, name: typeof x === "string" ? x : null, status: r.status, ...(r.body as object) };
-    });
-    const done = results.filter((r) => r.status === 200);
-    return ok({ ok: true, target, on, changed: done.filter((r) => (r as { changed?: boolean }).changed).length, unchanged: done.filter((r) => !(r as { changed?: boolean }).changed).length, refused: results.length - done.length, results });
-  }
-
-  /** A prefix trusted without review, or no longer (ReviewSpec decision 3): a module or a
-   *  namespace, or `@external` for the whole outside world. What it covers is counted. */
-  private trustPost(a: Ask): Answer {
-    const no = this.full(a);
-    if (no) return no;
-    const v = this.graph();
-    if (!(v instanceof View)) return v;
-    const b = body(a);
-    const on = this.on(b);
-    if (typeof on !== "boolean") return on;
-    const prefix = str(b.prefix)?.trim() ?? "";
-    const r = this.record(a.caller, { op: "trust", prefix, on }, (s) => (s === 400 ? "A module or a namespace, e.g. Mathlib.Order or Nat; @external for the whole outside world. GET /api/agent/tcb?target=…&include=trusted shows what is trusted and by which prefix." : null));
-    if (r.status !== 200) return r;
-    const g = v.g;
-    const covered = { project: 0, outside: 0 };
-    for (let i = 0; i < g.n; i++) if (covers(prefix, g.nodes[i].name, g.nodes[i].module, g.isExt(i))) covered[g.isExt(i) ? "outside" : "project"]++;
-    return ok({ ...(r.body as object), prefix, on, covers: covered, trusted: this.world.review.data.trusted });
-  }
 
   private viewPost(a: Ask): Answer {
     const no = needAgent(a.caller);
@@ -1874,19 +1540,19 @@ export class AgentApi {
         method: "GET", path: "/api/agent/targets", brief: "the targets, and how far each review has come", about: "The targets people review, each with how far its review has come.",
         params: {},
         returns: "{targets: [{name, markedBy, markedByAgent?, at, inGraph, counts: {needReview, approved, commented, stale, unreviewed, advised, agentComments, advisedByYou, key: {total, approved, commented, stale, unreviewed, trusted}}}]}",
-        run: (a) => this.targets(a),
+        run: (a) => targets(this, a),
       },
       {
         method: "GET", path: "/api/agent/tcb", brief: "a target's review set, in review order", about: "What a target's review holds, its review set: its TCB without what is trusted (an untrusted outside declaration included), and every non-standard axiom it rests on, through proofs too — in review order (the axioms first, then bottom-up), each with people's status, the agents' advice on its present version, and whether you advised on it; or (include) the members trusted without review, each with what trusts it. Paged.",
         params: { target: name, include: "review (default) | trusted: the trusted members, each with the prefix that covers it or \"standard axiom\" | all: both, review's first", todo: "1: only those you have not advised on (present version); with include=review", key: "optional, with include=review: first — the key declarations first (the trusted ones first, marked trusted), then the rest in review order; only — the key declarations alone", offset: "default 0", limit: "default 50, at most 500" },
         returns: "{target, isTarget, order, counts: {needReview, approved, commented, stale, unreviewed, advised, agentComments, advisedByYou, key: {total, approved, commented, stale, unreviewed, trusted}}, trustedNotCounted, axioms: [{name, inGraph, status, usedIn}] (counted in counts; one not inGraph is advised on by its name), trusted?: {project, external, byPrefix}, include, offset, limit, total, next, members: [{position, name, kind, module, external?, key?: true, status, advice: [{by, verdict}], youAdvised} | {position, name, kind, module, external?, key?: true, trusted: true, trustedBy}]}",
-        run: (a) => this.tcb(a),
+        run: (a) => tcb(this, a),
       },
       {
         method: "GET", path: "/api/agent/keys", brief: "its key declarations, and what each rests on", about: "A target's key declarations (members of its TCB, trusted ones too, marked by people, or by agents at level full; the target is always one), top-down, each with its docstring, what it rests on beyond itself — its support, the members of the review it reaches through members that are not key, by review status — and the key declarations it rests on; and the key graph's edges.",
         params: { target: name, members: "1 (default): list each key declaration's support by name; 0: counts only" },
         returns: "{target, isTarget, order, note, counts: {key, all: {total, approved, commented, stale, unreviewed}, offBoardAxioms}, keys: [{name, kind, module, external?, target? | markedBy, markedByAgent?, markedAt, status | trusted: true, trustedBy, doc, restsOn: [names], support: {total, approved, commented, stale, unreviewed, members?: [names]}}], edges: [[from, to]], viaProof: [names], marksOutsideTcb?}",
-        run: (a) => this.keysGet(a),
+        run: (a) => keysGet(this, a),
       },
       {
         method: "GET", path: "/api/agent/export", about: "The exported document's model (ExportSpec.md): what the PDF of a view holds, as JSON. The view is the specification: every declaration of the project its board holds is printed (whatever is folded), each with its docstring and its code — a definition whole, proofs left out — in sections from the view's cluster structure as the board shows it (its hidden levels taken out); what it holds from outside the project is counted on the head card (head.outside), not printed. The board is the document's outline (2026-10-12): everything comes in the order of its height on the view's board, the lowest first, ties left to right, whatever depends on what — a section's declarations, notes and sections in one list (items), the document's start (declarations in no cluster, notes outside every cluster) before its sections; reordering things on the board (pins) reorders the document. The notes the view shows are its prose: a note attached to a declaration in that declaration's notes, after it; one in a cluster in that section's items; their text as prose blocks, a declaration they name in backticks an inline {t: decl, id} where the document prints it; the images and clips they carry as figures ({ref, file, page?, region?, size?: points}), whole PDFs as papers. Its title (head.title) is the view's, as it is named; its author line (head.author) the people who left a trace on the view — made, renamed, rescoped or laid it out afresh, dropped a pin still on it, wrote or edited a note on it — in the order of their first, agents and private readers not named: no setting gives either. Nothing of the review is in it. code.textCut says where a definition's proofs were found by reading its text rather than where the usage pass found them (edited: its file changed since it was compiled; unread: the pass has not read it; past: a past build's text): every `by` block is left out there, data too, and a proof written as a term stays. A view kept at a past build (or the build version names) makes that build's document (ExportSpec decision 16): head.past says the build — its snapshot, when it finished, how many texts were matched to it by its places alone and how many are not kept — head.commit and head.toolchain are that build's, the title says its build as the view's does, and its board holds that build's declarations alone; each declaration's text is the one that build compiled (code.places: matched to it by its places), a declaration whose text then is not kept printed as its statement then (code.notKept, from: statement).",
@@ -1916,7 +1582,7 @@ export class AgentApi {
         method: "GET", path: "/api/agent/why", about: "Why a declaration is in a target's TCB: the shortest chain of statement and body references from the target to it; for a non-standard axiom reached through a proof, where it is used.",
         params: { target: name, name },
         returns: "{target, name, inTcb, inReview?, chain: [{name, kind, module, usedIn?}] | null, usedIn?, reviewPosition?: {position, of} | null, note?}",
-        run: (a) => this.why(a),
+        run: (a) => why(this, a),
       },
       {
         method: "GET", path: "/api/agent/activity", brief: "the timeline", about: "The timeline, oldest first: opinions and advice, targets and key marks, files of the library added, retitled, archived or restored and links made, edited or removed (all from the review's logs), builds, TCB changes, targets taken off, prefixes trusted or no longer, views saved, renamed, rescoped, deleted or laid out afresh, notes added to a view or taken out of it, notes, layouts and their undoing.",
@@ -1982,19 +1648,19 @@ export class AgentApi {
         method: "POST", path: "/api/agent/target", needs: "full", about: "Mark a declaration of the project as a target — a theorem whose TCB people review; no view comes with it, and a click on it (or view {review}) opens a temporary view of its TCB, linked to it — or take one off, as the panel's ☆ Mark as target does (its view, if any, stays, unlinked). Recorded in your review log under your name, marked as an agent's; the timeline shows it.",
         params: { name, on: "true (default): mark it; false: take it off" },
         returns: "{ok, changed, recorded?: {op, at, by, agent, name, on}, view?: the view it is linked to | null, next?, note?}",
-        run: (a) => this.targetPost(a),
+        run: (a) => targetPost(this, a),
       },
       {
         method: "POST", path: "/api/agent/key", needs: "full", about: `Mark declarations of a target's TCB, trusted ones too, as key for it — what matters for reading it: the central definitions, the main theorem (ExportSpec decision 1) — or unmark them. One (name) or up to ${MAX_OPINIONS} at once (names), each answered on its own. The target itself is always key. Recorded in your review log, marked as an agent's.`,
         params: { target: "a target's full name", name: "a declaration of its TCB (GET /api/agent/tcb?target=…&include=all lists them) — or —", names: `[full names], at most ${MAX_OPINIONS}`, on: "true (default): mark; false: unmark" },
         returns: "{ok, changed, recorded?} for one; {ok, target, on, changed, unchanged, refused, results: [{index, name, status, changed?, recorded? | error, hint, didYouMean?}]} for names",
-        run: (a) => this.keyPost(a),
+        run: (a) => keyPost(this, a),
       },
       {
         method: "POST", path: "/api/agent/trust", needs: "full", about: "Trust a prefix without review — a module or a namespace (a whole dotted component), or @external for every declaration outside the project — or stop trusting it (a default one too: Mathlib, Init, Lean, Std, Batteries). What is trusted leaves every target's review and its counts, for everyone (ReviewSpec decision 3). Recorded in your review log and in the timeline, marked as an agent's.",
         params: { prefix: "e.g. Mathlib.Order, Nat, or @external", on: "true (default): trust it; false: no longer" },
         returns: "{ok, changed, recorded?, prefix, on, covers: {project, outside}, trusted: [the list after]}",
-        run: (a) => this.trustPost(a),
+        run: (a) => trustPost(this, a),
       },
       ...viewEndpoints(this.world, (c) => this.refuse(c, "full")),
       ...noteEndpoints(this.world, (c, need) => this.refuse(c, need)),
