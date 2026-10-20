@@ -254,6 +254,11 @@ test("following ends on every change to a followed part, wherever its control is
   // what the owner named: opening or closing Activity, a filter of it, closing the lost-and-found or
   // opening it from the build status, the colouring, edges
   assert.equal(pressActs(at("#activity-btn")), true, "Activity opened or closed from the bar");
+  // a phone's ⋯ stands for the bar's buttons and the modes (web/src/phone.ts): an item of a followed
+  // part's is that part's control, though the menu is the reader's own
+  assert.equal(pressActs(at("#more-pop", "#more-pop [data-for=activity-btn]")), true, "Activity from ⋯");
+  assert.equal(pressActs(at("#more-pop", "#more-pop [data-mode-for]")), true, "a mode from ⋯");
+  assert.equal(pressActs(at("#more-pop", "button")), false, "Share, the Library, help from ⋯: the reader's own");
   assert.equal(pressActs(at("#activity", "button")), true, "closed from its ✕, or a row that leads somewhere");
   assert.equal(pressActs(at("#activity", "#activity .act-filters", "button")), true, "a filter");
   assert.equal(pressActs(at("#lostfound", "button")), true, "the lost-and-found closed, or acted in");

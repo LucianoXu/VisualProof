@@ -100,7 +100,8 @@ export const FOLLOWED = [
     part: "tool",
     what: "the tool: Selection, Rests on and its step, Used by",
     fields: ["mode"],
-    changes: "#lightup",
+    // a phone's ⋯ holds the modes too (PhoneSpec decision 7): its items press #lightup's buttons
+    changes: "#lightup, #more-pop [data-mode-for]",
     keys: ["1", "2", "3"],
     place: true,
   },
@@ -158,7 +159,7 @@ export const FOLLOWED = [
     part: "activity",
     what: "Activity: open or closed, and its filters",
     fields: ["activity"],
-    changes: "#activity-btn, #activity .act-filters",
+    changes: "#activity-btn, #more-pop [data-for=activity-btn], #activity .act-filters",
     reads: "#activity",
   },
   {
