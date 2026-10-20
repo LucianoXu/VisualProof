@@ -27,13 +27,19 @@ export interface LeanLib {
   name: string;
   roots?: string[];
   globs?: string[];
+  /** where its sources are, under the package's own (Lake's `srcDir`; absent: the package's) */
+  srcDir?: string;
 }
 
-/** What a lakefile says of the package: its name, its default targets, its libraries. */
+/** What a lakefile says of the package: its name, its default targets, its libraries; where its
+ *  sources are and where Lake builds it, where it says (`srcDir`, `buildDir`: a package's own, read
+ *  for the packages it depends on, whose sources the source window shows — server/outside.ts). */
 export interface Lakefile {
   name?: string;
   defaultTargets?: string[];
   libs: LeanLib[];
+  srcDir?: string;
+  buildDir?: string;
 }
 
 /** `defaultTargets`, the package's name and its `[[lean_lib]]` tables from a lakefile.toml, without
@@ -48,13 +54,19 @@ export function readLakefileToml(text: string): Lakefile {
   if (name) out.name = name[1];
   const dt = head.match(/^\s*defaultTargets\s*=\s*\[([^\]]*)\]/m);
   if (dt) out.defaultTargets = strings(dt[1]);
+  const dir = (t: string, key: string) => t.match(new RegExp(String.raw`^\s*${key}\s*=\s*"([^"]*)"`, "m"))?.[1];
+  const src = dir(head, "srcDir");
+  if (src !== undefined) out.srcDir = src;
+  const build = dir(head, "buildDir");
+  if (build !== undefined) out.buildDir = build;
   for (const table of text.split(/^(?=\s*\[)/m)) {
     if (!/^\s*\[\[\s*lean_lib\s*\]\]/.test(table)) continue;
     const lib = table.match(/^\s*name\s*=\s*"([^"]+)"/m);
     if (!lib) continue;
     const roots = table.match(/^\s*roots\s*=\s*\[([^\]]*)\]/m);
     const globs = table.match(/^\s*globs\s*=\s*\[([^\]]*)\]/m);
-    out.libs.push({ name: lib[1], ...(roots ? { roots: strings(roots[1]) } : {}), ...(globs ? { globs: strings(globs[1]) } : {}) });
+    const libSrc = dir(table, "srcDir");
+    out.libs.push({ name: lib[1], ...(roots ? { roots: strings(roots[1]) } : {}), ...(globs ? { globs: strings(globs[1]) } : {}), ...(libSrc !== undefined ? { srcDir: libSrc } : {}) });
   }
   return out;
 }
@@ -91,11 +103,22 @@ export function readLakefileLean(text: string): Lakefile {
   const unquote = (n: string) => n.replace(/[«»]/g, "");
   const name = code.match(new RegExp(String.raw`^package\s+${ident}`, "m"));
   if (name) out.name = unquote(name[1]);
+  // a declaration runs to the next line that starts at the margin
+  const blockAfter = (at: number) => {
+    const rest = code.slice(at);
+    return rest.slice(0, rest.search(/\n(?=\S)/) + 1 || rest.length);
+  };
+  const dir = (block: string, key: string) => block.match(new RegExp(String.raw`\b${key}\s*:=\s*"([^"]*)"`))?.[1];
+  if (name) {
+    const block = blockAfter(name.index! + name[0].length);
+    const src = dir(block, "srcDir");
+    if (src !== undefined) out.srcDir = src;
+    const build = dir(block, "buildDir");
+    if (build !== undefined) out.buildDir = build;
+  }
   const targets: string[] = [];
   for (const m of code.matchAll(new RegExp(String.raw`(@\[[^\]]*\]\s*)?lean_lib\s+${ident}`, "g"))) {
-    // the library's declaration runs to the next line that starts at the margin
-    const rest = code.slice(m.index + m[0].length);
-    const block = rest.slice(0, rest.search(/\n(?=\S)/) + 1 || rest.length);
+    const block = blockAfter(m.index + m[0].length);
     const lib: LeanLib = { name: unquote(m[2]) };
     const roots = block.match(/\broots\s*:=\s*#\[([^\]]*)\]/);
     if (roots) lib.roots = [...roots[1].matchAll(new RegExp("`" + ident, "g"))].map((r) => unquote(r[1]));
@@ -104,6 +127,8 @@ export function readLakefileLean(text: string): Lakefile {
       const kinds: Record<string, string> = { one: "", submodules: ".+", andSubmodules: ".*" };
       lib.globs = [...globs[1].matchAll(new RegExp(String.raw`(?:Glob)?\.(one|submodules|andSubmodules)\s+\x60` + ident, "g"))].map((g) => unquote(g[2]) + kinds[g[1]]);
     }
+    const libSrc = dir(block, "srcDir");
+    if (libSrc !== undefined) lib.srcDir = libSrc;
     out.libs.push(lib);
     if (m[1] && /\bdefault_target\b/.test(m[1])) targets.push(lib.name);
   }

@@ -152,3 +152,16 @@ test("--root names a library or a module: a library stands for its modules, as a
   const q = openProject(root, ["NavierStokes.Defs", "ComparatorChallenges"], true);
   assert.deepEqual(q.roots, ["NavierStokes.Defs", "ComparatorChallenges.Torus"]);
 });
+
+test("where a package's sources are and where it is built, as its lakefile says: the package's srcDir and buildDir, each library's srcDir", () => {
+  // what the source window reads a dependency's sources by (server/outside.ts)
+  assert.deepEqual(readLakefileToml(`name = "deep"\nsrcDir = "src"\nbuildDir = "out"\n\n[[lean_lib]]\nname = "Deep"\nsrcDir = "lib"\n\n[[lean_exe]]\nname = "x"\nsrcDir = "scripts"\n`), {
+    name: "deep",
+    srcDir: "src",
+    buildDir: "out",
+    libs: [{ name: "Deep", srcDir: "lib" }],
+  });
+  const lean = `import Lake\nopen Lake DSL\n\npackage deep where\n  srcDir := "src"\n  buildDir := "out"\n\nlean_lib Deep where\n  srcDir := "lib"\n\nlean_exe cache where\n  srcDir := "scripts"\n`;
+  assert.deepEqual(readLakefileLean(lean), { name: "deep", srcDir: "src", buildDir: "out", libs: [{ name: "Deep", srcDir: "lib" }] });
+  assert.deepEqual(readLakefileLean("package p\n\nlean_lib P\n"), { name: "p", libs: [{ name: "P" }] }, "none said: Lake's defaults");
+});
