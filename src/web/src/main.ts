@@ -24,7 +24,7 @@
 // What they share is the page (web/src/page.ts): what it is given here, the state they keep together,
 // and what each part gives the others.
 
-import type { ClusterMode, GitSource, Layout } from "../../shared/graph.ts";
+import type { ClusterMode, Layout } from "../../shared/graph.ts";
 import { lightUp, zoomScope } from "../../shared/board.ts";
 import type { Lit } from "../../shared/board.ts";
 import { printQuery, readsReview } from "../../shared/query.ts";
@@ -55,7 +55,6 @@ import { githubBlob } from "../../shared/deploy.ts";
 import { Editor } from "./editor.ts";
 import { keptFocus, readerFocus } from "./focus.ts";
 import { kindDot, ringed } from "./axiomring.ts";
-import { holdTheme } from "./theme.ts";
 import { ReviewBox } from "./reviewbox.ts";
 import { ReviewFlow } from "./reviewqueue.ts";
 import { SelectionBar } from "./selbar.ts";
@@ -70,13 +69,10 @@ import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
 import { clusterSubject, fileOf, PAST_LINK } from "../../shared/library.ts";
 import { snapshotIn } from "../../shared/sharesnap.ts";
-import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
+import { recipeIn } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES } from "./status.ts";
 import { noteIn, siteOrigins } from "./chatlinks.ts";
 import { LinearForm } from "./linear.ts";
-import { ArtFrame } from "./artframe.ts";
-import type { ArtSettings } from "./artwork.ts";
-import { sourceLine, titleOf, untilStill } from "./artwork.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
 import { Store } from "./store.ts";
 import { ViewNav } from "./viewnav.ts";
@@ -91,6 +87,7 @@ import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewTh
 import type { PastGraph } from "./past.ts";
 import { $, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { artPart } from "./pageart.ts";
 import { sidePart } from "./pageside.ts";
 import { layoutPart } from "./pagelayout.ts";
 import { schemePart } from "./pagescheme.ts";
@@ -161,12 +158,8 @@ export interface MainPart {
   ownOpen: Map<string, boolean>;
   stickies: Stickies;
   linear: LinearForm;
-  ART_KEYS: Set<string>;
-  art: ArtFrame;
-  artReach: () => void;
   renderStrip: () => void;
   syncFocus: () => void;
-  openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
   timeMachine: (at?: TimeMachineAt) => void;
   wholeReview: WholeReview<ReviewWhole>;
   takeChange: (c: ReviewChange) => void;
@@ -1172,101 +1165,7 @@ async function boot(): Promise<void> {
   });
   page.linear = linear;
   linearBtn.addEventListener("click", () => linear.toggle());
-
-  /** In the artwork mode (ExportSpec decision 19, the owner's decision of 2026-10-15): of the bar,
-   *  what is out of reach — all but Share and Search; and the keys that still act. */
-  const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
-  const ART_KEYS = new Set(["/", "1", "2", "3", "f", "+", "=", "-", "_", "e", "[", "]", "l"]);
-  page.ART_KEYS = ART_KEYS;
-  // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
-  // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
-  page.artLook = null;
-  /** the project's git source and commit as git says them, asked when the page opens and again
-   *  whenever the artwork comes (its foot; GET /api/git): a commit made after the build is told */
-  let gitNow: GitSource | null = null;
-  /** the last asking of it, which a link's recipe waits for before it saves (openRecipe) */
-  let gitAsked: Promise<void> = data.git().then((git) => {
-    gitNow ??= git;
-  });
-  const art = new ArtFrame($("#art"), $("#art-panel"), $("#art-sky") as HTMLCanvasElement, canvas, {
-    title: () => views.title(nav.board.id),
-    saved: () => S.artwork as Partial<ArtSettings> | undefined,
-    save: (s) => {
-      S.artwork = { ...s };
-      store.save();
-    },
-    now: () => ({ scheme: canvas.scheme, theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
-    look: (s) => {
-      const coming = !page.artLook && !!s;
-      page.artLook = s && { ...s };
-      drawLook();
-      if (coming)
-        gitAsked = data.git().then((git) => {
-          gitNow = git;
-          art.refresh();
-        });
-    },
-    changed: () => page.people.report(),
-    notes: () => stickies.asDrawn(),
-    // the commit checked out now; on a past build's board, that build's, with the project's source
-    source: () => {
-      const then = vg().meta.project.git;
-      const git = pastShown() ? then && { ...then, source: then.source ?? gitNow?.source ?? null } : gitNow;
-      return git ? sourceLine(git) : null;
-    },
-    // the targets a picture can mark: every one of the review's, by the name the board writes
-    targets: () =>
-      Object.keys(page.review.data.targets)
-        .map((name) => ({ name, label: name.split(".").pop() ?? name }))
-        .sort((a, b) => a.label.localeCompare(b.label) || a.name.localeCompare(b.name)),
-    // the title where the reader gave none: the project's name, its declarations and its targets
-    titles: () => titleOf(page.meta.project.name, page.meta.projectCount, Object.keys(page.review.data.targets).length),
-    say: (text) => page.say(text),
-  });
-  page.art = art;
-  // the board's names are written in an artwork's fonts once they are there
-  document.fonts?.addEventListener?.("loadingdone", () => {
-    if (!page.artLook) return;
-    canvas.invalidate();
-    canvas.request();
-  });
-  /** The board drawn with the artwork's settings while its mode is on, or as the reader's own again
-   *  (ExportSpec decision 19): the colouring and the theme, the background, the notes, the edges, the
-   *  names, the targets and the selection; the panels put away for the frame. The reader's own
-   *  choices are kept as they are, under it. */
-  const drawLook = () => {
-    const a = page.artLook;
-    document.body.classList.toggle("framing", !!a);
-    document.body.classList.toggle("art-nonotes", !!a && !a.notes);
-    if (a && a.background !== "theme") document.body.dataset.artBg = a.background;
-    else delete document.body.dataset.artBg;
-    // the cells and the starfield are dark, on a dark ground round the frame
-    if (a && a.style !== "board") document.body.dataset.artStyle = a.style;
-    else delete document.body.dataset.artStyle;
-    artReach();
-    if (a) linear.hide("reader", "followed");
-    holdTheme(a ? (a.style === "board" ? a.theme : "dark") : null);
-    canvas.setArt(a && { labels: a.labels, namesFrom: a.namesFrom, hidden: new Set(a.hiddenNames), shown: new Set(a.shownNames), ruled: new Set(a.ruledNames), edges: a.edges, targets: a.targets, shownTargets: new Set(a.shownTargets), keys: a.keys, style: a.style });
-    page.applyScheme();
-    page.syncEdges();
-    page.apply();
-  };
-  /** Of the bar in the artwork mode, Share and Search alone (the owner's decision of 2026-10-15): the
-   *  rest is out of reach until the mode is left, by the pointer and by the keyboard — but the people
-   *  while the reader follows someone, whose initials clicked again end following (CollabSpec,
-   *  "Following ends" and "What following leaves"): the mode is the follower's own once it has. */
-  const artReach = () => {
-    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!page.artLook && !(page.people.following && el.matches(".peers-wrap"));
-  };
-  page.artReach = artReach;
-  /** when the board was last drawn: a link's recipe saves its files once the board is still */
-  let drawnAt = 0;
-  canvas.onFrame = () => {
-    drawnAt = performance.now();
-    stickies.frame();
-    // the artwork's list of names follows what its frame holds
-    art.frame();
-  };
+  Object.assign(page, artPart(page));
   // the notes the outline holds are those the board shows
   stickies.onRender = () => linear.refresh();
   /** the board the notes were last drawn for */
@@ -1299,45 +1198,6 @@ async function boot(): Promise<void> {
   Object.assign(page, followPart(page));
   Object.assign(page, talkPart(page));
   Object.assign(page, peoplePart(page));
-  /** Open a link's artwork recipe (ExportSpec decision 20, shared/artrecipe.ts) on the board its
-   *  address opened, the selection it carries made: resolved against this board, the artwork mode
-   *  opened with what it says (not kept as this reader's settings until they change one), the whole
-   *  board fitted in its frame; the files it asks for saved once the board has been still a moment,
-   *  with its fonts and the git commit there. What it names that this board has not is said in a
-   *  line; `data-artwork-saved` on the page says what was saved, for a script that waits for it. */
-  const openRecipe = async (link: { text: string; save: ("png" | "svg")[] }) => {
-    const read = readRecipe(decodeRecipe(link.text));
-    if ("error" in read) return page.say(`This link's artwork could not be read: ${read.error}`);
-    const L = canvas.layout;
-    const { look, problems, left } = resolveRecipe(read.recipe, {
-      clusters: L.clusters,
-      clusterOf: (name) => {
-        const i = page.g.byName.get(name);
-        const j = i === undefined ? -1 : toView(i);
-        return j < 0 ? undefined : L.cluster[j];
-      },
-      targets: Object.keys(page.review.data.targets),
-      projectCount: page.g.projectCount,
-    });
-    if (problems.length || left) page.say(`This link's artwork: ${[...problems, ...(left ? [`${left} names left out, more than an artwork carries`] : [])].join("; ")}.`);
-    if (art.isOpen) await art.close();
-    // come: the board drawn with the look, which asked for the git commit as it came (gitAsked)
-    await art.open(look);
-    if (!link.save.length) return;
-    const since = performance.now();
-    await gitAsked;
-    await document.fonts?.ready;
-    // drawn since the mode came, then still for 800 ms (the overview's edges come from a worker), at
-    // most 20 s
-    canvas.request();
-    await untilStill({ now: () => performance.now(), drawnAt: () => drawnAt, sleep: (ms) => new Promise((ok) => setTimeout(ok, ms)) }, since);
-    // a browser asks before a site saves several files at once (the owner's decision of 2026-10-15:
-    // the reader is told)
-    if (link.save.length > 1) page.say(`Saving the picture as ${link.save.map((k) => k.toUpperCase()).join(" and ")}: your browser may ask to allow this site to download several files.`);
-    const made = await art.save(link.save);
-    document.documentElement.dataset.artworkSaved = made.length ? made.join(",") : "none";
-  };
-  page.openRecipe = openRecipe;
   Object.assign(page, tabsPart(page));
   Object.assign(page, sharePart(page));
   Object.assign(page, timelinePart(page));
@@ -1590,7 +1450,7 @@ async function boot(): Promise<void> {
   // a link with an artwork's recipe (ExportSpec decision 20): once, after the board is there; the
   // files it asks for are saved meanwhile
   const recipe = recipeIn(location.hash);
-  if (recipe) void openRecipe(recipe);
+  if (recipe) void page.openRecipe(recipe);
   // the builds the history holds: the clocks of views kept at one say which
   if (!data.snapshot) void tm.load().then(() => page.renderTabs());
   try {
