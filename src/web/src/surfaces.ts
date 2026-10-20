@@ -170,7 +170,7 @@ export const FOLLOWED = [
   },
   {
     part: "colouring",
-    what: "the colouring: the legend's Kind or Status",
+    what: "the colouring: the legend's Kind, Status or Mine (the followed reader's own review)",
     fields: ["scheme"],
     changes: "#legend [data-scheme]",
     keys: ["c"],

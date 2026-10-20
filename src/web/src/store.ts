@@ -182,10 +182,11 @@ export class Store {
   }
 
   /** The colour scheme where the review has a focus (`review`) or on any other board: the reader's
-   *  choice there, or else Status where the review is done, and Kind elsewhere. */
+   *  choice there — Kind, Status or Mine —, or else Status where the review is done, and Kind
+   *  elsewhere. */
   schemeFor(review: boolean): Scheme {
     const s = this.data.scheme?.[review ? "review" : "other"];
-    return s === "kind" || s === "status" ? s : review ? "status" : "kind";
+    return s === "kind" || s === "status" || s === "mine" ? s : review ? "status" : "kind";
   }
 
   /** The reader chose a scheme where the review has a focus, or elsewhere: kept for boards of that

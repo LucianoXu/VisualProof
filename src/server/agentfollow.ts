@@ -105,7 +105,7 @@ export function placeOf(api: AgentApi, v: PresenceView): {
       ? ", with the lost-and-found open"
       : "";
   const drawn =
-    (v.scheme ? `, coloured by ${v.scheme}` : "") + (v.edges === false ? ", edges hidden" : "");
+    (v.scheme ? `, coloured by ${v.scheme === "mine" ? "their own review (Mine)" : v.scheme}` : "") + (v.edges === false ? ", edges hidden" : "");
   return {
     view: v.view ?? PROJECT,
     viewTitle: title,

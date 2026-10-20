@@ -257,7 +257,7 @@ step; the rest each on its own once the place is reached.
 | paper | the reference window: open, collapsed, file, page, link | `paper` | |
 | activity | Activity open or closed, its filters | `activity` (`open`, `kind`, `who`, `mine`) | |
 | lostFound | the lost-and-found open or closed | `lostFound` (`open`) | |
-| colouring | the legend's Kind or Status | `scheme` | `c` |
+| colouring | the legend's Kind, Status or Mine (the followed reader's own opinions: CanvasSpec, "Colour schemes") | `scheme` | `c` |
 | edges | edges drawn | `edges` | `g` |
 | linear | the board drawn as its document's outline, the linear form (ExportSpec decision 18) | `linear` | `o` |
 | artwork | the artwork mode: on or off, its settings (the board drawn with them) and its frame (ExportSpec decision 19, the owner's decision of 2026-10-14) | `artwork` | |

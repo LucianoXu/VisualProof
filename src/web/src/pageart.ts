@@ -45,7 +45,8 @@ export function artPart(page: Page): ArtPart {
       S.artwork = { ...s };
       store.save();
     },
-    now: () => ({ scheme: page.canvas.scheme, theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
+    // a picture is drawn by kind or by status: Mine, the reader's own, starts it by status
+    now: () => ({ scheme: page.canvas.scheme === "kind" ? "kind" : "status", theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
     look: (s) => {
       const coming = !page.artLook && !!s;
       page.artLook = s && { ...s };

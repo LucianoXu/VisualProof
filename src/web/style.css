@@ -2597,6 +2597,9 @@ kbd {
 .lg-swatch.lg-kind {
   background: conic-gradient(var(--k-def) 0 20%, var(--k-structure) 0 40%, var(--k-instance) 0 60%, var(--k-theorem) 0 80%, var(--k-axiom) 0);
 }
+/* Mine where it has nothing to show (a reader without a name): what is not yet reviewed, ringed in
+   approved's colour; else, as Status, a pie of the review */
+.lg-swatch.lg-mine { background: var(--status-unreviewed); box-shadow: inset 0 0 0 1.5px var(--status-approved); }
 .lg-chip-n { color: var(--text-2); font-variant-numeric: tabular-nums; font-size: 11.5px; }
 .lg-chev { color: var(--text-3); font-size: 10px; }
 .lg-card {
@@ -2614,6 +2617,9 @@ kbd {
 .lg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lg-n { color: var(--text-2); font-variant-numeric: tabular-nums; font-size: 11.5px; }
 .lg-row.none .lg-n { color: var(--text-3); }
+/* by one's own review (Mine): whose it is, or that there is nobody's yet */
+.lg-mine { color: var(--text-2); font-size: 11.5px; line-height: 1.35; }
+.lg-mine.lg-none { color: var(--text); padding: 5px 7px; border-radius: 8px; background: var(--code-bg); }
 /* by status, the board's progress, in the scheme's own colours */
 .lg-prog { display: flex; flex-direction: column; gap: 3px; color: var(--text-2); font-size: 11.5px; }
 .lg-prog .rv-bar i.ok { background: var(--status-approved); }

@@ -609,11 +609,14 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   going back, or to another tab, gives the new view up.
 - **Colours**: by kind, or by **status** — one colour per declaration for where it stands, the
   most urgent winning: being compiled, build failed, contains `sorry`, commented, stale, approved,
-  not yet reviewed, trusted (CanvasSpec, "Colour schemes"). A view where the review has a
-  focus opens in Status, every other view in Kind; switching (`c`, or the legend) is the reader's own, kept per kind of view (and
-  seen by whoever follows you). In
-  Status each cluster's outline shows its review's progress, an arc for what is approved and one
-  for what is commented. The **legend** at the bottom left folds to a chip naming the scheme; open,
+  not yet reviewed, trusted (CanvasSpec, "Colour schemes") — or by **Mine**, your own review: the
+  same colours from your own opinions alone (what you approved, commented on, approved or commented
+  before it changed, have not reviewed; what is trusted), nobody else's. While you follow someone,
+  Mine is theirs, the legend naming them; without a name you have none, and the legend says so. A
+  view where the review has a focus opens in Status, every other view in Kind; switching (`c` steps
+  Kind, Status, Mine; or the legend) is the reader's own, kept per kind of view (and seen by
+  whoever follows you). In Status and Mine each cluster's outline shows its review's progress, an
+  arc for what is approved and one for what is commented. The **legend** at the bottom left folds to a chip naming the scheme; open,
   it counts the board's declarations per colour. No rings tell of status on the canvas. **An axiom
   is a ring**, in either scheme: its dot has a ring of its own colour around it, a gap apart, on the
   board, in an artwork, in the legend, the panel and the search, so that it is told by its shape
@@ -626,7 +629,7 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   source (its window opened or closed), `Esc` close what is open, then clear the selection, `f`
   fit, `+` / `−` zoom (also the buttons at the bottom right), `[` / `]` fold or open one level
   (also the Depth buttons), `e` the outside world on this board
-  (for everyone on it; the Project always holds it), `g` edges, `l` the lock, `c` colours by kind or status, `b` build status,
+  (for everyone on it; the Project always holds it), `g` edges, `l` the lock, `c` colours by kind, status or your own review, `b` build status,
   `p` a frame meter, `a` / `m` approve, comment (see Review), `k` mark as key for the focus, `t` the Time Machine (`←` / `→` a build before or after,
   `Home` / `End` the first or the last), `Shift F10` (or the ContextMenu key) the menu on the
   selection, `?` the help menu.

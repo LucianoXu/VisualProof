@@ -63,17 +63,17 @@ test("the ring stands apart from the point and from every mark round it, at ever
 function legend(scheme: Scheme, kinds: number[]): string {
   const el = { innerHTML: "", addEventListener() {} } as unknown as HTMLElement;
   const status = STATUSES.map(() => 1);
-  new Legend(el, { scheme: () => scheme, setScheme() {}, counts: () => ({ status, kinds }), isOpen: () => true, setOpen() {}, keyEdges: () => false }).render();
+  new Legend(el, { scheme: () => scheme, setScheme() {}, counts: () => ({ status, kinds }), isOpen: () => true, setOpen() {}, keyEdges: () => false, mineWhose: () => null, mineNone: () => false }).render();
   return el.innerHTML;
 }
 
 test("the legend says it: by kind, the axiom's own dot ringed; by status, a line of its own", () => {
   const kinds = [...KINDS, "external"].map((_, j) => j + 1);
   const byKind = legend("kind", kinds);
-  assert.match(byKind, /<div class="lg-row" title="axiom: its point ringed, by kind and by status"><span class="dot k-axiom"><\/span><span class="lg-name">axiom<\/span>/);
+  assert.match(byKind, /<div class="lg-row" title="axiom: its point ringed, in every scheme"><span class="dot k-axiom"><\/span><span class="lg-name">axiom<\/span>/);
   assert.doesNotMatch(byKind, /lg-ring/, "said by its row");
   const byStatus = legend("status", kinds);
-  assert.match(byStatus, /<div class="lg-edge lg-ring" title="An axiom's point is ringed, by kind and by status"><span class="dot axiom"><\/span>ringed: an axiom<\/div>/);
+  assert.match(byStatus, /<div class="lg-edge lg-ring" title="An axiom's point is ringed, in every scheme"><span class="dot axiom"><\/span>ringed: an axiom<\/div>/);
   assert.doesNotMatch(byStatus, /k-axiom/, "no kind's colour by status");
 });
 

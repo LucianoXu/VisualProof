@@ -135,7 +135,8 @@ export function keysPart(page: Page): KeysPart {
     else if (e.key === "e") page.toggleOutside();
     else if (e.key === "g") page.edgesBtn.click();
     else if (e.key === "o") page.linear.toggle();
-    else if (e.key === "c") page.chooseScheme(page.ownScheme() === "kind" ? "status" : "kind");
+    // the colouring: Kind, Status, Mine, and round again
+    else if (e.key === "c") page.chooseScheme(page.nextScheme());
     else if (e.key === "l") page.toggleLock();
     else if (e.key === "[") page.canvas.stepLevels(-1);
     else if (e.key === "]") page.canvas.stepLevels(1);

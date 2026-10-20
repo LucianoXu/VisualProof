@@ -5,16 +5,26 @@
 // review at all (not yet reviewed, trusted). A file being compiled shows so while it lasts. What
 // agents advise is not among the states: advice is never counted, and the panel shows it apart
 // (AgentSpec decision 2).
+//
+// The Mine scheme (the owner's decision of 2026-10-20) colours by Status's review states from one
+// reader's own opinions alone: approved, commented, stale where theirs is, else not yet reviewed or
+// trusted as whether it needs review says — no build, no sorry, nobody else's opinion. Whose they
+// are is the reader's, or the followed reader's while following (CollabSpec decision 4); a reader
+// without a name has none, and the board shows only what needs review.
 
 import type { FileStatus } from "../../shared/build.ts";
 import type { ClusterMode } from "../../shared/graph.ts";
-import { statusOf } from "../../shared/review.ts";
-import type { ReviewData } from "../../shared/review.ts";
+import { fresh, standing, statusOf } from "../../shared/review.ts";
+import type { Author, ReviewData } from "../../shared/review.ts";
 import { needsReview } from "../../shared/reviewqueue.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 
-/** The two ways of colouring the canvas's points: by kind, or by where each declaration stands. */
-export type Scheme = "kind" | "status";
+/** The ways of colouring the canvas's points: by kind, by where each declaration stands, or by where
+ *  the reader's own review of it stands (Mine). */
+export type Scheme = "kind" | "status" | "mine";
+
+/** The schemes in the order the legend lists them and `c` steps through them. */
+export const SCHEMES_SHOWN: readonly Scheme[] = ["kind", "status", "mine"];
 
 /** The states, most urgent first; a declaration's code is its index here. The legend lists them in
  *  this order, and the CSS colours are `--status-<state>`. */
@@ -46,6 +56,61 @@ export const STATUS_HINT: Record<StatusState, string> = {
   unreviewed: "Nobody has given an opinion on it yet, and nothing trusts it",
   trusted: "Trusted without review (Mathlib, Lean core, a trusted prefix, the standard axioms), with no opinion on it",
 };
+
+/** The Mine scheme's states, in the legend's order: Status's review states (STATUSES' codes). */
+export const MINE_STATES: readonly number[] = [ST_COMMENTED, ST_STALE, ST_APPROVED, ST_UNREVIEWED, ST_TRUSTED];
+
+/** How the legend's tooltips and the hover tip say a Mine state, of `whose` opinions (null: the
+ *  reader's own). */
+export function mineLabel(code: number, whose: string | null): string {
+  const who = whose ?? "you";
+  switch (code) {
+    case ST_COMMENTED:
+      return `${who} commented`;
+    case ST_STALE:
+      return `${whose ? `${whose}'s` : "your"} opinion is stale`;
+    case ST_APPROVED:
+      return `${who} approved`;
+    case ST_TRUSTED:
+      return "trusted";
+    default:
+      return `not reviewed by ${whose ?? "you"}`;
+  }
+}
+
+/** What each Mine state means, for the legend's tooltips. */
+export function mineHint(code: number, whose: string | null): string {
+  const your = whose ? `${whose}'s` : "Your";
+  switch (code) {
+    case ST_COMMENTED:
+      return `${your} current opinion on its present version is a comment`;
+    case ST_STALE:
+      return `${your} current opinion is on an earlier version: it changed since`;
+    case ST_APPROVED:
+      return `${your} current opinion approves its present version`;
+    case ST_TRUSTED:
+      return `Trusted without review, and no opinion of ${whose ? `${whose}'s` : "yours"} on it`;
+    default:
+      return `It needs review, and ${whose ? `${whose} has` : "you have"} no opinion on it (none given, or withdrawn)`;
+  }
+}
+
+/** Where one declaration stands in the Mine scheme, for `me` (null: a reader without a name, who
+ *  has none): their current opinion — on its present version, a comment or an approval; on an
+ *  earlier one, stale — else whether it needs review. */
+export function mineState(d: ReviewData, g: Graph, i: number, me: Author | null): number {
+  const v = g.nodes[i];
+  const o = me ? standing(d, v.name, me) : null;
+  if (o) return !fresh(o, v.hash) ? ST_STALE : o.verdict === "comment" ? ST_COMMENTED : ST_APPROVED;
+  return needsReview(g, d, i) ? ST_UNREVIEWED : ST_TRUSTED;
+}
+
+/** Every declaration of `g`'s state in the Mine scheme, as codes (indices into STATUSES). */
+export function mineCodes(d: ReviewData, g: Graph, me: Author | null): Uint8Array {
+  const out = new Uint8Array(g.n);
+  for (let i = 0; i < g.n; i++) out[i] = mineState(d, g, i, me);
+  return out;
+}
 
 /** Where one declaration stands. `file` is its file's build status, when the page is live.
  *

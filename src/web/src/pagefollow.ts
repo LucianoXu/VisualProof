@@ -65,8 +65,10 @@ export function followPart(page: Page): FollowPart {
     apply: {
       activity: (v) => page.activity.mirror(v.activity!),
       lostFound: (v) => page.lostDrawer.toggle(v.lostFound!.open),
+      // Mine is the followed reader's own opinions while following them (web/src/pagescheme.ts)
       colouring: (v) => {
         if (page.ownScheme() !== v.scheme) page.chooseScheme(v.scheme!);
+        page.mineChanged();
       },
       edges: (v) => page.setEdges(v.edges!),
       linear: (v) => (v.linear ? void page.linear.show("followed") : page.linear.hide("reader", "followed")),

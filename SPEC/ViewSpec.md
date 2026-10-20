@@ -19,7 +19,8 @@ of invisible clusters" is the view's hidden levels (decision 24).
    - A view is its exported document's outline: what it holds, ordered bottom first by position on
      the board (ExportSpec decisions 12–13).
 3. **The reader's own**: camera and selection (remembered per view), the tool, reading preferences
-   (edges, theme, colour scheme), open tabs. A follower sees all but the theme and the
+   (edges, theme, colour scheme — Kind, Status or Mine, the reader's own review: CanvasSpec, "Colour
+   schemes"), open tabs. A follower sees all but the theme and the
    tabs (CollabSpec decision 4).
 4. **One query language** for scopes and the selection (decisions 11, 13).
 5. **The Project and the board's settings.**

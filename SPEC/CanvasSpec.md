@@ -378,9 +378,20 @@ Implementation notes:
   the quieter, the closer to the ground — trusted a dim green, not yet reviewed a mid grey, failed
   the brightest, near white, as the light theme's failed is its darkest. Agents' advice is never a
   state.
+- **Mine** (the owner's decision of 2026-10-20): Status's review states — commented, stale,
+  approved, not yet reviewed, trusted — from one reader's own current opinions alone: theirs on the
+  present version (a comment, an approval), on an earlier one (stale), else not yet reviewed or
+  trusted as whether it needs review says (ReviewSpec decision 3). Nothing of the build or of
+  `sorry`, nobody else's opinion, no agent's advice; Status's colours, the clusters' arcs the
+  reader's own progress, no file outlines. Whose: the reader's — by their personal link where they
+  came by one, else their name —, or while they follow someone, that person's, as what they see is
+  followed (CollabSpec decision 4), the legend naming them ("Alice's"); following ended, the
+  reader's own again. A reader without a name has none: the board shows what needs review and what
+  is trusted, and the legend says why ("You have no name yet…"). Nothing of it joins the review
+  strip, which stays the team's (ReviewSpec, "Reviewing a target").
 - **Two palettes for the review, on purpose; do not unify them.** `--rv-*` colour what reviewers said
   where the review is read (opinions, progress, TCB lists and queues, trust shields, advice);
-  `--status-*` only the Status scheme (points, file outlines and arcs, legend, card dots). The build
+  `--status-*` only the Status and Mine schemes (points, file outlines and arcs, legend, card dots). The build
   status (pill, outline dots) has `--st-*`.
 - **No status rings on the canvas**: the picks', other readers' (CollabSpec decision 4), the target's
   gold star, a key declaration's diamond (ExportSpec decision 4), a pin's thin ring and an axiom's own
@@ -390,13 +401,16 @@ Implementation notes:
   failed, is building or has a `sorry` gets a thin outline in that colour (never a namespace); trouble
   inherited from below shows nothing. Each cluster of 18 px or more shows an arc from the top,
   clockwise: approved, then commented, of what it holds that needs review.
-- **The legend** (bottom left) folds to a chip naming the scheme (by status a pie of the board's
-  review). Open: Kind | Status, each colour with its count among the board's declarations (outside
-  included while shown), and the edges' key; by kind the axiom's dot is ringed, by status a line of
-  its own says that a ring is an axiom. Open or folded is kept in the browser.
+- **The legend** (bottom left) folds to a chip naming the scheme (by status or by one's own a pie of
+  the board's review). Open: Kind | Status | Mine, each colour with its count among the board's
+  declarations (outside included while shown), and the edges' key; by kind the axiom's dot is
+  ringed, by status and by one's own a line of its own says that a ring is an axiom. Open or folded
+  is kept in the browser.
 - **Which scheme**: a view where the review has a focus (ViewSpec decision 28) opens in Status, others
   in Kind. The reader's switch is kept in the browser per project, apart for focused views and others;
-  never shared, but followed (CollabSpec decision 4). Key `c`.
+  never shared, but followed (CollabSpec decision 4). Key `c` steps Kind → Status → Mine → Kind. A
+  picture (an artwork, ExportSpec decision 19) is drawn by kind or by status; from Mine it starts by
+  status.
 
 ## The outline
 
