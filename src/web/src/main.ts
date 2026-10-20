@@ -18,6 +18,11 @@
 // is said in the review there, and its document is that build's. In the Time Machine at another build
 // than the view's own it is a preview, which nothing arranges (`frozen`), and which Export prints at
 // the build on show.
+//
+// The page is made in parts, one per concern (web/src/page*.ts), in the order this file makes them:
+// what reads the store before the first paint, the stream's subscription once its handlers exist.
+// What they share is the page (web/src/page.ts): what it is given here, the state they keep together,
+// and what each part gives the others.
 
 import type { BuildDelta, BuildRev, BuildStatus } from "../../shared/build.ts";
 import type { ChatEvent, ChatMessage, Invited, PresenceView, PrivateCount, StreamHello } from "../../shared/collab.ts";
@@ -73,8 +78,7 @@ import { applyOwn, followedOf, presenceOf } from "./surfaces.ts";
 import type { PageParts } from "./surfaces.ts";
 import { Activity } from "./activity.ts";
 import { LostAndFound } from "./lostfound.ts";
-import { deployWaiting, popHtml, stamp, stepPill } from "./buildpop.ts";
-import type { DeployStatus } from "../../shared/deploy.ts";
+import { deployWaiting, popHtml, stepPill } from "./buildpop.ts";
 import { githubBlob } from "../../shared/deploy.ts";
 import type { BuildLine } from "../../shared/lostfound.ts";
 import { Editor } from "./editor.ts";
@@ -141,49 +145,8 @@ import { buildWhen, TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
 import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
-
-const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
-
-/** The tools by name: the modes Selection and Used by, and the three steps of the mode Rests on
- *  (decided 2026-10-08, ViewSpec decision 20). */
-const MODE_NAME: Record<Tool, string> = { plain: "Selection", deps: "Uses", tcb: "TCB", keys: "Keys", refs: "Direct", apps: "Used by" };
-/** A tool as the others' list and the notes say it: a step with its mode. */
-const toolName = (t: Tool): string => (restsOn(t) ? `Rests on · ${MODE_NAME[t]}` : MODE_NAME[t]);
-
-/** What a click selects with each tool (the mode buttons, web/src/selection.ts): said while the
- *  pointer is on a button. */
-const MODE_HINT: Record<Tool, string> = {
-  plain: "A click selects just what you click; shift-click adds it or takes it out.",
-  deps: "A click selects what you click and everything it uses, proofs included: the most it rests on.",
-  refs: "A click selects what you click and what it uses directly: in its statement, its body or its proof.",
-  tcb: "A click selects the TCB of what you click: the definitions its statement rests on, proofs skipped.",
-  keys:
-    "A click selects what you click and the key declarations in its TCB: where the review has a focus, that target's; elsewhere every target's, or a target's own when you click a target. " +
-    "Dashed edges are the key graph: from A to B when A rests on B through declarations that are not key.",
-  apps: "A click selects what you click and everything that uses it.",
-};
-/** What Rests on is, while the pointer is on its button: the question its steps answer, at the
- *  granularities everything used ⊇ the TCB ⊇ the key declarations in it, and one step: what it uses
- *  directly (ViewSpec decision 20). */
-const RESTS_HINT = "A click selects what you click rests on, as much of it as the step says:";
-const STEP_HINT: Record<Tool, string> = { plain: "", apps: "", deps: "everything it uses, proofs included", refs: "what it uses directly, proofs included", tcb: "what its statement rests on, proofs skipped", keys: "the key declarations in its TCB" };
-/** What a tap selects with each tool, in a few words: under the tool's name in a phone's ⋯, where
- *  nothing is said while a pointer rests on a button (web/src/phone.ts). */
-const TAP_HINT: Record<Tool, string> = { ...STEP_HINT, plain: "just what you tap", apps: "everything that uses it" };
-/** What a link to a view the server no longer has opens instead, and why (ViewSpec decision 6). */
-const VIEW_GONE = "This link's view is gone: it was deleted, or nobody kept it and everyone closed it. Here is the Project.";
-
-interface GraphInfo {
-  version: number;
-  /** the server's process that counts the versions (UpdateSpec decision 8) */
-  instance?: string;
-  at: string;
-  missing: string[];
-  /** the usage pass on this graph's build (server/live.ts) */
-  usage?: { state: "pending" | "done" | "off"; failed: number };
-  /** following a branch (DeploySpec): the commit whose build the graph was read from */
-  commit?: string;
-}
+import { $, MODE_NAME, toolName, MODE_HINT, RESTS_HINT, STEP_HINT, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
+import type { GraphInfo, Page } from "./page.ts";
 
 /** Wait until the server has a graph: what it is, and the server's "Open in editor" template. */
 async function waitReady(data: DataSource): Promise<{ graph: GraphInfo | null; editor: string | null; publicUrl: string | null }> {
@@ -210,32 +173,17 @@ async function waitReady(data: DataSource): Promise<{ graph: GraphInfo | null; e
   }
 }
 
-const STATE_LABEL: Record<string, string> = {
-  failed: "failed",
-  unbuilt: "never built",
-  blocked: "blocked",
-  stale: "out of date",
-  queued: "queued",
-  building: "building",
-  sorry: "uses sorry",
-};
-
 async function boot(): Promise<void> {
   const data = dataSource();
   const ready = await waitReady(data);
-  let graphInfo = ready.graph;
+  const graphInfo = ready.graph;
   // the graph's two parts, the review and the build status, at once: a page far from the server
   // waits on each
   const reviewing = data.review().catch((): ReviewState => ({ epoch: "", rev: 0, data: emptyReview(), problems: [], error: "The review could not be loaded." }));
-  /** the build status, read as the page loads (web/src/buildread.ts): shown once the first board is */
-  let firstBuild = data.snapshot ? null : data.build();
+  const firstBuild = data.snapshot ? null : data.build();
   firstBuild?.catch(() => {});
-  const [meta0, edges0] = await Promise.all([data.meta(graphInfo?.version, graphInfo?.instance), data.edges(graphInfo?.version, graphInfo?.instance)]);
-  let meta: ViewMeta = meta0;
-  /** the graph on show: the latest build's */
-  let present = new Graph(meta, new Int32Array(edges0));
-  /** the graph the board on show was taken from: the graph on show's, or a past build's */
-  let g = present;
+  const [meta, edges0] = await Promise.all([data.meta(graphInfo?.version, graphInfo?.instance), data.edges(graphInfo?.version, graphInfo?.instance)]);
+  const present = new Graph(meta, new Int32Array(edges0));
   const store = new Store(meta.project.root);
   const S = store.data;
   /** what this page held before it reloaded into its server's new version (web/src/reload.ts) */
@@ -248,15 +196,6 @@ async function boot(): Promise<void> {
    *  the server at (`--public-url`), whose links are this site's too and with which the page makes
    *  its own, as agents and Share do */
   const site = siteOrigins(location.origin, ready.publicUrl);
-  // tips in place (GuideSpec decision 9; web/src/intip.ts): the moments the page tells of, before the
-  // guide is made; and the release the server runs (UpdateSpec), as its event stream says it
-  let offerTip = (_rule: string): void => {};
-  let didTip = (_rule: string): void => {};
-  let countTip = (_name: string, _rule: string): number => 0;
-  let heardRelease: string | null = null;
-  let hearRelease = (v: string): void => void (heardRelease = v);
-  /** read-only links can be made on this server: the tip about them is for it alone */
-  let readOnlyLinks = false;
   document.title = `${meta.project.name} — VisualProof`;
   $("#project").textContent = meta.project.name;
   if (data.snapshot) {
@@ -270,27 +209,51 @@ async function boot(): Promise<void> {
     tag.title = "You see this project, its review and its history as they are, live, and change nothing that is shared. Nobody sees you here.";
     tag.hidden = false;
   }
+  // the page its parts share (web/src/page.ts): what it is given, above, and the state they keep
+  // together as it starts — the graph read, nothing selected, the review once it is read
+  const page = {
+    data,
+    store,
+    S,
+    kept,
+    reader,
+    editor,
+    site,
+    graphInfo,
+    firstBuild,
+    meta,
+    present,
+    g: present,
+    // tips in place (GuideSpec decision 9; web/src/intip.ts): the moments the page tells of, before the
+    // guide is made; and the release the server runs (UpdateSpec), as its event stream says it
+    offerTip: (_rule: string): void => {},
+    didTip: (_rule: string): void => {},
+    countTip: (_name: string, _rule: string): number => 0,
+    heardRelease: null,
+    hearRelease: (v: string): void => void (page.heardRelease = v),
+    readOnlyLinks: false,
+    picks: [],
+    shown: null,
+    visitors: [],
+    build: null,
+    deploy: null,
+    showLevel: () => {},
+    setEdges: (_edges: boolean): void => {},
+    review: await reviewing,
+    // whether a layout's memory can be handed over now (web/src/views.ts): known once the people are
+    handsOver: (): boolean => false,
+    // the rest each part sets as it is made
+  } as Partial<Page> as Page;
   /** The project as read, for the About part of the help sheet: how much the graph holds, when it
    *  was read and under which toolchain (it was a line at the foot of the page until 2026-10-08). */
   const about = () =>
-    `${meta.projectCount.toLocaleString()} declarations · ${(meta.nodes.length - meta.projectCount).toLocaleString()} outside the project · ` +
-    `${meta.edgeCount.toLocaleString()} edges. Read ${new Date(meta.project.extractedAt).toLocaleString()}, under ${meta.project.toolchain}.`;
-
-  /** the selection (web/src/selection.ts): its picks, by name and key, and what the panel tells of */
-  let picks: Pick[] = [];
-  let shown: Shown | null = null;
+    `${page.meta.projectCount.toLocaleString()} declarations · ${(page.meta.nodes.length - page.meta.projectCount).toLocaleString()} outside the project · ` +
+    `${page.meta.edgeCount.toLocaleString()} edges. Read ${new Date(page.meta.project.extractedAt).toLocaleString()}, under ${page.meta.project.toolchain}.`;
   /** the declaration the panel tells of, in the whole graph's numbering, or null */
-  const selected = (): number | null => (shown && "decl" in shown ? g.byName.get(shown.decl) ?? null : null);
-  /** the reader's visitors on the board on show (ViewSpec decision 27; web/src/visitors.ts), newest
-   *  last, and the board they are on: another board has none */
-  let visitors: Visitor[] = [];
+  const selected = (): number | null => (page.shown && "decl" in page.shown ? page.g.byName.get(page.shown.decl) ?? null : null);
   let visitorsOn = "";
   /** while something is said where the hint is (`say`), until it goes */
   let saying: ReturnType<typeof setTimeout> | null = null;
-  let build: BuildStatus | null = null;
-  /** the branch the server follows and builds itself (DeploySpec), as it last said; null for a
-   *  workspace */
-  let deploy: DeployStatus | null = null;
   let updating = false;
   let extractError: string | null = null;
   let offline = false;
@@ -298,20 +261,14 @@ async function boot(): Promise<void> {
   let updatingTo: string | null = null;
   /** the version the page waits to reload into, while a reload would cut something short */
   let reloadOffered: string | null = null;
-  /** the depth stepper's label (defined with the side panel below) */
-  let showLevel = () => {};
-  /** draw the edges, or not (defined with the eyes below) */
-  let setEdges = (_edges: boolean): void => {};
-  /** the review (ReviewSpec.md), as the server last told it: the whole once, then each change */
-  let review: ReviewState = await reviewing;
   /** The review as the board on show reads it, by its declarations' names: on a past graph, what was
    *  said of a declaration renamed since — kept under its name now — is read under its name then too
    *  (web/src/past.ts, reviewThen), made once per revision of the review and past graph. */
   let readThen: { data: ReviewData; rev: number; past: PastGraph; out: ReviewData } | null = null;
   const boardReview = (): ReviewData => {
     const past = nav.board?.past?.past;
-    if (!past || !past.nowName.size) return review.data;
-    if (readThen?.data !== review.data || readThen.rev !== review.rev || readThen.past !== past) readThen = { data: review.data, rev: review.rev, past, out: reviewThen(review.data, past.nowName) };
+    if (!past || !past.nowName.size) return page.review.data;
+    if (readThen?.data !== page.review.data || readThen.rev !== page.review.rev || readThen.past !== past) readThen = { data: page.review.data, rev: page.review.rev, past, out: reviewThen(page.review.data, past.nowName) };
     return readThen.out;
   };
 
@@ -320,8 +277,6 @@ async function boot(): Promise<void> {
   // The view on show is a board (web/src/views.ts): the canvas shows its graph — the whole one, or
   // the part its scope holds — and the panel always speaks of the whole graph. `nav` keeps the tabs.
 
-  // whether a layout's memory can be handed over now (web/src/views.ts): known once the people are
-  let handsOver = (): boolean => false;
   // the boards of the latest build the page lays out — a view of a part of the project: Zoom in, a
   // target's, one nobody keeps — off the page's thread, as the Time Machine's past boards are
   // (web/src/layoutqueue.ts, web/src/layoutworker.ts; the owner's decision of 2026-10-18): one at a
@@ -361,10 +316,10 @@ async function boot(): Promise<void> {
   };
   const views = new Views(data.views, {
     ...(data.snapshot ? {} : { layOut: layOutBoard }),
-    graph: () => present,
-    handsOver: () => handsOver(),
-    meta: () => meta,
-    review: () => review.data,
+    graph: () => page.present,
+    handsOver: () => page.handsOver(),
+    meta: () => page.meta,
+    review: () => page.review.data,
     // a view in the Time Machine, or kept at a past build, shows that build's graph; at another build
     // than its own, it is a preview
     past: (rec) => (data.snapshot ? null : tm.sourceFor(rec)),
@@ -403,9 +358,9 @@ async function boot(): Promise<void> {
   // takes the tabs' place while it is open; a view kept at a past build shows that build too.
 
   const tm: TimeMachine = new TimeMachine($("#tmbar"), $("#tm-list"), $("#tm-kept"), {
-    present: () => present,
-    meta: () => meta,
-    review: () => review.data,
+    present: () => page.present,
+    meta: () => page.meta,
+    review: () => page.review.data,
     board: () => nav.board ?? null,
     title: (id) => views.title(id),
     tip: (id) => views.tip(id),
@@ -433,9 +388,6 @@ async function boot(): Promise<void> {
    *  a board as any other (the owner's decision of 2026-10-10), but for the review: a past build is
    *  not reviewed. Its document is that build's (ExportSpec decision 16). */
   const pastShown = (): boolean => !!nav.board?.past;
-  /** Why the review is refused on a past board, where it would be given. */
-  const PAST_REVIEW = "This board shows a past build: opinions, key marks, targets and trust are given on the latest build.";
-  const READ_ONLY_REVIEW = "Read-only: the review as it stands, live.";
   /** The board on show is a preview of its view at another build than its own (web/src/views.ts,
    *  `preview`): the Time Machine browsing it, or its build while that cannot be read. Nothing
    *  arranges it there: the view's own board is another. */
@@ -472,20 +424,20 @@ async function boot(): Promise<void> {
   };
   // which modules' present text is not the text the graph was read from (its declarations' places,
   // statements and hashes are about the compiled one): found out from the served source's hash
-  let compiled = new Map(meta.modules.map((m) => [m.name, m.compiled]));
+  page.compiled = new Map(page.meta.modules.map((m) => [m.name, m.compiled]));
   const edits = new Map<string, boolean>();
   // the lines of each file read with it (null where it could not be read): what an opinion
   // records, and what a stale one is compared with; and the usage pass's contexts of that text,
   // where it has them (shared/context.ts)
   const served = new Map<string, string[] | null>();
   const servedContexts = new Map<string, { contexts: ModuleContexts | null; hash: string | null }>();
-  const editedNow = (i: number): boolean | null => (g.isExt(i) ? false : edits.get(g.nodes[i].module) ?? null);
+  const editedNow = (i: number): boolean | null => (page.g.isExt(i) ? false : edits.get(page.g.nodes[i].module) ?? null);
   const edited = async (i: number): Promise<boolean> => {
-    if (g.isExt(i)) return false;
-    const mod = g.nodes[i].module;
+    if (page.g.isExt(i)) return false;
+    const mod = page.g.nodes[i].module;
     const known = edits.get(mod);
     if (known !== undefined) return known;
-    const c = compiled.get(mod);
+    const c = page.compiled.get(mod);
     const src = await data.source(mod);
     const e = !!c && !!src?.hash && src.hash !== c;
     edits.set(mod, e);
@@ -497,8 +449,8 @@ async function boot(): Promise<void> {
    *  it: what an opinion records (shared/context.ts), and what a stale one is compared with;
    *  undefined until its file has been read. */
   const textNow = (i: number): DeclarationText | null | undefined => {
-    const v = g.nodes[i];
-    if (g.isExt(i) || !v.range) return null;
+    const v = page.g.nodes[i];
+    if (page.g.isExt(i) || !v.range) return null;
     const lines = served.get(v.module);
     const e = edits.get(v.module);
     if (lines === undefined || e === undefined) return undefined;
@@ -526,10 +478,10 @@ async function boot(): Promise<void> {
 
   // the review flow where the review has a focus (ViewSpec decision 28): the focus's review set in
   // review order, the next one to review, why a declaration is in it (web/src/reviewqueue.ts)
-  const flow = new ReviewFlow({ graph: () => g, review: () => boardReview(), reader: () => people.name });
+  const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => people.name });
   /** The same on the graph on show, whatever build the board shows: how far each target's review has
    *  come is the review's now (the targets list, the views menu) */
-  const flowNow = new ReviewFlow({ graph: () => present, review: () => review.data, reader: () => people.name });
+  const flowNow = new ReviewFlow({ graph: () => page.present, review: () => page.review.data, reader: () => people.name });
   /** Why this reader's opinions are refused until their log is fixed by hand (a line of it cannot
    *  be read, server/review.ts), or null. */
   const blocked = (): string | null => {
@@ -537,19 +489,15 @@ async function boot(): Promise<void> {
     if (!me) return null;
     // someone invited by a personal link writes to their link's log (CollabSpec decision 9)
     const mine = logFileName(me, false, people.person?.id ?? null);
-    const p = review.problems.find((x) => x.file === mine);
+    const p = page.review.problems.find((x) => x.file === mine);
     return p ? `Your review log (log/${mine}) has a line that cannot be read — line ${p.line}: ${p.why}. Nothing more is written to it until it is fixed by hand.` : null;
   };
-  /** The reader's own focus on the board on show (ViewSpec decision 28; web/src/focus.ts): a target,
-   *  none (null), or the view's own (undefined). It is theirs as the camera is: remembered per view
-   *  (`here`, `place`) and followed (`whereIAm`). */
-  let mine: string | null | undefined;
   const isTarget = (name: string): boolean => Object.hasOwn(boardReview().targets, name);
   /** The targets the board on show holds, by name. */
   const heldTargets = (): string[] =>
     Object.keys(boardReview().targets)
       .filter((n) => {
-        const i = g.byName.get(n);
+        const i = page.g.byName.get(n);
         return i !== undefined && toView(i) >= 0;
       })
       .sort();
@@ -560,11 +508,11 @@ async function boot(): Promise<void> {
   /** The target the review is on for this reader (ViewSpec decision 28): their own focus where they
    *  chose one, else the view's; null where there is none, and the review strip and its keys stand
    *  aside. */
-  const reviewName = (): string | null => (nav.board ? readerFocus(mine, viewFocusName(), isTarget, [...linkedTargets(), ...heldTargets()]) : null);
+  const reviewName = (): string | null => (nav.board ? readerFocus(page.mine, viewFocusName(), isTarget, [...linkedTargets(), ...heldTargets()]) : null);
   /** The same in the whole graph's numbering. */
   const reviewRoot = () => {
     const t = reviewName();
-    return t === null ? null : g.byName.get(t) ?? null;
+    return t === null ? null : page.g.byName.get(t) ?? null;
   };
   /** Whose key declarations a Keys pick of `r` holds (ViewSpec decision 20) where the review's focus
    *  is `target` (by default the board on show's): that target's; elsewhere a target's own when the
@@ -594,10 +542,10 @@ async function boot(): Promise<void> {
     go(i);
   };
 
-  const reviewBox = new ReviewBox(g, {
+  const reviewBox = new ReviewBox(page.g, {
     review: () => ({
       data: boardReview(),
-      error: review.error,
+      error: page.review.error,
       blocked: blocked(),
       readOnly: !!data.snapshot || pastShown() || !!reader,
       ...(pastShown() ? { note: `Today's review, against this build. ${PAST_REVIEW}` } : reader ? { note: READ_ONLY_REVIEW } : {}),
@@ -652,11 +600,11 @@ async function boot(): Promise<void> {
   /** What declaration `i` of the board's graph is called now: on a past graph, the name a rename
    *  since gave it, which the review, the views' records and their scopes speak (HistorySpec decision
    *  8); else its name. */
-  const declNow = (i: number): string => nav.board?.past?.past.nowName.get(g.nodes[i].name) ?? g.nodes[i].name;
+  const declNow = (i: number): string => nav.board?.past?.past.nowName.get(page.g.nodes[i].name) ?? page.g.nodes[i].name;
   /** The declarations clicked (the selection's picks' roots), in the whole graph's numbering. */
   const clickedDecls = (): number[] =>
-    picks.flatMap((p) => {
-      const j = p.root && "decl" in p.root ? g.byName.get(p.root.decl) : undefined;
+    page.picks.flatMap((p) => {
+      const j = p.root && "decl" in p.root ? page.g.byName.get(p.root.decl) : undefined;
       return j === undefined ? [] : [j];
     });
   /** What "Mark selected as key" would mark where the review has a focus (web/src/selbar.ts): the
@@ -668,7 +616,7 @@ async function boot(): Promise<void> {
     if (r === null || data.snapshot || pastShown() || reader) return null;
     const xs = clickedDecls().filter((j) => flow.keyable(r, j));
     const already = xs.filter((j) => flow.isKey(r, j)).length;
-    return { target: g.short(r), fresh: xs.length - already, already, names: xs.filter((j) => !flow.isKey(r, j)).map((j) => g.nodes[j].name) };
+    return { target: page.g.short(r), fresh: xs.length - already, already, names: xs.filter((j) => !flow.isKey(r, j)).map((j) => page.g.nodes[j].name) };
   };
   /** Mark or unmark a declaration as key for the focus (k): the one in the panel, or in the source
    *  window the key was pressed in. */
@@ -677,11 +625,11 @@ async function boot(): Promise<void> {
     if (r === null || i === null || i === r || data.snapshot) return;
     if (reader) return say(READ_ONLY);
     if (pastShown()) return say(PAST_REVIEW);
-    if (!flow.keyable(r, i)) return say(`${g.short(i)} is not in ${g.short(r)}'s TCB: only what it holds can be key for it.`);
-    const target = g.nodes[r].name;
+    if (!flow.keyable(r, i)) return say(`${page.g.short(i)} is not in ${page.g.short(r)}'s TCB: only what it holds can be key for it.`);
+    const target = page.g.nodes[r].name;
     void people.ensure().then((me) => {
       if (!me) return;
-      void submit({ op: "key", target, name: g.nodes[i].name, on: !keyMarked(review.data, target, g.nodes[i].name) }).then((why) => why && say(why));
+      void submit({ op: "key", target, name: page.g.nodes[i].name, on: !keyMarked(page.review.data, target, page.g.nodes[i].name) }).then((why) => why && say(why));
     });
   };
 
@@ -711,13 +659,13 @@ async function boot(): Promise<void> {
   const papers: Papers = new Papers($("#windows"), $("#library-btn"), $("#library-pop"), $("#panel"), {
     review: () => boardReview(),
     takeChange: (c) => takeChange(c),
-    graph: () => g,
+    graph: () => page.g,
     clustering: () => cm(),
-    boardSubject: () => (shown && "decl" in shown ? `decl(${shown.decl})` : shown && "cluster" in shown ? clusterSubject(shown.cluster, cm()) : null),
+    boardSubject: () => (page.shown && "decl" in page.shown ? `decl(${page.shown.decl})` : page.shown && "cluster" in page.shown ? clusterSubject(page.shown.cluster, cm()) : null),
     // a past build is not reviewed, and links are part of the review (ViewSpec decision 26)
     cannotLink: () => (data.snapshot ? "A snapshot of the page shows the links as they were: they are made on the server." : reader ? READ_ONLY : pastShown() ? PAST_LINK : null),
     goDecl: (name) => {
-      const i = g.byName.get(name) ?? g.foldedInto.get(name);
+      const i = page.g.byName.get(name) ?? page.g.foldedInto.get(name);
       if (i === undefined) say(`${name} is not in the graph on show.`);
       else go(i);
     },
@@ -742,7 +690,7 @@ async function boot(): Promise<void> {
     attach: (note, c) => attachTo(note, c),
   });
 
-  const panel = new Panel($("#panel"), g, reviewBox, {
+  const panel = new Panel($("#panel"), page.g, reviewBox, {
     links: (i) => papers.declHtml(i),
     go: (i) => go(i),
     walk: (i) => walk(i),
@@ -760,9 +708,9 @@ async function boot(): Promise<void> {
       commit();
     },
     // a past build's files are not the build status of now
-    fileOf: (i) => (pastShown() ? undefined : fileIndex.get(g.nodes[i].module)),
+    fileOf: (i) => (pastShown() ? undefined : page.fileIndex.get(page.g.nodes[i].module)),
     alsoHere: (i) => {
-      const on = people.on(g.nodes[i].name);
+      const on = people.on(page.g.nodes[i].name);
       if (!on.length) return "";
       return (
         `<span>Also here:</span>` +
@@ -780,7 +728,7 @@ async function boot(): Promise<void> {
       S.tcbOrder = o;
       store.save();
     },
-    editorLink: (i) => editor.href(g, i),
+    editorLink: (i) => editor.href(page.g, i),
     shut: (section) => store.isShut(section),
     toggle: (section) => store.toggleShut(section),
     then: (i) => thenHtml(i),
@@ -789,12 +737,12 @@ async function boot(): Promise<void> {
    *  is shown at, whether its source then is kept (decision 23), and what became of it since. */
   const thenHtml = (i: number): string | null => {
     const past = nav.board?.past?.past;
-    if (!past || g !== past.graph) return null;
+    if (!past || page.g !== past.graph) return null;
     const s = past.snapshot;
     const m = past.marks[i] ?? 0;
-    const kept = g.isExt(i) || !g.nodes[i].range ? null : past.kept.get(g.nodes[i].module);
-    const then = g.isExt(i) || !g.nodes[i].range ? "its statement and doc then." : kept ? "its statement, doc and source then (Space)." : "its statement and doc then; its source then is not kept.";
-    const now = past.nowName.get(g.nodes[i].name);
+    const kept = page.g.isExt(i) || !page.g.nodes[i].range ? null : past.kept.get(page.g.nodes[i].module);
+    const then = page.g.isExt(i) || !page.g.nodes[i].range ? "its statement and doc then." : kept ? "its statement, doc and source then (Space)." : "its statement and doc then; its source then is not kept.";
+    const now = past.nowName.get(page.g.nodes[i].name);
     const what =
       m & PAST_GHOST
         ? "Gone now: no rename since carried it."
@@ -821,9 +769,9 @@ async function boot(): Promise<void> {
     trust: (c) => trust.state(canvas.layout.clusters[c], cm()),
     trustClicked: (c, anchor) => trust.clicked(canvas.layout.clusters[c], cm(), anchor),
     // a past build's files are not the build status of now, and its modules are its graph's
-    fileOf: (m) => (pastShown() ? undefined : fileIndex.get(m)),
+    fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
     stateLabel: (st) => STATE_LABEL[st],
-    modulesUnder: (prefix) => g.meta.modules.filter((m) => m.name === prefix || m.name.startsWith(prefix + ".")).map((m) => m.name),
+    modulesUnder: (prefix) => page.g.meta.modules.filter((m) => m.name === prefix || m.name.startsWith(prefix + ".")).map((m) => m.name),
     goToModule: (m) => goToModule(m),
     close: () => {
       clear();
@@ -837,15 +785,15 @@ async function boot(): Promise<void> {
     canOpenViews: () => !reader,
     names: () => views.titles().names ?? undefined,
     show: (k) => {
-      const to = shownOf(picks[k]);
+      const to = shownOf(page.picks[k]);
       if (!to) return;
-      shown = to;
+      page.shown = to;
       apply();
       revealShown();
       commit();
     },
     remove: (k) => {
-      ({ picks, shown } = remove(picks, shown, k));
+      ({ picks: page.picks, shown: page.shown } = remove(page.picks, page.shown, k));
       apply();
       commit();
     },
@@ -864,18 +812,17 @@ async function boot(): Promise<void> {
   // the selection, opened in the middle of the screen each time, and those the reader pinned; a
   // reload starts without them
   const viewport = () => ({ w: document.documentElement.clientWidth || innerWidth, h: document.documentElement.clientHeight || innerHeight });
-  /** whether the page's history has a step back and one forward: the following window shows it */
-  let steps = { back: false, forward: false };
+  page.steps = { back: false, forward: false };
   // the source windows are of the graph on show (`useGraph`): on a board of a past build, they show
   // the text that build was compiled from (HistorySpec decision 23)
   const sourceHooks: SourceHooks = {
     go: (name) => {
-      const j = g.byName.get(name);
+      const j = page.g.byName.get(name);
       if (j !== undefined) go(j);
     },
     // a past build's files are not the build status of now
-    fileOf: (m) => (pastShown() ? undefined : fileIndex.get(m)),
-    compiledOf: (m) => compiled.get(m),
+    fileOf: (m) => (pastShown() ? undefined : page.fileIndex.get(m)),
+    compiledOf: (m) => page.compiled.get(m),
     close: (w) => sources.close(w),
     pin: (w) => void sources.pin(w),
     // a source window collapsed or opened again leaves or takes its side of the reference window
@@ -886,11 +833,11 @@ async function boot(): Promise<void> {
     },
     back: () => history.back(),
     forward: () => history.forward(),
-    steps: () => steps,
+    steps: () => page.steps,
     editorLink: (G, i, at) => editor.href(G, i, at),
     // following a branch on GitHub (DeploySpec decision 13): the build's lines there
-    githubLink: (file, commit, from, to) => (deploy?.github ? githubBlob(deploy.github, commit, file, from, to) : null),
-    builtCommit: () => graphInfo?.commit ?? null,
+    githubLink: (file, commit, from, to) => (page.deploy?.github ? githubBlob(page.deploy.github, commit, file, from, to) : null),
+    builtCommit: () => page.graphInfo?.commit ?? null,
     pinned: () => sources.pinned.map((p) => p.rect()),
     top: () => pairTop(),
     say: (text) => say(text),
@@ -903,7 +850,7 @@ async function boot(): Promise<void> {
   };
   const memory = sourceMemory();
   const sources: Sources<SourceWindow> = new Sources({
-    make: () => new SourceWindow($("#windows"), g, data, reviewBox, sourceHooks, memory),
+    make: () => new SourceWindow($("#windows"), page.g, data, reviewBox, sourceHooks, memory),
     say: (text) => say(text),
     // what the others are told changed: at once, not at the next look
     changed: () => {
@@ -923,7 +870,7 @@ async function boot(): Promise<void> {
    *  clicked in, else any — and else in the following window, the declaration gone to first; the
    *  lines are scrolled to and flashed there. */
   const openSourceAt = (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => {
-    const j = g.byName.get(name) ?? g.foldedInto.get(name);
+    const j = page.g.byName.get(name) ?? page.g.foldedInto.get(name);
     if (j === undefined) return say(`${name} is not in the graph now.`);
     const here = at ? sources.at(at) : null;
     let w = here?.decl === j ? here : sources.all.find((p) => p.decl === j) ?? null;
@@ -937,7 +884,7 @@ async function boot(): Promise<void> {
 
   /** The cluster the panel tells of, in the board's layout (its key read in the board's
    *  clustering); -1 when it tells of none, or of one this board does not hold. */
-  const shownCluster = (): number => (shown && "cluster" in shown && canvas.layout ? clusterIndex(canvas.layout, shown.cluster) : -1);
+  const shownCluster = (): number => (page.shown && "cluster" in page.shown && canvas.layout ? clusterIndex(canvas.layout, page.shown.cluster) : -1);
 
   /** The panel for what was last clicked — a cluster's (web/src/clusterpanel.ts), or a
    *  declaration's with the source window following it; and once it is known whether the
@@ -962,7 +909,7 @@ async function boot(): Promise<void> {
     const k = i === null ? -1 : visitorOf(i);
     canvas.setLead(i !== null && toView(i) >= 0 ? { kind: "node", i: toView(i) } : k >= 0 ? { kind: "visitor", k } : null, leadEnd);
     // an opinion given on an earlier version, its What changed closed (web/src/tips.ts, stale-opinion)
-    if ($("#panel details[data-rv-changes]:not([open])")) offerTip("stale-opinion");
+    if ($("#panel details[data-rv-changes]:not([open])")) page.offerTip("stale-opinion");
     if (i !== null && editedNow(i) === null && !pastShown())
       void edited(i).then((e) => {
         if ((e || reviewBox.needsSource(i)) && selected() === i && !pastShown()) {
@@ -978,7 +925,7 @@ async function boot(): Promise<void> {
   /** a link to the help's film (`#tips`, `#tips=<chapter>`: web/src/state.ts), opened once the page
    *  is there; and the part of the address that says the film shows, while it does */
   const filmLink = tipsIn(location.hash);
-  let filmPart = "";
+  page.filmPart = "";
   let first = linked ? linked.view ?? PROJECT : S.active ?? PROJECT;
   /** why the view the address names could not be opened: said once the page is there, which shows
    *  the Project instead */
@@ -998,14 +945,14 @@ async function boot(): Promise<void> {
       const r = document.querySelector<HTMLElement>(q)?.getBoundingClientRect();
       return r && r.width && r.height ? [r] : [];
     });
-  const canvas = new GraphCanvas($("#canvas") as HTMLCanvasElement, $("#labels") as HTMLCanvasElement, $("#cards"), g, {
+  const canvas = new GraphCanvas($("#canvas") as HTMLCanvasElement, $("#labels") as HTMLCanvasElement, $("#cards"), page.g, {
     covers: overlays,
     // a click with the tool (web/src/selection.ts); a double-click on a cluster folds or opens it,
     // which the canvas does itself
     nodeClick: (j, shift) => void clickOn(pickDecl(vg().nodes[j].name), shift),
     // a visitor is a declaration as any: clicked with the tool (ViewSpec decision 27)
     visitorClick: (k, shift) => {
-      if (visitors[k]) clickOn(pickDecl(visitors[k].name), shift);
+      if (page.visitors[k]) clickOn(pickDecl(page.visitors[k].name), shift);
     },
     clusterClick: (c, shift) => void clickOn(pickCluster(c), shift),
     backgroundClick: () => {
@@ -1037,10 +984,10 @@ async function boot(): Promise<void> {
         tip.innerHTML = `<span class="dot ${dot}"></span>${escapeHtml(v.name)}${st}${then.length ? ` <span class="tip-st tip-tm">${escapeHtml(then.join(" · "))}</span>` : ""}`;
       } else if (t.kind === "visitor") {
         // a visitor: what it is, and that it is the reader's own, not of the board
-        const vis = visitors[t.k];
-        const i = vis ? g.byName.get(vis.name) : undefined;
+        const vis = page.visitors[t.k];
+        const i = vis ? page.g.byName.get(vis.name) : undefined;
         if (!vis || i === undefined) return void (tip.hidden = true);
-        const dot = kindDot(g.nodes[i].kind, g.isExt(i));
+        const dot = kindDot(page.g.nodes[i].kind, page.g.isExt(i));
         // on a folded cluster's card: which one, and that selecting it opens it for the reader alone
         const card = canvas.visitorCard(t.k);
         const inside = card >= 0 ? `; inside folded ${escapeHtml(canvas.layout.clusters[card].label)}, a click opens it for you` : "";
@@ -1072,7 +1019,7 @@ async function boot(): Promise<void> {
       sync.shareFolds();
       outline.render();
       clusterPanel.refresh();
-      showLevel();
+      page.showLevel();
     },
     menu: (t, x, y, world) => openMenu(t, x, y, world),
     frozenDrag: () => say(frozenWhy()),
@@ -1098,14 +1045,14 @@ async function boot(): Promise<void> {
     board: () => (nav.board ? { nodes: vg().nodes, full: nav.board.full.nodes, mode: cm(), nowName: nav.board.past?.past.nowName } : null),
     // a note attached to a declaration shows at the reader's visitor of it, and falls back under the
     // other clustering to beside it in the Project's layout of that clustering
-    visitors: () => visitors.map((v) => v.name),
-    whole: (m) => ({ L: meta.layouts[m], index: present.byName }),
-    resolve: (name) => (g.byName.has(name) ? name : null),
+    visitors: () => page.visitors.map((v) => v.name),
+    whole: (m) => ({ L: page.meta.layouts[m], index: page.present.byName }),
+    resolve: (name) => (page.g.byName.has(name) ? name : null),
     go: (name) => {
-      const i = g.byName.get(name);
+      const i = page.g.byName.get(name);
       if (i !== undefined) go(i);
     },
-    moves: (h) => !frozen() && dragMoves(locked, h),
+    moves: (h) => !frozen() && dragMoves(page.locked, h),
     setOpen: (id, _kind, open) => setNoteOpen(id, open),
     moved: (id, to) => void moveNote(id, to),
     // where a card hangs from its icon is shared as its state is, and is no edit
@@ -1114,7 +1061,7 @@ async function boot(): Promise<void> {
     menu: (id, x, y) => openNoteMenu(id, x, y),
     unfold: (c) => canvas.toggleFold(c),
     // the library is the server's now, whatever build the board shows
-    file: (sha) => fileOf(review.data, sha),
+    file: (sha) => fileOf(page.review.data, sha),
     noFiles: () => !!data.snapshot,
     openCarry: (_id, c) => papers.openCarry(c),
   });
@@ -1151,7 +1098,7 @@ async function boot(): Promise<void> {
     menu: (on, x, y, spot) => {
       if (on?.kind === "note") openNoteMenu(on.id, x, y);
       else openMenu(on?.kind === "decl" ? { kind: "node", i: on.i } : on ? { kind: "cluster", c: on.c } : null, x, y, spot ?? canvas.toWorld(x, y), false, on?.kind === "cluster" ? on.folded : undefined);
-      if (menuOn) menuOn.linear = true;
+      if (page.menuOn) page.menuOn.linear = true;
     },
     // the Export window, at the right, beside which the line is drawn
     beside: () => (exportModal.isOpen ? ($("#export-modal .ex-box")?.getBoundingClientRect().width ?? 0) + 24 : 0),
@@ -1170,8 +1117,7 @@ async function boot(): Promise<void> {
   const ART_KEYS = new Set(["/", "1", "2", "3", "f", "+", "=", "-", "_", "e", "[", "]", "l"]);
   // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved
-  /** the artwork's settings the board is drawn with: null where its mode is off */
-  let artLook: ArtSettings | null = null;
+  page.artLook = null;
   /** the project's git source and commit as git says them, asked when the page opens and again
    *  whenever the artwork comes (its foot; GET /api/git): a commit made after the build is told */
   let gitNow: GitSource | null = null;
@@ -1188,8 +1134,8 @@ async function boot(): Promise<void> {
     },
     now: () => ({ scheme: canvas.scheme, theme: document.documentElement.dataset.theme === "dark" ? "dark" : "light" }),
     look: (s) => {
-      const coming = !artLook && !!s;
-      artLook = s && { ...s };
+      const coming = !page.artLook && !!s;
+      page.artLook = s && { ...s };
       drawLook();
       if (coming)
         gitAsked = data.git().then((git) => {
@@ -1207,16 +1153,16 @@ async function boot(): Promise<void> {
     },
     // the targets a picture can mark: every one of the review's, by the name the board writes
     targets: () =>
-      Object.keys(review.data.targets)
+      Object.keys(page.review.data.targets)
         .map((name) => ({ name, label: name.split(".").pop() ?? name }))
         .sort((a, b) => a.label.localeCompare(b.label) || a.name.localeCompare(b.name)),
     // the title where the reader gave none: the project's name, its declarations and its targets
-    titles: () => titleOf(meta.project.name, meta.projectCount, Object.keys(review.data.targets).length),
+    titles: () => titleOf(page.meta.project.name, page.meta.projectCount, Object.keys(page.review.data.targets).length),
     say: (text) => say(text),
   });
   // the board's names are written in an artwork's fonts once they are there
   document.fonts?.addEventListener?.("loadingdone", () => {
-    if (!artLook) return;
+    if (!page.artLook) return;
     canvas.invalidate();
     canvas.request();
   });
@@ -1225,7 +1171,7 @@ async function boot(): Promise<void> {
    *  names, the targets and the selection; the panels put away for the frame. The reader's own
    *  choices are kept as they are, under it. */
   const drawLook = () => {
-    const a = artLook;
+    const a = page.artLook;
     document.body.classList.toggle("framing", !!a);
     document.body.classList.toggle("art-nonotes", !!a && !a.notes);
     if (a && a.background !== "theme") document.body.dataset.artBg = a.background;
@@ -1246,7 +1192,7 @@ async function boot(): Promise<void> {
    *  while the reader follows someone, whose initials clicked again end following (CollabSpec,
    *  "Following ends" and "What following leaves"): the mode is the follower's own once it has. */
   const artReach = () => {
-    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!artLook && !(people.following && el.matches(".peers-wrap"));
+    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!page.artLook && !(people.following && el.matches(".peers-wrap"));
   };
   /** when the board was last drawn: a link's recipe saves its files once the board is still */
   let drawnAt = 0;
@@ -1272,14 +1218,14 @@ async function boot(): Promise<void> {
 
   // what is trusted without review, in a popover from the side panel (web/src/trust.ts)
   const trust = new Trust($("#trust-list"), $("#trust-pop"), {
-    review: () => ({ data: review.data, blocked: blocked(), readOnly: !!data.snapshot || pastShown() || !!reader, ...(pastShown() ? { note: PAST_REVIEW } : reader ? { note: READ_ONLY_REVIEW } : {}) }),
-    graph: () => g,
+    review: () => ({ data: page.review.data, blocked: blocked(), readOnly: !!data.snapshot || pastShown() || !!reader, ...(pastShown() ? { note: PAST_REVIEW } : reader ? { note: READ_ONLY_REVIEW } : {}) }),
+    graph: () => page.g,
     // each target counts what its review holds under the trust asked about (shared/reviewqueue.ts)
     targets: () =>
-      Object.keys(review.data.targets)
-        .map((name) => ({ name, i: g.byName.get(name) }))
+      Object.keys(page.review.data.targets)
+        .map((name) => ({ name, i: page.g.byName.get(name) }))
         .filter((t): t is { name: string; i: number } => t.i !== undefined)
-        .map((t) => ({ name: t.name, count: (d) => reviewCount(g, d, t.i) })),
+        .map((t) => ({ name: t.name, count: (d) => reviewCount(page.g, d, t.i) })),
     ensureReviewer: () => people.ensure(),
     submit,
     show: (p) => goToPrefix(p),
@@ -1300,31 +1246,31 @@ async function boot(): Promise<void> {
   });
   /** The Trusted button: a shield, and how many prefixes are trusted. */
   const renderTrusted = () => {
-    const n = review.data.trusted.length;
+    const n = page.review.data.trusted.length;
     $("#trusted-btn").innerHTML = `<span class="tl-shield">${SHIELD}</span>Trusted <span class="side-n">${n}</span>`;
     if (trustPop.open) trust.render();
   };
 
-  const files = () => new Map((build?.files ?? []).map((f) => [f.module, f]));
+  const files = () => new Map((page.build?.files ?? []).map((f) => [f.module, f]));
   const outline = new Outline($("#outline"), {
     // a row is its cluster: clicked with the tool, and gone to
     select: (c, shift) => {
       if (clickOn(pickCluster(c), shift) && shownCluster() === c) canvas.flyToCluster(c);
     },
-    picked: (c) => picks.some((p) => !!p.root && clusterOn(p.root, canvas.layout, cm()) === c),
+    picked: (c) => page.picks.some((p) => !!p.root && clusterOn(p.root, canvas.layout, cm()) === c),
     toggleFold: (c) => canvas.toggleFold(c),
     isFolded: (c) => canvas.folded.has(c),
     isCollapsed: (c) => canvas.isCollapsed(c),
     stateOf: (c) => {
       if (pastShown()) return "";
-      const f = fileIndex.get(canvas.layout.clusters[c].key);
+      const f = page.fileIndex.get(canvas.layout.clusters[c].key);
       return f && STATE_LABEL[f.state] ? `st-${f.state}` : "";
     },
     trustCell: (c) => trust.cell(canvas.layout.clusters[c], cm()),
     trustClicked: (c, row) => trust.clicked(canvas.layout.clusters[c], cm(), row),
     hide: (c) => hideLevel(canvas.layout.clusters[c].key),
   });
-  let fileIndex = files();
+  page.fileIndex = files();
 
   // the board's settings, in the ⚙ Board popover: its scope as chips (web/src/boardpanel.ts)
   const boardPanel: BoardPanel = new BoardPanel($("#board"), $("#board-note"), {
@@ -1332,7 +1278,7 @@ async function boot(): Promise<void> {
       const b = nav.board;
       if (!b) return null;
       let own = 0;
-      for (let i = 0; i < g.projectCount; i++) own += b.bs.set[i];
+      for (let i = 0; i < page.g.projectCount; i++) own += b.bs.set[i];
       return { rec: b.rec, title: views.title(b.id), own, outside: b.bs.count - own };
     },
     setScope: (q): Promise<string | null> => sync.setScope(q),
@@ -1355,7 +1301,7 @@ async function boot(): Promise<void> {
     tabsChanged: () => renderTabs(),
     notesChanged: () => stickies.render(),
     boardChanged: () => linear.refresh(),
-    levelChanged: () => showLevel(),
+    levelChanged: () => page.showLevel(),
     activityChanged: () => activity.changed(),
     hint: (text) => say(text),
     writeAddress: (push) => writeAddress(push),
@@ -1364,9 +1310,9 @@ async function boot(): Promise<void> {
     frozen: () => (frozen() ? frozenWhy() : null),
     // the view's own focus, or its link, changed: the review follows where the focus in force did
     focusChanged: () => {
-      const was = focusWas;
+      const was = page.focusWas;
       syncFocus();
-      if (focusWas !== was) apply();
+      if (page.focusWas !== was) apply();
     },
     // a target linked elsewhere, or its view deleted: its panel says so
     linksChanged: () => showSelected(),
@@ -1473,15 +1419,12 @@ async function boot(): Promise<void> {
     bar.hidden = r === null;
     if (r !== null) flow.renderStrip(r);
   };
-  /** The focus in force, as last drawn by: what follows it (the key declarations' diamonds, the
-   *  colour scheme) is made again when it changes. */
-  let focusWas: string | null | undefined;
   /** The focus may have changed (the reader's choice, the view's, the targets, the board's set): what
    *  depends on it follows, and the header says it. */
   const syncFocus = () => {
     const f = reviewName();
-    if (f !== focusWas) {
-      focusWas = f;
+    if (f !== page.focusWas) {
+      page.focusWas = f;
       syncStatus();
       applyScheme();
     }
@@ -1494,16 +1437,16 @@ async function boot(): Promise<void> {
   const syncStatus = () => {
     const G = vg();
     // a past build's status is its review against now's opinions; its files' builds are not known
-    canvas.setStatus(statusCodes(boardReview(), G, pastShown() ? new Map() : fileIndex));
-    canvas.setTargets(Object.keys(review.data.targets).map((n) => G.byName.get(n)).filter((j): j is number => j !== undefined));
+    canvas.setStatus(statusCodes(boardReview(), G, pastShown() ? new Map() : page.fileIndex));
+    canvas.setTargets(Object.keys(page.review.data.targets).map((n) => G.byName.get(n)).filter((j): j is number => j !== undefined));
     // key declarations carry a diamond: where the review has a focus its target's, elsewhere every
     // target's (ExportSpec decision 4); each with the targets it is key for, so that an artwork whose
     // targets are chosen draws their keys alone (decision 19)
     const r = reviewRoot();
-    const roots = r !== null ? [r] : Object.keys(review.data.targets).map((n) => g.byName.get(n)).filter((j): j is number => j !== undefined);
+    const roots = r !== null ? [r] : Object.keys(page.review.data.targets).map((n) => page.g.byName.get(n)).filter((j): j is number => j !== undefined);
     const keys = new Map<number, number[]>();
     for (const t of roots) for (const k of flow.keys(t).keys) if (k !== t) keys.set(k, [...(keys.get(k) ?? []), t]);
-    const onBoard = (k: number) => G.byName.get(g.nodes[k].name);
+    const onBoard = (k: number) => G.byName.get(page.g.nodes[k].name);
     const drawn = [...keys].flatMap(([k, ts]) => {
       const j = onBoard(k);
       return j === undefined ? [] : [{ j, of: ts.map(onBoard).filter((t): t is number => t !== undefined) }];
@@ -1529,7 +1472,7 @@ async function boot(): Promise<void> {
   /** the reader's own colouring here, under an artwork's (drawLook) */
   const ownScheme = () => store.schemeFor(onReview());
   const applyScheme = () => {
-    canvas.setScheme(artLook?.scheme ?? ownScheme());
+    canvas.setScheme(page.artLook?.scheme ?? ownScheme());
     legend.render();
   };
   const chooseScheme = (s: Scheme) => {
@@ -1548,14 +1491,6 @@ async function boot(): Promise<void> {
     },
     keyEdges: () => S.mode === "keys",
   });
-
-  // ---------------------------------------------------------------- who is here
-  //
-  // The reader's name (CollabSpec decision 3) at the top right, and the others on the server
-  // (decision 4): their initials beside it, their selections on the canvas and in the panel, and
-  // following one of them — to their view, opened in a tab if need be (ViewSpec decision 10).
-
-  const short = (name: string) => name.split(".").pop() ?? name;
   /** What those following this reader see (CollabSpec decision 4, the owner's decision of
    *  2026-10-11: what you see is followed), part by part as web/src/surfaces.ts declares them: how
    *  each is read into presence, and how a followed reader's is applied here — the place's parts
@@ -1567,12 +1502,12 @@ async function boot(): Promise<void> {
       history: () => (tm.active && tm.snapshot !== null ? { history: { snapshot: tm.snapshot } } : {}),
       camera: () => ({ cam: { ...canvas.cam } }),
       tool: () => ({ mode: S.mode }),
-      selection: () => ({ selection: selectionText(picks) }),
+      selection: () => ({ selection: selectionText(page.picks) }),
       // the reader's own focus, where they chose one (ViewSpec decision 28), and their visitors
       // (decision 27)
-      focus: () => (mine !== undefined ? { focus: mine } : {}),
-      visitors: () => (visitors.length ? { visitors: shareVisitors(visitors, (k) => canvas.visitorPos(k)) } : {}),
-      panel: () => ({ sel: shown && "decl" in shown ? shown.decl : null }),
+      focus: () => (page.mine !== undefined ? { focus: page.mine } : {}),
+      visitors: () => (page.visitors.length ? { visitors: shareVisitors(page.visitors, (k) => canvas.visitorPos(k)) } : {}),
+      panel: () => ({ sel: page.shown && "decl" in page.shown ? page.shown.decl : null }),
       // the source windows, the following one and those pinned (decided 2026-10-09)
       sources: () => ({
         source: sources.open,
@@ -1597,7 +1532,7 @@ async function boot(): Promise<void> {
       colouring: (v) => {
         if (ownScheme() !== v.scheme) chooseScheme(v.scheme!);
       },
-      edges: (v) => setEdges(v.edges!),
+      edges: (v) => page.setEdges(v.edges!),
       linear: (v) => (v.linear ? void linear.show("followed") : linear.hide("reader", "followed")),
       artwork: (v) => art.follow(v.artwork ?? null),
     },
@@ -1608,10 +1543,10 @@ async function boot(): Promise<void> {
    *  whose name ends with it; null where there is none, or several. */
   const resolveName = (name: string): string | null => {
     if (!/^[\p{L}\p{N}_'!?.«»₀-₉]+$/u.test(name)) return null;
-    if (g.byName.has(name)) return name;
+    if (page.g.byName.has(name)) return name;
     const tail = "." + name;
     let found: string | null = null;
-    for (const n of g.nodes)
+    for (const n of page.g.nodes)
       if (n.name.endsWith(tail)) {
         if (found) return null;
         found = n.name;
@@ -1633,7 +1568,7 @@ async function boot(): Promise<void> {
     resolve: resolveName,
     go: (name) => {
       people.unfollow();
-      const i = g.byName.get(name);
+      const i = page.g.byName.get(name);
       if (i !== undefined) go(i);
     },
     open: (hash) => {
@@ -1694,6 +1629,13 @@ async function boot(): Promise<void> {
       tool: (t) => (restsOn(t) ? "Rests on" : MODE_NAME[t]),
     });
   };
+
+  // ---------------------------------------------------------------- who is here
+  //
+  // The reader's name (CollabSpec decision 3) at the top right, and the others on the server
+  // (decision 4): their initials beside it, their selections on the canvas and in the panel, and
+  // following one of them — to their view, opened in a tab if need be (ViewSpec decision 10).
+
   /** A reader's place in words: "Review ★fermatLastTheoremFour, looking at not_fermat_42". */
   const describePlace = (v: PresenceView): string => {
     const name = (m: string) => (TOOLS.includes(m as Tool) ? toolName(m as Tool) : m);
@@ -1850,7 +1792,7 @@ async function boot(): Promise<void> {
       sources.mirror({
         following: v.source ? { decl: selected(), collapsed: v.sourceCollapsed === true } : null,
         pinned: (v.pinned ?? []).flatMap((w) => {
-          const i = g.byName.get(w.decl);
+          const i = page.g.byName.get(w.decl);
           return i === undefined ? [] : [{ decl: i, collapsed: w.collapsed }];
         }),
       });
@@ -1872,7 +1814,7 @@ async function boot(): Promise<void> {
     if (!shot) return say("This link's snapshot of what its sharer saw could not be read: it opens on its view alone.");
     // the build browsed, the reference window's file and its link, where they are still here
     if (shot.view.history) await tm.load();
-    const { view, gone } = sortOut(shot.view, { build: (id) => tm.snaps.some((s) => s.id === id), file: (sha) => !!fileOf(review.data, sha), link: (id) => !!linkOf(review.data, id) });
+    const { view, gone } = sortOut(shot.view, { build: (id) => tm.snaps.some((s) => s.id === id), file: (sha) => !!fileOf(page.review.data, sha), link: (id) => !!linkOf(page.review.data, id) });
     const v: PresenceView = { mode: S.mode, sel: null, source: false, clusterMode: cm(), cam: null, view: nav.board.id, scope: null, tabs: [], ...view };
     // a view nobody keeps was opened by the address's query, at the build it carries: the snapshot's
     // id for it may be gone, its query is the same
@@ -1881,7 +1823,7 @@ async function boot(): Promise<void> {
     // what the board's graph (a past build's, in the Time Machine) does not hold, and a focus on what
     // is no target now
     const picked = readSelection(v.selection).flatMap((p) => (p.root && "decl" in p.root ? [p.root.decl] : []));
-    Object.assign(gone, goneNames(v, picked, { decl: (n) => g.byName.has(n), target: (n) => Object.hasOwn(review.data.targets, n) }));
+    Object.assign(gone, goneNames(v, picked, { decl: (n) => page.g.byName.has(n), target: (n) => Object.hasOwn(page.review.data.targets, n) }));
     // the region framed again, now that the panels the snapshot opened leave the board its room
     if (shot.region) {
       syncInsets();
@@ -1905,12 +1847,12 @@ async function boot(): Promise<void> {
     const { look, problems, left } = resolveRecipe(read.recipe, {
       clusters: L.clusters,
       clusterOf: (name) => {
-        const i = g.byName.get(name);
+        const i = page.g.byName.get(name);
         const j = i === undefined ? -1 : toView(i);
         return j < 0 ? undefined : L.cluster[j];
       },
-      targets: Object.keys(review.data.targets),
-      projectCount: g.projectCount,
+      targets: Object.keys(page.review.data.targets),
+      projectCount: page.g.projectCount,
     });
     if (problems.length || left) say(`This link's artwork: ${[...problems, ...(left ? [`${left} names left out, more than an artwork carries`] : [])].join("; ")}.`);
     if (art.isOpen) await art.close();
@@ -1931,14 +1873,14 @@ async function boot(): Promise<void> {
     document.documentElement.dataset.artworkSaved = made.length ? made.join(",") : "none";
   };
   // a layout's memory is handed over under a name, or by a private reader, as the server takes it
-  handsOver = () => !reader && (!!data.snapshot || !!people.name || !!data.privateSession);
+  page.handsOver = () => !reader && (!!data.snapshot || !!people.name || !!data.privateSession);
   /** The others' selections on the canvas, and who else is on the declaration in the panel. */
   const syncPeers = () => {
     const marks: { i: number; color: string; label: string }[] = [];
     for (const p of people.people()) {
       const seen = new Set<number>();
       for (const s of p.sessions) {
-        const i = s.view?.sel ? g.byName.get(s.view.sel) : undefined;
+        const i = s.view?.sel ? page.g.byName.get(s.view.sel) : undefined;
         if (i === undefined || seen.has(i)) continue;
         seen.add(i);
         const j = toView(i);
@@ -2020,10 +1962,10 @@ async function boot(): Promise<void> {
   // the review's focus on the board on show, in the view's header (ViewSpec decision 28;
   // web/src/focus.ts): the view's own, everyone's, or the reader's, theirs as the camera is
   const focusMenu = new FocusMenu($("#focus-btn"), $("#focus-menu"), {
-    state: () => (nav.board ? { view: viewFocusName(), mine, focus: reviewName(), linked: linkedTargets(), held: heldTargets() } : null),
+    state: () => (nav.board ? { view: viewFocusName(), mine: page.mine, focus: reviewName(), linked: linkedTargets(), held: heldTargets() } : null),
     short: (name) => views.titles().names?.decl(name) ?? short(name),
     choose: (f) => {
-      mine = f;
+      page.mine = f;
       apply();
       writeAddress(false);
     },
@@ -2035,7 +1977,7 @@ async function boot(): Promise<void> {
       if (r.error) return r.error;
       nav.board.rec.focus = f;
       // the reader's focus is the view's now: nothing of their own is left
-      mine = undefined;
+      page.mine = undefined;
       apply();
       writeAddress(false);
       return null;
@@ -2047,14 +1989,14 @@ async function boot(): Promise<void> {
   const targetList = new TargetList($("#targets"), {
     readOnly: () => !!data.snapshot || !!reader,
     list: () => views.summaries,
-    targets: () => Object.keys(review.data.targets),
+    targets: () => Object.keys(page.review.data.targets),
     active: () => nav.board?.id ?? null,
     progress: (t) => {
-      const i = present.byName.get(t);
+      const i = page.present.byName.get(t);
       return i === undefined ? null : flowNow.progress(i);
     },
     keyProgress: (t) => {
-      const i = present.byName.get(t);
+      const i = page.present.byName.get(t);
       return i === undefined ? null : flowNow.keyProgress(i);
     },
     open: (id, target) => openTarget(id, target),
@@ -2079,7 +2021,7 @@ async function boot(): Promise<void> {
    *  its view alone, and with none has nowhere to go. */
   const openTarget = (id: string | null, target: string) => {
     if (id !== null && id !== nav.board.id && noSwitch()) return;
-    const i = g.byName.get(target);
+    const i = page.g.byName.get(target);
     if (i !== undefined) reviewTarget(i);
     else if (id !== null) void openView(id);
     else say(`★${short(target)} is not in the graph now, and has no view.`);
@@ -2095,15 +2037,15 @@ async function boot(): Promise<void> {
   const targetTcbs = new Map<string, { names: Set<string>; modules: Set<string> } | null>();
   const tcbOfTarget = (name: string) => {
     if (!targetTcbs.has(name)) {
-      const i = present.byName.get(name);
+      const i = page.present.byName.get(name);
       if (i === undefined) targetTcbs.set(name, null);
       else {
-        const seen = present.reach([i], SITE_STMT | SITE_BODY, "out");
+        const seen = page.present.reach([i], SITE_STMT | SITE_BODY, "out");
         const names = new Set<string>(), modules = new Set<string>();
         for (let j = 0; j < seen.length; j++)
           if (seen[j]) {
-            names.add(present.nodes[j].name);
-            if (!present.isExt(j)) modules.add(present.nodes[j].module);
+            names.add(page.present.nodes[j].name);
+            if (!page.present.isExt(j)) modules.add(page.present.nodes[j].module);
           }
         targetTcbs.set(name, { names, modules });
       }
@@ -2203,11 +2145,11 @@ async function boot(): Promise<void> {
 
   const activity = new Activity($("#activity"), $("#activity-btn"), $("#activity-badge"), store, {
     me: () => people.name,
-    review: () => review.data,
+    review: () => page.review.data,
     mine: (name) => {
       // the targets this reader marked, or the reader they took it from by following them: not
       // those an agent of the same name marked
-      const targets = new Set(Object.entries(review.data.targets).filter(([, t]) => name !== null && t.by === name && !t.agent).map(([n]) => n));
+      const targets = new Set(Object.entries(page.review.data.targets).filter(([, t]) => name !== null && t.by === name && !t.agent).map(([n]) => n));
       const names = new Set<string>(), modules = new Set<string>();
       for (const t of targets) {
         const s = tcbOfTarget(t);
@@ -2216,26 +2158,26 @@ async function boot(): Promise<void> {
       }
       return { targets, names, modules };
     },
-    touching: (mods) => Object.keys(review.data.targets).filter((t) => mods.some((m) => tcbOfTarget(t)?.modules.has(m))),
+    touching: (mods) => Object.keys(page.review.data.targets).filter((t) => mods.some((m) => tcbOfTarget(t)?.modules.has(m))),
     covering: (p) =>
-      Object.keys(review.data.targets).filter((t) => {
+      Object.keys(page.review.data.targets).filter((t) => {
         for (const n of tcbOfTarget(t)?.names ?? []) {
-          const i = present.byName.get(n)!;
-          if (covers(p, n, present.nodes[i].module, present.isExt(i))) return true;
+          const i = page.present.byName.get(n)!;
+          if (covers(p, n, page.present.nodes[i].module, page.present.isExt(i))) return true;
         }
         return false;
       }),
     showPrefix: (p) => goToPrefix(p),
-    has: (name) => g.byName.has(name),
+    has: (name) => page.g.byName.has(name),
     go: (name) => {
-      const i = g.byName.get(name);
+      const i = page.g.byName.get(name);
       if (i !== undefined) go(i);
     },
     comment: (text, name) => reviewBox.comment(text, name),
     openOpinion: (r) => reviewBox.jump(r, null, null),
     openSource: (r, quoted) => openSourceAt(r.name, r.from, r.to, quoted, null),
     reviewTarget: (name) => {
-      const i = g.byName.get(name);
+      const i = page.g.byName.get(name);
       if (i !== undefined) reviewTarget(i);
     },
     goToModule: (m) => goToModule(m),
@@ -2272,9 +2214,9 @@ async function boot(): Promise<void> {
   // what was said of declarations the graph no longer has (HistorySpec decisions 12–14), in a drawer
   // where Activity's is, opened from the build-status popover
   const lostDrawer = new LostAndFound($("#lostfound"), data.lost, {
-    has: (name) => g.byName.has(name),
+    has: (name) => page.g.byName.has(name),
     go: (name) => {
-      const i = g.byName.get(name);
+      const i = page.g.byName.get(name);
       if (i !== undefined) go(i);
     },
     hasView: (id) => !!views.summary(id),
@@ -2306,20 +2248,17 @@ async function boot(): Promise<void> {
    *  Show in history, all come here. */
   const timeMachine = (at?: TimeMachineAt): void => void openTimeMachine(at);
 
-  /** The review changed, once per change whoever made it (this reader, someone else, the logs on disk):
-   *  everything that shows it follows. A board whose scope reads the review (trusted, statuses,
-   *  advice) may hold another set now: the board on show is drawn again at once. */
   /** What the reader selected follows a rename of it (web/src/selection.ts, followRenames): a build
    *  that renamed it, or a move that says so, which may come before or after the new graph. True
    *  where it did; the board is drawn again by the caller. */
   const followSelection = (): boolean => {
     // the renames in force, and those the builds read since the page opened found of declarations
     // nothing was said of, which are in the history alone (HistorySpec decision 10)
-    const renamed: Record<string, string> = Object.assign(Object.create(null), review.data.renamed);
+    const renamed: Record<string, string> = Object.assign(Object.create(null), page.review.data.renamed);
     for (const [from, to] of buildRenames) if (!Object.hasOwn(renamed, to)) renamed[to] = from;
-    const r = followRenames(picks, shown, renamed, (name) => present.byName.has(name));
-    if (r.picks === picks && r.shown === shown) return false;
-    ({ picks, shown } = r);
+    const r = followRenames(page.picks, page.shown, renamed, (name) => page.present.byName.has(name));
+    if (r.picks === page.picks && r.shown === page.shown) return false;
+    ({ picks: page.picks, shown: page.shown } = r);
     return true;
   };
   /** The renames the history found from each build to the next one read while the page is open,
@@ -2345,6 +2284,10 @@ async function boot(): Promise<void> {
     writeAddress(false);
     people.report();
   };
+
+  /** The review changed, once per change whoever made it (this reader, someone else, the logs on disk):
+   *  everything that shows it follows. A board whose scope reads the review (trusted, statuses,
+   *  advice) may hold another set now: the board on show is drawn again at once. */
   const reviewChanged = () => {
     const followed = followSelection();
     targetTcbs.clear();
@@ -2355,7 +2298,7 @@ async function boot(): Promise<void> {
     renderTrusted();
     // what is lit reads the review when a pick does (key declarations, trust, statuses), and the
     // key graph's edges under Keys always: lit again; else what shows the review is drawn again
-    const q = selectionQuery(picks);
+    const q = selectionQuery(page.picks);
     if (followed || S.mode === "keys" || (q && readsReview(q))) apply();
     else {
       outline.render();
@@ -2376,35 +2319,35 @@ async function boot(): Promise<void> {
   /** The whole review (where this page holds another revision than the server's, or events came in
    *  between): taken unless this page holds that revision already. */
   const takeWhole = (st: ReviewState) => {
-    if (st.epoch === review.epoch && st.rev <= review.rev) return;
-    review = st;
+    if (st.epoch === page.review.epoch && st.rev <= page.review.rev) return;
+    page.review = st;
     reviewChanged();
   };
   /** The whole review read again (GET /api/review, which a page holding it is answered 304): where
    *  the event stream says the server holds another revision, and where a change cannot be applied;
    *  one reading out at a time (web/src/reviewread.ts). */
-  const wholeReview = new WholeReview(data.review, takeWhole, () => review);
+  const wholeReview = new WholeReview(data.review, takeWhole, () => page.review);
   /** A change of the review (shared/review.ts, ReviewChange): its events applied to the review this
    *  page holds when it is the one they follow; once only, whether it came as the answer to this
    *  page's request or as the event every page gets. Anything else — a change missed, another run
    *  of the server — has the whole review read again. An event of a kind no longer recorded is
    *  skipped, as the server's replay skips it (the server sends none). */
   const takeChange = (c: ReviewChange) => {
-    if (c.epoch === review.epoch && c.rev <= review.rev) return;
+    if (c.epoch === page.review.epoch && c.rev <= page.review.rev) return;
     // each event read as its log was: an agent's marked as one, an invited person's with their id
     const read = (e: unknown) => {
       const o = e as { agent?: unknown; person?: unknown };
       return readEvent(e, o.agent === true, validPersonId(o.person) ? o.person : null);
     };
-    const events = c.epoch === review.epoch && c.base === review.rev && c.events ? c.events.map(read).filter((e) => e !== null) : null;
+    const events = c.epoch === page.review.epoch && c.base === page.review.rev && c.events ? c.events.map(read).filter((e) => e !== null) : null;
     if (!events || events.some((e) => typeof e === "string")) {
       void wholeReview.fetch();
       return;
     }
     // a replay that changed nothing (a new graph's reading, server/review.ts): the revision moves on
-    const same = !events.length && JSON.stringify(c.problems) === JSON.stringify(review.problems);
-    for (const e of events as ReviewEvent[]) applyEvent(review.data, e);
-    review = { ...review, rev: c.rev, problems: c.problems, error: problemsText(c.problems) };
+    const same = !events.length && JSON.stringify(c.problems) === JSON.stringify(page.review.problems);
+    for (const e of events as ReviewEvent[]) applyEvent(page.review.data, e);
+    page.review = { ...page.review, rev: c.rev, problems: c.problems, error: problemsText(c.problems) };
     if (!same) reviewChanged();
   };
 
@@ -2413,8 +2356,8 @@ async function boot(): Promise<void> {
   const litCount = (lit: Lit | null): LitCount => (lit ? trustSplit(vg(), boardReview(), lit.set) : { counted: 0, trusted: 0 });
   /** The selection bar: its picks, what is lit, Zoom in, and where the review has a focus what "Mark
    *  selected as key" would mark — which the review changes, so it is drawn again with it. */
-  const renderSelBar = (q = selectionQuery(picks), lit: Lit | null = q && litOn(q)) =>
-    selBar.render(picks, picks.findIndex((p) => !!shown && sameShown(shownOf(p), shown)), litCount(lit), zoomOf(q, lit) !== null, keyMarking());
+  const renderSelBar = (q = selectionQuery(page.picks), lit: Lit | null = q && litOn(q)) =>
+    selBar.render(page.picks, page.picks.findIndex((p) => !!page.shown && sameShown(shownOf(p), page.shown)), litCount(lit), zoomOf(q, lit) !== null, keyMarking());
 
   /** What is selected, lit and shown: the selection's query evaluated on the whole graph and cut to
    *  the board (decided 2026-10-07: what is lit is exactly that set; the owner's decision,
@@ -2423,13 +2366,13 @@ async function boot(): Promise<void> {
   const apply = () => {
     const G = vg();
     syncFocus();
-    const q = selectionQuery(picks);
+    const q = selectionQuery(page.picks);
     const lit = q && litOn(q);
     // under Keys, the key graph's edges among what is lit instead of the references among it
     const keyEdges = S.mode === "keys" && lit && lit.count ? keyEdgesOn(lit) : null;
     // the picks' roots, on this board: declarations, and clusters of its clustering
     const decls: number[] = [], clusters: number[] = [];
-    for (const p of picks) {
+    for (const p of page.picks) {
       if (!p.root) continue;
       if ("decl" in p.root) {
         const j = G.byName.get(p.root.decl);
@@ -2441,12 +2384,12 @@ async function boot(): Promise<void> {
     }
     // an artwork's look (ExportSpec decision 19): its targets alone, the rest faded; or nothing of the
     // selection, which stays the reader's
-    if (artLook?.targets === "highlight") {
+    if (page.artLook?.targets === "highlight") {
       const alone = new Uint8Array(G.n);
       for (let i = 0; i < G.n; i++) if (canvas.isTarget(i)) alone[i] = 1;
-      canvas.setActivation(edgeMode(picks), [], alone, [], null);
-    } else if (artLook && !artLook.selection) canvas.setActivation(edgeMode(picks), [], null, [], null);
-    else canvas.setActivation(edgeMode(picks), decls, lit?.set ?? null, clusters, keyEdges);
+      canvas.setActivation(edgeMode(page.picks), [], alone, [], null);
+    } else if (page.artLook && !page.artLook.selection) canvas.setActivation(edgeMode(page.picks), [], null, [], null);
+    else canvas.setActivation(edgeMode(page.picks), decls, lit?.set ?? null, clusters, keyEdges);
     linear.request();
     drawVisitors();
     renderSelBar(q, lit);
@@ -2462,7 +2405,7 @@ async function boot(): Promise<void> {
    *  union over the targets whose key declarations are lit. */
   const keyEdgesOn = (lit: Lit): number[] => {
     const r = reviewRoot();
-    const roots = r !== null ? [r] : Object.keys(review.data.targets).map((n) => g.byName.get(n)).filter((i): i is number => i !== undefined);
+    const roots = r !== null ? [r] : Object.keys(page.review.data.targets).map((n) => page.g.byName.get(n)).filter((i): i is number => i !== undefined);
     const on = (i: number) => {
       const j = toView(i);
       return j >= 0 && lit.set[j] === 1;
@@ -2488,6 +2431,8 @@ async function boot(): Promise<void> {
       legend.render();
     }
   };
+
+  // ---------------------------------------------------------------- toolbar
 
   /** What a mode does, under its button while the pointer is on it (or it has the focus); null
    *  puts it away. It is said nowhere else: the reader who knows the modes is not told again. Rests
@@ -2540,15 +2485,15 @@ async function boot(): Promise<void> {
    *  shift under Selection that one pick goes in or out; one step in the history. False when it
    *  changed nothing: a picked cluster covers it already, which the hint says. */
   const clickOn = (p: Pick, shift: boolean): boolean => {
-    const r = click(picks, shown, p, shift, setOn);
+    const r = click(page.picks, page.shown, p, shift, setOn);
     if (r.covered) {
       const names = views.titles().names ?? undefined;
       say(`${pickWords(p, names)} is inside ${pickWords(r.covered, names)}, which is selected: nothing changed.`);
       return false;
     }
-    const before = picks.length;
-    picks = r.picks;
-    shown = r.shown;
+    const before = page.picks.length;
+    page.picks = r.picks;
+    page.shown = r.shown;
     apply();
     commit();
     tipsOnClick(p, shift, before);
@@ -2563,28 +2508,28 @@ async function boot(): Promise<void> {
   const tipsOnClick = (p: Pick, shift: boolean, before: number) => {
     const decl = p.root && "decl" in p.root ? p.root.decl : null;
     if (S.mode === "plain") {
-      if (shift) return didTip("selection-replace");
+      if (shift) return page.didTip("selection-replace");
       if (!decl || !before) return;
       const now = Date.now();
       replaced = [...replaced.filter((t) => now - t < 20_000), now];
-      if (replaced.length >= 3) offerTip("selection-replace");
+      if (replaced.length >= 3) page.offerTip("selection-replace");
     } else if (S.mode === "tcb" && decl) {
-      const i = g.byName.get(decl);
-      const q = selectionQuery(picks);
-      if (i !== undefined && g.nodes[i].kind === "theorem" && q && litOn(q).count > 1) offerTip("tcb-first");
-      if (countTip("tcb-picks", "rests-only-tcb") >= 5) offerTip("rests-only-tcb");
+      const i = page.g.byName.get(decl);
+      const q = selectionQuery(page.picks);
+      if (i !== undefined && page.g.nodes[i].kind === "theorem" && q && litOn(q).count > 1) page.offerTip("tcb-first");
+      if (page.countTip("tcb-picks", "rests-only-tcb") >= 5) page.offerTip("rests-only-tcb");
     }
   };
   /** The tips in place what is recorded may be the moment of: a target's second declaration
    *  approved on a view focused on it, while it has no key declaration; a key marked ends that. */
   let approvedInFocus = 0;
   const tipsOnReview = (op: ReviewRequest) => {
-    if (op.op === "key" && op.on) return didTip("key-in-target");
+    if (op.op === "key" && op.on) return page.didTip("key-in-target");
     if (op.op !== "opinion" || op.verdict !== "approve") return;
     const r = reviewRoot();
-    const i = g.byName.get(op.name);
-    if (r === null || i === undefined || !flow.inReview(r, i) || keyMarks(review.data, g.nodes[r].name).length) return;
-    if (++approvedInFocus >= 2) offerTip("key-in-target");
+    const i = page.g.byName.get(op.name);
+    if (r === null || i === undefined || !flow.inReview(r, i) || keyMarks(page.review.data, page.g.nodes[r].name).length) return;
+    if (++approvedInFocus >= 2) page.offerTip("key-in-target");
   };
 
   /** The tool in force: kept, with the step of Rests on it is (the step entering Rests on resumes,
@@ -2602,10 +2547,10 @@ async function boot(): Promise<void> {
     if (m === S.mode) return;
     useTool(m);
     syncTool();
-    const r = retool(picks, shown, m, (root) => keysFor(root));
-    if (r.picks === picks) return writeAddress(false);
-    picks = r.picks;
-    shown = r.shown;
+    const r = retool(page.picks, page.shown, m, (root) => keysFor(root));
+    if (r.picks === page.picks) return writeAddress(false);
+    page.picks = r.picks;
+    page.shown = r.shown;
     apply();
     commit();
   };
@@ -2615,17 +2560,17 @@ async function boot(): Promise<void> {
    *  Show me choose it otherwise, and teach nothing of it. */
   const readerMode = (m: Tool) => {
     if (m === "keys" || m === "deps" || m === "refs") {
-      didTip("tcb-first");
-      didTip("rests-only-tcb");
+      page.didTip("tcb-first");
+      page.didTip("rests-only-tcb");
     }
     setMode(m);
   };
 
   /** Nothing selected; the visitors go with the selection (ViewSpec decision 27). */
   const clear = () => {
-    picks = [];
-    shown = null;
-    visitors = [];
+    page.picks = [];
+    page.shown = null;
+    page.visitors = [];
     apply();
   };
 
@@ -2639,15 +2584,15 @@ async function boot(): Promise<void> {
 
   /** The trail's index of declaration `i` (the whole graph's numbering), or -1. */
   const visitorOf = (i: number): number => {
-    const name = g.nodes[i]?.name;
-    return name === undefined ? -1 : visitors.findIndex((v) => v.name === name);
+    const name = page.g.nodes[i]?.name;
+    return name === undefined ? -1 : page.visitors.findIndex((v) => v.name === name);
   };
   /** Declaration `i`, which the board does not hold, a visitor on it, the newest of the trail,
    *  reached from `from` where that is on the board or a visitor. Its place is the canvas's to choose
    *  (drawVisitors); one that is a visitor already keeps its own. */
   const visitOn = (i: number, from: number | null) => {
     const reached = from !== null && from !== i && (toView(from) >= 0 || visitorOf(from) >= 0);
-    visitors = visit(visitors, { name: g.nodes[i].name, from: reached ? g.nodes[from!].name : null, place: null });
+    page.visitors = visit(page.visitors, { name: page.g.nodes[i].name, from: reached ? page.g.nodes[from!].name : null, place: null });
   };
   /** What the board does not hold of where the reader is — the selection's declarations and what the
    *  panel tells of — made visitors where they are not yet (a link, a tab come back to, an agent
@@ -2669,26 +2614,26 @@ async function boot(): Promise<void> {
    *  holds now, or its graph does not have, are no visitors. The places the canvas chose are kept in
    *  the trail, which presence carries to followers. */
   const drawVisitors = () => {
-    visitors = stillVisiting(visitors, (n) => {
-      const i = g.byName.get(n);
+    page.visitors = stillVisiting(page.visitors, (n) => {
+      const i = page.g.byName.get(n);
       return i !== undefined && toView(i) < 0;
     });
     const r = reviewRoot();
     const targets = boardReview().targets;
-    const index = new Map(visitors.map((v, k) => [v.name, k]));
-    const points: VisitorPoint[] = visitors.map((v) => {
-      const i = g.byName.get(v.name)!;
-      const node = g.nodes[i];
-      const edges = visitorEdges(g, i, toView, (u) => index.get(g.nodes[u].name) ?? -1);
+    const index = new Map(page.visitors.map((v, k) => [v.name, k]));
+    const points: VisitorPoint[] = page.visitors.map((v) => {
+      const i = page.g.byName.get(v.name)!;
+      const node = page.g.nodes[i];
+      const edges = visitorEdges(page.g, i, toView, (u) => index.get(page.g.nodes[u].name) ?? -1);
       return {
         name: v.name,
-        label: g.short(i),
+        label: page.g.short(i),
         module: node.module,
-        ext: g.isExt(i),
+        ext: page.g.isExt(i),
         place: v.place,
-        kind: g.isExt(i) ? "external" : node.kind,
+        kind: page.g.isExt(i) ? "external" : node.kind,
         axiom: ringed(node.kind),
-        status: statusState(boardReview(), g, i, g.isExt(i) || pastShown() ? undefined : fileIndex.get(node.module), g.axiomsOf(i).includes("sorryAx")),
+        status: statusState(boardReview(), page.g, i, page.g.isExt(i) || pastShown() ? undefined : page.fileIndex.get(node.module), page.g.axiomsOf(i).includes("sorryAx")),
         target: Object.hasOwn(targets, v.name),
         key: r !== null && r !== i && flow.isKey(r, i),
         board: edges.board,
@@ -2697,7 +2642,7 @@ async function boot(): Promise<void> {
     });
     const sel = new Set([...clickedDecls(), ...(selected() !== null ? [selected()!] : [])].map((j) => visitorOf(j)).filter((k) => k >= 0));
     const places = canvas.setVisitors(points, [...sel], nav.board?.rec.hidden[cm()] ?? []);
-    visitors = visitors.map((v, k) => {
+    page.visitors = page.visitors.map((v, k) => {
       const p = places[k];
       return p && (v.place?.in !== p.in || v.place.at[0] !== p.at[0] || v.place.at[1] !== p.at[1]) ? { ...v, place: p } : v;
     });
@@ -2737,17 +2682,17 @@ async function boot(): Promise<void> {
    *  and on a board of a past build the visitor is of that build. */
   const go = (i: number) => {
     if (toView(i) < 0) visitOn(i, selected());
-    const p = pickDecl(g.nodes[i].name);
-    picks = [p];
-    shown = shownOf(p);
+    const p = pickDecl(page.g.nodes[i].name);
+    page.picks = [p];
+    page.shown = shownOf(p);
     apply();
     reveal(i);
     commit();
   };
   /** Go to a cluster of the board (a row of a cluster's panel): a click there with the tool. */
   const goCluster = (c: number) => {
-    picks = [pickCluster(c)];
-    shown = shownOf(picks[0]);
+    page.picks = [pickCluster(c)];
+    page.shown = shownOf(page.picks[0]);
     apply();
     canvas.flyToCluster(c);
     commit();
@@ -2758,10 +2703,10 @@ async function boot(): Promise<void> {
    *  it. A pinned window shows its declaration there, found by name: on a past board, as that build
    *  had it (HistorySpec decision 23). */
   const useGraph = (G: Graph) => {
-    g = G;
-    panel.g = g;
-    reviewBox.g = g;
-    searchBox.setGraph(g);
+    page.g = G;
+    panel.g = page.g;
+    reviewBox.g = page.g;
+    searchBox.setGraph(page.g);
     if (sources.all.some((w) => w.g !== G)) {
       for (const w of sources.all) w.g = G;
       sources.redraw((name) => G.byName.get(name));
@@ -2785,7 +2730,7 @@ async function boot(): Promise<void> {
   /** Go to a declaration of the board's graph, by name — a visitor where the board does not hold it;
    *  false where the graph does not have it. */
   const goName = (name: string): boolean => {
-    const i = g.byName.get(name);
+    const i = page.g.byName.get(name);
     if (i === undefined) return false;
     go(i);
     return true;
@@ -2808,7 +2753,7 @@ async function boot(): Promise<void> {
       return false;
     }
     if (!(await tm.open({ snapshot: at.snapshot }))) return false;
-    offerTip("first-time-machine");
+    page.offerTip("first-time-machine");
     if (!at.name || goName(at.name)) return true;
     say(`${at.name} is not in the graph of that build.`);
     return true;
@@ -2848,11 +2793,11 @@ async function boot(): Promise<void> {
     // visitors are of the board they were made on: another has none (ViewSpec decision 27), and
     // nothing of them reaches its scene
     if (b.id !== visitorsOn) {
-      visitors = [];
+      page.visitors = [];
       visitorsOn = b.id;
       canvas.setVisitors([], [], []);
     }
-    if (b.full !== g) useGraph(b.full);
+    if (b.full !== page.g) useGraph(b.full);
     canvas.setGraph(b.graph);
     const marks = b.past ? boardMarks(b.past.past, b.graph.n, b.toFull) : null;
     canvas.setPast(marks?.marks ?? null, marks?.now);
@@ -2866,7 +2811,7 @@ async function boot(): Promise<void> {
     stickiesOn = b.id;
     stickies.render();
     outline.setLayout(L, `${b.id}\u0000${m}`);
-    canvas.setBuild(b.past ? null : build?.files ?? null);
+    canvas.setBuild(b.past ? null : page.build?.files ?? null);
     // the whole project's layout holds the outside world; a scope without it hides it
     canvas.setShowExternals(b.bs.whole ? b.bs.outside : true);
     for (const btn of document.querySelectorAll<HTMLElement>("#board-pop [data-cluster]")) btn.classList.toggle("on", btn.dataset.cluster === m);
@@ -2874,7 +2819,7 @@ async function boot(): Promise<void> {
     notes.clear();
     syncStatus();
     applyScheme();
-    showLevel();
+    page.showLevel();
     syncPeers();
     boardPanel.render();
     renderHidden();
@@ -2888,12 +2833,12 @@ async function boot(): Promise<void> {
   const place = (p: Place, fresh: boolean) => {
     if (TOOLS.includes(p.mode)) useTool(p.mode);
     else store.save();
-    picks = readSelection(p.picks);
-    shown = p.shown ?? null;
+    page.picks = readSelection(p.picks);
+    page.shown = p.shown ?? null;
     // the reader's own focus there, where they chose one (a place kept by an older page has none)
-    mine = p.focus === null || typeof p.focus === "string" ? p.focus : undefined;
+    page.mine = p.focus === null || typeof p.focus === "string" ? p.focus : undefined;
     // a followed reader's visitors, where they are on their board (ViewSpec decision 27)
-    if (p.visitors) visitors = p.visitors;
+    if (p.visitors) page.visitors = p.visitors;
     apply();
     if (p.cam) {
       canvas.cam = { ...p.cam };
@@ -2903,16 +2848,16 @@ async function boot(): Promise<void> {
     if (ensureVisitors()) apply();
     if (!p.cam && (selected() !== null || shownCluster() >= 0)) revealShown();
   };
-  const here = (): Place => ({ cam: { ...canvas.cam }, mode: S.mode, picks: selectionText(picks), shown, ...(mine !== undefined ? { focus: mine } : {}) });
+  const here = (): Place => ({ cam: { ...canvas.cam }, mode: S.mode, picks: selectionText(page.picks), shown: page.shown, ...(page.mine !== undefined ? { focus: page.mine } : {}) });
 
   /** Zoom in: a view of what is lit, in a tab of its own, with the same selection; at the board's
    *  build (from the Time Machine too, which is left for it), focused as this view is (ViewSpec
    *  decision 28), and, where it is new, clustered as this board is, as a cluster's Zoom in is (one
    *  found open keeps its own). */
   const zoomIn = async () => {
-    const q = zoomOf(selectionQuery(picks));
+    const q = zoomOf(selectionQuery(page.picks));
     if (!q) return;
-    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(picks), shown, cam: null }, cm());
+    const r = await openDerived(printQuery(q), { mode: S.mode, picks: selectionText(page.picks), shown: page.shown, cam: null }, cm());
     if (typeof r === "string") say(r);
     else if (r) {
       canvas.fit(false);
@@ -2928,7 +2873,7 @@ async function boot(): Promise<void> {
     const mode = cm();
     const scope = clusterScope(c);
     if (!scope) return;
-    const r = await openDerived(printQuery(scope), { mode: S.mode, picks: selectionText(picks), shown, cam: null }, mode);
+    const r = await openDerived(printQuery(scope), { mode: S.mode, picks: selectionText(page.picks), shown: page.shown, cam: null }, mode);
     if (typeof r === "string") return say(r);
     if (!r) return;
     // a view found open has its own clustering: it is given this board's, unless it is a preview
@@ -2954,7 +2899,7 @@ async function boot(): Promise<void> {
     // read-only reader, who opens no view (CollabSpec decision 11), goes to a target with none on
     // the board on show
     if ((linked !== undefined && targetStep(linked, nav.board.id) === null) || (linked === undefined && reader)) {
-      mine = name;
+      page.mine = name;
       go(i);
       writeAddress(false);
       return;
@@ -3021,8 +2966,8 @@ async function boot(): Promise<void> {
     // a view nobody keeps, of a past build: the build travels with its query
     version: nav.queryVersion(),
     mode: S.mode,
-    picks: selectionText(picks),
-    shown,
+    picks: selectionText(page.picks),
+    shown: page.shown,
   });
   const entry = () => (history.state && typeof history.state.n === "number" ? (history.state as { n: number; cam?: object; tm?: number }) : { n: 0 });
   /** The address of what this reader sees, with its snapshot (CollabSpec decision 7): what a link to
@@ -3041,14 +2986,14 @@ async function boot(): Promise<void> {
     const back = entry().n > 0, forward = entry().n < navTop;
     $<HTMLButtonElement>("#nav-back").disabled = !back;
     $<HTMLButtonElement>("#nav-fwd").disabled = !forward;
-    steps = { back, forward };
+    page.steps = { back, forward };
     sources.following?.setNav(back, forward);
   };
   /** Write the state into the address: a new entry (`push`) or the current one. */
   const writeAddress = (push: boolean) => {
     // a view still being opened (a link, back, forward): the address already says where it goes
     if (!push && nav.busy) return;
-    const hash = "#" + encodeState(current()) + filmPart;
+    const hash = "#" + encodeState(current()) + page.filmPart;
     try {
       if (push && hash !== location.hash) {
         // the entry being left remembers where the camera was
@@ -3154,9 +3099,9 @@ async function boot(): Promise<void> {
    *  selection (by name and key, which a new numbering leaves as they are); every board is
    *  computed again. A board of a past build stays one, measured against the new graph. */
   const install = async (next: ViewMeta, edges: ArrayBuffer) => {
-    meta = next;
-    present = new Graph(meta, new Int32Array(edges));
-    compiled = new Map(meta.modules.map((m) => [m.name, m.compiled]));
+    page.meta = next;
+    page.present = new Graph(page.meta, new Int32Array(edges));
+    page.compiled = new Map(page.meta.modules.map((m) => [m.name, m.compiled]));
     edits.clear();
     served.clear();
     servedContexts.clear();
@@ -3165,8 +3110,8 @@ async function boot(): Promise<void> {
     // now (the following window follows the selection, found by name too); on a past board they
     // stay on its build, whose graph is made again against the new one as the board is drawn
     if (!pastShown()) {
-      for (const w of sources.all) w.g = present;
-      sources.redraw((name) => present.byName.get(name));
+      for (const w of sources.all) w.g = page.present;
+      sources.redraw((name) => page.present.byName.get(name));
     }
     views.graphChanged();
     tm.presentChanged();
@@ -3192,7 +3137,7 @@ async function boot(): Promise<void> {
     pill.hidden = false;
     let cls = "ok";
     let text = "Built";
-    const c = build?.counts;
+    const c = page.build?.counts;
     if (offline && updatingTo) {
       cls = "building";
       text = `Updating to ${updatingTo}…`;
@@ -3201,19 +3146,19 @@ async function boot(): Promise<void> {
       text = "Offline";
     } else if (reloadOffered) {
       text = "Updated — reload";
-    } else if (build?.active) {
+    } else if (page.build?.active) {
       cls = "building";
-      const p = build.progress;
+      const p = page.build.progress;
       // a branch's build: its step, where Lake says nothing of its progress (DeploySpec)
-      text = p ? `Building ${p.done} / ${p.total}` : deploy?.building ? stepPill(deploy.building) : "Building";
+      text = p ? `Building ${p.done} / ${p.total}` : page.deploy?.building ? stepPill(page.deploy.building) : "Building";
       if (p?.current.length) text += ` · ${shortName(p.current[0])}${p.current.length > 1 ? ` +${p.current.length - 1}` : ""}`;
     } else if (c && c.failed + c.unbuilt > 0) {
       cls = "bad";
       text = `${c.failed + c.unbuilt} failed` + (c.blocked ? ` · ${c.blocked} blocked` : "");
-    } else if (deploy?.last && !deploy.last.ok) {
+    } else if (page.deploy?.last && !page.deploy.last.ok) {
       // a branch's build that failed with no file to show it (its lakefile, a fetch)
       cls = "bad";
-      text = `${deploy.last.retry ? "Not built" : "Build failed"} · ${deploy.last.commit.slice(0, 7)}`;
+      text = `${page.deploy.last.retry ? "Not built" : "Build failed"} · ${page.deploy.last.commit.slice(0, 7)}`;
     } else if (c && c.stale > 0) {
       cls = "stale";
       text = `${c.stale} out of date`;
@@ -3222,15 +3167,15 @@ async function boot(): Promise<void> {
       text = `Built · ${c.sorry} with sorry`;
     }
     if (updating) text += " · reading…";
-    else if (graphInfo?.missing.length) text += " · partial graph";
+    else if (page.graphInfo?.missing.length) text += " · partial graph";
     // the usage pass runs: the notation each declaration is written in, and its exact context, come
     // with the next graph (server/usage.ts)
-    else if (graphInfo?.usage?.state === "pending") text += " · reading notation…";
+    else if (page.graphInfo?.usage?.state === "pending") text += " · reading notation…";
     pill.className = `build-pill ${cls}`;
     pill.querySelector(".b-text")!.textContent = text;
-    const prog = build?.active && build.progress ? build.progress.done / Math.max(1, build.progress.total) : 0;
+    const prog = page.build?.active && page.build.progress ? page.build.progress.done / Math.max(1, page.build.progress.total) : 0;
     bar.style.width = `${Math.round(prog * 100)}%`;
-    bar.parentElement!.classList.toggle("on", !!build?.active);
+    bar.parentElement!.classList.toggle("on", !!page.build?.active);
     if (!pop.hidden) renderPop();
   };
 
@@ -3248,13 +3193,13 @@ async function boot(): Promise<void> {
   const renderPop = () => {
     if (buildsStale) readBuilds();
     const html = popHtml({
-      graph: graphInfo,
+      graph: page.graphInfo,
       extractError,
-      files: build?.files ?? null,
+      files: page.build?.files ?? null,
       stateLabel: STATE_LABEL,
       builds: data.lost ? builds : null,
       lost: lostDrawer.counts,
-      deploy,
+      deploy: page.deploy,
     });
     // drawn again as the build goes on: the keyboard keeps its place in it
     keepFocus(pop, () => (pop.innerHTML = html));
@@ -3271,7 +3216,7 @@ async function boot(): Promise<void> {
       if (canvas.folded.has(c)) canvas.toggleFold(c);
       return canvas.flyToCluster(c);
     }
-    const i = g.nodes.findIndex((v, j) => v.module === m && !g.isExt(j));
+    const i = page.g.nodes.findIndex((v, j) => v.module === m && !page.g.isExt(j));
     if (i < 0) return;
     if (toView(i) >= 0) return canvas.flyTo(toView(i));
     go(i);
@@ -3287,7 +3232,7 @@ async function boot(): Promise<void> {
       if (canvas.folded.has(c)) canvas.toggleFold(c);
       return canvas.flyToCluster(c);
     }
-    const i = g.nodes.findIndex((v, j) => covers(p, v.name, v.module, g.isExt(j)));
+    const i = page.g.nodes.findIndex((v, j) => covers(p, v.name, v.module, page.g.isExt(j)));
     if (i >= 0) go(i);
   };
 
@@ -3320,12 +3265,12 @@ async function boot(): Promise<void> {
       if (stickies.editing) return "a note being written";
       if (canvas.pressed) return "a drag";
       if (exportModal.isOpen) return "the export window";
-      if (artLook) return "the artwork mode";
+      if (page.artLook) return "the artwork mode";
       if (linear.shown) return "the linear form";
       return null;
     },
     kept: () => ({
-      root: meta.project.root,
+      root: page.meta.project.root,
       at: Date.now(),
       sources: {
         following: sources.following ? { name: sources.following.name, collapsed: sources.following.collapsed } : null,
@@ -3353,9 +3298,9 @@ async function boot(): Promise<void> {
   /** The build status the page now holds, shown: the pill, the Status colours, the outline, the
    *  panel's banners. */
   const takeBuild = (status: BuildStatus | null) => {
-    build = status;
-    fileIndex = files();
-    canvas.setBuild(pastShown() ? null : build?.files ?? null);
+    page.build = status;
+    page.fileIndex = files();
+    canvas.setBuild(pastShown() ? null : page.build?.files ?? null);
     syncStatus();
     outline.render();
     renderBuild();
@@ -3364,19 +3309,19 @@ async function boot(): Promise<void> {
     edits.clear();
     served.clear();
     servedContexts.clear();
-    sources.redraw((name) => g.byName.get(name));
+    sources.redraw((name) => page.g.byName.get(name));
     showSelected();
   };
   // the first reading is the one made as the page loaded
   const liveBuild = new LiveBuild(() => {
-    const first = firstBuild;
-    firstBuild = null;
+    const first = page.firstBuild;
+    page.firstBuild = null;
     return first ?? data.build();
   }, takeBuild);
   const listen = () => {
     if (data.snapshot) return;
     // the build status read as the page loaded, shown now that a board is
-    if (firstBuild) void liveBuild.fetch();
+    if (page.firstBuild) void liveBuild.fetch();
     // the server names the stream, and tells this page alone the secret its heartbeats carry: the
     // others see the page go when it closes; it takes the build status as changes
     const es = new EventSource(`/api/events?session=${people.session}&build=delta`);
@@ -3390,7 +3335,7 @@ async function boot(): Promise<void> {
       // the release this page's code is of, once it is the server's (GuideSpec decision 11): a page
       // about to reload into another tells nothing, so that What's new waits for the new code
       const release = hello.server?.version;
-      if (release && (!PAGE_VERSION || release === PAGE_VERSION)) hearRelease(release);
+      if (release && (!PAGE_VERSION || release === PAGE_VERSION)) page.hearRelease(release);
       renderBuild();
     });
     // the server restarts into another version (UpdateSpec decision 8): the pill says so while it is
@@ -3470,7 +3415,7 @@ async function boot(): Promise<void> {
     es.addEventListener("review-rev", (e) => wholeReview.told(JSON.parse((e as MessageEvent).data) as ReviewRev));
     // the branch's builds (DeploySpec): the pill and the popover say them
     es.addEventListener("deploy", (e) => {
-      deploy = JSON.parse((e as MessageEvent).data);
+      page.deploy = JSON.parse((e as MessageEvent).data);
       renderBuild();
     });
     es.addEventListener("review-delta", (e) => takeChange(JSON.parse((e as MessageEvent).data)));
@@ -3490,10 +3435,10 @@ async function boot(): Promise<void> {
       const info: GraphInfo = JSON.parse((e as MessageEvent).data);
       extractError = null;
       // the same version of the same server's: nothing new (a server restarted counts again)
-      if (graphInfo && info.version === graphInfo.version && info.instance === graphInfo.instance) return;
+      if (page.graphInfo && info.version === page.graphInfo.version && info.instance === page.graphInfo.instance) return;
       try {
         const [next, edges] = await Promise.all([data.meta(info.version, info.instance), data.edges(info.version, info.instance)]);
-        graphInfo = info;
+        page.graphInfo = info;
         await install(next, edges);
       } catch {
         // superseded while loading: the next graph event brings the newer one
@@ -3501,8 +3446,6 @@ async function boot(): Promise<void> {
       renderBuild();
     });
   };
-
-  // ---------------------------------------------------------------- toolbar
 
   for (const b of document.querySelectorAll<HTMLElement>("#lightup [data-mode]")) {
     b.addEventListener("click", () => readerMode(b.dataset.mode as Tool));
@@ -3522,7 +3465,7 @@ async function boot(): Promise<void> {
   };
   // the depth of the whole board, one level at a time; the level shown is read from the folds, so
   // it stays right after folding by hand
-  showLevel = () => {
+  page.showLevel = () => {
     if (!canvas.layout) return;
     const max = canvas.maxDepth() + 1;
     const now = canvas.openLevels();
@@ -3546,17 +3489,17 @@ async function boot(): Promise<void> {
     edgesBtn.classList.toggle("on", S.showEdges);
     edgesBtn.setAttribute("aria-pressed", String(S.showEdges));
     // an artwork's, while its mode is on (drawLook)
-    canvas.setEdges(artLook ? artLook.edges !== "none" : S.showEdges);
+    canvas.setEdges(page.artLook ? page.artLook.edges !== "none" : S.showEdges);
   };
   // what the board draws, which those following this reader see too (CollabSpec decision 4)
-  setEdges = (edges) => {
+  page.setEdges = (edges) => {
     if (edges === S.showEdges) return;
     S.showEdges = edges;
     store.save();
     syncEdges();
     people.report();
   };
-  edgesBtn.addEventListener("click", () => setEdges(!S.showEdges));
+  edgesBtn.addEventListener("click", () => page.setEdges(!S.showEdges));
   syncEdges();
   // the layout locked, also the reader's own and kept in this browser (web/src/drag.ts): a drag pans
   // the view, never moves a thing, unless the reader lets the lock go (decided 2026-10-09: panning
@@ -3564,25 +3507,25 @@ async function boot(): Promise<void> {
   // elsewhere — held does the other while it is held; the canvas reads the key at each press, and the
   // button shows which way a drag goes now and names the key.
   const lockBtn = $("#lock-btn");
-  let locked = lockedChoice();
+  page.locked = lockedChoice();
   let held = false;
   /** whether a drag on a declaration, a circle or a note moves it now */
-  const dragging = () => dragMoves(locked, held);
+  const dragging = () => dragMoves(page.locked, held);
   const syncLock = () => {
     const on = !dragging();
     lockBtn.classList.toggle("on", on);
     lockBtn.classList.toggle("held", held);
-    lockBtn.querySelector(".eye-l")!.textContent = locked ? "Layout locked" : "Drag moves nodes";
+    lockBtn.querySelector(".eye-l")!.textContent = page.locked ? "Layout locked" : "Drag moves nodes";
     // ⋯ says so while a drag moves things, which is not the default and is out of sight behind it,
     // and while the drag key is held
     $("#eyes-btn").classList.toggle("flag", !on);
     $("#eyes-btn").classList.toggle("held", held);
-    lockBtn.setAttribute("aria-pressed", String(locked));
-    canvas.setLocked(locked);
+    lockBtn.setAttribute("aria-pressed", String(page.locked));
+    canvas.setLocked(page.locked);
   };
   const toggleLock = () => {
-    locked = !locked;
-    setLockedChoice(locked);
+    page.locked = !page.locked;
+    setLockedChoice(page.locked);
     syncLock();
   };
   lockBtn.addEventListener("click", toggleLock);
@@ -3635,9 +3578,7 @@ async function boot(): Promise<void> {
   // empty canvas, as web/src/ctxmenu.ts lists it, each item doing what the page does elsewhere —
   // the panel's review, the modes, Duplicate, the scope chips, trusting from the side panel.
 
-  /** What the menu is open on: the target, its declaration in the whole graph's numbering or its
-   *  cluster on the board, the part of a scope it is (decl(X), or the cluster's set), and where. */
-  let menuOn: { t: MenuTarget; i?: number; c?: number; note?: string; part: Query | null; world: [number, number]; at: { x: number; y: number }; linear?: boolean; artName?: string } | null = null;
+  page.menuOn = null;
   const ctxMenu = new ContextMenu($("#ctxmenu"), {
     chose: (act, name) => void menuAct(act, name),
     // what it was open on was lit for it: no longer
@@ -3652,25 +3593,25 @@ async function boot(): Promise<void> {
   const canName = () => !data.snapshot && !reader && (!!people.name || people.mode === "declared");
   /** Whether two scopes hold the same set, on the whole graph and the review as they are. */
   const sameSet = (a: Query, b: Query): boolean => {
-    const x = evaluate(a, { g, review: boardReview() }), y = evaluate(b, { g, review: boardReview() });
+    const x = evaluate(a, { g: page.g, review: boardReview() }), y = evaluate(b, { g: page.g, review: boardReview() });
     for (let j = 0; j < x.length; j++) if (x[j] !== y[j]) return false;
     return true;
   };
   /** A namespace to trust from the menu, where trusting it can be done from here (TrustTo). */
   const trustOf = (prefix: string | null): TrustTo | null => {
     if (!prefix || !validPrefix(prefix)) return null;
-    const by = review.data.trusted.filter((t) => under(prefix, t));
+    const by = page.review.data.trusted.filter((t) => under(prefix, t));
     return by.includes(prefix) ? { prefix, on: true } : by.length ? null : { prefix, on: false };
   };
   /** Where the menu is open and what the reader may do there. `part`: what it is open on, as a part
    *  of a scope — the kept views that hold all of it already are said so. */
   const menuContext = (part: Query | null): MenuContext => {
     const rec = nav.board.rec;
-    const has = part && evaluate(part, { g, review: boardReview() });
+    const has = part && evaluate(part, { g: page.g, review: boardReview() });
     const holds = (scope: string): boolean => {
       if (!has) return false;
       try {
-        const set = evaluate(parseQuery(scope), { g, review: boardReview() });
+        const set = evaluate(parseQuery(scope), { g: page.g, review: boardReview() });
         for (let j = 0; j < has.length; j++) if (has[j] && !set[j]) return false;
         return true;
       } catch {
@@ -3710,9 +3651,9 @@ async function boot(): Promise<void> {
     if (t?.kind === "node" || t?.kind === "visitor") {
       // a visitor is a declaration as any, but for what is on the board (ViewSpec decision 27)
       const visitor = t.kind === "visitor";
-      const i = visitor ? g.byName.get(visitors[t.k]?.name ?? "") : toFull(t.i);
+      const i = visitor ? page.g.byName.get(page.visitors[t.k]?.name ?? "") : toFull(t.i);
       if (i === undefined) return;
-      const name = g.nodes[i].name;
+      const name = page.g.nodes[i].name;
       const r = reviewRoot();
       // an artwork's names by selection: its name shown in the picture, or not (ExportSpec decision 19)
       const artName = t.kind === "node" ? artNameId("decl", canvas.g.nodes[t.i].name) : undefined;
@@ -3720,17 +3661,17 @@ async function boot(): Promise<void> {
       const mt: MenuTarget = {
         kind: "decl",
         name,
-        ext: g.isExt(i),
-        key: r !== null && flow.keyable(r, i) ? keyMarked(boardReview(), g.nodes[r].name, name) : null,
+        ext: page.g.isExt(i),
+        key: r !== null && flow.keyable(r, i) ? keyMarked(boardReview(), page.g.nodes[r].name, name) : null,
         target: Object.hasOwn(boardReview().targets, name),
-        ns: g.isExt(i) ? null : trustOf(name.split(".").slice(0, -1).join(".") || null),
+        ns: page.g.isExt(i) ? null : trustOf(name.split(".").slice(0, -1).join(".") || null),
         ...(visitor ? { visitor: true } : {}),
         ...(inArt !== undefined ? { art: inArt } : {}),
       };
       // a scope is written in the names of now, as a move keeps it (a past graph's renamed one)
-      menuOn = { t: mt, i, part: { op: "decl", names: [declNow(i)] }, world, at: { x, y }, ...(artName ? { artName } : {}) };
+      page.menuOn = { t: mt, i, part: { op: "decl", names: [declNow(i)] }, world, at: { x, y }, ...(artName ? { artName } : {}) };
       if (t.kind === "node") canvas.preview(t.i);
-      ctxMenu.show(menuItems(mt, menuContext(menuOn.part), title), x, y, name, keys);
+      ctxMenu.show(menuItems(mt, menuContext(page.menuOn.part), title), x, y, name, keys);
     } else if (t?.kind === "cluster") {
       const cl = canvas.layout.clusters[t.c];
       const st = trust.state(cl, cm());
@@ -3744,12 +3685,12 @@ async function boot(): Promise<void> {
         trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null,
         ...(inArt !== undefined ? { art: inArt } : {}),
       };
-      menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y }, artName };
+      page.menuOn = { t: mt, c: t.c, part: clusterSet(cl.key, cm()), world, at: { x, y }, artName };
       canvas.previewCluster(t.c);
-      ctxMenu.show(menuItems(mt, menuContext(menuOn.part), title), x, y, cl.key.replace("⟨external⟩", "External"), keys);
+      ctxMenu.show(menuItems(mt, menuContext(page.menuOn.part), title), x, y, cl.key.replace("⟨external⟩", "External"), keys);
     } else {
       const mt: MenuTarget = { kind: "canvas" };
-      menuOn = { t: mt, part: null, world, at: { x, y } };
+      page.menuOn = { t: mt, part: null, world, at: { x, y } };
       ctxMenu.show(menuItems(mt, menuContext(null), title), x, y, title, keys);
     }
   };
@@ -3797,7 +3738,7 @@ async function boot(): Promise<void> {
    *  — a declaration, a cluster, a note — or, on the empty canvas, to what the reader sees (decision
    *  7's snapshot, whatever Share's switch), on the board on show; never with the key. The page says
    *  it was copied, as a conversation will show it. */
-  const copyLinkTo = async (on: NonNullable<typeof menuOn>) => {
+  const copyLinkTo = async (on: NonNullable<Page["menuOn"]>) => {
     const t = on.t;
     const base = current();
     let hash: string;
@@ -4005,8 +3946,8 @@ async function boot(): Promise<void> {
   const derivedIn = (v: { id: string; scope: string; clustering: ClusterMode }): ((n: ProjectNote) => boolean) | null => {
     if (v.id === nav.board.id) return derivesOn(cm(), vg().nodes, existsIn(nav.board.full.nodes), boardReview().links, nav.board.past?.past.nowName);
     try {
-      const set = evaluate(parseQuery(v.scope), { g, review: review.data });
-      return derivesOn(v.clustering, g.nodes.filter((_, i) => set[i]), existsIn(g.nodes), review.data.links);
+      const set = evaluate(parseQuery(v.scope), { g: page.g, review: page.review.data });
+      return derivesOn(v.clustering, page.g.nodes.filter((_, i) => set[i]), existsIn(page.g.nodes), page.review.data.links);
     } catch {
       return null;
     }
@@ -4073,7 +4014,7 @@ async function boot(): Promise<void> {
     const items = menuItems(t, menuContext(null));
     if (!items.length) return;
     $("#tip").hidden = true;
-    menuOn = { t, note: id, part: null, world: canvas.toWorld(x, y), at: { x, y } };
+    page.menuOn = { t, note: id, part: null, world: canvas.toWorld(x, y), at: { x, y } };
     const by = n.note.by ? ` by ${nameNow(n.note.by, n.note.person)}${n.note.person ? " ✓" : ""}` : "";
     ctxMenu.show(items, x, y, `${n.kind === "view" ? "This view's note" : "Note"}${by}`);
   };
@@ -4094,7 +4035,7 @@ async function boot(): Promise<void> {
 
   /** A file or a clip a note carries, in a few words: what the note's menu lists. */
   const carryLabel = (c: NoteCarry): string => {
-    const f = fileOf(review.data, c.file);
+    const f = fileOf(page.review.data, c.file);
     if (!f) return "A file the library has no record of";
     const title = f.title.length > 48 ? f.title.slice(0, 47) + "…" : f.title;
     return f.type !== "pdf" ? title : c.region ? `A clip of ${title}, p. ${c.page}` : c.page ? `${title}, p. ${c.page}` : title;
@@ -4255,7 +4196,7 @@ async function boot(): Promise<void> {
 
   /** Do what was chosen in the menu. */
   const menuAct = async (act: string, name?: string) => {
-    const on = menuOn;
+    const on = page.menuOn;
     if (!on) return;
     const t = on.t;
     const what = menuWhat(t);
@@ -4376,7 +4317,7 @@ async function boot(): Promise<void> {
   // ---------------------------------------------------------------- search
 
   const input = $<HTMLInputElement>("#search");
-  const searchBox = new SearchBox(input, $("#results"), g, { go: (i) => go(i) });
+  const searchBox = new SearchBox(input, $("#results"), page.g, { go: (i) => go(i) });
 
   // a file chosen by a button that is a label holding a hidden file field (the library's Upload, a
   // missing file's Add it…): Enter or Space on it opens the chooser, as a click does — the control's
@@ -4426,7 +4367,7 @@ async function boot(): Promise<void> {
     }
     // in the artwork mode, the keys that act on the board alone: Search, the tool, the zoom, the
     // outside world, the levels, the lock — not those that open what the mode puts away
-    if (artLook && !ART_KEYS.has(e.key)) return;
+    if (page.artLook && !ART_KEYS.has(e.key)) return;
     // with Ctrl or ⌘ a letter is the browser's (Ctrl L, Ctrl F, …), and the drag key held is the lock's
     if ((e.ctrlKey || e.metaKey) && e.key.length === 1) return;
     const route = routeKey(e.key, win !== null, !!(e.target as Element | null)?.closest?.("button, a[href], summary, select"));
@@ -4481,7 +4422,7 @@ async function boot(): Promise<void> {
       else if (activity.open) activity.toggle(false);
       else if (lostDrawer.open) lostDrawer.toggle(false);
       else if (tm.active) void tm.close();
-      else if (picks.length || shown) {
+      else if (page.picks.length || page.shown) {
         clear();
         commit();
       }
@@ -4519,7 +4460,7 @@ async function boot(): Promise<void> {
     } else if (tm.active && !e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
       e.preventDefault();
       tm.step(e.key === "ArrowLeft" ? -1 : 1);
-      didTip("first-time-machine");
+      page.didTip("first-time-machine");
     } else if (tm.active && (e.key === "Home" || e.key === "End")) {
       e.preventDefault();
       tm.end(e.key === "End");
@@ -4543,7 +4484,7 @@ async function boot(): Promise<void> {
 
   // a handle for diagnosis from the console: window.visualproof.canvas
   // and the Time Machine's hook, as the build-status popover and the lost-and-found call it
-  (window as unknown as { visualproof: object }).visualproof = { canvas, linear, graph: () => g, present: () => present, board: () => nav.board, views, tm, timeMachine: (at?: TimeMachineAt) => openTimeMachine(at) };
+  (window as unknown as { visualproof: object }).visualproof = { canvas, linear, graph: () => page.g, present: () => page.present, board: () => nav.board, views, tm, timeMachine: (at?: TimeMachineAt) => openTimeMachine(at) };
   window.addEventListener("resize", syncInsets);
   // the first view, and the place the link names on it (or where the reader was); a tab of a view
   // the server forgot opens again from its query
@@ -4584,7 +4525,7 @@ async function boot(): Promise<void> {
   // declarations found by name (web/src/reload.ts)
   if (kept && (kept.sources.following || kept.sources.pinned.length)) {
     const on = (w: { name: string; collapsed: boolean }) => {
-      const decl = present.byName.get(w.name);
+      const decl = page.present.byName.get(w.name);
       return decl === undefined ? null : { decl, collapsed: w.collapsed };
     };
     const f = kept.sources.following && on(kept.sources.following);
@@ -4601,9 +4542,9 @@ async function boot(): Promise<void> {
   const tourSelect = (i: number) => {
     if (selected() !== i) {
       if (toView(i) < 0) visitOn(i, selected());
-      const p = pickDecl(g.nodes[i].name);
-      picks = [p];
-      shown = shownOf(p);
+      const p = pickDecl(page.g.nodes[i].name);
+      page.picks = [p];
+      page.shown = shownOf(p);
       apply();
     }
     reveal(i);
@@ -4615,10 +4556,10 @@ async function boot(): Promise<void> {
     S.mode = m;
     if (restsOn(m)) S.restsOn = m;
     syncTool();
-    const r = retool(picks, shown, m, (root) => keysFor(root));
-    if (r.picks === picks) return;
-    picks = r.picks;
-    shown = r.shown;
+    const r = retool(page.picks, page.shown, m, (root) => keysFor(root));
+    if (r.picks === page.picks) return;
+    page.picks = r.picks;
+    page.shown = r.shown;
     apply();
   };
   /** Where the reader is when the tour begins, put back when it ends (GuideSpec decision 3): the
@@ -4632,15 +4573,15 @@ async function boot(): Promise<void> {
     visitors: Visitor[];
     cam: { x: number; y: number; k: number };
   }
-  const tourPlace = (): TourPlace => ({ mode: S.mode, restsOn: S.restsOn, picks, shown, visitors, cam: { ...canvas.cam } });
+  const tourPlace = (): TourPlace => ({ mode: S.mode, restsOn: S.restsOn, picks: page.picks, shown: page.shown, visitors: page.visitors, cam: { ...canvas.cam } });
   const tourBack = (p: TourPlace) => {
     S.mode = p.mode;
     S.restsOn = p.restsOn;
     store.save();
     syncTool();
-    picks = p.picks;
-    shown = p.shown;
-    visitors = p.visitors;
+    page.picks = p.picks;
+    page.shown = p.shown;
+    page.visitors = p.visitors;
     apply();
     if (reducedMotion()) canvas.jumpTo(p.cam);
     else canvas.glideTo(p.cam, 450);
@@ -4658,23 +4599,23 @@ async function boot(): Promise<void> {
    *  something out. */
   const findExample = (): number | null => {
     if (selected() !== null) return selected();
-    const targets = Object.keys(review.data.targets)
-      .map((n) => g.byName.get(n))
+    const targets = Object.keys(page.review.data.targets)
+      .map((n) => page.g.byName.get(n))
       .filter((i): i is number => i !== undefined);
-    const keyed = targets.find((i) => keysLit(g.nodes[i].name) > 0);
+    const keyed = targets.find((i) => keysLit(page.g.nodes[i].name) > 0);
     if (keyed !== undefined) return keyed;
     if (targets.length) return targets[0];
     let fallback: number | null = null;
     let tries = 0;
-    for (let i = 0; i < g.projectCount && tries < 400; i++) {
-      if (g.nodes[i].kind !== "theorem") continue;
+    for (let i = 0; i < page.g.projectCount && tries < 400; i++) {
+      if (page.g.nodes[i].kind !== "theorem") continue;
       tries++;
       let n = 0, u = 0;
-      const tcb = g.reach([i], SITE_STMT | SITE_BODY, "out");
-      for (let j = 0; j < g.projectCount; j++) n += tcb[j];
+      const tcb = page.g.reach([i], SITE_STMT | SITE_BODY, "out");
+      for (let j = 0; j < page.g.projectCount; j++) n += tcb[j];
       if (n < 6 || n > 300) continue;
-      const uses = g.reach([i], SITE_STMT | SITE_BODY | SITE_PROOF | SITE_GRAMMAR, "out");
-      for (let j = 0; j < g.projectCount; j++) u += uses[j];
+      const uses = page.g.reach([i], SITE_STMT | SITE_BODY | SITE_PROOF | SITE_GRAMMAR, "out");
+      for (let j = 0; j < page.g.projectCount; j++) u += uses[j];
       if (u > n) return i;
       fallback ??= i;
     }
@@ -4684,7 +4625,7 @@ async function boot(): Promise<void> {
    *  sheet asks it of each card, at each key typed in its filter. */
   let exampleOf: { key: unknown[]; i: number | null } | null = null;
   const tourExample = (): number | null => {
-    const key = [g, nav.board, review.epoch, review.rev, selected()];
+    const key = [page.g, nav.board, page.review.epoch, page.review.rev, selected()];
     if (exampleOf && exampleOf.key.every((x, k) => x === key[k])) return exampleOf.i;
     const i = findExample();
     exampleOf = { key, i };
@@ -4695,7 +4636,7 @@ async function boot(): Promise<void> {
    *  lit split, as the bar splits it, into what is to be read and what is trusted (a prefix the
    *  review trusts, a standard axiom: TCBSpec decision 7), and assumed. */
   const restsOnOf = (i: number): RestsOn => {
-    const name = g.nodes[i].name;
+    const name = page.g.nodes[i].name;
     const G = vg();
     const d = boardReview();
     const lit = (tool: Tool) => {
@@ -4703,7 +4644,7 @@ async function boot(): Promise<void> {
       return q ? litOn(q).set : null;
     };
     const counts = restsOnCounts(G, d, toView(i), { tcb: lit("tcb"), uses: lit("deps"), keys: lit("keys") });
-    return { name: g.nodes[i].display ?? name.split(".").pop()!, ...counts, target: isTarget(name) };
+    return { name: page.g.nodes[i].display ?? name.split(".").pop()!, ...counts, target: isTarget(name) };
   };
   /** A tip's Show me (GuideSpec decision 7; web/src/tips.ts), done on the reader's own page: the tour's
    *  theorem selected in a mode, a window or a popover opened, the linear form, the Time Machine —
@@ -4726,9 +4667,9 @@ async function boot(): Promise<void> {
       case "used-by": {
         if (i === null) return null;
         // the first of its TCB's definitions besides it, else itself
-        const tcb = g.reach([i], SITE_STMT | SITE_BODY, "out");
+        const tcb = page.g.reach([i], SITE_STMT | SITE_BODY, "out");
         let d = i;
-        for (let j = 0; j < g.projectCount; j++) if (tcb[j] && j !== i && g.nodes[j].kind === "def") { d = j; break; }
+        for (let j = 0; j < page.g.projectCount; j++) if (tcb[j] && j !== i && page.g.nodes[j].kind === "def") { d = j; break; }
         tourTool("apps");
         tourSelect(d);
         return phone ? "#more-btn" : "#lightup [data-mode=apps]";
@@ -4793,18 +4734,18 @@ async function boot(): Promise<void> {
     if (isPhone() && (action === "ring-lock" || action === "linear")) return false;
     if (action === "ring-peers") return !$("#peers").hidden;
     if (action === "what-changed") return !!$("#panel details[data-rv-changes]");
-    if (action === "share-readonly") return readOnlyLinks;
+    if (action === "share-readonly") return page.readOnlyLinks;
     if (action === "share-agent" || action === "ring-lock") return !reader;
     if (action === "time-machine" || action === "ring-lost") return !data.snapshot;
     return true;
   };
   const guide = new Guide(store, {
-    project: () => meta.project.name,
+    project: () => page.meta.project.name,
     about,
     snapshot: () => !!data.snapshot,
     readOnly: () => !!data.snapshot || !!reader,
     following: () => people.followedName !== null,
-    busy: () => !!artLook,
+    busy: () => !!page.artLook,
     example: tourExample,
     select: tourSelect,
     setTool: tourTool,
@@ -4814,21 +4755,21 @@ async function boot(): Promise<void> {
     record: commit,
     restsOn: restsOnOf,
     frameLit: () => {
-      const q = selectionQuery(picks);
+      const q = selectionQuery(page.picks);
       const lit = q && litOn(q);
       if (lit?.count) canvas.fitTo(lit.set, !reducedMotion());
     },
     show: showMe,
     canShow: canShowMe,
     // the read-only link's tip on a server that makes them (web/src/share.ts)
-    applies: (t) => t.id !== "read-only-link" || readOnlyLinks,
+    applies: (t) => t.id !== "read-only-link" || page.readOnlyLinks,
     ended: () => {},
     editor: () => ({ server: editor.server, mine: editor.mine }),
     setEditor: (t) => {
       const why = editor.set(t);
       // the panel and the source windows show the link, or no longer do
       if (!why) {
-        sources.redraw((name) => g.byName.get(name));
+        sources.redraw((name) => page.g.byName.get(name));
         showSelected();
       }
       return why;
@@ -4838,33 +4779,33 @@ async function boot(): Promise<void> {
     // the film in the address while it shows (`tips`), and not once the sheet closes
     shown: (open, chapter) => {
       const part = tipsPart(open, chapter);
-      if (part === filmPart) return;
-      filmPart = part;
+      if (part === page.filmPart) return;
+      page.filmPart = part;
       writeAddress(false);
     },
     tour: () => (data.snapshot ? Promise.resolve(null) : data.tourJson()),
   });
-  offerTip = (rule) => guide.inPlace.offer(rule);
-  didTip = (rule) => guide.inPlace.did(rule);
-  countTip = (name, rule) => guide.inPlace.count(name, rule);
-  hearRelease = (v) => guide.serverIs(v);
-  if (heardRelease) guide.serverIs(heardRelease);
-  if (!data.snapshot && !reader) void data.shareInfo().then((i) => (readOnlyLinks = !!i.readOnlyLinks), () => {});
+  page.offerTip = (rule) => guide.inPlace.offer(rule);
+  page.didTip = (rule) => guide.inPlace.did(rule);
+  page.countTip = (name, rule) => guide.inPlace.count(name, rule);
+  page.hearRelease = (v) => guide.serverIs(v);
+  if (page.heardRelease) guide.serverIs(page.heardRelease);
+  if (!data.snapshot && !reader) void data.shareInfo().then((i) => (page.readOnlyLinks = !!i.readOnlyLinks), () => {});
   // the moments of tips in place that a press makes: Share opened again, Export opened; and what a
   // tip teaches, done — the Read-only link tab opened, What changed opened
   let shareOpened = 0;
   $("#share-btn").addEventListener("click", () =>
     setTimeout(() => {
-      if (!$("#share-pop").hidden && ++shareOpened >= 2 && readOnlyLinks) offerTip("share-twice");
+      if (!$("#share-pop").hidden && ++shareOpened >= 2 && page.readOnlyLinks) page.offerTip("share-twice");
     }, 300),
   );
-  $("#export-btn").addEventListener("click", () => setTimeout(() => exportModal.isOpen && offerTip("first-export"), 300));
+  $("#export-btn").addEventListener("click", () => setTimeout(() => exportModal.isOpen && page.offerTip("first-export"), 300));
   document.addEventListener(
     "click",
     (e) => {
       const t = e.target as HTMLElement;
-      if (t.closest("#share-pop [data-tab=readonly]")) didTip("share-twice");
-      else if (t.closest("#panel [data-rv-changes] > summary")) didTip("stale-opinion");
+      if (t.closest("#share-pop [data-tab=readonly]")) page.didTip("share-twice");
+      else if (t.closest("#panel [data-rv-changes] > summary")) page.didTip("stale-opinion");
     },
     true,
   );

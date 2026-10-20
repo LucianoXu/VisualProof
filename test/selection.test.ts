@@ -4,7 +4,7 @@
 // it (web/src/state.ts).
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { Cluster, ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { SITE_BODY, SITE_PROOF, SITE_STMT } from "../src/shared/graph.ts";
@@ -241,19 +241,22 @@ test("a build renames what is selected: the selection and the panel are on its n
 });
 
 test("the page follows a rename of what is selected at a new graph and at the move, whichever comes first", () => {
-  // the server sends the graph before the move it found (server/live.ts): the page follows at both
-  const main = readFileSync(new URL("../src/web/src/main.ts", import.meta.url), "utf8");
+  // the server sends the graph before the move it found (server/live.ts): the page follows at both;
+  // the page's wiring is web/src/main.ts and the parts it makes (web/src/page*.ts), where what one
+  // part calls of another is the page's (`page.`)
+  const web = new URL("../src/web/src/", import.meta.url);
+  const main = ["main.ts", ...readdirSync(web).filter((f) => /^page.*\.ts$/.test(f)).sort()].map((f) => readFileSync(new URL(f, web), "utf8")).join("\n");
   const install = main.slice(main.indexOf("const install = async"), main.indexOf("const renderBuild = () => {"));
-  assert.match(install, /const followed = followSelection\(\);[^]*await nav\.redraw\(\);[^]*if \(followed\) selectionFollowed\(\);/);
+  assert.match(install, /const followed = (page\.)?followSelection\(\);[^]*await (page\.)?nav\.redraw\(\);[^]*if \(followed\) (page\.)?selectionFollowed\(\);/);
   const changed = main.slice(main.indexOf("const reviewChanged = () => {"), main.indexOf("const takeWhole = "));
-  assert.match(changed, /const followed = followSelection\(\);/);
+  assert.match(changed, /const followed = (page\.)?followSelection\(\);/);
   assert.match(changed, /if \(followed \|\| S\.mode === "keys"/);
-  assert.match(changed, /if \(followed\) selectionFollowed\(\);/);
+  assert.match(changed, /if \(followed\) (page\.)?selectionFollowed\(\);/);
   // and the renames of declarations nothing was said of, in the history alone: asked for at each new
   // build, followed as they come
   const follow = main.slice(main.indexOf("const followSelection = "), main.indexOf("const selectionFollowed = "));
   assert.match(follow, /for \(const \[from, to\] of buildRenames\) if \(!Object\.hasOwn\(renamed, to\)\) renamed\[to\] = from;/);
   assert.match(follow, /fetch\(`\/api\/history\/diff\?from=\$\{from\}&to=\$\{to\}&most=20000`\)/);
   assert.match(follow, /if \(!followSelection\(\)\) return;\s*apply\(\);\s*selectionFollowed\(\);/);
-  assert.match(main, /newBuild: \(from, to\) => void newBuild\(from, to\),/);
+  assert.match(main, /newBuild: \(from, to\) => void (page\.)?newBuild\(from, to\),/);
 });

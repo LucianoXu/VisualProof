@@ -6,7 +6,7 @@
 // the snapshot's graph served in parts, kept.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -1303,7 +1303,8 @@ test("a view kept at a past build and focused on a target: its note under the re
   assert.deepEqual(tops, ["calc(110px + var(--lens-h, 0px))", "calc(100px + var(--lens-h, 0px))", "calc(108px + var(--lens-h, 0px))"]);
   // what is said for a moment goes under both
   assert.match(css, /\.hint\.say\.below \{ top: calc\(118px \+ var\(--strip-h, 38px\)\); \}/);
-  const main = web("src/main.ts");
+  // the page's wiring: web/src/main.ts and the parts it makes (web/src/page*.ts)
+  const main = ["main.ts", ...readdirSync(new URL("../src/web/src/", import.meta.url)).filter((f) => /^page.*\.ts$/.test(f)).sort()].map((f) => web(`src/${f}`)).join("\n");
   assert.match(main, /setProperty\("--lens-h", `\$\{lens\}px`\)/);
   assert.match(main, /setProperty\("--strip-h", `\$\{lens \+ kept\}px`\)/);
   assert.match(main, /hint\.classList\.toggle\("below", !\$\("#lensbar"\)\.hidden \|\| !\$\("#tm-kept"\)\.hidden\)/);
