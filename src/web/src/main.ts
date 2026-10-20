@@ -56,10 +56,7 @@ import { Stickies } from "./sticky.ts";
 import { ProjectNotes } from "./projectnotes.ts";
 import { Outline } from "./outline.ts";
 import { Panel } from "./panel.ts";
-import { People, READ_ONLY, personKey } from "./people.ts";
-import { Asking, askMark } from "./askfollow.ts";
-import type { AskFollow } from "../../shared/askfollow.ts";
-import { PeerMenu } from "./peermenu.ts";
+import { READ_ONLY } from "./people.ts";
 import { applyOwn, presenceOf } from "./surfaces.ts";
 import type { PageParts } from "./surfaces.ts";
 import { deployWaiting } from "./buildpop.ts";
@@ -87,7 +84,7 @@ import { camOf, goneNames, missingLine, readSnapshot, snapshotIn, sortOut } from
 import { decodeRecipe, readRecipe, recipeIn, resolveRecipe } from "../../shared/artrecipe.ts";
 import { STATUS_LABEL, STATUSES, statusCodes } from "./status.ts";
 import type { Scheme } from "./status.ts";
-import { excerpt, ownAgents, PUBLIC, stateWords, Talk } from "./talk.ts";
+import { excerpt, PUBLIC, Talk } from "./talk.ts";
 import { ChatWindow, keepStripClear } from "./chatwin.ts";
 import { chipOf, copyLink, noteIn, siteLink, siteOrigins, withoutKeys } from "./chatlinks.ts";
 import type { Chip } from "./chatlinks.ts";
@@ -100,8 +97,6 @@ import { sourceLine, titleOf, untilStill } from "./artwork.ts";
 import { SHIELD, Trust } from "./trust.ts";
 import { decodeState, encodeState, tipsIn } from "./state.ts";
 import { Store } from "./store.ts";
-import { typing } from "./typing.ts";
-import { VERIFIED } from "./verified.ts";
 import { ViewNav } from "./viewnav.ts";
 import { readVisitors, shareVisitors } from "./visitors.ts";
 import type { Place } from "./viewnav.ts";
@@ -113,8 +108,9 @@ import { buildWhen, TimeMachine } from "./timemachine.ts";
 import type { TimeMachineAt } from "./timemachine.ts";
 import { boardMarks, markWords, PAST_CHANGED, PAST_GHOST, PAST_RENAMED, reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
-import { $, MODE_NAME, toolName, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
+import { $, MODE_NAME, TAP_HINT, VIEW_GONE, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW, short } from "./page.ts";
 import type { GraphInfo, Page } from "./page.ts";
+import { peoplePart } from "./pagepeople.ts";
 import { tabsPart } from "./pagetabs.ts";
 import { sharePart } from "./pageshare.ts";
 import { timelinePart } from "./pagetimeline.ts";
@@ -168,6 +164,7 @@ export interface MainPart {
   litOn: (q: Query) => Lit;
   zoomOf: (q: Query | null, lit?: Lit | null) => Query | null;
   papers: Papers;
+  panel: Panel;
   selBar: SelectionBar;
   sources: Sources<SourceWindow>;
   openSourceAt: (name: string, from: number, to: number, quoted: string[] | null, at: HTMLElement | null) => void;
@@ -179,6 +176,7 @@ export interface MainPart {
   linear: LinearForm;
   ART_KEYS: Set<string>;
   art: ArtFrame;
+  artReach: () => void;
   shut: (section: string) => boolean;
   toggleSection: (section: string) => void;
   trust: Trust;
@@ -197,10 +195,10 @@ export interface MainPart {
   chooseScheme: (s: Scheme) => void;
   legend: Legend;
   parts: PageParts;
+  whereIAm: () => PresenceView;
   talk: Talk;
   chipFor: (url: string) => Chip | null;
-  people: People;
-  asking: Asking;
+  goWhere: (v: PresenceView, once: boolean) => Promise<boolean>;
   openSnapshot: (text: string) => Promise<void>;
   openRecipe: (link: { text: string; save: ("png" | "svg")[] }) => Promise<void>;
   timeMachine: (at?: TimeMachineAt) => void;
@@ -388,7 +386,7 @@ async function boot(): Promise<void> {
   page.views = views;
   await views.load();
   // the project's notes (AttachmentSpec decision 13): every one, whichever board is on show
-  const projectNotes = new ProjectNotes(data.views, () => people?.stream ?? null);
+  const projectNotes = new ProjectNotes(data.views, () => page.people?.stream ?? null);
   page.projectNotes = projectNotes;
   await projectNotes.load();
   const nav = new ViewNav(views, store, {
@@ -399,7 +397,7 @@ async function boot(): Promise<void> {
     changed: () => {
       syncBusy();
       page.renderTabs();
-      people.report();
+      page.people.report();
     },
   });
   page.nav = nav;
@@ -428,21 +426,21 @@ async function boot(): Promise<void> {
     redraw: () => nav.redraw(),
     memory: (id, mode) => data.views.memory(id, mode),
     changed: () => {
-      people.report();
+      page.people.report();
       syncPast();
     },
     go: (name) => page.goName(name),
     say: (text) => say(text),
     keep: async (snapshot) => {
       if (reader) return READ_ONLY;
-      if (!(await people.ensureLayout())) return "Keeping a build in a view is recorded under your name: give one first.";
+      if (!(await page.people.ensureLayout())) return "Keeping a build in a view is recorded under your name: give one first.";
       const why = await sync.keepVersion(snapshot);
       page.renderTabs();
       return why;
     },
     saveAs: (snapshot) => saveVersion(snapshot),
     frozen: () => (reader ? READ_ONLY : null),
-    following: () => people.following,
+    following: () => page.people.following,
     newBuild: (from, to) => void page.newBuild(from, to),
   });
   page.tm = tm;
@@ -540,7 +538,7 @@ async function boot(): Promise<void> {
       },
       (e: Error & { who?: boolean }) => {
         // the server no longer knows this page's name: it is asked for again on the next try
-        if (e.who) people.lost();
+        if (e.who) page.people.lost();
         return e.message;
       },
     );
@@ -548,19 +546,19 @@ async function boot(): Promise<void> {
 
   // the review flow where the review has a focus (ViewSpec decision 28): the focus's review set in
   // review order, the next one to review, why a declaration is in it (web/src/reviewqueue.ts)
-  const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => people.name });
+  const flow = new ReviewFlow({ graph: () => page.g, review: () => boardReview(), reader: () => page.people.name });
   page.flow = flow;
   /** The same on the graph on show, whatever build the board shows: how far each target's review has
    *  come is the review's now (the targets list, the views menu) */
-  const flowNow = new ReviewFlow({ graph: () => page.present, review: () => page.review.data, reader: () => people.name });
+  const flowNow = new ReviewFlow({ graph: () => page.present, review: () => page.review.data, reader: () => page.people.name });
   page.flowNow = flowNow;
   /** Why this reader's opinions are refused until their log is fixed by hand (a line of it cannot
    *  be read, server/review.ts), or null. */
   const blocked = (): string | null => {
-    const me = people.name?.trim();
+    const me = page.people.name?.trim();
     if (!me) return null;
     // someone invited by a personal link writes to their link's log (CollabSpec decision 9)
-    const mine = logFileName(me, false, people.person?.id ?? null);
+    const mine = logFileName(me, false, page.people.person?.id ?? null);
     const p = page.review.problems.find((x) => x.file === mine);
     return p ? `Your review log (log/${mine}) has a line that cannot be read — line ${p.line}: ${p.why}. Nothing more is written to it until it is fixed by hand.` : null;
   };
@@ -631,12 +629,12 @@ async function boot(): Promise<void> {
       blocked: blocked(),
       readOnly: !!data.snapshot || pastShown() || !!reader,
       ...(pastShown() ? { note: `Today's review, against this build. ${PAST_REVIEW}` } : reader ? { note: READ_ONLY_REVIEW } : {}),
-      reviewer: people.name,
+      reviewer: page.people.name,
       // someone invited by a personal link is their link (CollabSpec decision 9): their opinions
       // are told by it, as Withdraw finds them
-      person: people.person?.id ?? null,
+      person: page.people.person?.id ?? null,
     }),
-    ensureReviewer: () => people.ensure(),
+    ensureReviewer: () => page.people.ensure(),
     submit,
     said: (text) => say(text),
     queue: (i) => flow.queue(i),
@@ -713,7 +711,7 @@ async function boot(): Promise<void> {
     if (pastShown()) return say(PAST_REVIEW);
     if (!flow.keyable(r, i)) return say(`${page.g.short(i)} is not in ${page.g.short(r)}'s TCB: only what it holds can be key for it.`);
     const target = page.g.nodes[r].name;
-    void people.ensure().then((me) => {
+    void page.people.ensure().then((me) => {
       if (!me) return;
       void submit({ op: "key", target, name: page.g.nodes[i].name, on: !keyMarked(page.review.data, target, page.g.nodes[i].name) }).then((why) => why && say(why));
     });
@@ -765,9 +763,9 @@ async function boot(): Promise<void> {
       else page.goCluster(c);
     },
     headers: () => ({ "content-type": "application/json", ...(data.name ? { "x-visualproof-name": encodeURIComponent(data.name) } : {}), ...(data.privateSession ? { "x-visualproof-private": data.privateSession } : {}) }),
-    ensureName: async () => (await people.ensure()) !== null,
-    following: () => people.followedName,
-    changed: () => people.report(),
+    ensureName: async () => (await page.people.ensure()) !== null,
+    following: () => page.people.followedName,
+    changed: () => page.people.report(),
     say: (text) => say(text),
     relayoutSource: () => sources.following?.relayout(),
     repaint: () => showSelected(),
@@ -800,12 +798,12 @@ async function boot(): Promise<void> {
     // a past build's files are not the build status of now
     fileOf: (i) => (pastShown() ? undefined : page.fileIndex.get(page.g.nodes[i].module)),
     alsoHere: (i) => {
-      const on = people.on(page.g.nodes[i].name);
+      const on = page.people.on(page.g.nodes[i].name);
       if (!on.length) return "";
       return (
         `<span>Also here:</span>` +
-        on.map((p) => `<span class="avatar${p.agent ? " agent" : ""}" style="background:${people.colorOf(p)}" title="${escapeHtml(people.nameOf(p))}">${escapeHtml(people.label(p))}</span>`).join("") +
-        `<span>${escapeHtml(on.map((p) => people.nameOf(p)).join(", "))}</span>`
+        on.map((p) => `<span class="avatar${p.agent ? " agent" : ""}" style="background:${page.people.colorOf(p)}" title="${escapeHtml(page.people.nameOf(p))}">${escapeHtml(page.people.label(p))}</span>`).join("") +
+        `<span>${escapeHtml(on.map((p) => page.people.nameOf(p)).join(", "))}</span>`
       );
     },
     why: (i) => {
@@ -823,6 +821,7 @@ async function boot(): Promise<void> {
     toggle: (section) => store.toggleShut(section),
     then: (i) => thenHtml(i),
   });
+  page.panel = panel;
   /** What the panel says of a declaration of a past graph (HistorySpec decision 17): the build it
    *  is shown at, whether its source then is kept (decision 23), and what became of it since. */
   const thenHtml = (i: number): string | null => {
@@ -919,7 +918,7 @@ async function boot(): Promise<void> {
     // a source window collapsed or opened again leaves or takes its side of the reference window
     // paired with it, the two kept apart as the pairing shows them (AttachmentSpec decision 8)
     collapsed: () => {
-      people.report();
+      page.people.report();
       papers.redock();
     },
     back: () => history.back(),
@@ -945,7 +944,7 @@ async function boot(): Promise<void> {
     say: (text) => say(text),
     // what the others are told changed: at once, not at the next look
     changed: () => {
-      people.report();
+      page.people.report();
       papers.redock();
     },
     viewport,
@@ -1204,7 +1203,7 @@ async function boot(): Promise<void> {
     changed: (on) => {
       linearBtn.classList.toggle("on", on);
       linearBtn.setAttribute("aria-pressed", String(on));
-      people.report();
+      page.people.report();
     },
   });
   page.linear = linear;
@@ -1243,7 +1242,7 @@ async function boot(): Promise<void> {
           art.refresh();
         });
     },
-    changed: () => people.report(),
+    changed: () => page.people.report(),
     notes: () => stickies.asDrawn(),
     // the commit checked out now; on a past build's board, that build's, with the project's source
     source: () => {
@@ -1293,8 +1292,9 @@ async function boot(): Promise<void> {
    *  while the reader follows someone, whose initials clicked again end following (CollabSpec,
    *  "Following ends" and "What following leaves"): the mode is the follower's own once it has. */
   const artReach = () => {
-    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!page.artLook && !(people.following && el.matches(".peers-wrap"));
+    for (const el of document.querySelectorAll<HTMLElement>(ART_INERT)) el.inert = !!page.artLook && !(page.people.following && el.matches(".peers-wrap"));
   };
+  page.artReach = artReach;
   /** when the board was last drawn: a link's recipe saves its files once the board is still */
   let drawnAt = 0;
   canvas.onFrame = () => {
@@ -1329,7 +1329,7 @@ async function boot(): Promise<void> {
         .map((name) => ({ name, i: page.g.byName.get(name) }))
         .filter((t): t is { name: string; i: number } => t.i !== undefined)
         .map((t) => ({ name: t.name, count: (d) => reviewCount(page.g, d, t.i) })),
-    ensureReviewer: () => people.ensure(),
+    ensureReviewer: () => page.people.ensure(),
     submit,
     show: (p) => page.goToPrefix(p),
   });
@@ -1403,10 +1403,10 @@ async function boot(): Promise<void> {
     boardPanel,
     notes,
     snapshot: !!data.snapshot,
-    stream: () => people.stream,
-    me: () => people.name,
-    colorOf: (name) => people.colorOf({ name }),
-    lost: () => people.lost(),
+    stream: () => page.people.stream,
+    me: () => page.people.name,
+    colorOf: (name) => page.people.colorOf({ name }),
+    lost: () => page.people.lost(),
     tabsChanged: () => page.renderTabs(),
     notesChanged: () => stickies.render(),
     boardChanged: () => linear.refresh(),
@@ -1594,7 +1594,7 @@ async function boot(): Promise<void> {
   const chooseScheme = (s: Scheme) => {
     store.setScheme(onReview(), s);
     applyScheme();
-    people.report();
+    page.people.report();
   };
   page.chooseScheme = chooseScheme;
   const legend = new Legend($("#legend"), {
@@ -1658,6 +1658,7 @@ async function boot(): Promise<void> {
   page.parts = parts;
   /** Where this page is: what the others are told, and what Share tells an agent. */
   const whereIAm = (): PresenceView => presenceOf(parts.read, nav.tabs.map((t) => t.id));
+  page.whereIAm = whereIAm;
   /** The declaration a name in an agent's message stands for: a full name, or the one declaration
    *  whose name ends with it; null where there is none, or several. */
   const resolveName = (name: string): string | null => {
@@ -1680,18 +1681,18 @@ async function boot(): Promise<void> {
     data,
     store,
     win: chatWin,
-    me: () => ({ name: people.name, person: people.person?.id ?? null }),
-    ensureName: () => people.ensure(),
+    me: () => ({ name: page.people.name, person: page.people.person?.id ?? null }),
+    ensureName: () => page.people.ensure(),
     place: whereIAm,
-    peers: () => people.peers,
+    peers: () => page.people.peers,
     resolve: resolveName,
     go: (name) => {
-      people.unfollow();
+      page.people.unfollow();
       const i = page.g.byName.get(name);
       if (i !== undefined) page.go(i);
     },
     open: (hash) => {
-      people.unfollow();
+      page.people.unfollow();
       page.openAddress(hash);
     },
     chip: (url) => chipFor(url),
@@ -1750,120 +1751,7 @@ async function boot(): Promise<void> {
     });
   };
   page.chipFor = chipFor;
-
-  // ---------------------------------------------------------------- who is here
-  //
-  // The reader's name (CollabSpec decision 3) at the top right, and the others on the server
-  // (decision 4): their initials beside it, their selections on the canvas and in the panel, and
-  // following one of them — to their view, opened in a tab if need be (ViewSpec decision 10).
-
-  /** A reader's place in words: "Review ★fermatLastTheoremFour, looking at not_fermat_42". */
-  const describePlace = (v: PresenceView): string => {
-    const name = (m: string) => (TOOLS.includes(m as Tool) ? toolName(m as Tool) : m);
-    const parts: string[] = [];
-    const on = views.nameOf(v);
-    if (on) parts.push(on);
-    // in the Time Machine, at a build (HistorySpec decision 18)
-    if (v.history) {
-      const s = tm.snaps.find((x) => x.id === v.history!.snapshot);
-      parts.push(`in the Time Machine at ${s ? buildWhen(s.at) : `build ${v.history.snapshot}`}`);
-    }
-    if (v.sel) parts.push(`${v.source ? "reading the source of" : "looking at"} ${short(v.sel)}`);
-    return parts.join(", ") || `the whole project, ${name(v.mode)}`;
-  };
-  const people: People = new People(data, store, {
-    view: whereIAm,
-    say: (text) => say(text),
-    describe: (v) => describePlace(v),
-    follow: (v) => {
-      artReach();
-      void goWhere(v, false);
-    },
-    changed: () => {
-      syncPeers();
-      peerMenu.render();
-      if (!reader) talk.peersChanged();
-    },
-    // the windows that stood for the followed reader's are this reader's own now, and none says any
-    // more that the reader follows someone; what following left is theirs to leave (CollabSpec, "What
-    // following leaves"): the artwork mode's bar, all but Share and Search out of reach again; the
-    // linear form, which nothing on the screen says how to put away — the line does, once
-    unfollowed: () => {
-      sources.release();
-      papers.unfollowed();
-      artReach();
-      if (!people.following && linear.followed && !page.exportModal.isOpen) say(`The board stays in the linear form you followed: ${isPhone() ? "⋯ at the bottom → Linear form puts" : "o, or ⋯ at the bottom → Linear form, puts"} it away.`);
-    },
-    // what is left to review where the review has a focus is the reader's own; who may read which of
-    // the conversations, theirs
-    renamed: () => {
-      showSelected();
-      renderStrip();
-      if (!reader) talk.identity();
-    },
-    // asking others to follow (CollabSpec decision 10): Esc declines a request shown, unless it is
-    // typed into a field or pressed in a menu or a dialog, whose own it is
-    escape: (e) => {
-      const t = e.target as Element | null;
-      return asking.banner.escape({ field: typing(t) || typing(document.activeElement), menu: !!t?.closest?.('[role="menu"], [role="dialog"], #modal, #help') });
-    },
-    menu: (key, at) => {
-      if (!people.people().some((x) => x.key === key)) return false;
-      peerMenu.toggle(key, at);
-      return true;
-    },
-    asked: (p) => askMark(asking.tally.stateOf(p.sessions.map((x) => x.id)), p.name ?? "This reader"),
-    askAll: () => void asking.ask(null),
-    askWhy: () => (reader ? READ_ONLY : asking.why(true)),
-  });
-  page.people = people;
-  // known before its stream says hello, so that a read-only page never sends a heartbeat
-  if (reader) people.readOnly = reader;
-  /** Asking others to follow, and being asked (CollabSpec decision 10, web/src/askfollow.ts): the
-   *  banner of a request shown, the outcome of this reader's own on the initials and in a line. */
-  const asking = new Asking($("#ask-banner"), $("#ask-line"), {
-    data,
-    stream: () => people.stream,
-    ensureName: () => people.ensure(),
-    lost: () => people.lost(),
-    isPrivate: () => people.isPrivate,
-    others: () => people.people().filter((p) => !p.agent).length + people.privateOthers,
-    keyOf: (a: AskFollow) => personKey({ id: a.from, name: a.name, agent: a.agent, verified: a.verified }),
-    following: (key) => people.followedKey === key,
-    present: (key) => people.people().some((p) => p.key === key),
-    follow: (key) => people.follow(key),
-    personOf: (id) => people.people().find((p) => p.sessions.some((x) => x.id === id))?.key ?? null,
-    changed: () => people.renderPeers(),
-    say: (text) => say(text),
-  });
-  page.asking = asking;
-  /** The menu a click on a person's initials opens: follow them, or ask them to follow this reader
-   *  (web/src/peermenu.ts). */
-  const peerMenu = new PeerMenu($("#peer-menu"), $("#peers").parentElement!, {
-    person: (key) => {
-      const p = people.people().find((x) => x.key === key);
-      if (!p) return null;
-      const s = p.sessions[0];
-      const v = s.view;
-      // an agent: talked with in its maker's private channel, else mentioned in Everyone; none by a
-      // read-only reader, nor with an agent without a token (AgentSpec decision 8)
-      const own = !!s.talk && ownAgents([s], { name: people.name, person: people.person?.id ?? null }).length > 0;
-      const agent = p.agent ? { talk: reader || !s.talk ? null : own ? ("own" as const) : ("public" as const), state: s.talk ? stateWords(s.talk) : null } : undefined;
-      return { name: p.name ?? "this reader", html: p.name ? escapeHtml(p.name) + (p.verified ? VERIFIED : "") : "A reader without a name", color: people.colorOf(p), where: v ? describePlace(v) : "", following: people.followedKey === key, ...(agent ? { agent } : {}) };
-    },
-    follow: (key) => people.follow(key),
-    talk: (key) => {
-      const s = people.people().find((x) => x.key === key)?.sessions[0];
-      if (!s?.talk || reader) return;
-      if (ownAgents([s], { name: people.name, person: people.person?.id ?? null }).length) talk.open(s.id);
-      else talk.open(PUBLIC, s.name ?? undefined);
-    },
-    ask: (key) => {
-      const p = people.people().find((x) => x.key === key);
-      if (p) void asking.ask({ id: p.sessions[0].id, name: p.name ?? "This reader" });
-    },
-    cannotAsk: () => (reader ? READ_ONLY : asking.why(false)),
-  });
+  Object.assign(page, peoplePart(page));
   /** Go where a reader's followed state says (CollabSpec decision 4): their view (a tab opened for it
    *  if need be), their tool, their selection (from before selections were queries, or from an agent
    *  that does not say: what their panel tells of, under their tool), camera and source window — the
@@ -1892,7 +1780,7 @@ async function boot(): Promise<void> {
     // followed reader's is taken — their build, their windows —, and the windows the reader has
     // opened since are their own, nothing of the followed reader's closing them (CollabSpec, "What
     // following leaves")
-    const ended = () => !once && !people.following;
+    const ended = () => !once && !page.people.following;
     // where they are in the Time Machine (HistorySpec decision 18): the same build, or none
     if (!ended()) {
       if (v.history) {
@@ -1927,6 +1815,7 @@ async function boot(): Promise<void> {
     }
     return reached;
   };
+  page.goWhere = goWhere;
 
   /** Open a link's snapshot of what its sharer saw (CollabSpec decision 7, the owner's decision of
    *  2026-10-12), on the board its address opened: what still makes sense is applied once, as
@@ -1997,24 +1886,6 @@ async function boot(): Promise<void> {
     document.documentElement.dataset.artworkSaved = made.length ? made.join(",") : "none";
   };
   page.openRecipe = openRecipe;
-  // a layout's memory is handed over under a name, or by a private reader, as the server takes it
-  page.handsOver = () => !reader && (!!data.snapshot || !!people.name || !!data.privateSession);
-  /** The others' selections on the canvas, and who else is on the declaration in the panel. */
-  const syncPeers = () => {
-    const marks: { i: number; color: string; label: string }[] = [];
-    for (const p of people.people()) {
-      const seen = new Set<number>();
-      for (const s of p.sessions) {
-        const i = s.view?.sel ? page.g.byName.get(s.view.sel) : undefined;
-        if (i === undefined || seen.has(i)) continue;
-        seen.add(i);
-        const j = toView(i);
-        if (j >= 0) marks.push({ i: j, color: people.colorOf(p), label: people.label(p) });
-      }
-    }
-    canvas.setPeers(marks);
-    panel.refreshAlsoHere();
-  };
   Object.assign(page, tabsPart(page));
   Object.assign(page, sharePart(page));
   Object.assign(page, timelinePart(page));
@@ -2191,7 +2062,7 @@ async function boot(): Promise<void> {
     // "Project @ Oct 9 22:27": the view's title at that build, numbered only where that is taken
     const name = versionName(views.title(nav.board.id), s ? briefWhen(s.at) : `build ${snapshot}`, taken);
     const r = await views.post("create", { name, from: nav.board.id, version: snapshot });
-    if (r.who) people.lost();
+    if (r.who) page.people.lost();
     if (!r.view) return r.error ?? "The view could not be made.";
     const at = page.here();
     await views.load();
@@ -2240,7 +2111,7 @@ async function boot(): Promise<void> {
     syncStatus();
     applyScheme();
     page.showLevel();
-    syncPeers();
+    page.syncPeers();
     boardPanel.render();
     renderHidden();
     page.apply();
@@ -2294,7 +2165,7 @@ async function boot(): Promise<void> {
     // see writeAddress
   }
   page.renderNav();
-  people.renderMe();
+  page.people.renderMe();
   reviewChanged();
   page.renderBuild();
   // the source windows the page had before it reloaded into its server's new version, on the
@@ -2315,8 +2186,8 @@ async function boot(): Promise<void> {
   void data.activity().then((events) => page.activity.load(events));
   // who this page is, then the others are told where it is; the camera and the source window
   // change without a step in the history, so they are looked at every second and a half
-  void people.init().then(() => {
-    people.start();
+  void page.people.init().then(() => {
+    page.people.start();
     // offered, never started by itself (GuideSpec decision 1); a link to the film opens it, at its
     // chapter: the visitor is watching already
     setTimeout(() => {
@@ -2326,10 +2197,10 @@ async function boot(): Promise<void> {
     page.activity.changed();
     let last = "";
     setInterval(() => {
-      const now = JSON.stringify(people.mode === "none" ? null : { s: sources.open, c: canvas.cam });
+      const now = JSON.stringify(page.people.mode === "none" ? null : { s: sources.open, c: canvas.cam });
       if (now !== last) {
         last = now;
-        people.report();
+        page.people.report();
       }
     }, 1500);
   });
