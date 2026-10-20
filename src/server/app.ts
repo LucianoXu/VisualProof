@@ -1,19 +1,20 @@
 // The server's answers to requests (server/main.ts serves them, the tests too): each request let in
 // or not, in the order SECURITY.md relies on — the name it was sent to, a write only from a page of
 // this server's own, an agent's token before the key, a personal or a read-only link, the key, then
-// what a read-only reader may ask — and answered by its route.
+// what a read-only reader may ask — and answered by its route. The route is here, in one place; what
+// answers each request is by area: who comes in and who they are (server/appaccess.ts), Share
+// (server/appshare.ts), people on the page with one another (server/apptalk.ts), what pages record
+// in the site (server/appsite.ts), the agents' API and the exported document (server/appagent.ts),
+// the project as pages read it (server/appgraph.ts); server/send.ts sends the answers.
 
-import { gitSource } from "./history.ts";
-import { readFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { WEB, WEBFONTS, bundleDir } from "./pipeline.ts";
 import { Live } from "./live.ts";
-import { isDeclName, LeanHover } from "./hover.ts";
+import { LeanHover } from "./hover.ts";
 import { Identities } from "./identity.ts";
 import type { GitSource } from "../shared/graph.ts";
 import { validSession } from "../shared/collab.ts";
-import { lakeTextHash } from "./status.ts";
 import { Access, fromOwnPage, hostAllowed, KEY_PATH, urlHost } from "./access.ts";
 import { asksForPage, sendAccessPage } from "./accesspage.ts";
 import { INVITE_PATH, taken } from "./invites.ts";
@@ -27,15 +28,14 @@ import { sendMedia, TIP_PATH, TIPS_DIR, tipClips, tourData, tourVtt } from "./me
 import { withoutReasons } from "../shared/timeline.ts";
 import { Updates } from "./updates.ts";
 import { serveFilm } from "./film.ts";
-import { finalAnswer, readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
-import { slimDeploy } from "../shared/deploy.ts";
-import type { DeployStatus } from "../shared/deploy.ts";
-import { packedGz, readBody, refused, sendFile, sendGz, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
+import { readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
+import { readBody, refused, sendFile, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
 import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
 import { shareAgents, sharePeople, shareReadOnly } from "./appshare.ts";
 import { ask, chat, chatNew, presence } from "./apptalk.ts";
 import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsite.ts";
 import { agentRoute, exportRoute } from "./appagent.ts";
+import { git, graphParts, hover, source, status } from "./appgraph.ts";
 
 /** The server's answers to requests: exported so that the tests serve them as the server does. */
 export class App {
@@ -46,7 +46,7 @@ export class App {
    *  once in that time, so what readers cost the server is bounded (CollabSpec decision 11); 0 in
    *  the tests */
   gitFreshMs = 3000;
-  private gitRead: { at: number; git: GitSource | null } | null = null;
+  gitRead: { at: number; git: GitSource | null } | null = null;
   /** the agents' API (server/agent.ts), and what agents may change */
   agents: AgentApi;
   /** who may come in at all (server/access.ts); null: anyone who reaches the port */
@@ -271,22 +271,7 @@ export class App {
       // and pdf.js's, which reads the library's PDFs for the reference window (AttachmentSpec decision 11)
       if (/^\/(app|layout|edges|pdfworker)\.js(\.map)?$/.test(path)) return sendFile(req, res, join(bundleDir(), path.slice(1)));
       if (path.startsWith("/pdfjs/")) return pdfjsAsset(res, path);
-      // with Lean's language server as it is (server/hover.ts): what is open, what crashed
-      // a read-only reader is told how the server is, not its log nor where its review is kept
-      // `?brief`: the build status without its files, which the page reads by GET /api/build
-      if (path === "/api/status") {
-        const st: Record<string, unknown> = { ...(live.status(url.searchParams.has("brief")) as Record<string, unknown>), lean: this.hover.state() };
-        // the address people reach the server at (--public-url): links of it are this site's, and the
-        // page makes its own with it (CollabSpec, "Copied links")
-        if (this.publicUrl) st.publicUrl = this.publicUrl;
-        if (this.readOnlyOf.get(req) !== undefined) {
-          delete st.log;
-          st.review = { ...(st.review as object), folder: undefined };
-          // a branch's build log is not a read-only reader's (DeploySpec decision 11)
-          if (st.deploy) st.deploy = slimDeploy(st.deploy as DeployStatus);
-        }
-        return sendJson(res, st);
-      }
+      if (path === "/api/status") return status(this, req, res, url);
       // VisualProof's own version, and what of its releases those let in fully are told (UpdateSpec
       // decision 11): a read-only reader and an agent are told the version alone
       if (path === "/api/updates") return sendJson(res, this.updates?.status(this.toldAll(req)) ?? { running: packageVersion() });
@@ -337,110 +322,10 @@ export class App {
         return sendJson(res, { events: this.toldAll(req) ? events : events.map(withoutReasons) });
       }
       if (path === "/api/layout/undo" && req.method === "POST") return layoutUndo(this, req, res, agent);
-      // the project's git source and commit as git says them now, not as the build was read (an
-      // artwork's foot, ExportSpec decision 19; the owner's decision of 2026-10-15)
-      if (path === "/api/git") {
-        // following a branch, the commit of the build on show, on that branch: what is checked out
-        // meanwhile is the build going on (DeploySpec decision 12)
-        const shown = live.shownCommit();
-        if (shown !== undefined) return sendJson(res, { git: shown && { source: live.deploy!.status(false).source, commit: shown.hash, branch: shown.branch } });
-        if (!this.gitRead || Date.now() - this.gitRead.at >= this.gitFreshMs) this.gitRead = { git: gitSource(live.project.root), at: Date.now() };
-        return sendJson(res, { git: this.gitRead.git });
-      }
-      if (path === "/api/meta" || path === "/api/edges") {
-        const g = live.graph;
-        if (!g) return sendJson(res, { error: "not ready" }, 503);
-        // a page asks for the version it was told about; an older one is gone
-        const want = url.searchParams.get("v");
-        // of this server's: one restarted since counts its versions again (UpdateSpec decision 8)
-        const of = url.searchParams.get("i");
-        if ((want && Number(want) !== g.version) || (of && of !== live.instance)) return sendJson(res, { error: "superseded", version: g.version, instance: live.instance }, 409);
-        // a page asks for the edges packed (shared/edgecodec.ts; `pack=2` with the grammar site, a
-        // page from before it `pack=1`, which takes grammar for a proof); an agent gets them as they
-        // are
-        const pack = url.searchParams.get("pack");
-        return path === "/api/meta"
-          ? sendGz(req, res, g.prep.metaGz, "application/json")
-          : sendGz(req, res, pack === "1" || pack === "2" ? packedGz(g.prep.edgesGz, pack === "1" ? 1 : 2) : g.prep.edgesGz, "application/octet-stream");
-      }
-      if (path === "/api/hover" || path === "/api/hover/open" || path === "/api/hover/names" || path === "/api/hover/describe" || path === "/api/hover/print") {
-        // what Lean says is at a position of a project file (server/hover.ts). Only the graph's
-        // modules (meta.modules) reach Lean: the module names the file the graph was read from, so
-        // no path from the client reaches the disk, and no other file in the project's folder — an
-        // old copy, a CI script — is ever elaborated or imported
-        if (!live.graph) return sendJson(res, { error: "not ready" }, 503);
-        const mod = url.searchParams.get("module") ?? "";
-        const rel = live.moduleFile(mod);
-        if (rel === undefined) return sendJson(res, { error: `${mod.slice(0, 300)} is not a module of the graph` }, 404);
-        // a read-only reader (CollabSpec decision 11) is answered what Lean already said of this
-        // build, else asks it within bounds, per address and in all
-        const keyOf = reader !== undefined && req.method === "GET" ? `${live.graph.fingerprint}\0${path}\0${url.search}` : null;
-        const kept = keyOf ? this.bounds.answer(keyOf) : undefined;
-        if (kept !== undefined) return sendJson(res, kept);
-        if (reader !== undefined) {
-          const wait = this.bounds.leanWait(req.socket.remoteAddress ?? "");
-          if (wait) return sendJson(res, { error: "Lean is asked too often from here: try again in a moment.", retryAfter: wait }, 429, { "retry-after": String(wait) });
-        }
-        const reply = (body: unknown) => {
-          if (keyOf && finalAnswer(body)) this.bounds.keep(keyOf, body);
-          return sendJson(res, body);
-        };
-        if (path === "/api/hover/describe") {
-          // a declaration by name, where the module on show is imported: what a name in a hover card
-          // shows. The name is checked to be a name before it is written into Lean source.
-          const name = url.searchParams.get("name") ?? "";
-          if (!isDeclName(name)) return sendJson(res, { error: "not a name" }, 400);
-          return reply(await this.hover.describe(mod, name, 6000));
-        }
-        if (path === "/api/hover/print") {
-          // what Lean's #print says of a declaration it generated from a command, which has no text
-          // of its own (the source window, under the command that made it, when asked)
-          const name = url.searchParams.get("name") ?? "";
-          if (!isDeclName(name)) return sendJson(res, { error: "not a name" }, 400);
-          return reply(await this.hover.print(mod, name, false, 6000));
-        }
-        if (rel === null) return sendJson(res, { error: `no source for ${mod}` }, 404);
-        const text = readFileSync(join(live.project.root, rel), "utf8");
-        const hash = lakeTextHash(text);
-        if (path === "/api/hover/open") {
-          try {
-            await this.hover.open(rel, text, hash);
-            return sendJson(res, { ok: true });
-          } catch (e) {
-            return sendJson(res, { error: this.hover.failure ?? (e instanceof Error ? e.message : String(e)) });
-          }
-        }
-        // the page shows another text than there is now: it reads the source again first
-        const want = url.searchParams.get("hash");
-        if (want && want !== hash) return sendJson(res, { stale: true });
-        if (path === "/api/hover/names") {
-          // the positions of the names in a declaration's source, as JSON [[line, character], …]
-          const r = await this.json(req, 1 << 20);
-          if (r.error !== undefined) return sendJson(res, { error: r.error }, 400);
-          const ps = r.body;
-          const ok = Array.isArray(ps) && ps.length <= 5000 && ps.every((p) => Array.isArray(p) && p.length === 2 && p.every((x) => Number.isInteger(x) && x >= 0));
-          if (!ok) return sendJson(res, { error: "positions" }, 400);
-          return sendJson(res, await this.hover.names(rel, text, hash, ps as [number, number][], 8000));
-        }
-        const line = Number(url.searchParams.get("line")), character = Number(url.searchParams.get("character"));
-        if (!Number.isInteger(line) || !Number.isInteger(character) || line < 0 || character < 0) return sendJson(res, { error: "position" }, 400);
-        return reply(await this.hover.hover(rel, text, hash, line, character, 6000));
-      }
-      if (path === "/api/source") {
-        // only the graph's modules, from the file the graph was read from: no path from the client
-        // ever reaches the disk, and no file outside the graph is served
-        if (!live.graph) return sendJson(res, { error: "not ready" }, 503);
-        const mod = url.searchParams.get("module") ?? "";
-        const rel = live.moduleFile(mod);
-        if (!rel) return sendJson(res, { error: `no source for ${mod.slice(0, 300)}: it is not a module of the graph` }, 404);
-        const text = readFileSync(join(live.project.root, rel), "utf8");
-        const hash = lakeTextHash(text);
-        // the usage pass's contexts of the module (shared/context.ts), when this is the text it
-        // elaborated
-        const contexts = live.contextsOf(mod);
-        // the hash says whether this is the text the graph was read from (meta.modules[].compiled)
-        return sendJson(res, { module: mod, file: rel, text, hash, ...(contexts && contexts.hash === hash ? { contexts } : {}) });
-      }
+      if (path === "/api/git") return git(this, res);
+      if (path === "/api/meta" || path === "/api/edges") return graphParts(this, req, res, url);
+      if (path === "/api/hover" || path === "/api/hover/open" || path === "/api/hover/names" || path === "/api/hover/describe" || path === "/api/hover/print") return hover(this, req, res, url, reader);
+      if (path === "/api/source") return source(this, res, url);
       sendJson(res, { error: "not found" }, 404);
     }
   }
