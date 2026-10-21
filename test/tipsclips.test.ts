@@ -15,7 +15,8 @@ import { FOLLOWED, YOURS } from "../src/web/src/surfaces.ts";
 import { chaptersOf, FILM, storyboards } from "../scripts/tips-record.mjs";
 import { tourVtt } from "../src/server/media.ts";
 import type { Caption } from "../scripts/tips-record.mjs";
-import { boxes, mp4 } from "../scripts/tips/mp4.mjs";
+import { boxes, mp4, readMp4 } from "../scripts/tips/mp4.mjs";
+import { groups, join as joinFilm, split } from "../scripts/tips/film.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLIPS = join(ROOT, "src", "assets", "tips");
@@ -210,4 +211,74 @@ test("the muxer: a chunk a second, so that a player reading a chunk whole stream
   // a film of whole seconds has one stsc entry
   const even = mp4({ width: 16, height: 8, fps: 30, avcC: Uint8Array.from([1]), samples: samples.slice(0, 60) });
   assert.equal(even.readUInt32BE(even.indexOf(Buffer.from("stsc")) + 8), 1);
+});
+
+test("the reader: a file the muxer wrote, read back to the same samples, and written again to the same bytes", () => {
+  const samples = Array.from({ length: 75 }, (_, i) => ({ data: Uint8Array.from([i, 255 - i, i % 7]), key: i % 30 === 0, pts: i * 1000 }));
+  const avcC = Uint8Array.from([1, 0x64, 0, 0x28, 0xff, 0xe0, 0]);
+  const f = mp4({ width: 32, height: 16, fps: 30, avcC, samples });
+  const r = readMp4(f);
+  assert.deepEqual([r.width, r.height, r.fps], [32, 16, 30]);
+  assert.deepEqual([...r.avcC], [...avcC]);
+  assert.deepEqual(r.samples.map((s) => [[...s.data], s.key, s.pts]), samples.map((s) => [[...s.data], s.key, s.pts]));
+  assert.ok(mp4({ width: r.width, height: r.height, fps: r.fps, avcC: r.avcC, samples: r.samples }).equals(f));
+  // the phone's clip, as the recorder made it
+  const clip = readFileSync(join(CLIPS, "phone-fingers.light.mp4"));
+  const c = readMp4(clip);
+  assert.ok(mp4({ width: c.width, height: c.height, fps: c.fps, avcC: c.avcC, samples: c.samples }).equals(clip));
+});
+
+/** A film of chapters as the recorder makes one: each chapter's first sample a key frame. */
+function filmOf(lengths: number[], avcC = Uint8Array.from([1, 2, 3])) {
+  const fps = 30;
+  const samples: { data: Uint8Array; key: boolean; pts: number }[] = [];
+  const chapters: { id: string; start: number; end: number }[] = [];
+  const captions: Caption[] = [];
+  let n = 0;
+  lengths.forEach((len, k) => {
+    for (let i = 0; i < len; i++) samples.push({ data: Uint8Array.from([k, i & 255]), key: i % 60 === 0, pts: (n + i) * 1000 });
+    chapters.push({ id: `c${k}`, start: n / fps, end: (n + len) / fps });
+    captions.push({ start: n / fps + 0.2, end: (n + len) / fps, text: `chapter ${k}` });
+    n += len;
+  });
+  const file = mp4({ width: 32, height: 16, fps, avcC, samples });
+  return { file, about: { film: { duration: n / fps }, chapters, captions } };
+}
+
+test("a film of chapters taken apart and put together again: the same bytes; a chapter recorded again moves those after it", () => {
+  const { file, about } = filmOf([70, 45, 90]);
+  const parts = split(readMp4(file), about);
+  assert.deepEqual(parts.map((p) => [p.id, p.frames, p.captions.length]), [["c0", 70, 1], ["c1", 45, 1], ["c2", 90, 1]]);
+  const whole = joinFilm(parts, 30);
+  assert.ok(mp4({ width: 32, height: 16, fps: 30, avcC: whole.avcC, samples: whole.samples }).equals(file));
+  assert.deepEqual(whole.chapters, about.chapters);
+  assert.deepEqual(whole.captions, about.captions);
+  // the middle chapter recorded again, 15 frames longer: the last moves by half a second, its samples kept
+  const again = { id: "c1", frames: 60, captions: [{ start: 0.1, end: 2, text: "again" }], avcC: Uint8Array.from([1, 2, 3]), samples: Array.from({ length: 60 }, (_, i) => ({ data: Uint8Array.from([9, i]), key: i === 0, pts: i * 1000 })) };
+  const spliced = joinFilm([parts[0], again, parts[2]], 30);
+  assert.deepEqual(spliced.chapters.map((c) => [c.id, +c.start.toFixed(4), +c.end.toFixed(4)]), [["c0", 0, 2.3333], ["c1", 2.3333, 4.3333], ["c2", 4.3333, 7.3333]]);
+  assert.deepEqual(spliced.captions.map((c) => c.text), ["chapter 0", "again", "chapter 2"]);
+  assert.ok(Math.abs(spliced.captions[2].start - (130 / 30 + 0.2)) < 1e-9);
+  const out = readMp4(mp4({ width: 32, height: 16, fps: 30, avcC: spliced.avcC, samples: spliced.samples }));
+  assert.equal(out.samples.length, 220);
+  assert.deepEqual([...out.samples[130].data], [2, 0], "the last chapter's first sample, kept");
+  assert.ok(out.samples[70].key && out.samples[130].key);
+  // what cannot be joined: another encoder's description; a chapter that does not begin on a key frame
+  assert.throws(() => joinFilm([parts[0], { ...again, avcC: Uint8Array.from([7]) }], 30), /encoded otherwise/);
+  assert.throws(() => split(readMp4(file), { ...about, chapters: [{ id: "c0", start: 0, end: 1 }, { id: "c1", start: 1, end: about.film.duration }] }), /key frame/);
+});
+
+test("the chapters shared out between processes: contiguous groups, in order, as many as help", () => {
+  const ids = ["a", "b", "c", "d", "e"];
+  const seconds = new Map([["a", 10], ["b", 10], ["c", 40], ["d", 10], ["e", 10]]);
+  assert.deepEqual(groups(ids, seconds, ids, 1), [ids]);
+  for (const jobs of [2, 3, 4, 8]) {
+    const g = groups(ids, seconds, ids, jobs);
+    assert.ok(g.length <= jobs && g.length >= 1);
+    assert.deepEqual(g.flat(), ids, "every chapter once, in order");
+  }
+  // the long chapter alone
+  assert.ok(groups(ids, seconds, ids, 4).some((g) => g.length === 1 && g[0] === "c"));
+  // only some chapters: only those, in order
+  assert.deepEqual(groups(ids, seconds, ["e", "b"], 4).flat(), ["b", "e"]);
 });

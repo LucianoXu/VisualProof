@@ -114,3 +114,64 @@ export function boxes(buf, from = 0, to = buf.length) {
   }
   return out;
 }
+
+/** A file `mp4` wrote, read back: its frame size, its timescale and frame length, the encoder's
+ *  description (avcC) and its samples in decode order, `{ data, key, pts }` as `mp4` takes them — so
+ *  that the chapters of a film can be taken apart and put together again without encoding them anew
+ *  (scripts/tips/film.mjs). One H.264 track, as `mp4` writes it. */
+export function readMp4(buf) {
+  const find = (list, type) => {
+    const b = list.find((x) => x.type === type);
+    if (!b) throw new Error(`mp4: no ${type}`);
+    return b;
+  };
+  const top = boxes(buf);
+  const trak = find(find(top, "moov").children, "trak");
+  const mdia = find(trak.children, "mdia");
+  const stbl = find(find(mdia.children, "minf").children, "stbl");
+  const body = (b) => b.at + 8;
+  // full boxes: version and flags first
+  const fb = (type) => {
+    const b = stbl.children.find((x) => x.type === type);
+    return b ? body(b) + 4 : null;
+  };
+  const mdhd = body(find(mdia.children, "mdhd")) + 4;
+  const timescale = buf.readUInt32BE(mdhd + 8);
+  const tkhd = body(find(trak.children, "tkhd")) + 4;
+  const width = buf.readUInt32BE(tkhd + 72) >>> 16, height = buf.readUInt32BE(tkhd + 76) >>> 16;
+  // stsd: one avc1 entry, its fixed fields (78 bytes) then its boxes, avcC among them
+  const avc1 = fb("stsd") + 4;
+  if (buf.toString("latin1", avc1 + 4, avc1 + 8) !== "avc1") throw new Error("mp4: not avc1");
+  const avcCBox = boxes(buf, avc1 + 8 + 78, avc1 + buf.readUInt32BE(avc1)).find((x) => x.type === "avcC");
+  if (!avcCBox) throw new Error("mp4: no avcC");
+  const avcC = Buffer.from(buf.subarray(body(avcCBox), avcCBox.at + avcCBox.size));
+  const stts = fb("stts");
+  if (buf.readUInt32BE(stts) !== 1) throw new Error("mp4: samples of different lengths");
+  const delta = buf.readUInt32BE(stts + 8);
+  const stsz = fb("stsz");
+  const n = buf.readUInt32BE(stsz + 4);
+  const sizes = Array.from({ length: n }, (_, i) => buf.readUInt32BE(stsz + 8 + 4 * i));
+  const stss = fb("stss");
+  const keys = new Set(Array.from({ length: buf.readUInt32BE(stss) }, (_, i) => buf.readUInt32BE(stss + 4 + 4 * i) - 1));
+  const ctts = fb("ctts");
+  const offsets = new Array(n).fill(0);
+  if (ctts !== null)
+    for (let e = 0, i = 0; e < buf.readUInt32BE(ctts); e++) {
+      const count = buf.readUInt32BE(ctts + 4 + 8 * e), off = buf.readUInt32BE(ctts + 8 + 8 * e);
+      for (let k = 0; k < count; k++) offsets[i++] = off;
+    }
+  // where each sample is: chunks (stco) of so many samples each (stsc)
+  const stco = fb("stco"), stsc = fb("stsc");
+  const chunkStarts = Array.from({ length: buf.readUInt32BE(stco) }, (_, c) => buf.readUInt32BE(stco + 4 + 4 * c));
+  const runs = Array.from({ length: buf.readUInt32BE(stsc) }, (_, r) => ({ first: buf.readUInt32BE(stsc + 4 + 12 * r) - 1, per: buf.readUInt32BE(stsc + 8 + 12 * r) }));
+  const samples = [];
+  for (let c = 0, i = 0; c < chunkStarts.length; c++) {
+    const per = runs.filter((r) => r.first <= c).at(-1).per;
+    for (let k = 0, at = chunkStarts[c]; k < per && i < n; k++, i++) {
+      samples.push({ data: buf.subarray(at, at + sizes[i]), key: keys.has(i), pts: i * delta + offsets[i] });
+      at += sizes[i];
+    }
+  }
+  if (samples.length !== n) throw new Error(`mp4: ${samples.length} of ${n} samples found`);
+  return { width, height, timescale, delta, fps: timescale / delta, avcC, samples };
+}
