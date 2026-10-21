@@ -17,6 +17,18 @@ const until = async (f: () => boolean, ms = 3000) => {
   return f();
 };
 
+/** Whether `change`, made again every half second, is heard within a few tries: a watch begun a
+ *  moment before may not yet tell of the first change made in it (macOS's FSEvents start late, which
+ *  failed this test twice in CI); the server's watch is long-lived, and its look every SAFETY_MS
+ *  catches what one misses. */
+const heard = async (w: BuildWatch, change: (k: number) => void) => {
+  for (let k = 0; k < 6; k++) {
+    change(k);
+    if (await until(() => w.dirty, 500)) return true;
+  }
+  return false;
+};
+
 test("a look only when something says to: a server at rest looks every SAFETY_MS, and at nothing else", () => {
   const rest: LookReasons = { heard: false, polling: false, running: 0, runsChanged: false, active: false, sinceMove: 60_000, sinceLook: 1000, unread: false, settle: 2500, tick: 1000 };
   assert.equal(shouldLook(rest), false);
@@ -53,11 +65,9 @@ test("the folders of the modules' sources and outputs are watched: a change in o
     // P/Q and lib/P/Q are not there: P and lib/P watch for them
     assert.equal(w.size, 4);
     w.dirty = false;
-    writeFileSync(join(root, "P", "A.lean"), "def a := 1\n");
-    assert.ok(await until(() => w.dirty), "a source edited");
+    assert.ok(await heard(w, (k) => writeFileSync(join(root, "P", "A.lean"), `def a := ${k}\n`)), "a source edited");
     w.dirty = false;
-    writeFileSync(join(lib, "P", "A.olean"), "");
-    assert.ok(await until(() => w.dirty), "an output written");
+    assert.ok(await heard(w, (k) => writeFileSync(join(lib, "P", "A.olean"), String(k))), "an output written");
     w.dirty = false;
     mkdirSync(join(lib, "P", "Q"));
     assert.ok(await until(() => w.dirty), "the folder of an output not built before, made");
@@ -65,8 +75,7 @@ test("the folders of the modules' sources and outputs are watched: a change in o
     w.watch(moduleDirs(p, mods), root);
     assert.equal(w.size, 5);
     w.dirty = false;
-    writeFileSync(join(lib, "P", "Q", "B.olean"), "");
-    assert.ok(await until(() => w.dirty), "an output written in it");
+    assert.ok(await heard(w, (k) => writeFileSync(join(lib, "P", "Q", "B.olean"), String(k))), "an output written in it");
     // fewer modules: fewer folders
     w.watch(moduleDirs(p, new Map([["P", mods.get("P")!]])), root);
     assert.equal(w.size, 2);
