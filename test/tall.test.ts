@@ -272,6 +272,11 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     tall: "as on a larger screen (decision 18)",
     monitor: "as on a larger screen (decision 30)",
   },
+  // the Export window's downloads (the owner's decision of 2026-10-21): where the window is
+  exportDownloads: {
+    tall: "the Export window, in the sheet's place (decision 20)",
+    monitor: "the Export window, at the top right (decision 30)",
+  },
   // the room's pointers (the owner's decisions of 2026-10-20): each found again on the page's own
   // layout, the mark at the edge of what holds one where it is
   pointerMarks: {

@@ -258,6 +258,9 @@ export const YOURS = [
   { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
   { id: "followingStrip", what: "the following strip: whom you follow, and its ✕", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
+  // the downloads of a followed reader's Export window (the owner's decision of 2026-10-21): taking
+  // the file is reading, as copying text is; every other control of the window ends following
+  { id: "exportDownloads", what: "the downloads the Export window offers: the PDF, the LaTeX sources, the .tex and the .sty", where: "#export-modal .ex-dl a" },
   // a pointer of the room scrolled away (the owner's decisions of 2026-10-20): its mark at the edge of
   // what holds it scrolls the reader's own view there; scrolling is never followed
   { id: "pointerMarks", what: "the mark at the edge of a panel or window where another's pointer is scrolled away, which scrolls there", where: ".ptr-edge" },

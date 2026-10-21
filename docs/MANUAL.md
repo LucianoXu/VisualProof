@@ -1357,11 +1357,11 @@ what each one looks at stays their own.
   their colouring and edges, and their Export window — open or closed with theirs (yours, open as
   you start, gives way to it), with their settings, and the document they generate: its progress,
   then the same downloads, offered to you too. Changing any of these ends following, as acting on what
-  you are shown does (a button of the panel, typing a comment, a setting or a download of the Export
-  window), and Esc. Nothing of yours ends it:
+  you are shown does (a button of the panel, typing a comment, a setting of the Export window), and
+  Esc. Nothing of yours ends it:
   where windows sit, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
   Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
-  selecting text, copying it. When it ends, what you were shown stays, yours: the Export window too,
+  selecting text, copying it, downloading the document the Export window offers. When it ends, what you were shown stays, yours: the Export window too,
   with the settings it showed. On the canvas their
   selection carries a ring of their colour with their initials; the panel says who else is looking
   at a declaration.

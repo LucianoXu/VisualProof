@@ -324,7 +324,8 @@ zoom, find and the box tool of the reference window; Share and its switch; Help 
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
 others' initials and a person's menu; the request banner; the conversation window (decision 13) and
-the following strip; hover cards; the pointer's highlight; the mark at an edge of another's pointer
+the following strip; hover cards; the Export window's downloads (the owner's decision of
+2026-10-21: taking the file is reading); the pointer's highlight; the mark at an edge of another's pointer
 scrolled away; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.
 
@@ -382,8 +383,9 @@ the second is closed and the others are open.
   takes nothing more of theirs once following has ended — neither their build nor their windows.
 - **The Export window** (the owner's decision of 2026-10-20) is followed: the follower sees the
   followed reader's, open or not, with its settings and the document typeset. Their own, open when
-  following starts, is replaced by it; opening or closing it, a setting, Generate, a download, Close
-  end following; when following ends, the window as it shows — open, with those settings and that
+  following starts, is replaced by it; opening or closing it, a setting, Generate, Close end
+  following, but not a download, which is reading, as copying text is (the owner's decision of
+  2026-10-21); when following ends, the window as it shows — open, with those settings and that
   document, its progress followed to its end — is the follower's own, and Close puts it away with
   the linear form it draws.
 - *Open*: **Esc and the linear form.** Esc closes what is open and leaves the Time Machine, then

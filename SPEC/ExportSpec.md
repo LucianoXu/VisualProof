@@ -40,7 +40,8 @@ Numbers missing below are withdrawn decisions.
    author line it will print, Generate, then the downloads and the export's notes. **The window is
    followed** (the owner's decision of 2026-10-20; CollabSpec, "Surfaces"): those following its
    reader see it as it is — open or not, its settings, Generate's progress, then the same downloads,
-   from the export's cache — read only, a control of it ending their following and making it theirs.
+   from the export's cache — read only, a control of it ending their following and making it theirs,
+   but for a download, which is reading (the owner's decision of 2026-10-21).
 6. **Typeset with XeLaTeX** (an optional dependency) from a document model of VisualProof's own: a
    builder makes the model from the graph, a view and the sources; a renderer turns it into LaTeX.
    Another renderer can be added without touching the builder.
