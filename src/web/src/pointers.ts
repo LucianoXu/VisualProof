@@ -440,6 +440,8 @@ export interface PointerHooks extends AnchorHooks {
   me(): RoomPage | null;
   peers(): readonly Peer[];
   privateFollowers(): number;
+  /** someone unseen (a read-only reader) follows this reader, as the server says */
+  unseenFollowers(): boolean;
   /** a read-only page: its pointer is shown to nobody, and it says whom it follows itself */
   readOnly(): boolean;
   /** send what the page says (POST /api/pointer) */
@@ -496,12 +498,12 @@ export class Pointers {
   // ---------------------------------------------------------------- what this page says
 
   /** Whether this page is in a room and says where its pointer is: listed (a private or read-only
-   *  reader's is shown to nobody), and following someone or followed. */
+   *  reader's is shown to nobody), and following someone or followed — by someone unseen too. */
   private speaks(): boolean {
     const me = this.hooks.me();
     if (!me || me.key === null || this.hooks.readOnly()) return false;
     if (me.follows !== null) return true;
-    return this.hooks.privateFollowers() > 0 || this.hooks.peers().some((p) => !p.agent && p.view?.following === me.key);
+    return this.hooks.privateFollowers() > 0 || this.hooks.unseenFollowers() || this.hooks.peers().some((p) => !p.agent && p.view?.following === me.key);
   }
 
   /** The pointer moved (or pressed, `click`) at (x, y) over `t`: said, at most every LEAD_MS while

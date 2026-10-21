@@ -216,7 +216,8 @@ into the latest release only.
   once to that reader's room alone — whom they follow, who follows them, who follows the same reader
   — at most 25 a second per page, and keeps nothing of it. A private or read-only reader's pointer is
   relayed to nobody; a read-only page tells the server whom it follows on that route alone, to be
-  sent its room's, and is counted nowhere. There is no way to hide one's pointer from those who
+  sent its room's, and is counted nowhere: the reader it follows is told only that someone unseen
+  follows them, never who nor how many, so that their page sends its pointer. There is no way to hide one's pointer from those who
   follow: whoever is followed is watched anyway; going private ends being followed.
 
 ## Secrets at rest

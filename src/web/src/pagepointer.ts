@@ -54,6 +54,7 @@ export function pointerPart(page: Page): PointerPart {
     },
     peers: () => page.people.peers,
     privateFollowers: () => page.people.privateFollowing,
+    unseenFollowers: () => page.people.unseenFollowing,
     readOnly: () => !!page.reader,
     send: (body) => data.pointer(body),
   });

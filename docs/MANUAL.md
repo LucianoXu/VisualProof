@@ -1375,9 +1375,9 @@ what each one looks at stays their own.
   scrolled away shows as a mark at the edge ("↓ Alice"): click it to scroll there (scrolling is never
   followed); on a phone, a pointer in the side panel shows by the drawer's button. Nothing of it ends
   following. A private reader's pointer is never shown, nor a read-only reader's; a private reader
-  sees the others', and a read-only reader those of a room the person they follow is in through
-  someone else (nobody knows a read-only reader follows). There is no setting to hide your pointer:
-  going private ends being followed.
+  sees the others', and a read-only reader too: your page is told that someone unseen follows you,
+  never who nor how many, and shows nothing of it, so that it sends your pointer for them. There is
+  no setting to hide your pointer: going private ends being followed.
 - **Asking others to follow you** (CollabSpec decision 10), to show them something: **Ask everyone
   to follow me** in the menu under your name, or **Ask … to follow me** in a person's menu (all
   their pages), once every 30 s, with a name and visible. Each page asked shows a banner at the top,

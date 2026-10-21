@@ -593,6 +593,9 @@ export interface PrivateCount {
   /** how many of them follow this page's reader (the owner's decision of 2026-10-20): told to that
    *  reader's pages alone, never who; absent where none does */
   followers?: number;
+  /** someone unseen — a read-only reader — follows this page's reader (the owner's decision of
+   *  2026-10-21): never who nor how many, and shown nowhere; the page sends its pointer for them */
+  unseen?: true;
 }
 
 /** A view as a page sent it, checked and bounded; null when it is not one. */

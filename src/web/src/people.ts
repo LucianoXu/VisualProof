@@ -187,6 +187,9 @@ export class People {
   private privateAll = 0;
   /** how many of them follow this reader, as the server counts them for this page */
   private privateFollowers = 0;
+  /** someone unseen (a read-only reader) follows this reader: shown nowhere, but the pointer is sent
+   *  for them (the owner's decision of 2026-10-21) */
+  private unseen = false;
   /** this page as the server lists it, with the others: null while it is not listed (private,
    *  read-only, before its first heartbeat) */
   private me: Peer | null = null;
@@ -374,6 +377,11 @@ export class People {
   /** How many private readers follow this reader, as the server counts them. */
   get privateFollowing(): number {
     return this.privateFollowers;
+  }
+
+  /** Whether someone unseen — a read-only reader — follows this reader: never who nor how many. */
+  get unseenFollowing(): boolean {
+    return this.unseen;
   }
 
   /** The name's window, from the menu under it: give the name, or change it. */
@@ -572,6 +580,7 @@ export class People {
   setPrivateCount(p: PrivateCount): void {
     this.privateAll = p.count;
     this.privateFollowers = p.followers ?? 0;
+    this.unseen = p.unseen === true;
     this.renderPeers();
     this.followersChanged();
     this.hooks.roomChanged?.();

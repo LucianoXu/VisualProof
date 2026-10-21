@@ -346,3 +346,49 @@ test("at most five others' pointers drawn at once, the latest to move; one still
   // still: faded, unless it holds a selection
   assert.deepEqual(drawnOf([{ id: "a", moved: now - FADE_MS - 500 }, { id: "b", moved: now - FADE_MS - 500, sel: {} }, { id: "c", moved: now - 10 }], now), ["c", "b"]);
 });
+
+test("a page followed by read-only readers alone is told that someone unseen follows — never who nor how many, counted nowhere — and sends its pointer for them (the owner's decision of 2026-10-21)", async () => {
+  const S = await site();
+  try {
+    const open = async (session: string) => {
+      const s = stream(S.port, `/api/events?session=${session}`);
+      await s.until(() => !!s.last("hello"));
+      return { s, hello: s.last("hello") as StreamHello };
+    };
+    const VIEW = { mode: "tcb", sel: null, source: false, clusterMode: "namespace", cam: null, view: null, scope: null, tabs: [] };
+    const alice = await open("aaaaaaaa1111");
+    const bob = await open("bbbbbbbb1111");
+    await S.ask("POST", "/api/presence", { token: alice.hello.token, view: VIEW, idle: false }, { "x-visualproof-name": "Alice" });
+    await S.ask("POST", "/api/presence", { token: bob.hello.token, view: VIEW, idle: false }, { "x-visualproof-name": "Bob" });
+    // two read-only pages follow Alice
+    const readOnly = async (session: string) => {
+      const r = await open(session);
+      const st = [...(S.live as unknown as { streams: Map<unknown, { token: string; readOnly: string | null }> }).streams.values()].find((x) => x.token === r.hello.token)!;
+      st.readOnly = "public";
+      return r;
+    };
+    const rita = await readOnly("rrrrrrrr1111");
+    const rob = await readOnly("rrrrrrrr2222");
+    const priv = (w: { s: ReturnType<typeof stream> }) => w.s.last("private") as { count: number; followers?: number; unseen?: true };
+    await S.ask("POST", "/api/pointer", { token: rita.hello.token, following: "n:Alice" });
+    await alice.s.until(() => priv(alice)?.unseen === true);
+    await S.ask("POST", "/api/pointer", { token: rob.hello.token, following: "n:Alice" });
+    await new Promise((ok) => setTimeout(ok, 100));
+    // that someone does, never how many: no count, no follower; nobody else told
+    assert.deepEqual(priv(alice), { count: 0, unseen: true });
+    assert.ok(!bob.s.events.some((e) => e.event === "private" && (e.data as { unseen?: true }).unseen));
+    assert.ok(!JSON.stringify(alice.s.events).includes(rita.hello.id) && !JSON.stringify(alice.s.events).includes(rob.hello.id), "nor who");
+    // so Alice's page sends its pointer, and they are sent it
+    assert.equal((await S.ask("POST", "/api/pointer", { token: alice.hello.token, at: { b: [1, 2] }, sel: null })).json!.to, 2);
+    await rita.s.until(() => rita.s.events.some((e) => e.event === "pointer"));
+    // one stops following, the other's page closes: Alice is told no one unseen follows any more
+    await S.ask("POST", "/api/pointer", { token: rita.hello.token, following: null });
+    await new Promise((ok) => setTimeout(ok, 100));
+    assert.equal(priv(alice).unseen, true, "Rob still does");
+    rob.s.close();
+    await alice.s.until(() => priv(alice)?.unseen === undefined);
+    for (const w of [alice, bob, rita]) w.s.close();
+  } finally {
+    await S.close();
+  }
+});
