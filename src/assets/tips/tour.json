@@ -1,11 +1,11 @@
 {
  "film": {
-  "file": "tour-65d0dbe881c2.mp4",
-  "sha256": "65d0dbe881c2e2d64932865976c177bf31e5685cf7fffe98089eae245eafa60a",
-  "size": 48323737,
+  "file": "tour-5a226b0d2c08.mp4",
+  "sha256": "5a226b0d2c080edebf0cbd49ad326bbf13a0b0e1b69df7d6516032ced7638b13",
+  "size": 48114397,
   "width": 2560,
   "height": 1600,
-  "duration": 208.83333333333334
+  "duration": 209
  },
  "chapters": [
   {
@@ -26,52 +26,52 @@
   {
    "id": "source",
    "start": 45.666666666666664,
-   "end": 55.766666666666666
+   "end": 55.8
   },
   {
    "id": "keys",
-   "start": 55.766666666666666,
-   "end": 76.7
+   "start": 55.8,
+   "end": 76.9
   },
   {
    "id": "checks",
-   "start": 76.7,
-   "end": 94.46666666666667
+   "start": 76.9,
+   "end": 94.66666666666667
   },
   {
    "id": "review",
-   "start": 94.46666666666667,
-   "end": 110.33333333333333
+   "start": 94.66666666666667,
+   "end": 110.53333333333333
   },
   {
    "id": "project",
-   "start": 110.33333333333333,
-   "end": 117.06666666666666
+   "start": 110.53333333333333,
+   "end": 117.26666666666667
   },
   {
    "id": "share",
-   "start": 117.06666666666666,
-   "end": 128.9
+   "start": 117.26666666666667,
+   "end": 129.1
   },
   {
    "id": "agent",
-   "start": 128.9,
-   "end": 145.6
+   "start": 129.1,
+   "end": 145.8
   },
   {
    "id": "library",
-   "start": 145.6,
-   "end": 173.33333333333334
+   "start": 145.8,
+   "end": 173.53333333333333
   },
   {
    "id": "export",
-   "start": 173.33333333333334,
-   "end": 191.6
+   "start": 173.53333333333333,
+   "end": 191.8
   },
   {
    "id": "artwork",
-   "start": 191.6,
-   "end": 208.83333333333334
+   "start": 191.8,
+   "end": 209
   }
  ],
  "captions": [
@@ -132,172 +132,172 @@
   },
   {
    "start": 49.7,
-   "end": 52.833333333333336,
+   "end": 52.86666666666667,
    "text": "Rest on a name: Lean says what it is."
   },
   {
-   "start": 52.833333333333336,
-   "end": 55.766666666666666,
+   "start": 52.86666666666667,
+   "end": 55.8,
    "text": "Click it to go there: its source, its panel."
   },
   {
-   "start": 55.766666666666666,
-   "end": 58.833333333333336,
+   "start": 55.8,
+   "end": 58.86666666666667,
    "text": "Keys: the definitions that carry what it says."
   },
   {
-   "start": 58.833333333333336,
-   "end": 70,
+   "start": 58.86666666666667,
+   "end": 70.19999999999999,
    "text": "Mark each as a key, in its source or its panel."
   },
   {
-   "start": 70,
-   "end": 76.7,
+   "start": 70.19999999999999,
+   "end": 76.9,
    "text": "Rests on · Keys lights them, joined to the target."
   },
   {
-   "start": 77.1,
-   "end": 79.46666666666667,
+   "start": 77.30000000000001,
+   "end": 79.66666666666667,
    "text": "Selection: the statement alone."
   },
   {
-   "start": 79.46666666666667,
-   "end": 82.26666666666667,
+   "start": 79.66666666666667,
+   "end": 82.46666666666667,
    "text": "Least effort — you trust every name in it."
   },
   {
-   "start": 82.26666666666667,
-   "end": 84.73333333333333,
+   "start": 82.46666666666667,
+   "end": 84.93333333333334,
    "text": "Keys: the few that carry the meaning."
   },
   {
-   "start": 84.73333333333333,
-   "end": 86.8,
+   "start": 84.93333333333334,
+   "end": 87.00000000000001,
    "text": "Little effort, good confidence."
   },
   {
-   "start": 86.8,
-   "end": 88.8,
+   "start": 87.00000000000001,
+   "end": 89.00000000000001,
    "text": "TCB: everything it rests on."
   },
   {
-   "start": 88.8,
-   "end": 90.8,
+   "start": 89.00000000000001,
+   "end": 91.00000000000001,
    "text": "Most effort, most confidence."
   },
   {
-   "start": 90.8,
-   "end": 94.46666666666667,
+   "start": 91.00000000000001,
+   "end": 94.66666666666667,
    "text": "Choose how far to read: the counts say what each costs."
   },
   {
-   "start": 94.46666666666667,
-   "end": 98.03333333333333,
+   "start": 94.66666666666667,
+   "end": 98.23333333333333,
    "text": "Read a definition, then say what you think of it."
   },
   {
-   "start": 98.03333333333333,
-   "end": 104.06666666666666,
+   "start": 98.23333333333333,
+   "end": 104.26666666666668,
    "text": "Approve it, with why: the comment stays with it."
   },
   {
-   "start": 104.06666666666666,
-   "end": 106.86666666666666,
+   "start": 104.26666666666668,
+   "end": 107.06666666666668,
    "text": "Changed your mind? Withdraw takes it back."
   },
   {
-   "start": 106.86666666666666,
-   "end": 110.33333333333333,
+   "start": 107.06666666666668,
+   "end": 110.53333333333335,
    "text": "The target's progress counts your approval."
   },
   {
-   "start": 110.33333333333333,
-   "end": 114.43333333333334,
+   "start": 110.53333333333333,
+   "end": 114.63333333333333,
    "text": "The Project tab: the whole codebase."
   },
   {
-   "start": 114.43333333333334,
-   "end": 117.06666666666666,
+   "start": 114.63333333333333,
+   "end": 117.26666666666667,
    "text": "Every board shows the same review."
   },
   {
-   "start": 117.06666666666666,
-   "end": 122.7,
+   "start": 117.26666666666667,
+   "end": 122.89999999999999,
    "text": "Share → AI agent: a token, and a prompt for it."
   },
   {
-   "start": 122.7,
-   "end": 125.9,
+   "start": 122.89999999999999,
+   "end": 126.1,
    "text": "Paste the prompt into your agent: it joins here."
   },
   {
-   "start": 125.9,
-   "end": 128.9,
+   "start": 126.1,
+   "end": 129.09999999999997,
    "text": "The token is the agent's own: revoke it here."
   },
   {
-   "start": 129.4,
-   "end": 136.43333333333334,
+   "start": 129.6,
+   "end": 136.63333333333335,
    "text": "Its menu → Talk: your private channel with it."
   },
   {
-   "start": 136.43333333333334,
-   "end": 140.03333333333333,
+   "start": 136.63333333333335,
+   "end": 140.23333333333335,
    "text": "It reads the code; its state says what it does."
   },
   {
-   "start": 140.03333333333333,
-   "end": 142.5,
+   "start": 140.23333333333335,
+   "end": 142.70000000000002,
    "text": "Its answer links to what it explains."
   },
   {
-   "start": 142.5,
-   "end": 145.6,
+   "start": 142.70000000000002,
+   "end": 145.8,
    "text": "Click the link: your board goes there."
   },
   {
-   "start": 146.73333333333332,
-   "end": 151.36666666666667,
+   "start": 146.93333333333334,
+   "end": 151.56666666666666,
    "text": "Library: add a paper about the code."
   },
   {
-   "start": 151.36666666666667,
-   "end": 162.6,
+   "start": 151.56666666666666,
+   "end": 162.8,
    "text": "Link it to the theorem, at its page."
   },
   {
-   "start": 162.6,
-   "end": 167,
+   "start": 162.8,
+   "end": 167.20000000000002,
    "text": "Space: its source, and the paper beside it at its page."
   },
   {
-   "start": 167,
-   "end": 173.33333333333334,
+   "start": 167.20000000000002,
+   "end": 173.53333333333333,
    "text": "Pin a note on the target: where to start."
   },
   {
-   "start": 173.33333333333334,
-   "end": 180.76666666666668,
+   "start": 173.53333333333333,
+   "end": 180.96666666666667,
    "text": "Export prints a view: here, the target's TCB."
   },
   {
-   "start": 180.76666666666668,
-   "end": 184.66666666666666,
+   "start": 180.96666666666667,
+   "end": 184.86666666666667,
    "text": "Drag a section to change the document's order."
   },
   {
-   "start": 184.66666666666666,
-   "end": 191.6,
+   "start": 184.86666666666667,
+   "end": 191.8,
    "text": "Typeset: the PDF follows the order you set."
   },
   {
-   "start": 191.6,
-   "end": 195.66666666666666,
+   "start": 191.8,
+   "end": 195.86666666666667,
    "text": "Artwork: the board as a picture to keep."
   },
   {
-   "start": 195.66666666666666,
-   "end": 205.63333333333333,
+   "start": 195.86666666666667,
+   "end": 205.8,
    "text": "Frame it, then save it as PNG or SVG."
   }
  ]
