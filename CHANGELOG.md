@@ -5,6 +5,10 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.8.1
+
+- Grow a followed reader's click where it was: the ring swept across the follower's screen.
+
 ## 0.8.0
 
 - Follow together: whoever follows a reader, and that reader, see each other's pointer and text selections, anchored to what is under them so they land on the same code, page or element at any screen size; the followed reader's clicks show. The Export window is followed too, its progress and download included.
