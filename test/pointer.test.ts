@@ -6,6 +6,7 @@
 // layout — another size, another scroll — or said to be scrolled away.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { cleanAt, cleanPointer, cleanSel, cleanText, FADE_MS, inRoom, RELAY_PER_S, roomOf, SHOWN, STEPS_MAX } from "../src/shared/pointer.ts";
 import type { PointerAt, PointerNews, RoomPage } from "../src/shared/pointer.ts";
@@ -391,4 +392,15 @@ test("a page followed by read-only readers alone is told that someone unseen fol
   } finally {
     await S.close();
   }
+});
+
+test("a click's ripple grows where the click was: placed by `translate`, which the animation's `scale` leaves alone", () => {
+  // placed by `transform`, the ring's offset is scaled with it (the individual `scale` applies after
+  // `transform`): it swept across the screen from the corner instead of growing in place
+  const css = readFileSync(new URL("../src/web/style.css", import.meta.url), "utf8");
+  const code = readFileSync(new URL("../src/web/src/pointers.ts", import.meta.url), "utf8");
+  assert.match(css, /@keyframes ptr-ripple \{[^}]*scale:/);
+  const ripple = /private ripple\([^]*?\n {2}\}/.exec(code)?.[0] ?? "";
+  assert.match(ripple, /r\.style\.translate = /);
+  assert.doesNotMatch(ripple, /r\.style\.transform = /);
 });
