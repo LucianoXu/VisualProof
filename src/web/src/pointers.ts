@@ -629,7 +629,9 @@ export class Pointers {
     const r = document.createElement("div");
     r.className = "ptr-ripple";
     r.style.setProperty("--c", o.color);
-    r.style.transform = `translate(${f.x}px, ${f.y}px)`;
+    // placed by `translate`, which applies after the animation's `scale`: placed by `transform`, the
+    // scale would grow the offset too, and the ring sweep across the screen from its corner
+    r.style.translate = `${f.x}px ${f.y}px`;
     this.layer.append(r);
     setTimeout(() => r.remove(), 900);
   }
