@@ -68,10 +68,10 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
      - **Who is shown**: never a private reader's pointer (it would show them), nor a read-only
        reader's; agents have none. A private follower sees the room's, and counts as a follower, so
        that the followed reader's page sends its pointer. A read-only follower is seen by nobody
-       (decision 11), so it never makes a page send: it is sent the pointers of a room its followed
-       reader is in through others. *Open*: whether a page followed by read-only readers alone sends
-       its pointer, which the server would have to ask of it — telling it that someone unseen
-       follows. There is no setting to hide one's own: whoever is followed is watched anyway.
+       (decision 11), and is sent the room's pointers too: the page it follows is told that someone
+       unseen follows — never who nor how many, shown nowhere, counted in no follower's mark — so
+       that it sends its pointer (the owner's decision of 2026-10-21). There is no setting to hide
+       one's own: whoever is followed is watched anyway.
      - **Nothing of it ends following**: the pointers let every press through, and the marks at an
        edge are the reader's own.
 5. **The timeline** (Activity) records what changes the shared state: the review's events and the
@@ -203,7 +203,9 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       of their own, so they never take the places of the people working ("Bounds").
     - **Nobody sees them**: not listed, not counted (not even as private, decision 8), not in the
       timeline (they record nothing); they cannot be followed or asked to follow, and ask nobody.
-      They see the others and may follow them; whoever does not want to be seen by them goes private.
+      They see the others and may follow them — the reader they follow told only that someone unseen
+      does, never who nor how many, so that their pointer is sent (decision 4, the owner's decision
+      of 2026-10-21); whoever does not want to be seen by them goes private.
     - **No agents**: a read-only reader makes no agent token, and neither `--public` nor a read-only
       link reaches the agents' API.
     - **Share's tabs** become *Guest link* (decision 7's *Public link*, renamed: it makes guests),
@@ -278,7 +280,9 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
   sees them (decision 11). Hovering the name lists them, and its menu says it at its top. Among the
   others' initials, those following the reader carry a small mark in the reader's colour, "follows
   you" in their tooltip. Nothing is said when someone starts following, or stops. Agents follow
-  nobody; an agent can be followed, and its page-less presence shows nothing of it.
+  nobody; an agent can be followed, and its page-less presence shows nothing of it, but its
+  companion tells it who follows it, by name, the private readers counted only, read-only readers
+  never (the owner's decision of 2026-10-21; docs/agent-api/following.md, `followedBy`).
 - **On the canvas**: a ring in another reader's colour around what they selected, with their
   initials; several readers on one declaration share the ring.
 - **In the panel**: "Also here: Alice, Bob" under the declaration's name.
@@ -324,7 +328,8 @@ zoom, find and the box tool of the reference window; Share and its switch; Help 
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
 others' initials and a person's menu; the request banner; the conversation window (decision 13) and
-the following strip; hover cards; the pointer's highlight; the mark at an edge of another's pointer
+the following strip; hover cards; the Export window's downloads (the owner's decision of
+2026-10-21: taking the file is reading); the pointer's highlight; the mark at an edge of another's pointer
 scrolled away; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.
 
@@ -382,8 +387,9 @@ the second is closed and the others are open.
   takes nothing more of theirs once following has ended — neither their build nor their windows.
 - **The Export window** (the owner's decision of 2026-10-20) is followed: the follower sees the
   followed reader's, open or not, with its settings and the document typeset. Their own, open when
-  following starts, is replaced by it; opening or closing it, a setting, Generate, a download, Close
-  end following; when following ends, the window as it shows — open, with those settings and that
+  following starts, is replaced by it; opening or closing it, a setting, Generate, Close end
+  following, but not a download, which is reading, as copying text is (the owner's decision of
+  2026-10-21); when following ends, the window as it shows — open, with those settings and that
   document, its progress followed to its end — is the follower's own, and Close puts it away with
   the linear form it draws.
 - *Open*: **Esc and the linear form.** Esc closes what is open and leaves the Time Machine, then
@@ -425,12 +431,15 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   personal link, `n:` and the name for a guest or a proxy's name, `s:` and the page's id for a page
   without a name, `a:` and the agent's id), at most 200 characters, absent for nobody. A page counts
   the people whose pages say they follow its reader's key, each once, from the list. An agent's
-  place carries none (it follows nobody), nor an artwork; the agents' companion says nothing of it,
-  and whom a page follows is no move it waits for.
+  place carries none (it follows nobody), nor an artwork. The agents' companion tells an agent only
+  who follows it (`followedBy`: the names of the people whose pages say so, each once, `null` for a
+  page without one; how many private pages), and whom a page follows is a move it waits for only
+  where that is an agent.
 - **Private pages**: the heartbeat is `{token, private: true}`, and `following` where the page
   follows someone, alone. The server keeps an unlisted entry holding only that, and sends `private`
   (`{count}`) beside every `presence`; to the pages of a person private pages follow, with
-  `followers`, how many do (never who). Going private or back gives the stream a new public id, so
+  `followers`, how many do (never who), and `unseen` where a read-only page follows them ("Pointers
+  in a room"). Going private or back gives the stream a new public id, so
   nothing said under one ties to the other. A private page names no
   views, so the server holds the views it reads or opens, and those in its tabs when it went private,
   while a stream of its session is open and a minute after.
@@ -529,8 +538,10 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   follows (by personKey), those that follow its reader, those that follow the reader it follows —
   at most 25 a second per page, the rest dropped, and keeps nothing: no log, no state beyond the last
   second's count. A private or read-only page's is relayed to nobody (answered `{to: 0}`); a read-only
-  page sends `{token, following}` there instead, which its stream alone keeps; 403 for a secret no
-  open stream has. A place: `{b: [x, y]}` (the board), `{l: [row, down, right]}` (the linear form),
+  page sends `{token, following}` there instead, which its stream alone keeps, and the pages of the
+  person it follows are told `private`'s `unseen: true` while any read-only page follows them (as
+  that changes, and as such a page closes), never who nor how many; 403 for a secret no open stream
+  has. A place: `{b: [x, y]}` (the board), `{l: [row, down, right]}` (the linear form),
   `{sw, lc: [line, column]}` (a source window's text, from its first line shown, the gutter not
   counted), `{pw: [page, across, down]}` (the reference window), `{in, p, f}` (an element: its root —
   an id, a source window by its declaration, the reference window —, the steps down, each `[attribute,

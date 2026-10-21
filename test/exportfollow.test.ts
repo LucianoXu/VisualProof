@@ -184,7 +184,7 @@ const at = (...chain: string[]): PageEl | null =>
     return { matches: (sel: string) => sel.split(",").some((s) => mine.includes(s.trim())), parentElement };
   }, null);
 
-test("read only for the follower: Export pressed, a setting, Generate, a download, Close, the Artwork tab, typing in it end following; reading it does not", () => {
+test("read only for the follower: Export pressed, a setting, Generate, Close, the Artwork tab, typing in it end following; reading it does not, nor a download (the owner's decision of 2026-10-21)", () => {
   assert.equal(pressActs(at("#export-btn")), true, "opened or closed from the bar");
   assert.equal(pressActs(at("#more-pop", "#more-pop [data-for=export-btn]")), true, "or from a phone's ⋯");
   for (const control of ["select", "button", "a[href]", "input"]) assert.equal(pressActs(at("#export-modal", ".ex-box", control)), true, control);
@@ -193,5 +193,13 @@ test("read only for the follower: Export pressed, a setting, Generate, a downloa
   assert.equal(keyActs({ key: "ArrowDown" }, at("#export-modal", ".ex-box", "select"), true), true, "a setting changed from the keyboard");
   // its text, its notes and the log folded or read, scrolled: reading
   assert.equal(pressActs(at("#export-modal", ".ex-box")), false);
+  // a download is taken as text is copied: the PDF, the sources, the .tex, the .sty — by the pointer
+  // or by Enter on it
+  for (const link of ["a.rv-btn.primary", "a.rv-btn", "a.link"]) {
+    assert.equal(pressActs(at("#export-modal", ".ex-box", ".ex-done", ".ex-dl", `#export-modal .ex-dl a|${link}|a[href]`)), false, link);
+    assert.equal(keyActs({ key: "Enter" }, at("#export-modal", ".ex-box", ".ex-done", ".ex-dl", `#export-modal .ex-dl a|a[href]`), false), false, `Enter on ${link}`);
+  }
+  // but Generate again, beside them, ends it
+  assert.equal(pressActs(at("#export-modal", ".ex-box", ".modal-actions", "button")), true);
   assert.equal(pressActs(at("#export-modal", ".ex-box", "summary")), false);
 });

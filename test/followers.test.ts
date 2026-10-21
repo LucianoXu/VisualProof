@@ -128,3 +128,46 @@ test("the server: a listed page's following is in its place for everyone; a priv
     await S.close();
   }
 });
+
+test("the companion tells an agent who follows it, by name, the private readers counted only — and waking it when that changes (the owner's decision of 2026-10-21)", async () => {
+  const S = await site();
+  try {
+    const open = async (session: string) => {
+      const s = stream(S.port, `/api/events?session=${session}`);
+      await s.until(() => !!s.last("hello"));
+      return { s, hello: s.last("hello") as StreamHello };
+    };
+    const beat = (w: { hello: StreamHello }, name: string | null, body: Record<string, unknown>) => S.ask("POST", "/api/presence", { token: w.hello.token, ...body }, name ? { "x-visualproof-name": name } : {});
+    // the agent is on the page; its id, as pages follow it
+    await S.ask("POST", "/api/presence", { view: VIEW }, AGENT);
+    const claude = S.live.presence.list().find((p) => p.agent && p.name === "Claude")!;
+    const key = personKey(claude);
+    const bob = await open("bbbbbbbb1111");
+    const bob2 = await open("bbbbbbbb2222");
+    const anon = await open("cccccccc1111");
+    const carol = await open("cccccccc2222");
+    const dave = await open("dddddddd1111");
+    const companion = async (headers = AGENT) => (await S.ask("GET", "/api/agent/companion", undefined, headers)).json!;
+    assert.deepEqual((await companion()).followedBy, { people: [], private: 0 }, "nobody yet");
+    const rev = (await companion()).rev;
+    await beat(bob, "Bob", { view: { ...VIEW, following: key }, idle: false });
+    // someone starting to follow it is a change it waits for
+    assert.notEqual((await companion()).rev, rev);
+    await beat(bob2, "Bob", { view: { ...VIEW, following: key }, idle: false });
+    await beat(anon, null, { view: { ...VIEW, following: key }, idle: false });
+    await beat(carol, "Carol", { private: true, following: key });
+    // Dave follows someone else
+    await beat(dave, "Dave", { view: { ...VIEW, following: "n:Bob" }, idle: false });
+    const c = await companion();
+    // Bob once for his two pages, a page without a name as one; Carol counted, never named
+    assert.deepEqual(c.followedBy, { people: ["Bob", null], private: 1 });
+    assert.ok(!JSON.stringify(c).includes("Carol"));
+    // another agent is followed by nobody
+    assert.deepEqual((await companion({ "x-visualproof-name": "Gemini", "x-visualproof-kind": "agent" })).followedBy, { people: [], private: 0 });
+    // a person asking the companion is told nothing of it
+    assert.equal((await S.ask("GET", "/api/agent/companion", undefined, { "x-visualproof-name": "Olivia" })).json!.followedBy, undefined);
+    for (const w of [bob, bob2, anon, carol, dave]) w.s.close();
+  } finally {
+    await S.close();
+  }
+});

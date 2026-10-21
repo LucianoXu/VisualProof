@@ -8,7 +8,8 @@ people see of you.
 MCP: `companion`.
 
 ```json
-{ "rev": 9, "now": "…", "sharedBy": { "name": "Alice", "here": true }, "privateCount": 0,
+{ "rev": 9, "now": "…", "sharedBy": { "name": "Alice", "here": true }, "privateCount": 1,
+  "followedBy": { "people": ["Bob"], "private": 1 },
   "people": [ { "name": "Alice", "idle": false, "pages": 1, "place": { "view": "vqoca3xy",
       "targets": ["flt_regular"], "mode": "tcb", "selection": "tcb(IsRegularPrime)", … } } ],
   "agents": [ { "name": "Alice's AI", "state": "working", "lastSeen": "…", "you": true, … } ] }
@@ -21,6 +22,8 @@ MCP: `companion`.
   take the name while it is in force). `idle`: no input for 5 minutes, or the page in background.
 - `privateCount`: people here privately — not in `people`, place unknown, not followable; their
   coming or going is a change for `wait`. An agent cannot be private: you are always listed.
+- `followedBy`: who follows you — people by name (`null`: a page without one), private readers
+  counted only; readers by a read-only link are never told of. A change of it is one for `wait`.
 
 | `place` field | meaning |
 |---|---|
@@ -36,9 +39,9 @@ MCP: `companion`.
 
 `wait=<s>` (≤ 60) waits until someone comes, goes, goes idle or moves (view, selection,
 declaration, tool, a source window pinned, collapsed or closed, Activity, lost-and-found,
-colouring, edges, the Export window; no camera pan), then answers. Whom people follow is not said:
-you follow nobody, and your presence shows nothing of who follows you; nor do you have a pointer
-(people in a room see one another's). `since=<rev>`, your last `rev`: a
+colouring, edges, the Export window, who follows you; no camera pan), then answers. Whom people
+follow is not said but for you (`followedBy`); you follow nobody, and have no pointer (people in a
+room see one another's). `since=<rev>`, your last `rev`: a
 change you have not seen answers at once; `changed`: whether `rev` moved. To follow someone: wait,
 then `POST view` with their view and declaration.
 

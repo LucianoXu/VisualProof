@@ -424,11 +424,21 @@ export class Live {
 
   /** How many private readers there are, as each page is told it (`private`): with how many of them
    *  follow its reader, which that reader's pages alone are told (the owner's decision of
-   *  2026-10-20) — a private page, or a read-only one, is followed by nobody. */
-  private privateOf(st: Stream, listed: Map<string, Peer>, followers: Map<string, number>, count: number): PrivateCount {
+   *  2026-10-20), and whether someone unseen does — a read-only reader, never who nor how many, so
+   *  that the page sends its pointer to them (the owner's decision of 2026-10-21). A private page,
+   *  or a read-only one, is followed by nobody. */
+  private privateOf(st: Stream, listed: Map<string, Peer>, followers: Map<string, number>, count: number, unseen: Set<string>): PrivateCount {
     const me = st.private || st.readOnly !== null ? undefined : listed.get(st.id);
-    const n = me ? (followers.get(personKey(me)) ?? 0) : 0;
-    return { count, ...(n ? { followers: n } : {}) };
+    const key = me ? personKey(me) : null;
+    const n = key ? (followers.get(key) ?? 0) : 0;
+    return { count, ...(n ? { followers: n } : {}), ...(key && unseen.has(key) ? { unseen: true as const } : {}) };
+  }
+
+  /** The people read-only pages follow, as they said it (pointer). */
+  private unseenFollowed(): Set<string> {
+    const out = new Set<string>();
+    for (const st of this.streams.values()) if (st.readOnly !== null && st.follows) out.add(st.follows);
+    return out;
   }
 
   /** Every page is told how many private readers there are, and how many of them follow its reader:
@@ -438,10 +448,11 @@ export class Live {
     const listed = new Map(this.presence.list().map((p) => [p.id, p]));
     const followers = this.presence.privateFollowers();
     const count = this.presence.privateCount();
-    const texts = new Map<number, string>();
+    const unseen = this.unseenFollowed();
+    const texts = new Map<string, string>();
     for (const st of [...this.streams.values()]) {
-      const p = this.privateOf(st, listed, followers, count);
-      const n = p.followers ?? 0;
+      const p = this.privateOf(st, listed, followers, count, unseen);
+      const n = `${p.followers ?? 0}${p.unseen ? "+" : ""}`;
       let text = texts.get(n);
       if (text === undefined) texts.set(n, (text = `event: private\ndata: ${JSON.stringify(p)}\n\n`));
       this.push(st, text);
@@ -450,7 +461,7 @@ export class Live {
 
   /** What one page is told of the private readers now. */
   private privateNow(st: Stream): PrivateCount {
-    return this.privateOf(st, new Map(this.presence.list().map((p) => [p.id, p])), this.presence.privateFollowers(), this.presence.privateCount());
+    return this.privateOf(st, new Map(this.presence.list().map((p) => [p.id, p])), this.presence.privateFollowers(), this.presence.privateCount(), this.unseenFollowed());
   }
 
   /** A page's heartbeat, by the secret its stream was given: false when no open stream has it (a
@@ -484,7 +495,10 @@ export class Live {
     const s = typeof token === "string" ? this.byToken.get(token) : undefined;
     if (!s) return null;
     if (s.readOnly !== null) {
+      const was = s.follows;
       if ("following" in body) s.follows = cleanFollowing(body.following);
+      // the reader it follows, or followed, is told whether someone unseen follows them
+      if (s.follows !== was) this.sendPrivate();
       return 0;
     }
     if (s.private) return 0;
@@ -1555,6 +1569,8 @@ export class Live {
     // what its page was asked goes unanswered, and what it asked is withdrawn
     this.asks.closed(st.token);
     st.res.destroy();
+    // a read-only page that followed someone: they are told whether someone unseen still does
+    if (st.readOnly !== null && st.follows) this.sendPrivate();
   }
 }
 

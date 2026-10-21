@@ -172,6 +172,8 @@ export interface World {
     list(): Peer[];
     /** how many private readers are here, who are not listed (CollabSpec decision 8) */
     privateCount(): number;
+    /** how many private readers follow each person or agent, by personKey */
+    privateFollowers(): Map<string, number>;
     /** the changes of who is where that GET companion waits for, counted (server/presence.ts) */
     rev: number;
     waitChange(since: number, ms: number): Promise<void>;

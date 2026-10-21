@@ -48,6 +48,9 @@ export async function companion(api: AgentApi, a: Ask): Promise<Answer> {
     return { name: p.name, ...(p.verified ? { verified: true } : {}), idle: ps.every((x) => x.idle), pages: ps.length, place: p.view ? placeOf(api, p.view) : null };
   });
   out.sort((x, y) => Number(x.idle) - Number(y.idle) || (x.name ?? "\uffff").localeCompare(y.name ?? "\uffff"));
+  // who follows this agent (the owner's decision of 2026-10-21): the people by name, a page without a
+  // name as one; the private readers counted only; a read-only reader never (nobody sees one)
+  const followedBy = mine ? followersOf(P, peers, `a:${mine}`) : null;
   // the person who shared with this agent, and whether they are here: the prompt does not say
   // where they are, this does
   const by = a.caller.token?.by;
@@ -60,9 +63,26 @@ export async function companion(api: AgentApi, a: Ask): Promise<Answer> {
     ...(sharedBy && !sharedBy.here ? { sharedByNote: `${by}, who shared with you, has no page open now: go on with what they asked; ?wait=60&since=<rev> tells you when someone comes.` } : {}),
     people: out,
     privateCount: P.privateCount(),
+    ...(followedBy ? { followedBy } : {}),
     agents,
-    note: "privateCount: how many people are here privately — not listed, not followable, nothing known of where they are. Each person's place is that of their liveliest page: the view, the tool (how a click selects), what is selected (a query), the declaration their panel tells of, whether its source window is open (and collapsed), the source windows they pinned (pinned: declaration, collapsed), and, where their page says them, Activity (open, kind, who, mine: whose targets), the lost-and-found (lostAndFound.open), the colouring (kind or status), edges, the Export window (export: open, its settings, the document typeset by its job's id) — all of which those following them see too. idle: no input for five minutes, or the page in the background. verified: invited by a personal link, so the name is theirs. To look where someone looks, POST /api/agent/view with their view and declaration; ?wait=<s>&since=<rev> waits for the next change (at most 60 s).",
+    note: "privateCount: how many people are here privately — not listed, not followable, nothing known of where they are. Each person's place is that of their liveliest page: the view, the tool (how a click selects), what is selected (a query), the declaration their panel tells of, whether its source window is open (and collapsed), the source windows they pinned (pinned: declaration, collapsed), and, where their page says them, Activity (open, kind, who, mine: whose targets), the lost-and-found (lostAndFound.open), the colouring (kind or status), edges, the Export window (export: open, its settings, the document typeset by its job's id) — all of which those following them see too. followedBy: who follows you — the people by name, the private readers counted only (readers by a read-only link are never told of). idle: no input for five minutes, or the page in the background. verified: invited by a personal link, so the name is theirs. To look where someone looks, POST /api/agent/view with their view and declaration; ?wait=<s>&since=<rev> waits for the next change (at most 60 s).",
   });
+}
+
+/** Who follows the person or agent `key` (shared/collab.ts personKey): the people whose pages say
+ *  so, each once by name (null for a page without one), and how many private readers do. */
+export function followersOf(P: { privateFollowers(): Map<string, number> }, peers: readonly Peer[], key: string): { people: (string | null)[]; private: number } {
+  const seen = new Set<string>();
+  const people: (string | null)[] = [];
+  for (const p of peers) {
+    if (p.agent || p.view?.following !== key) continue;
+    const who = p.name ? `${p.verified ? "v" : "n"}:${p.name}` : `s:${p.id}`;
+    if (seen.has(who)) continue;
+    seen.add(who);
+    people.push(p.name);
+  }
+  people.sort((a, b) => (a ?? "\uffff").localeCompare(b ?? "\uffff"));
+  return { people, private: P.privateFollowers().get(key) ?? 0 };
 }
 
 /** A page's or an agent's place, as the companion tells it (and a conversation's message, where

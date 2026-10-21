@@ -1357,11 +1357,11 @@ what each one looks at stays their own.
   their colouring and edges, and their Export window — open or closed with theirs (yours, open as
   you start, gives way to it), with their settings, and the document they generate: its progress,
   then the same downloads, offered to you too. Changing any of these ends following, as acting on what
-  you are shown does (a button of the panel, typing a comment, a setting or a download of the Export
-  window), and Esc. Nothing of yours ends it:
+  you are shown does (a button of the panel, typing a comment, a setting of the Export window), and
+  Esc. Nothing of yours ends it:
   where windows sit, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
   Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
-  selecting text, copying it. When it ends, what you were shown stays, yours: the Export window too,
+  selecting text, copying it, downloading the document the Export window offers. When it ends, what you were shown stays, yours: the Export window too,
   with the settings it showed. On the canvas their
   selection carries a ring of their colour with their initials; the panel says who else is looking
   at a declaration.
@@ -1375,9 +1375,9 @@ what each one looks at stays their own.
   scrolled away shows as a mark at the edge ("↓ Alice"): click it to scroll there (scrolling is never
   followed); on a phone, a pointer in the side panel shows by the drawer's button. Nothing of it ends
   following. A private reader's pointer is never shown, nor a read-only reader's; a private reader
-  sees the others', and a read-only reader those of a room the person they follow is in through
-  someone else (nobody knows a read-only reader follows). There is no setting to hide your pointer:
-  going private ends being followed.
+  sees the others', and a read-only reader too: your page is told that someone unseen follows you,
+  never who nor how many, and shows nothing of it, so that it sends your pointer for them. There is
+  no setting to hide your pointer: going private ends being followed.
 - **Asking others to follow you** (CollabSpec decision 10), to show them something: **Ask everyone
   to follow me** in the menu under your name, or **Ask … to follow me** in a person's menu (all
   their pages), once every 30 s, with a name and visible. Each page asked shows a banner at the top,
@@ -1389,7 +1389,8 @@ what each one looks at stays their own.
 - **Pins are shared per view**: what you drop is everyone's on that board when you let go, and
   comes to every page on it; **Re-layout** drops the board's pins, for everyone, after asking.
 - **Agents** (AgentSpec, [docs/agent-api/](agent-api/README.md)): an AI agent works through a JSON API under
-  `/api/agent`, as a reader marked as an agent (a robot on its initials; it can be followed). What
+  `/api/agent`, as a reader marked as an agent (a robot on its initials; it can be followed, and is
+  told who follows it: the people by name, private readers counted). What
   it says is advice: shown apart in the panel ("Claude comments — …") and marked in a
   target's review list, never on the canvas, never counted in any progress. Where the review is
   focused on a target the strip says how many it comments on. It reads what a person would look up: a declaration's statement, source, file
