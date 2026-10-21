@@ -120,15 +120,42 @@ chapters of a review on Sphere-Packing-Lean (`--sphere`, built, on a site made e
 2560×1600 at 30 frames a second, with captions. The film itself is not kept in the repository: it
 is written to `--film` (`tour.mp4` and its `tour.mp4.sha256`) and published as a release's asset.
 The repository keeps `src/assets/tips/tour.json` (the film's name, digest, size and length, its
-chapters and its captions, of which the server makes the WebVTT), its first frame `tour.webp` and
+chapters and its captions, of which the server makes the WebVTT), its poster `tour.webp` and
 each chapter's key frame `tour-<chapter>.webp`. Its agent's lines are requests to the agents' API
 the recorder makes, and the paper it adds is `scripts/tips/review-notes.tex`, typeset then by
 XeLaTeX. The phone's gestures are one clip kept here, on the flt-regular showcase (`--showcase`, at
 `b8a5f23`, `showcase/flt-regular/setup.sh`). It needs Playwright as above, XeLaTeX and Poppler;
-`--cache` keeps the extractions between runs. Without ids named, it makes all of them. Two
-recordings are the same to within a few pixels a few levels apart, but for the agent's token; the
-file's head comment says the rest. `test/tipsclips.test.ts` checks every storyboard against the page
-without a browser, and the tour's chapters, captions and stills.
+`--cache` keeps the extractions between runs. Without ids named, it makes all of them.
+
+A film is recorded chapter by chapter, by several processes at once (`--jobs <n>`; by default one
+for four of the machine's threads and 4 GB of its free memory, eight at most here): each has a
+server on a site of its own and a Chromium of its own, plays the storyboard from its start without
+taking frames up to its chapters — the page doing all it does when they are taken, the board's
+drawing apart — then takes those, each encoded from a key frame of its own. The film is the
+chapters' samples one after another, nothing encoded again (`scripts/tips/film.mjs`). A chapter
+recorded so is the same chapter as recorded in sequence: frames are taken at the page's own pixels
+through Playwright (a capture at another scale lays the page out again, and a pixel it rounds
+otherwise stays), and most chapters compared were the same to the pixel. Two recordings, of a
+chapter alone or in sequence, are the same to within a few pixels a few levels apart, but for the
+agent's token and where the page waits for the machine (Lean's language server, an agent's answer,
+a download saved), a few frames earlier or later; the file's head comment says the rest.
+
+- `--chapters <c>,…` records those chapters alone and splices them into the film that was: `--film`
+  must hold the film `tour.json` pins. The other chapters are kept to the byte, those after a chapter
+  of another length moved, with their captions; only the recorded chapters' stills are written.
+  A storyboard change records its chapters only.
+- `--preview` makes a quick film for writing a storyboard, at half the size and 15 frames a second,
+  beside the film (`tour.preview.mp4`, `tour.preview/` with its data and stills), never into the
+  repository: never for a release, its timings are not the film's. `--chapters` works on it too.
+- `--frames <dir>` keeps every frame taken as a JPEG (`<dir>/tour/<chapter>/`, and by its number in
+  the film in `<dir>/tour/`, for the trailer and contact sheets); `TIPS_PROFILE=1` says where each
+  process's time went.
+
+On this machine (an i9-13900, 32 threads, 62 GB; 2026-10-21) the whole tour took 27 minutes in one
+process before; now 8½ with eight (24½ in one), one chapter recorded again 3 to 4 minutes, and a
+preview 3 minutes for the whole tour, 1½ for a chapter. `test/tipsclips.test.ts` checks every storyboard against
+the page without a browser, the tour's chapters, captions and stills, and the taking apart and
+joining of films.
 
 ## Lean versions
 
@@ -193,7 +220,8 @@ and whatever the showcase project needs (v4.34.0-rc2), with v4.28.0 as the floor
   board's drawing, the page or the showcase changed (`node scripts/docs-figures.mjs` and
   `node scripts/readme-figures.mjs`, "Real projects" above), and committed.
 - Before a release, the tips' films are recorded again when a part of the page they show changed
-  (`npm run tips:record -- <id>…`, above), so that what they show is what the page does.
+  (`npm run tips:record -- <id>…`, or the tour's chapters that changed with `--chapters`, above), so
+  that what they show is what the page does.
 - Releasing, by the owner: one pull request carries the release — its work, the `CHANGELOG.md`
   section (the owner's own file, a `## ` heading naming the version) and the version in
   `package.json`, `package-lock.json` and `CITATION.cff` — rather than a stack of them and a release

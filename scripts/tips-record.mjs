@@ -10,33 +10,50 @@
 // Playwright (CONTRIBUTING.md, "Scripts").
 //
 //   npm run tips:record -- --sphere <Sphere-Packing-Lean, built> --showcase <flt-regular built at
-//                          b8a5f23> --film <dir> [--cache <dir>] [<id>…] [--out <dir>]
-//                          [--url <server>] [--hashes] [--frames <dir>] [--boards <dir>]
+//                          b8a5f23> --film <dir> [--cache <dir>] [<id>…] [--chapters <c>,…]
+//                          [--jobs <n>] [--preview] [--out <dir>] [--url <server>] [--hashes]
+//                          [--frames <dir>] [--boards <dir>]
+//
+// A film is recorded chapter by chapter, by several processes at once (--jobs; by default as many as
+// the machine's threads and memory allow): each has a server on a new site and a Chromium of its own,
+// plays the storyboard from its start, without taking frames, up to the chapters it was given — the
+// page doing all it does when they are taken, but for drawing the board (scripts/tips/inpage.mjs) —
+// then takes those, each encoded on its own from a key frame. The film is their samples one after
+// another, nothing encoded again (scripts/tips/film.mjs), its chapters' times and its captions moved
+// by the chapters before them. A chapter recorded so is the chapter recorded in sequence, to within
+// the few pixels two recordings differ by (CONTRIBUTING.md). --chapters <c>,… records those chapters
+// alone and splices them into the film that was (<film>/<id>.mp4, which <out>/<id>.json must pin),
+// the others kept to the byte; only the recorded chapters' stills are written. --preview makes a
+// quick film for writing a storyboard, never for a release (PREVIEW): beside the film, never into
+// the repository. TIPS_PROFILE=1: where each process's time went.
 //
 // --sphere, --showcase: the projects' builds, as a storyboard's `on` asks for one (the showcase:
-// showcase/flt-regular/setup.sh). The server is started on it for each film, on a site of its own
+// showcase/flt-regular/setup.sh). A server is started on it for each process, on a site of its own
 // made anew (the showcase's: a copy of its committed site), so that every film starts from the same
 // review, the server's clock following the film's (scripts/tips/serverclock.mjs).
 // --cache: the caches it reads (made once, then reused: an extraction takes minutes).
 // --url: a server already serving the project, with full access, instead (its site is then
-// whatever it is: for trying a storyboard, not for the films kept). Without ids named, all of them.
+// whatever it is, one process: for trying a storyboard, not for the films kept). Without ids
+// named, all of them.
 // --film: where a film the repository does not keep goes (the tour, published as a release's asset):
 // <dir>/<id>.mp4 and <dir>/<id>.mp4.sha256. What the repository keeps goes to src/assets/tips/ (--out):
 // for the tour <id>.json (the film's name, digest, size and length, its chapters, its captions),
-// <id>.en.vtt (the captions), <id>.webp (its first frame) and <id>-<chapter>.webp (each chapter's key
-// frame); for a clip kept whole, <id>.light.mp4 and <id>.light.webp. For writing a storyboard:
-// --hashes writes <id>.frames.txt beside the film, a digest per frame (two recordings compared);
-// --frames <dir> every frame as a JPEG; --boards <dir> takes storyboards from another folder.
+// <id>.webp (its poster) and <id>-<chapter>.webp (each chapter's key frame); for a clip kept whole,
+// <id>.light.mp4 and <id>.light.webp. For writing a storyboard: --hashes writes <id>.frames.txt
+// beside the film, a digest per frame taken, by chapter (two recordings compared); --frames <dir>
+// every frame taken as a JPEG, <dir>/<id>/<chapter>/ by its number in the chapter and <dir>/<id>/
+// by its number in the film; --boards <dir> takes storyboards from another folder.
 
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { availableParallelism, freemem, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { inPage } from "./tips/inpage.mjs";
-import { mp4 } from "./tips/mp4.mjs";
+import { groups, join as joinFilm, split } from "./tips/film.mjs";
+import { mp4, readMp4 } from "./tips/mp4.mjs";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const BOARDS = join(REPO, "scripts", "tips", "storyboards");
@@ -95,27 +112,61 @@ export function chaptersOf(board) {
   return board.chapters ?? [{ id: board.id, steps: board.steps }];
 }
 
+/** A preview (--preview), for writing a storyboard and never for a release: half the size, half the
+ *  frame rate, written beside the film (`<id>.preview.mp4`, `<id>.preview/`), never into the
+ *  repository. Its times are not the film's (typing is slower, holds and glides are sampled more
+ *  coarsely), and the page is drawn at its CSS pixels (SCALE), so that it is laid out to the pixel
+ *  otherwise in places. */
+export const PREVIEW = { scale: 0.5, fps: 15 };
+
+/** WebGL in software (SwiftShader), the page's other drawing on one thread, which makes two
+ *  recordings of a film the same to within a few pixels a few levels apart (SwiftShader's own
+ *  threads); the page's layers put together in software too, not by SwiftShader, which spent some
+ *  seven cores a recording on it (2026-10-21: 1,252 s of CPU in the GPU process for 848 frames, 197 s
+ *  without; the frames the same to the eye, a few thousand pixels of four million a few levels off
+ *  at the edges of text). */
+const BROWSER = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--num-raster-threads=1", "--disable-gpu-rasterization", "--disable-gpu-compositing"];
+
+const USAGE = "usage: npm run tips:record -- --sphere <dir> --showcase <dir> --film <dir> [--cache <dir>] [<id>…] [--chapters <c>,…] [--jobs <n>] [--preview] [--out <dir>] [--url <server>] [--hashes] [--frames <dir>] [--boards <dir>]";
+
+/** How many processes record at once, unless --jobs says: each holds a server, a Chromium drawing
+ *  in software and, once a source window has asked, Lean's language server — some 4 GB and a few
+ *  cores between them. */
+function autoJobs() {
+  return Math.max(1, Math.min(Math.floor(availableParallelism() / 4), Math.floor((freemem() - 4e9) / 4e9)));
+}
+
 async function main() {
+  if (args[0] === "--worker") return worker(args[1]);
+  const t0 = Date.now();
   const projects = { sphere: flag("--sphere"), showcase: flag("--showcase") };
   const cache = flag("--cache");
   const urlArg = flag("--url");
   // a digest of every frame beside the film, to tell two recordings apart frame by frame
-  const hashes = args.includes("--hashes");
-  if (hashes) args.splice(args.indexOf("--hashes"), 1);
+  const hashes = takeSwitch("--hashes");
+  const preview = takeSwitch("--preview");
   // every frame as a JPEG, for looking at a storyboard frame by frame
   const framesDir = flag("--frames");
   const outDir = resolve(flag("--out") ?? join(REPO, "src", "assets", "tips"));
-  const filmDir = flag("--film");
+  const filmArg = flag("--film");
   const boardsDir = flag("--boards");
-  let playwright;
+  const only = flag("--chapters")?.split(",").map((c) => c.trim()).filter(Boolean) ?? null;
+  const jobsArg = flag("--jobs");
+  const jobs = urlArg ? 1 : jobsArg ? Math.max(1, Number(jobsArg) | 0) : autoJobs();
+  if (args.some((a) => a.startsWith("--"))) {
+    console.error(`What is ${args.find((a) => a.startsWith("--"))}?\n${USAGE}`);
+    process.exit(2);
+  }
   try {
-    playwright = await import("playwright");
+    await import("playwright");
   } catch {
     console.error("This script needs Playwright: npm install --no-save playwright && npx playwright install chromium");
     process.exit(2);
   }
   const all = await storyboards(boardsDir ? resolve(boardsDir) : BOARDS);
   const wanted = args.length ? args : [...all.keys()];
+  // a preview goes beside the film, or into the system's temporary folder: never into the repository
+  const filmDir = filmArg ? resolve(filmArg) : preview ? join(tmpdir(), "visualproof-tips-preview") : null;
   for (const id of wanted) {
     const b = all.get(id);
     if (!b) {
@@ -127,61 +178,236 @@ async function main() {
       process.exit(2);
     }
     if (!urlArg && !projects[b.on]) {
-      console.error(`${id} plays on ${b.on}: give --${b.on} <its build>.\nusage: npm run tips:record -- --sphere <dir> --showcase <dir> --film <dir> [--cache <dir>] [<id>…] [--out <dir>] [--url <server>] [--hashes] [--frames <dir>] [--boards <dir>]`);
+      console.error(`${id} plays on ${b.on}: give --${b.on} <its build>.\n${USAGE}`);
       process.exit(2);
     }
-  }
-  mkdirSync(outDir, { recursive: true });
-  // WebGL in software; the page's other drawing on one thread, which makes two recordings of a film
-  // the same to within a few pixels a few levels apart (SwiftShader's own threads), and is faster
-  const browser = await playwright.chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--num-raster-threads=1", "--disable-gpu-rasterization"] });
-  let failed = 0;
-  try {
-    for (const id of wanted) {
-      const board = all.get(id);
-      const work = mkdtempSync(join(tmpdir(), "visualproof-tips-"));
-      const clock = join(work, "clock");
-      writeFileSync(clock, FILM.now);
-      const server = urlArg ? { url: urlArg.replace(/\/+$/, ""), stop: async () => {} } : await serve(board.on, projects[board.on], cache, work, clock);
-      try {
-        const t0 = Date.now();
-        const files = buildFiles(board, work);
-        const film = await record(browser, server.url, board, { clock, files, framesDir: framesDir && join(resolve(framesDir), id) });
-        const sha256 = createHash("sha256").update(film.mp4).digest("hex");
-        if (board.kept === false) {
-          // the film elsewhere; what the page needs of it here
-          const dir = resolve(filmDir);
-          mkdirSync(dir, { recursive: true });
-          writeFileSync(join(dir, `${id}.mp4`), film.mp4);
-          writeFileSync(join(dir, `${id}.mp4.sha256`), `${sha256}  ${id}.mp4\n`);
-          const { width, height } = board.out ?? FILM.out;
-          const about = { film: { file: `${id}-${sha256.slice(0, 12)}.mp4`, sha256, size: film.mp4.length, width, height, duration: film.duration }, chapters: film.chapters, captions: film.captions };
-          writeFileSync(join(outDir, `${id}.json`), JSON.stringify(about, null, 1) + "\n");
-          writeFileSync(join(outDir, `${id}.webp`), film.poster);
-          for (const [c, still] of film.stills) writeFileSync(join(outDir, `${id}-${c}.webp`), still);
-          if (hashes) writeFileSync(join(dir, `${id}.frames.txt`), film.hashes.join("\n") + "\n");
-        } else {
-          writeFileSync(join(outDir, `${id}.light.mp4`), film.mp4);
-          writeFileSync(join(outDir, `${id}.light.webp`), film.poster);
-          if (hashes) writeFileSync(join(outDir, `${id}.frames.txt`), film.hashes.join("\n") + "\n");
-        }
-        const mb = (film.mp4.length / 1024 / 1024).toFixed(1);
-        const rate = ((film.mp4.length * 8) / film.duration / 1e6).toFixed(2);
-        const chapters = board.chapters ? `; ${film.chapters.map((c) => `${c.id} ${c.start.toFixed(1)}`).join(", ")}` : "";
-        console.log(`${id}: ${film.frames} frames, ${film.duration.toFixed(1)} s, ${mb} MB (${rate} Mbit/s), sha256 ${sha256.slice(0, 12)}, ${((Date.now() - t0) / 1000).toFixed(0)} s to make${film.late ? `; ${film.late} frames waited past the bound` : ""}${chapters}`);
-        if (film.mp4.length > FILM.warnAbove) console.warn(`${id}: ${mb} MB, more than ${FILM.warnAbove / 1024 / 1024} MB: lower the bitrate or shorten it`);
-      } catch (e) {
-        failed++;
-        console.error(`${id}: ${e instanceof Error ? e.stack : e}`);
-      } finally {
-        await server.stop();
-        rmSync(work, { recursive: true, force: true });
+    if (only) {
+      if (wanted.length !== 1 || !b.chapters) {
+        console.error("--chapters names chapters of one film in chapters (the tour).");
+        process.exit(2);
+      }
+      const ids = b.chapters.map((c) => c.id);
+      const unknown = only.filter((c) => !ids.includes(c));
+      if (unknown.length) {
+        console.error(`${id} has no chapter ${unknown.join(", ")}: ${ids.join(", ")}.`);
+        process.exit(2);
       }
     }
-  } finally {
-    await browser.close();
   }
+  let failed = 0;
+  for (const id of wanted) {
+    const board = all.get(id);
+    try {
+      await make(board, { projects, cache, url: urlArg?.replace(/\/+$/, "") ?? null, boardsDir: boardsDir ? resolve(boardsDir) : null, outDir, filmDir, framesDir: framesDir && join(resolve(framesDir), id), only, jobs, preview, hashes });
+    } catch (e) {
+      failed++;
+      console.error(`${id}: ${e instanceof Error ? e.stack : e}`);
+    }
+  }
+  if (wanted.length > 1) console.log(`${((Date.now() - t0) / 1000).toFixed(0)} s in all`);
   process.exit(failed ? 1 : 0);
+}
+
+function takeSwitch(f) {
+  const i = args.indexOf(f);
+  if (i >= 0) args.splice(i, 1);
+  return i >= 0;
+}
+
+/** Where a film and what the page needs of it are written: the film itself (`file`), its data and
+ *  its stills (`about`, `still(c)`, `poster`), for a release or for a preview. */
+function placesOf(board, { outDir, filmDir, preview }) {
+  const id = board.id;
+  if (preview) {
+    const dir = join(filmDir, `${id}.preview`);
+    return { file: join(filmDir, `${id}.preview.mp4`), about: join(dir, `${id}.json`), poster: join(dir, `${id}.webp`), still: (c) => join(dir, `${id}-${c}.webp`) };
+  }
+  if (board.kept === false) return { file: join(filmDir, `${id}.mp4`), about: join(outDir, `${id}.json`), poster: join(outDir, `${id}.webp`), still: (c) => join(outDir, `${id}-${c}.webp`) };
+  return { file: join(outDir, `${id}.light.mp4`), about: null, poster: join(outDir, `${id}.light.webp`), still: () => null };
+}
+
+/** A film made: its chapters recorded in groups, each by a process of its own (`worker`), at once;
+ *  with --chapters, those alone, the others taken from the film that was; then joined
+ *  (scripts/tips/film.mjs) and written. */
+async function make(board, o) {
+  const t0 = Date.now();
+  const id = board.id;
+  const ids = chaptersOf(board).map((c) => c.id);
+  const places = placesOf(board, o);
+  const full = board.out ?? FILM.out;
+  const out = o.preview ? { width: full.width * PREVIEW.scale, height: full.height * PREVIEW.scale } : full;
+  const fps = o.preview ? PREVIEW.fps : board.fps ?? FILM.fps;
+  // the film that was: its chapters' lengths, to share the work out; with --chapters, its chapters
+  let before = null;
+  try {
+    if (places.about) before = JSON.parse(readFileSync(places.about, "utf8"));
+  } catch {
+    // none yet
+  }
+  let kept = null;
+  if (o.only) {
+    if (!before) throw new Error(`no ${places.about} to record chapters into: record the whole film first`);
+    let buf;
+    try {
+      buf = readFileSync(places.file);
+    } catch {
+      throw new Error(`no ${places.file} to record chapters into: --film is where the film that ${places.about} pins is`);
+    }
+    const sha = createHash("sha256").update(buf).digest("hex");
+    if (sha !== before.film.sha256) throw new Error(`${places.file} is not the film ${places.about} pins (${before.film.sha256.slice(0, 12)}, not ${sha.slice(0, 12)})`);
+    if (before.chapters.map((c) => c.id).join() !== ids.join()) throw new Error(`${places.about}'s chapters are not the storyboard's: record the whole film`);
+    const file = readMp4(buf);
+    if (file.fps !== fps || file.width !== out.width || file.height !== out.height) throw new Error(`${places.file} is ${file.width}×${file.height} at ${file.fps} frames a second, not ${out.width}×${out.height} at ${fps}`);
+    kept = new Map(split(file, before).map((c) => [c.id, c]));
+  }
+  const want = o.only ?? ids;
+  // each chapter's length as the film that was has it, to share the chapters out; else a guess
+  const was = new Map((before?.chapters ?? []).map((c) => [c.id, c.end - c.start]));
+  const seconds = new Map(ids.map((c) => [c, was.get(c) ?? 15]));
+  const plan = groups(ids, seconds, want, o.jobs);
+  console.log(`${id}: ${plan.length === 1 ? "one process" : `${plan.length} processes`}: ${plan.map((g) => g.join(" ")).join(" | ")}`);
+  if (o.framesDir) for (const c of want) rmSync(join(o.framesDir, c), { recursive: true, force: true });
+  const results = await Promise.all(plan.map((g, i) => runWorker(board, g, `${plan.length > 1 ? `[${i + 1}] ` : ""}`, o)));
+  const taken = new Map();
+  let late = 0;
+  for (const r of results) {
+    late += r.late;
+    for (const c of r.chapters) if (c.samples) taken.set(c.id, c);
+  }
+  const parts = ids.map((c) => taken.get(c) ?? kept?.get(c));
+  const missing = ids.filter((c, i) => !parts[i]);
+  if (missing.length) throw new Error(`no ${missing.join(", ")}`);
+  const film = joinFilm(parts, fps);
+  const bytes = mp4({ ...out, fps, avcC: film.avcC, samples: film.samples });
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  // the film, and what the page needs of it
+  mkdirSync(dirname(places.file), { recursive: true });
+  writeFileSync(places.file, bytes);
+  if (places.about) {
+    mkdirSync(dirname(places.about), { recursive: true });
+    writeFileSync(`${places.file}.sha256`, `${sha256}  ${basename(places.file)}\n`);
+    const about = { film: { file: `${id}-${sha256.slice(0, 12)}.mp4`, sha256, size: bytes.length, width: out.width, height: out.height, duration: film.duration }, chapters: film.chapters, captions: film.captions };
+    writeFileSync(places.about, JSON.stringify(about, null, 1) + "\n");
+  }
+  const poster = results.find((r) => r.poster)?.poster;
+  // a film of one chapter: its still is its poster
+  if (!board.chapters) writeFileSync(places.poster, taken.get(id).still);
+  else {
+    if (poster) writeFileSync(places.poster, poster);
+    for (const [c, part] of taken) if (part.still) writeFileSync(places.still(c), part.still);
+  }
+  // the frames taken, also under their number in the film, for the trailer and contact sheets
+  if (o.framesDir) {
+    for (const f of readdirSync(o.framesDir).filter((f) => f.endsWith(".jpg"))) rmSync(join(o.framesDir, f));
+    for (const c of film.chapters) {
+      const dir = join(o.framesDir, c.id);
+      let names;
+      try {
+        names = readdirSync(dir).filter((f) => f.endsWith(".jpg")).sort();
+      } catch {
+        // a chapter kept from the film that was, its frames not taken now
+        continue;
+      }
+      const from = Math.round(c.start * fps);
+      for (const f of names) linkSync(join(dir, f), join(o.framesDir, `${String(from + Number(f.slice(0, -4))).padStart(5, "0")}.jpg`));
+    }
+  }
+  if (o.hashes) writeFileSync(join(dirname(places.file), `${id}${o.preview ? ".preview" : ""}.frames.txt`), ids.flatMap((c) => [`# ${c}`, ...(taken.get(c)?.hashes ?? ["(kept)"])]).join("\n") + "\n");
+  const mb = (bytes.length / 1024 / 1024).toFixed(1);
+  const rate = ((bytes.length * 8) / film.duration / 1e6).toFixed(2);
+  const times = board.chapters ? `; ${film.chapters.map((c) => `${c.id} ${c.start.toFixed(1)}${taken.has(c.id) ? "" : " (kept)"}`).join(", ")}` : "";
+  console.log(`${id}${o.preview ? " (preview)" : ""}: ${film.frames} frames, ${film.duration.toFixed(1)} s, ${mb} MB (${rate} Mbit/s), sha256 ${sha256.slice(0, 12)}, ${((Date.now() - t0) / 1000).toFixed(0)} s to make${late ? `; ${late} frames waited past the bound` : ""}${times}`);
+  console.log(`${id}: ${places.file}${places.about ? `, ${places.about}` : ""}`);
+  if (bytes.length > FILM.warnAbove) console.warn(`${id}: ${mb} MB, more than ${FILM.warnAbove / 1024 / 1024} MB: lower the bitrate or shorten it`);
+}
+
+/** One group of chapters recorded by a process of its own (this script, `--worker`): what it took,
+ *  read back from the folder it wrote. */
+async function runWorker(board, chapters, label, o) {
+  const dir = mkdtempSync(join(tmpdir(), "visualproof-tips-part-"));
+  try {
+    const spec = { id: board.id, boardsDir: o.boardsDir, project: o.projects[board.on] && resolve(o.projects[board.on]), cache: o.cache && resolve(o.cache), url: o.url, capture: chapters, upTo: chapters.at(-1), preview: o.preview, framesDir: o.framesDir, result: dir };
+    writeFileSync(join(dir, "spec.json"), JSON.stringify(spec));
+    const t0 = Date.now();
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "--worker", join(dir, "spec.json")], { stdio: ["ignore", "pipe", "pipe"] });
+    const relay = (stream, to) => {
+      let rest = "";
+      stream.on("data", (d) => {
+        const lines = (rest + d).split("\n");
+        rest = lines.pop();
+        for (const l of lines) to.write(`${label}${l}\n`);
+      });
+      stream.on("end", () => rest && to.write(`${label}${rest}\n`));
+    };
+    relay(child.stdout, process.stdout);
+    relay(child.stderr, process.stderr);
+    const code = await new Promise((d) => child.on("exit", d));
+    if (code !== 0) throw new Error(`${label}${chapters.join(", ")}: the recording ended (${code})`);
+    const r = JSON.parse(readFileSync(join(dir, "result.json"), "utf8"));
+    for (const c of r.chapters) {
+      if (!c.samples) continue;
+      const data = readFileSync(join(dir, `${c.id}.bin`));
+      let at = 0;
+      c.samples = c.samples.map((s) => {
+        const sample = { data: data.subarray(at, at + s.size), key: s.key, pts: s.pts };
+        at += s.size;
+        return sample;
+      });
+      c.avcC = Buffer.from(c.avcC, "base64");
+      c.still = c.still ? readFileSync(join(dir, `${c.id}.webp`)) : null;
+    }
+    r.poster = r.poster ? readFileSync(join(dir, "poster.webp")) : null;
+    console.log(`${label}${chapters.join(", ")}: ${r.chapters.filter((c) => c.samples).reduce((n, c) => n + c.frames, 0)} frames taken, ${r.ticks} played, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    return r;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** A process recording a group of chapters (`--worker <spec.json>`): a server of its own on a new
+ *  site, a Chromium of its own, the storyboard played from the start, the group's chapters taken;
+ *  what it took written into the spec's folder. */
+async function worker(specFile) {
+  const spec = JSON.parse(readFileSync(specFile, "utf8"));
+  const board = (await storyboards(spec.boardsDir ?? BOARDS)).get(spec.id);
+  const playwright = await import("playwright");
+  const browser = await playwright.chromium.launch({ args: BROWSER });
+  const work = mkdtempSync(join(tmpdir(), "visualproof-tips-"));
+  const clock = join(work, "clock");
+  writeFileSync(clock, FILM.now);
+  let server = null;
+  try {
+    server = spec.url ? { url: spec.url, stop: async () => {} } : await serve(board.on, spec.project, spec.cache, work, clock);
+    const files = buildFiles(board, work);
+    const r = await record(browser, server.url, board, { clock, files, framesDir: spec.framesDir, capture: spec.capture, upTo: spec.upTo, preview: spec.preview });
+    const result = { chapters: [], ticks: r.ticks, late: r.late, poster: false };
+    for (const c of r.chapters) {
+      const e = { id: c.id, frames: c.frames, captions: c.captions };
+      if (c.samples) {
+        writeFileSync(join(spec.result, `${c.id}.bin`), Buffer.concat(c.samples.map((x) => Buffer.from(x.data.buffer, x.data.byteOffset, x.data.byteLength))));
+        Object.assign(e, { samples: c.samples.map((x) => ({ size: x.data.byteLength, key: x.key, pts: x.pts })), avcC: c.avcC.toString("base64"), still: !!c.still, hashes: c.hashes });
+        if (c.still) writeFileSync(join(spec.result, `${c.id}.webp`), c.still);
+      }
+      result.chapters.push(e);
+    }
+    if (r.poster) {
+      writeFileSync(join(spec.result, "poster.webp"), r.poster);
+      result.poster = true;
+    }
+    writeFileSync(join(spec.result, "result.json"), JSON.stringify(result));
+    if (PROFILE) {
+      const taken = r.chapters.filter((c) => c.samples).reduce((n, c) => n + c.frames, 0);
+      const sum = [...PROFILE.values()].reduce((a, b) => a + b, 0);
+      console.log(`where the time went (${taken} frames taken, ${r.ticks} played; ms a frame taken):`);
+      for (const [k, v] of [...PROFILE].sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(12)} ${(v / 1000).toFixed(1).padStart(7)} s  ${(v / Math.max(1, taken)).toFixed(1).padStart(6)} ms`);
+      console.log(`  ${"(measured)".padEnd(12)} ${(sum / 1000).toFixed(1).padStart(7)} s`);
+    }
+  } finally {
+    await server?.stop();
+    await browser.close();
+    rmSync(work, { recursive: true, force: true });
+  }
+  process.exit(0);
 }
 
 /** What a storyboard hands the page (`files`: a name, then the .tex in scripts/tips/ a PDF is typeset
@@ -244,22 +470,45 @@ async function serve(on, project, cache, work, clock) {
   }
 }
 
+/** Where a frame's time goes (TIPS_PROFILE=1): milliseconds by stage, summed over a film. */
+const PROFILE = process.env.TIPS_PROFILE ? new Map() : null;
+const timed = async (stage, work) => {
+  if (!PROFILE) return work;
+  const t0 = performance.now();
+  try {
+    return await work;
+  } finally {
+    PROFILE.set(stage, (PROFILE.get(stage) ?? 0) + performance.now() - t0);
+  }
+};
+
+/** The page's pixels to a CSS pixel (its context's deviceScaleFactor), at which every frame is taken;
+ *  a preview's are the CSS pixels themselves, a quarter as many to draw. */
+const SCALE = 2;
+
 /** When, on the page's clock, a film's page has loaded (ms after the clock was installed). */
 const LOADED_BY = 30_000;
 
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
 
-/** A film: its MP4, its poster, its chapters' key frames and times. */
-export async function record(browser, url, board, { clock, files = {}, framesDir = null }) {
-  const fps = board.fps ?? FILM.fps;
+/** A film's chapters, played in order from the film's start: those `capture` names (all, without it)
+ *  taken frame by frame and encoded, each by an encoder of its own from a key frame, so that a
+ *  chapter is the same however it was recorded — alone, after the film before it played without a
+ *  frame taken, or in sequence; the others played as fast as the page allows, their frames counted
+ *  but not taken. Playing stops after `upTo`. Each chapter played: its id, its length in frames and
+ *  its captions (seconds from its start); each taken, its samples (scripts/tips/film.mjs), the
+ *  encoder's description, its still, its frames' digests. With `preview`, at half the size and half
+ *  the frame rate (PREVIEW). */
+export async function record(browser, url, board, { clock, files = {}, framesDir = null, capture = null, upTo = null, preview = false }) {
+  const fps = preview ? PREVIEW.fps : board.fps ?? FILM.fps;
   const DT = 1000 / fps;
   const V = board.viewport ?? FILM.viewport;
-  // TIPS_PREVIEW: a film at half the size, quicker, for writing a storyboard (never kept)
   const full = board.out ?? FILM.out;
-  const out = process.env.TIPS_PREVIEW ? { width: full.width / 2, height: full.height / 2 } : full;
+  const out = preview ? { width: full.width * PREVIEW.scale, height: full.height * PREVIEW.scale } : full;
   // light, and times and dates written the same on every machine
-  const ctx = await browser.newContext({ viewport: V, deviceScaleFactor: 2, colorScheme: "light", hasTouch: !!board.phone, isMobile: !!board.phone, reducedMotion: "no-preference", timezoneId: "UTC", locale: "en-US" });
+  const scale = preview ? 1 : SCALE;
+  const ctx = await browser.newContext({ viewport: V, deviceScaleFactor: scale, colorScheme: "light", hasTouch: !!board.phone, isMobile: !!board.phone, reducedMotion: "no-preference", timezoneId: "UTC", locale: "en-US" });
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: url });
   const page = await ctx.newPage();
   const meta = await (await fetch(`${url}/api/meta`)).json();
@@ -298,29 +547,39 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
   const enc = await ctx.newPage();
   await enc.goto(`${url}/api/status`);
   await enc.evaluate(({ width, height, fps, bitrate }) => {
-    const E = (window.__enc = { chunks: [], description: null, error: null, n: 0 });
-    E.encoder = new VideoEncoder({
-      output: (chunk, md) => {
-        const data = new Uint8Array(chunk.byteLength);
-        chunk.copyTo(data);
-        E.chunks.push({ data, key: chunk.type === "key", pts: chunk.timestamp });
-        if (md?.decoderConfig?.description) E.description = new Uint8Array(md.decoderConfig.description);
-      },
-      error: (e) => (E.error = String(e)),
-    });
+    const E = (window.__enc = { chunks: [], description: null, error: null, encoder: null });
     // H.264 High, level 4.0 up to 8,192 macroblocks a frame (1920×1080), 5.0 beyond (1920×1200)
     const level = Math.ceil(width / 16) * Math.ceil(height / 16) > 8192 ? "32" : "28";
-    E.encoder.configure({ codec: `avc1.6400${level}`, width, height, bitrate, framerate: fps, bitrateMode: "variable", avc: { format: "avc" } });
-    const b64 = (u8) => {
+    // an encoder for each chapter taken, new, so that what it makes of a chapter's frames does not
+    // depend on what came before them
+    E.start = () => {
+      E.chunks = [];
+      E.description = null;
+      E.encoder = new VideoEncoder({
+        output: (chunk, md) => {
+          const data = new Uint8Array(chunk.byteLength);
+          chunk.copyTo(data);
+          E.chunks.push({ data, key: chunk.type === "key", pts: chunk.timestamp });
+          if (md?.decoderConfig?.description) E.description = new Uint8Array(md.decoderConfig.description);
+        },
+        error: (e) => (E.error = String(e)),
+      });
+      E.encoder.configure({ codec: `avc1.6400${level}`, width, height, bitrate, framerate: fps, bitrateMode: "variable", avc: { format: "avc" } });
+    };
+    E.finish = async () => {
+      await E.encoder.flush();
+      E.encoder.close();
+    };
+    const b64 = (E.b64 = (u8) => {
       let s = "";
       for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode(...u8.subarray(i, i + 0x8000));
       return btoa(s);
-    };
+    });
     // what has been encoded so far, handed over and let go
     E.drain = () => E.chunks.splice(0).map((c) => ({ data: b64(c.data), key: c.key, pts: c.pts }));
     E.avcC = () => (E.description ? b64(E.description) : null);
   }, { ...out, fps, bitrate: board.bitrate ?? FILM.bitrate });
-  const samples = [];
+  let samples = [];
   const drain = async () => {
     for (const c of await enc.evaluate(() => window.__enc.drain())) samples.push({ data: Buffer.from(c.data, "base64"), key: c.key, pts: (c.pts / 1e6) * fps * 1000 });
   };
@@ -338,8 +597,16 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
   const cam = { x: V.width / 2, y: V.height / 2, vx: 0, vy: 0, gx: V.width / 2, gy: V.height / 2, follow: false };
   let late = 0;
   let tick = 0;
+  // a frame of the film (not while loading, before it, or cut away from); taken, or only counted
   let recording = false;
+  let capturing = false;
   let frames = 0;
+  // the frame the chapter being played began at
+  let chapterStart = 0;
+  // frames handed to the encoder, in order, while the next is taken; at most a few waiting
+  let encoding = Promise.resolve();
+  let waiting = 0;
+  let encodeError = null;
   // the next frame encoded as a key frame (a chapter's first)
   let keyNext = true;
   const hashes = [];
@@ -351,7 +618,12 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
   const clampCam = (x, y) => [Math.min(Math.max(x, camW / 2), V.width - camW / 2), Math.min(Math.max(y, camH / 2), V.height - camH / 2)];
   const rectOf = async (target) => {
     const r = await page.evaluate((t) => window.__tips.rect(t), target);
-    if (!r) throw new Error(`${board.id}${chapter ? ` (${chapter})` : ""}: nothing shown at ${JSON.stringify(target)}`);
+    if (!r) {
+      // what the page showed instead, for the storyboard's writer
+      const shot = join(tmpdir(), `visualproof-tips-${board.id}-${chapter ?? "before"}-${Date.now()}.png`);
+      await page.screenshot({ path: shot }).catch(() => {});
+      throw new Error(`${board.id}${chapter ? ` (${chapter})` : ""}: nothing shown at ${JSON.stringify(target)} (the page then: ${shot})`);
+    }
     return r;
   };
   /** The middle of what a step points at, moved by the step's `dx`, `dy`. */
@@ -363,31 +635,49 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
    *  After a heartbeat, what the server pushes for it is waited for too. */
   let beats = 0;
   const settle = async () => {
-    const n = await page.evaluate(() => window.__tips.beats());
+    let [n, quiet] = await page.evaluate(() => [window.__tips.beats(), window.__tips.quiet()]);
     if (n !== beats) {
       beats = n;
-      await sleep(700);
+      await timed("heartbeat", sleep(700));
+      quiet = await page.evaluate(() => window.__tips.quiet());
     }
-    for (let t0 = Date.now(); !(await page.evaluate(() => window.__tips.quiet())); ) {
+    for (let t0 = Date.now(); !quiet; quiet = await page.evaluate(() => window.__tips.quiet())) {
       // what the page waits on longest: Lean's language server, started for a hover; a document
       // typeset; a paper read
       if (Date.now() - t0 > (board.patience ?? 15_000)) {
         late++;
         break;
       }
-      await sleep(10);
+      await sleep(2);
     }
   };
-  const shotClip = () => ({ x: cam.x - camW / 2, y: cam.y - camH / 2, width: camW, height: camH, scale: out.width / camW });
+  // What the frame looks at, taken at the page's own pixels (twice the CSS pixel) and brought to the
+  // film's size by the encoder's page where they differ (a frame on the whole window): a capture at
+  // another scale lays the page out again at that scale, and the pixel it rounds differently there
+  // stays in the page after it (a panel's height), so that a film played without taking frames
+  // would not be the film taken.
+  const shotClip = () => ({ x: cam.x - camW / 2, y: cam.y - camH / 2, width: camW, height: camH });
+  // through Playwright, whose session set the page's metrics: its pixels as they are, nothing laid out
+  // again (a capture of DevTools' own at a scale lays the page out at that scale for it)
+  const takeShot = async (type) => (await page.screenshot({ type, ...(type === "jpeg" ? { quality: 95 } : {}), clip: shotClip(), caret: "initial", animations: "allow", scale: "device", timeout: 60_000 })).toString("base64");
+  const native = () => Math.abs(camW * scale - out.width) < 0.5;
   /** What the frame shows now, as a WebP no larger than a still may be: its quality lowered until it
    *  is not. */
   const still = async () => {
-    let q = 70, b;
-    do {
-      b = Buffer.from((await cdp.send("Page.captureScreenshot", { format: "webp", quality: q, clip: shotClip() })).data, "base64");
-      q -= 8;
-    } while (b.length > FILM.stillMax && q > 20);
-    return b;
+    const png = await takeShot("png");
+    const webp = await enc.evaluate(async ({ png, w, h, max }) => {
+      const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob(), { resizeWidth: w, resizeHeight: h, resizeQuality: "high" });
+      const c = new OffscreenCanvas(w, h);
+      c.getContext("2d").drawImage(bmp, 0, 0);
+      bmp.close();
+      let q = 0.7, b;
+      do {
+        b = await c.convertToBlob({ type: "image/webp", quality: q });
+        q -= 0.08;
+      } while (b.size > max && q > 0.2);
+      return window.__enc.b64(new Uint8Array(await b.arrayBuffer()));
+    }, { png, w: out.width, h: out.height, max: FILM.stillMax });
+    return Buffer.from(webp, "base64");
   };
   // the captions: those given, and the one on screen
   const captions = [];
@@ -406,19 +696,19 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
   const frame = async () => {
     // whole milliseconds (the faked clock's), 33 or 34 of them at 30 a second
     tick++;
-    await advance(Math.round(tick * DT) - Math.round((tick - 1) * DT));
-    await settle();
+    await timed("clock", advance(Math.round(tick * DT) - Math.round((tick - 1) * DT)));
+    await timed("settle", settle());
     if (ring > 0) ring = Math.max(0, ring - DT / 450);
     if (key) {
       keyT = keyHeld ? Math.min(keyT + DT, 120) : keyT + DT;
       if (keyT > 1100) key = "";
     }
     const keyAlpha = Math.min(1, keyT / 120, Math.max(0, (1100 - keyT) / 250));
-    await page.evaluate(([p, t]) => {
+    await timed("pointer", page.evaluate(([p, t]) => {
       window.__tips.pointer(p);
       window.__tips.title(t);
       window.__tips.sync();
-    }, [{ x: px, y: py, finger: !!board.phone, ring, ringX, ringY, key, keyAlpha, hidden, second }, title]);
+    }, [{ x: px, y: py, finger: !!board.phone, ring, ringX, ringY, key, keyAlpha, hidden, second }, title]));
     if (cam.follow) {
       // the pointer near an edge of the frame brings the frame along
       const mx = camW * 0.3, my = camH * 0.3;
@@ -436,25 +726,54 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
       cam[k] += v * dt;
     }
     if (!recording) return;
-    const shot = await cdp.send("Page.captureScreenshot", { format: "jpeg", quality: 95, clip: shotClip() }).catch((e) => {
+    if (!capturing) {
+      frames++;
+      return;
+    }
+    const shot = { data: await timed("screenshot", takeShot("jpeg").catch((e) => {
       throw new Error(`${board.id}: no frame of ${JSON.stringify(shotClip())}: ${e.message}`);
-    });
+    })) };
+    // the frame's number in its chapter
+    const at = frames - chapterStart;
+    const t0 = PROFILE && performance.now();
     hashes.push(createHash("sha256").update(shot.data).digest("hex").slice(0, 16));
-    if (framesDir) writeFileSync(join(framesDir, `${String(frames).padStart(5, "0")}.jpg`), Buffer.from(shot.data, "base64"));
-    const keyFrame = keyNext || frames % Math.round(fps * (board.keyEvery ?? FILM.keyEvery)) === 0;
+    const file = framesDir && join(framesDir, chapter, `${String(at).padStart(5, "0")}.jpg`);
+    // taken at the film's size, the frame kept as it is; else as the encoder's page brings it there
+    const resize = !native();
+    if (file && !resize) writeFileSync(file, Buffer.from(shot.data, "base64"));
+    if (PROFILE) PROFILE.set("write", (PROFILE.get("write") ?? 0) + performance.now() - t0);
+    const keyFrame = keyNext || at % Math.round(fps * (board.keyEvery ?? FILM.keyEvery)) === 0;
     keyNext = false;
-    await enc.evaluate(async ({ f, i, dt, keyFrame }) => {
-      const E = window.__enc;
-      const bmp = await createImageBitmap(await (await fetch(`data:image/jpeg;base64,${f}`)).blob());
-      const vf = new VideoFrame(bmp, { timestamp: Math.round(i * dt * 1000), duration: Math.round(dt * 1000) });
-      E.encoder.encode(vf, { keyFrame });
-      vf.close();
-      bmp.close();
-      // the encoder kept from running far ahead of what it has written
-      while (E.encoder.encodeQueueSize > 8) await new Promise((d) => setTimeout(d, 5));
-    }, { f: shot.data, i: frames, dt: DT, keyFrame });
+    // the encoder takes the frame while the next is made; the page waits only when it falls behind
+    if (waiting > 3) await timed("encode", encoding);
+    waiting++;
+    encoding = encoding
+      .then(() =>
+        enc.evaluate(async ({ f, i, dt, keyFrame, resize, keep, w, h }) => {
+          const E = window.__enc;
+          const blob = await (await fetch(`data:image/jpeg;base64,${f}`)).blob();
+          const bmp = await createImageBitmap(blob, resize ? { resizeWidth: w, resizeHeight: h, resizeQuality: "high" } : undefined);
+          let kept = null;
+          if (keep) {
+            const c = new OffscreenCanvas(w, h);
+            c.getContext("2d").drawImage(bmp, 0, 0);
+            kept = E.b64(new Uint8Array(await (await c.convertToBlob({ type: "image/jpeg", quality: 0.95 })).arrayBuffer()));
+          }
+          const vf = new VideoFrame(bmp, { timestamp: Math.round(i * dt * 1000), duration: Math.round(dt * 1000) });
+          E.encoder.encode(vf, { keyFrame });
+          vf.close();
+          bmp.close();
+          // the encoder kept from running far ahead of what it has written
+          while (E.encoder.encodeQueueSize > 8) await new Promise((d) => setTimeout(d, 5));
+          return kept;
+        }, { f: shot.data, i: at, dt: DT, keyFrame, resize, keep: !!file && resize, w: out.width, h: out.height }),
+      )
+      .then((kept) => kept && writeFileSync(file, Buffer.from(kept, "base64")))
+      .catch((e) => (encodeError ??= e))
+      .finally(() => waiting--);
+    if (encodeError) throw new Error(`${board.id}: the encoder: ${encodeError.message ?? encodeError}`);
     frames++;
-    if (frames % 30 === 0) await drain();
+    if ((frames - chapterStart) % 30 === 0) await timed("drain", drain());
   };
   const run = async (ms) => {
     for (let t = 0; t < ms - 1e-6; t += DT) await frame();
@@ -729,7 +1048,7 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
     },
     /** This frame is the film's poster (else its first). */
     async filmPoster() {
-      poster = await still();
+      if (capturing) poster = await still();
     },
     /** A panel scrolled over `ms` so that what `to` finds stands in its middle (a reader's wheel). */
     async scroll(s) {
@@ -768,7 +1087,7 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
     },
     /** This frame is the chapter's key frame (the film's poster, for a film of one chapter). */
     async poster() {
-      stills.set(chapter, await still());
+      if (capturing) stills.set(chapter, await still());
     },
     /** The agent of the film (an AI agent's token made on the page, its API driven from here):
      *  `join` takes the token the page shows and starts listening; `await` waits for what a person
@@ -854,32 +1173,59 @@ export async function record(browser, url, board, { clock, files = {}, framesDir
     const loaded = await page.evaluate(() => performance.now());
     if (loaded > LOADED_BY) throw new Error(`${board.id}: the page took ${Math.round(loaded)} ms of its clock to load, more than ${LOADED_BY}`);
     await advance(Math.ceil(LOADED_BY - loaded));
+    // the board drawn only in the chapters taken (scripts/tips/inpage.mjs, `drawing`)
+    await page.evaluate(() => window.__tips.drawing(false));
+    // pdf.js's worker, which the page runs on its own thread here (no Worker), loaded now rather than
+    // when the first paper opens: its loading takes the machine's time, not the film's, which a film
+    // played without taking frames, many frames to the machine's second, would outrun (pdf.js takes
+    // a worker already loaded from `pdfjsWorker`)
+    await page.evaluate(async () => {
+      window.pdfjsWorker = await import("/pdfworker.js");
+    });
     await run(1500);
     await play(board.before ?? []);
     await run(board.settle ?? 1200);
     recording = true;
-    const chapters = [];
+    const played = [];
     for (const c of chaptersOf(board)) {
       chapter = c.id;
       keyNext = true;
-      const start = frames;
-      if (!chapters.length) poster = await still();
+      capturing = !capture || capture.includes(c.id);
+      chapterStart = frames;
+      const fromCaption = captions.length;
+      // the board drawn again from each chapter's start, whether this chapter is taken or not, so
+      // that the page does the same whichever chapters a recording takes
+      await page.evaluate((on) => {
+        window.__tips.drawing(on);
+        window.visualproof?.canvas?.request();
+      }, capturing);
+      if (capturing) {
+        samples = [];
+        hashes.length = 0;
+        if (framesDir) mkdirSync(join(framesDir, c.id), { recursive: true });
+        await enc.evaluate(() => window.__enc.start());
+        if (!played.length) poster = await still();
+      }
       await play(c.steps);
       // a caption of the chapter is read before it ends, and ends with it
       await closeCue();
-      if (!stills.has(c.id)) await steps.poster();
-      chapters.push({ id: c.id, start: start / fps, end: frames / fps });
+      const part = { id: c.id, frames: frames - chapterStart, captions: captions.slice(fromCaption).map((k) => ({ start: k.start - chapterStart / fps, end: k.end - chapterStart / fps, text: k.text })) };
+      if (capturing) {
+        if (!stills.has(c.id)) await steps.poster();
+        await timed("encode", encoding);
+        if (encodeError) throw new Error(`${board.id}: the encoder: ${encodeError.message ?? encodeError}`);
+        await enc.evaluate(() => window.__enc.finish());
+        await drain();
+        const [error, avcC] = await enc.evaluate(() => [window.__enc.error, window.__enc.avcC()]);
+        if (error) throw new Error(`${board.id} (${c.id}): the encoder: ${error}`);
+        if (!avcC) throw new Error(`${board.id} (${c.id}): the encoder gave no avcC`);
+        Object.assign(part, { samples, avcC: Buffer.from(avcC, "base64"), still: stills.get(c.id), hashes: [...hashes] });
+      }
+      played.push(part);
+      if (c.id === upTo) break;
     }
     agent.stop?.abort();
-    if (!board.chapters) poster = stills.get(board.id);
-    stills.delete(board.id);
-    await enc.evaluate(() => window.__enc.encoder.flush());
-    await drain();
-    const [error, avcC] = await enc.evaluate(() => [window.__enc.error, window.__enc.avcC()]);
-    if (error) throw new Error(`${board.id}: the encoder: ${error}`);
-    if (!avcC) throw new Error(`${board.id}: the encoder gave no avcC`);
-    const duration = frames / fps;
-    return { mp4: mp4({ ...out, fps, avcC: Buffer.from(avcC, "base64"), samples }), poster, stills, chapters, captions, duration, frames, late, hashes };
+    return { chapters: played, poster, fps, out, ticks: tick, late };
   } finally {
     agent.stop?.abort();
     await ctx.close();
