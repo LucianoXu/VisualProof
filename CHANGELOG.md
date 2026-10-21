@@ -5,6 +5,15 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.8.0
+
+- Follow together: whoever follows a reader, and that reader, see each other's pointer and text selections, anchored to what is under them so they land on the same code, page or element at any screen size; the followed reader's clicks show. The Export window is followed too, its progress and download included.
+- See who follows you: a mark on your name, with their names; an agent is told who follows it.
+- Number the source window's lines as the file does.
+- Approve once: the button says Approve, Approved ✓ (a click withdraws it) or Approve again where the declaration changed; `a` never withdraws. A review box's opinions fold all at once or show all.
+- See your own review: the colour scheme Mine, a filter of the target's list (not reviewed by me, stale, commented) and `mine(…)` in a view's scope.
+- Record the tips' film in a third of the time, a chapter alone in a few minutes; the film recorded again for 0.8.
+
 ## 0.7.0
 
 - Show the source of declarations from outside the project — Mathlib, every other package and Lean's core — in the source window, with Lean's hovers and Open on GitHub at the package's revision. An outside key declaration is printed in its document; a past build shows an outside source where its package is at the same revision as now.
