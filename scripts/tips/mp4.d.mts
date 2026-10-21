@@ -19,3 +19,16 @@ export interface Box {
 }
 
 export function boxes(buf: Buffer, from?: number, to?: number): Box[];
+
+/** A file `mp4` wrote, read back. */
+export interface Read {
+  width: number;
+  height: number;
+  timescale: number;
+  delta: number;
+  fps: number;
+  avcC: Buffer;
+  samples: Sample[];
+}
+
+export function readMp4(buf: Buffer): Read;

@@ -80,8 +80,27 @@ export function inPage() {
   style.textContent = "* { caret-color: transparent !important; }";
   document.addEventListener("DOMContentLoaded", () => document.head.appendChild(style));
 
+  // the board drawn only while a frame is taken: while the film is played without taking frames
+  // (up to a chapter recorded on its own), WebGL's draws do nothing — everything else the page does,
+  // its state and its buffers, as when they are drawn — and SwiftShader, which draws them in
+  // software, is spared; `drawing(true)` draws the board again at once
+  let drawing = true;
+  for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+    if (!C) continue;
+    for (const m of ["drawArrays", "drawElements", "drawArraysInstanced", "drawElementsInstanced", "drawRangeElements"]) {
+      const f = C.prototype[m];
+      if (f) C.prototype[m] = function (...a) {
+        if (drawing) return f.apply(this, a);
+      };
+    }
+  }
+
   const tips = (window.__tips = {
     events,
+    /** Whether the board's draws are done (see above); turned on, the board asked to draw again. */
+    drawing(on) {
+      drawing = on;
+    },
     /** How many heartbeats the page has sent: the recorder waits for what the server says after one. */
     beats: () => beats,
     /** Nothing is still to come: no request on its way, every image loaded and decoded, every font.

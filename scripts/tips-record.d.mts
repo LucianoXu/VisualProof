@@ -54,6 +54,9 @@ export interface Storyboard {
   store?: Record<string, unknown>;
 }
 
+/** A preview: half the size, half the frame rate, never for a release. */
+export const PREVIEW: { scale: number; fps: number };
+
 export const FILM: { viewport: Size; out: Size; fps: number; bitrate: number; keyEvery: number; now: string; pace: number; typing: number; reading: number; shownAtLeast: number; warnAbove: number; stillMax: number };
 
 /** A caption of a film: from, to (seconds), what it says. */
