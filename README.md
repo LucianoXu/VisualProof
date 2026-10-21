@@ -9,7 +9,7 @@
 </p>
 <p align="center"><sub>Five Lean codebases, drawn by <code>visualproof artwork</code>.</sub></p>
 
-https://github.com/user-attachments/assets/941b6599-5b4d-4364-aa81-fc25b8991eeb
+https://github.com/user-attachments/assets/5d090578-ba18-493f-83d9-7529bcbc689c
 
 <p align="center"><sub>A review of Sphere-Packing-Lean in 71 seconds. The whole tour — three and a half minutes in thirteen chapters, with captions — is in the page under <b>?</b> → Tips, and <a href="https://visualproof-demo.yingte.io/#tips">on the live demo</a>.</sub></p>
 
