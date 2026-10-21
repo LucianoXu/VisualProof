@@ -113,9 +113,10 @@ export class Presence {
     const list = this.list();
     this.send(list);
     // neither a camera that pans nor what an agent does while online is a move, nor whom a page
-    // follows, which agents are not told; an agent going offline or coming back is, and so is a
-    // private reader coming or going
-    const sig = JSON.stringify([this.privateCount(), list.map((p) => ({ ...p, view: p.view ? { ...p.view, cam: null, following: undefined } : null, talk: p.talk ? p.talk.state === "offline" : undefined }))]);
+    // follows but where it is an agent, which that agent is told (its companion's `followedBy`); an
+    // agent going offline or coming back is, and so is a private reader coming or going
+    const agents = (f: string | undefined) => (f?.startsWith("a:") ? f : undefined);
+    const sig = JSON.stringify([this.privateCount(), [...this.privateFollowers()].filter(([k]) => k.startsWith("a:")), list.map((p) => ({ ...p, view: p.view ? { ...p.view, cam: null, following: agents(p.view.following) } : null, talk: p.talk ? p.talk.state === "offline" : undefined }))]);
     if (sig === this.lastSig) return;
     this.lastSig = sig;
     this.rev++;

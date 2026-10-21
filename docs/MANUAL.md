@@ -1389,7 +1389,8 @@ what each one looks at stays their own.
 - **Pins are shared per view**: what you drop is everyone's on that board when you let go, and
   comes to every page on it; **Re-layout** drops the board's pins, for everyone, after asking.
 - **Agents** (AgentSpec, [docs/agent-api/](agent-api/README.md)): an AI agent works through a JSON API under
-  `/api/agent`, as a reader marked as an agent (a robot on its initials; it can be followed). What
+  `/api/agent`, as a reader marked as an agent (a robot on its initials; it can be followed, and is
+  told who follows it: the people by name, private readers counted). What
   it says is advice: shown apart in the panel ("Claude comments — …") and marked in a
   target's review list, never on the canvas, never counted in any progress. Where the review is
   focused on a target the strip says how many it comments on. It reads what a person would look up: a declaration's statement, source, file

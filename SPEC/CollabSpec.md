@@ -280,7 +280,9 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
   sees them (decision 11). Hovering the name lists them, and its menu says it at its top. Among the
   others' initials, those following the reader carry a small mark in the reader's colour, "follows
   you" in their tooltip. Nothing is said when someone starts following, or stops. Agents follow
-  nobody; an agent can be followed, and its page-less presence shows nothing of it.
+  nobody; an agent can be followed, and its page-less presence shows nothing of it, but its
+  companion tells it who follows it, by name, the private readers counted only, read-only readers
+  never (the owner's decision of 2026-10-21; docs/agent-api/following.md, `followedBy`).
 - **On the canvas**: a ring in another reader's colour around what they selected, with their
   initials; several readers on one declaration share the ring.
 - **In the panel**: "Also here: Alice, Bob" under the declaration's name.
@@ -429,8 +431,10 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   personal link, `n:` and the name for a guest or a proxy's name, `s:` and the page's id for a page
   without a name, `a:` and the agent's id), at most 200 characters, absent for nobody. A page counts
   the people whose pages say they follow its reader's key, each once, from the list. An agent's
-  place carries none (it follows nobody), nor an artwork; the agents' companion says nothing of it,
-  and whom a page follows is no move it waits for.
+  place carries none (it follows nobody), nor an artwork. The agents' companion tells an agent only
+  who follows it (`followedBy`: the names of the people whose pages say so, each once, `null` for a
+  page without one; how many private pages), and whom a page follows is a move it waits for only
+  where that is an agent.
 - **Private pages**: the heartbeat is `{token, private: true}`, and `following` where the page
   follows someone, alone. The server keeps an unlisted entry holding only that, and sends `private`
   (`{count}`) beside every `presence`; to the pages of a person private pages follow, with

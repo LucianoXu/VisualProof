@@ -104,7 +104,7 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "companion",
-    about: "Who is on the page now and where each one looks (view, selection, the declaration in their panel, source windows); with wait, the answer comes when someone comes, goes or moves.",
+    about: "Who is on the page now and where each one looks (view, selection, the declaration in their panel, source windows), and who follows you; with wait, the answer comes when someone comes, goes or moves.",
     call: { method: "GET", path: "/api/agent/companion" },
     args: { wait: int("seconds to wait for a change (at most 60)"), since: int("the rev of an earlier answer") },
   },
