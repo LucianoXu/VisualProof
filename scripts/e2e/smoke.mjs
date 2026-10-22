@@ -1,8 +1,8 @@
 // A smoke run of the server and the page together in a real browser (scripts/e2e/harness.mjs): the
 // flt-regular showcase served with a key; Alice, invited by a personal link, and Bob, a guest; an
 // agent at level advise. The agent writes in public and both are told; Bob answers it with an @
-// mention, which the agent is handed, and its reply reaches him. A read-only reader has no
-// conversations. In light, then dark, a screenshot of each page; Alice on a phone. Then the showcase
+// mention, which the agent is handed, and its reply reaches him. Alice reloads with the window left
+// open, and it is open again. A read-only reader has no conversations. In light, then dark, a screenshot of each page; Alice on a phone. Then the showcase
 // served --public with --public-url: a visitor reads without the key, and an agent's prompt names
 // the public address.
 //
@@ -103,6 +103,12 @@ for (const theme of ["light", "dark"]) {
   await A.page.waitForTimeout(500);
   out.check((await texts(A)).some((t) => t.includes(`(${theme}).`)), `${theme}: Alice reads the exchange`);
   await cam.shot(A, "public-channel");
+  // the window left open: the page reloads with it open again, the thread in it (a page left so
+  // stopped as it was made, the owner's report of 2026-10-22)
+  await A.page.reload();
+  const up = await A.ready({ ms: 30_000 }).then(() => true, () => false);
+  out.check(up && (await A.page.$eval("#convo", (c) => !c.hidden)), `${theme}: Alice reloads with the window left open, and it is open again`);
+  out.check(up && (await texts(A)).some((t) => t.includes(`(${theme}).`)), `${theme}: the thread is in it`);
 
   // a read-only reader: the board, no conversations, nothing written
   const R = await reader(b, S, { theme });

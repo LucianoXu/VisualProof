@@ -202,6 +202,9 @@ async function boot(): Promise<void> {
   Object.assign(page, menuPart(page));
   Object.assign(page, notesPart(page));
   Object.assign(page, keysPart(page));
+  // the conversation window left open by the reader, open again now that every part is made: its
+  // thread is drawn with who the reader is (web/src/pagetalk.ts)
+  page.reopenTalk();
 
   // a handle for diagnosis from the console: window.visualproof.canvas
   // and the Time Machine's hook, as the build-status popover and the lost-and-found call it

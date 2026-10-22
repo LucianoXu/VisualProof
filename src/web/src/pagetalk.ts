@@ -19,6 +19,10 @@ import type { Page } from "./page.ts";
 export interface TalkPart {
   talk: Talk;
   chipFor: (url: string) => Chip | null;
+  /** The conversation window opened again where the reader left it open: by web/src/main.ts once
+   *  every part is made, since the window, opened, draws its thread with parts made after this one
+   *  (page.talk, page.people). */
+  reopenTalk: () => void;
 }
 
 export function talkPart(page: Page): TalkPart {
@@ -98,8 +102,10 @@ export function talkPart(page: Page): TalkPart {
     $("#talk-notice").hidden = true;
     talk.open(noticeOf);
   });
-  // left open by the reader: open again, as they left it
-  if (store.data.chatOpen && !talkBtn.hidden) page.chatWin.show();
+  // left open by the reader: open again, as they left it (reopenTalk, once the page has its parts)
+  const reopenTalk = () => {
+    if (store.data.chatOpen && !talkBtn.hidden) page.chatWin.show();
+  };
   /** A link of this site's chip (CollabSpec decision 13, web/src/chatlinks.ts): named by what the page
    *  knows — a view's title, a note's words; null for any other link and one it cannot read. */
   const chipFor = (url: string): Chip | null => {
@@ -115,5 +121,5 @@ export function talkPart(page: Page): TalkPart {
     });
   };
 
-  return { talk, chipFor };
+  return { talk, chipFor, reopenTalk };
 }
