@@ -5,6 +5,10 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.8.2
+
+- Load a page left with its conversation window open: since 0.7.0 it stopped while it was made, in every browser.
+
 ## 0.8.1
 
 - Grow a followed reader's click where it was: the ring swept across the follower's screen.

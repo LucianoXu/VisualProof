@@ -2,9 +2,11 @@
 // side panel; what the browser keeps of it read back, the invalid included; the pill's excerpt of a
 // message (web/src/talk.ts); a new conversation's fold, and when one may be started (the owner's
 // decision of 2026-10-11). Its geometry, moved and resized, is the floating windows'
-// (test/floatwin.test.ts). The following strip stepping aside from it.
+// (test/floatwin.test.ts). The following strip stepping aside from it. Left open, it opens again
+// once the page has its parts.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { defaultRect, DEFAULT, FOOT, MIN, restore, STRIP_GAP, stripAside } from "../src/web/src/chatwin.ts";
 import { EDGE, readPlace } from "../src/web/src/floatwin.ts";
@@ -91,4 +93,20 @@ test("the following strip steps aside from the window rather than cover its box"
   assert.deepEqual(stripAside(ps, dock, phone), { x: ps.x, y: dock.y - STRIP_GAP - ps.h });
   // nowhere clear: it stays
   assert.equal(stripAside(ps, { x: 0, y: 0, w: 390, h: 844 }, phone), null);
+});
+
+test("a window left open opens again once the page has its parts, so that a page left with it open reloads", () => {
+  // opened, it draws its thread with page.talk and page.people, which the conversations' part and the
+  // one after it give: opened while the conversations' part was made, it threw, and every reload of a
+  // page left with it open stopped there, the loader on the screen (the owner's report of 2026-10-22)
+  const read = (f: string) => readFileSync(new URL(`../src/web/src/${f}`, import.meta.url), "utf8");
+  const talk = read("pagetalk.ts");
+  assert.match(talk, /const reopenTalk = \(\) => \{\s*if \(store\.data\.chatOpen && !talkBtn\.hidden\) page\.chatWin\.show\(\);\s*\};/);
+  assert.equal(talk.match(/page\.chatWin\.show\(/g)?.length, 2, "the window opens by the button and by reopenTalk alone");
+  const main = read("main.ts");
+  const first = main.indexOf("page.nav.select(first");
+  const reopen = main.indexOf("page.reopenTalk();");
+  const parts = [...main.slice(0, first).matchAll(/Object\.assign\(page, (?:await )?\w+Part\(page\)\)/g)];
+  assert.ok(parts.length > 10 && reopen > 0 && reopen < first, "reopened before the first view is shown");
+  assert.ok(parts.every((m) => m.index! < reopen), "reopened once every part is made");
 });
