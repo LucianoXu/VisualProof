@@ -1,13 +1,15 @@
 # VisualProof
 
-<p align="center">
-  <a href="https://github.com/math-inc/Sphere-Packing-Lean"><img src="docs/images/artwork-sphere-packing.webp" width="19%" alt="Sphere Packing"></a>
-  <a href="https://github.com/leanprover-community/flt-regular"><img src="docs/images/artwork-flt-regular.webp" width="19%" alt="FLT Regular"></a>
-  <a href="https://github.com/AlexKontorovich/PrimeNumberTheoremAnd"><img src="docs/images/artwork-prime-numbers.webp" width="19%" alt="Prime Numbers"></a>
-  <a href="https://github.com/openai/NavierStokesAndEuler"><img src="docs/images/artwork-navier-stokes.webp" width="19%" alt="Navier–Stokes"></a>
-  <a href="https://github.com/cedar-policy/cedar-spec"><img src="docs/images/artwork-cedar.webp" width="19%" alt="Cedar"></a>
-</p>
-<p align="center"><sub>Five Lean codebases, drawn by <code>visualproof artwork</code>.</sub></p>
+<table align="center">
+  <tr>
+    <td align="center" valign="top"><a href="docs/images/artwork-sphere-packing-full.webp?raw=true"><img src="docs/images/artwork-sphere-packing.webp" width="134" alt="Sphere Packing"></a><br><sub><a href="https://github.com/math-inc/Sphere-Packing-Lean">Sphere-Packing-Lean</a></sub></td>
+    <td align="center" valign="top"><a href="docs/images/artwork-flt-regular-full.webp?raw=true"><img src="docs/images/artwork-flt-regular.webp" width="134" alt="FLT Regular"></a><br><sub><a href="https://github.com/leanprover-community/flt-regular">flt-regular</a></sub></td>
+    <td align="center" valign="top"><a href="docs/images/artwork-prime-numbers-full.webp?raw=true"><img src="docs/images/artwork-prime-numbers.webp" width="134" alt="Prime Numbers"></a><br><sub><a href="https://github.com/AlexKontorovich/PrimeNumberTheoremAnd">PrimeNumberTheoremAnd</a></sub></td>
+    <td align="center" valign="top"><a href="docs/images/artwork-navier-stokes-full.webp?raw=true"><img src="docs/images/artwork-navier-stokes.webp" width="134" alt="Navier–Stokes"></a><br><sub><a href="https://github.com/openai/NavierStokesAndEuler">NavierStokesAndEuler</a></sub></td>
+    <td align="center" valign="top"><a href="docs/images/artwork-cedar-full.webp?raw=true"><img src="docs/images/artwork-cedar.webp" width="134" alt="Cedar"></a><br><sub><a href="https://github.com/cedar-policy/cedar-spec">cedar-spec</a></sub></td>
+  </tr>
+</table>
+<p align="center"><sub>Five Lean codebases, drawn by <code>visualproof artwork</code>. A poster opens at its full size, A2 at 300 dpi.</sub></p>
 
 https://github.com/user-attachments/assets/5d090578-ba18-493f-83d9-7529bcbc689c
 

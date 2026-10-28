@@ -106,7 +106,8 @@ then written as WebP by ImageMagick. The same build, site and recipes make the s
 README's pictures again. The five posters (`docs/images/artwork-*.webp`) are each a recipe the
 script holds, drawn by this checkout's `visualproof artwork` without a site from a project of the
 table above, built at its commit (`--cedar` is cedar-spec's checkout, whose `cedar-lean` is drawn),
-then 640 pixels wide. The board (`docs/images/board.webp`) is the flt-regular showcase served by this
+then 640 pixels wide, and at its full size (`artwork-*-full.webp`), which the README's poster opens.
+The board (`docs/images/board.webp`) is the flt-regular showcase served by this
 checkout on a copy of its site (`--showcase`, its build at `b8a5f23`), Alice's page in the middle of
 the review taken in a headless Chromium, 1440 × 900 at twice the pixels; its dates are the page's,
 on the real clock. Only the pictures asked for need their checkouts; the board needs Playwright, as
