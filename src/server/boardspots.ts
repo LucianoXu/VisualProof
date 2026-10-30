@@ -176,7 +176,7 @@ export function boardSpots(b: BoardSource): BoardSpots {
     const why = itemWhy(n, view, nb, exists, links);
     place(n, "project", why ? itemSpot(n, nb, exists, linkedOn(n, nb, links)) : null);
   }
-  for (const n of rec.notes ?? []) place(n, "view", viewSpot(n, nb, (key) => index.get(key) ?? -1));
+  for (const n of rec.notes ?? []) place(n, "view", viewSpot(n, nb, (key) => index.get(key) ?? -1, exists));
   // in the order they were written, which is the order of those level on the board: the notes that
   // point nowhere on the ring, at its top
   notes.sort((x, y) => (x.note.at < y.note.at ? -1 : x.note.at > y.note.at ? 1 : 0));

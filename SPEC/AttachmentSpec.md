@@ -131,7 +131,8 @@ drawn and moved is CanvasSpec's ("Notes"); a view note is ViewSpec decision 23.
     order written, clockwise from the top. A note shown on a board that does not draw its cluster
     (added or linked), or at the top level, points toward what it carries a file linked to on this
     board, else as above. One let go on the ring keeps that angle as its place. An attached note is at
-    its declaration where the board holds it, else on the ring toward its links. Crowded notes go on
+    its declaration where the board holds it, else on the ring toward its links; its declaration
+    gone from the build, on the ring toward where it was (decision 18). Crowded notes go on
     further concentric rings near their angle; the ring is the layout's, never kept, and the same at
     a given zoom. Hovering a ring note lights nothing on the board.
 17. **Items belong to views as declarations do.** An item is a note of the project.
@@ -154,8 +155,14 @@ drawn and moved is CanvasSpec's ("Notes"); a view note is ViewSpec decision 23.
     one other cluster (a folder or namespace renamed) moves the note with them; otherwise it is in
     the nearest surviving cluster around it, at its spot, or on the ring; never in a same-named
     cluster of the other clustering. **When its declaration is gone**: the attachment follows a
-    rename at the same offset (HistorySpec decision 8) and goes back with an un-move; with no rename,
-    the note is where its places put it.
+    rename at the same offset (HistorySpec decision 8) and goes back with an un-move; with no rename
+    (the owner's decision of 2026-10-30), the note, of either kind, is on the ring, still attached,
+    at the angle of the cluster its place had it in — the innermost still there that holds a
+    declaration of the board, under the board's clustering, else the other; else toward its links,
+    else in the order written — rather than at a spot that now holds other things. Its tooltip and
+    card say which declaration, "not in this build". It is shown on the boards its places show it on,
+    is at the declaration again should that come back (a revert, a later rename), and a drag places
+    it as a free note, detached.
 19. **Folds and hidden levels**: a note in a folded cluster, or attached to a declaration (or a
     visitor) a fold hides, is hidden and counted on the outermost folded cluster. A note in a hidden
     level is in the nearest drawn cluster around it (ViewSpec decision 24); an attached one stays at

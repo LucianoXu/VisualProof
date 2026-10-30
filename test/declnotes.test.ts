@@ -3,7 +3,7 @@
 // kept by every operation, the switch between kinds and the store; its offset a place on the board,
 // in its units; attaching and detaching by a drop; shown wherever the declaration is, under both
 // clusterings, a visitor counting and a past board reading that build's names; renames followed, and
-// the fallback when the declaration is gone; agents attaching and detaching; the dot/icon rule, one
+// the ring when the declaration is gone (the owner's decision of 2026-10-30); agents attaching and detaching; the dot/icon rule, one
 // for a cluster's notes and the notes attached to its declarations (shared/notecard.ts); the layer's
 // stacking, cards over icons.
 
@@ -322,7 +322,7 @@ test("shown wherever the declaration is, under both clusterings: a visitor count
   assert.equal(viewSpot(v, nb, (k) => (k === "N.B" ? 0 : -1)).at, "offset", "its declaration off the board: its place");
 });
 
-test("renames followed; the declaration gone with no rename, the note falls back to the nearest cluster of its places, or the ring", () => {
+test("renames followed; the declaration gone with no rename, the note is on the ring, still attached, toward the nearest cluster of its places, back at the declaration when it returns", () => {
   const dir = mkdtempSync(join(tmpdir(), "vp-declnotes-"));
   try {
     const events: StoredEvent[] = [];
@@ -343,16 +343,40 @@ test("renames followed; the declaration gone with no rename, the note falls back
     views.unmoveDeclaration("N.A.t", "N.A.t2", moved, "Alice");
     assert.equal(views.book.notes[0].decl?.name, "N.A.t");
     assert.equal(views.book.project().notes![0].decl?.name, "N.A.t");
-    // gone with no rename: its places stand, the nearest cluster of them that is left
+    // gone with no rename (the owner's decision of 2026-10-30): on the ring, still attached, toward
+    // the innermost cluster of its places that is left, shown where its places show it
     const gone = NODES.slice(1);
     const ex = existsIn(gone);
     const n = views.book.notes[0];
     assert.equal(declOf(n, board(gone, "namespace"), ex), "gone");
-    assert.deepEqual(itemSpot(n, board(gone, "namespace"), ex).at, "cluster");
+    assert.deepEqual(itemSpot(n, board(gone, "namespace"), ex), { at: "ring", angle: null, about: { mode: "namespace", key: "N.A" }, gone: "N.A.t" });
     assert.equal(itemWhy(n, { all: false }, board(gone, "namespace"), ex, new Map()), "cluster");
-    // none of its clusters left either: the ring
+    assert.deepEqual(n.decl, { name: "N.A.t", at: [30, -40] }, "still attached");
+    // N.A gone too: toward N, around it
+    const less = NODES.slice(2).map((d) => ({ ...d, name: d.name.replace("N.B.", "N.") }));
+    assert.deepEqual(itemSpot(n, board(less, "namespace"), existsIn(less)), { at: "ring", angle: null, about: { mode: "namespace", key: "N" }, gone: "N.A.t" });
+    // with no place under the board's clustering, toward its cluster under the other
+    const placedByModule = { ...n, places: { module: { in: [["N.A", 0.1, 0.1]] as [string, number, number][] } } };
+    assert.deepEqual(itemSpot(placedByModule, board(gone, "namespace"), ex).about, { mode: "module", key: "N.A" });
+    // none of its clusters left either: the ring, in the order written, toward what it carries a file
+    // linked to where it does
     const far = [{ name: "M.z", kind: "def", module: "M", ax: 0 }] as ViewNode[];
-    assert.equal(itemSpot(n, board(far, "namespace"), existsIn(far)).at, "ring");
+    assert.deepEqual(itemSpot(n, board(far, "namespace"), existsIn(far)), { at: "ring", angle: null, about: null, gone: "N.A.t" });
+    assert.deepEqual(itemSpot(n, board(far, "namespace"), existsIn(far), ["decl(M.z)"]).about, { links: ["decl(M.z)"] });
+    // a view note alike, toward the cluster its place had it in; where the graph is not asked, its
+    // place stands as before
+    const v = views.book.project().notes![0];
+    const index = (nodes: ViewNode[]) => {
+      const L = clusterTree("namespace", nodes) as unknown as Layout;
+      const keys = new Map(L.clusters.map((c, k) => [c.key, k]));
+      return (key: string) => keys.get(key) ?? -1;
+    };
+    assert.deepEqual(viewSpot(v, board(gone, "namespace"), index(gone), ex), { at: "ring", angle: null, about: { mode: "namespace", key: "N.B" }, gone: "N.A.t" });
+    assert.equal(viewSpot(v, board(gone, "namespace"), index(gone)).at, "offset");
+    // it comes back: at the declaration again, both kinds
+    const back = board(NODES, "namespace");
+    assert.equal(itemSpot(n, back, existsIn(NODES)).at, "decl");
+    assert.equal(viewSpot(v, back, index(NODES), existsIn(NODES)).at, "decl");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

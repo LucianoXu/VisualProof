@@ -87,7 +87,9 @@ function spotShown(s: NoteSpot | null, B: Board): Record<string, unknown> | null
   if (s.at === "offset") return { cluster: B.L.clusters[s.c].key, offset: s.d };
   if (s.at === "world") return { spot: [s.x, s.y] };
   const about = !s.about ? null : "links" in s.about ? { links: s.about.links } : { clustering: s.about.mode, cluster: s.about.key };
-  return { ring: s.angle, about };
+  // `gone`: the declaration it is attached to, which this build does not have (the owner's decision
+  // of 2026-10-30)
+  return { ring: s.angle, about, ...(s.gone ? { gone: s.gone } : {}) };
 }
 
 /** what `why` says of a note of the project on a board, for an agent */
@@ -117,7 +119,7 @@ export function noteEndpoints(world: World, refuse: (c: Caller, need: Need) => A
   };
   const graph = () => graphOf(world) ?? fail(503, "The graph has not been read yet.", "The server is reading the project; ask again in a few seconds.", { retryAfter: 5 }, { "retry-after": "5" });
   /** whether a key is a cluster of the graph on show by a clustering, and whether a name is one of
-   *  its declarations (where a note attached to one falls back to its places when it is gone) */
+   *  its declarations (a note attached to one that is gone is on the ring) */
   const keys = new WeakMap<object, Partial<Record<ClusterMode, Set<string>>>>();
   const exists = (g: Graph): Exists => {
     const f: Exists = (m, key) => {
@@ -195,7 +197,7 @@ export function noteEndpoints(world: World, refuse: (c: Caller, need: Need) => A
     }
     const s = n as StickyNote;
     const index = new Map(B?.L.clusters.map((c, k) => [c.key, k]) ?? []);
-    return { ...base, view, clustering: s.place.mode, here: B ? spotShown(viewSpot(s, B.nb, (key) => index.get(key) ?? -1), B) : null };
+    return { ...base, view, clustering: s.place.mode, here: B ? spotShown(viewSpot(s, B.nb, (key) => index.get(key) ?? -1, exists(graphOf(world)!.g)), B) : null };
   };
   /** Apply operations to view `v`'s notes, or the project's, as the agent's, through the path a
    *  page's take. */
@@ -330,7 +332,7 @@ export function noteEndpoints(world: World, refuse: (c: Caller, need: Need) => A
    *  (its spot in its cluster, else its point on the ring). */
   const restOn = (kind: "project" | "view", n: ProjectNote | StickyNote, B: Board): [number, number] | null => {
     const index = new Map(B.L.clusters.map((c, k) => [c.key, k]));
-    const s = kind === "project" ? projectHere(n as ProjectNote, B)?.spot : viewSpot(n as StickyNote, B.nb, (key) => index.get(key) ?? -1);
+    const s = kind === "project" ? projectHere(n as ProjectNote, B)?.spot : viewSpot(n as StickyNote, B.nb, (key) => index.get(key) ?? -1, exists(graphOf(world)!.g));
     if (!s) return null;
     // attached to a declaration: at its offset from the point, a place on the board, as the page
     // draws it at rest
