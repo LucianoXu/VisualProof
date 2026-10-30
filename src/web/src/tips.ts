@@ -335,7 +335,7 @@ export const TIPS: Tip[] = [
     id: "follow",
     group: "together",
     title: "Follow someone",
-    text: "Click someone's initials to see what they see: their view, camera, selection and windows. Anything you change ends it, and so does Esc.",
+    text: "Click someone's initials to see what they see: their view, camera, selection and windows. Anything you change ends it, and <b>Follow again</b> in the strip takes you back; Esc stops it.",
     who: "all",
     where: "both",
     since: "0.1.0",

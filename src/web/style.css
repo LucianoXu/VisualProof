@@ -1243,6 +1243,9 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
   color: var(--text-2); cursor: pointer; width: 22px; height: 22px; border-radius: 6px;
 }
 .fl-strip button:hover, .cv-head > button:hover, .fl-pill > button[data-cv-close]:hover { background: var(--code-bg); color: var(--text); }
+/* following ended by the reader's own move: the dot hollow, and Follow again, edged in their colour */
+#following.again .dot { background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
+.fl-strip .fl-again { width: auto; height: 24px; padding: 0 10px; border: 1px solid var(--c); color: var(--text); font: 600 12px var(--font); }
 /* a window's pill and edges show only where the window says (the source windows', the conversation's) */
 .fl-pill, .fl-rz { display: none; }
 .peer.offline { filter: grayscale(1); opacity: 0.45; }

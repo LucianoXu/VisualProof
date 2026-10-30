@@ -56,12 +56,12 @@ export function talkPart(page: Page): TalkPart {
     peers: () => page.people.peers,
     resolve: resolveName,
     go: (name) => {
-      page.people.unfollow();
+      page.people.leave();
       const i = page.g.byName.get(name);
       if (i !== undefined) page.go(i);
     },
     open: (hash) => {
-      page.people.unfollow();
+      page.people.leave();
       page.openAddress(hash);
     },
     chip: (url) => chipFor(url),
