@@ -20,8 +20,9 @@ view.
 - **Attached** (`decl`, either kind): placed at the declaration under every clustering, shown on
   every board holding it, its icon at its offset (closer on screen as the zoom goes out) with a
   dashed leader; a dot while the declaration's cluster is too small on screen. A rename
-  carries it; with the declaration gone otherwise, it falls back to its places beside it in its own
-  cluster under both clusterings.
+  carries it; with the declaration gone otherwise, it stays attached on the board's ring, toward the
+  cluster the declaration was in (`here`: `{"ring": null, "about": …, "gone": "<its name>"}`), and
+  is at the declaration again if it comes back.
 
 ```json
 { "text": "every use of `MyProject.Example.halve` in the rounding layer assumes rounding down",

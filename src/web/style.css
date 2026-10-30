@@ -2605,6 +2605,10 @@ kbd {
 .sticky.vnote.hanging .sk-card { box-shadow: var(--shadow-lg); }
 .sk-view { width: 12px; height: 12px; flex: none; color: var(--note-icon); }
 .sk-whose { margin-top: 2px; font-size: 11px; color: var(--note-mute); display: flex; align-items: center; gap: 3px; }
+/* attached to a declaration this build does not have, on the ring (the owner's decision of 2026-10-30):
+   which, its full name broken anywhere */
+.sk-gone { display: block; overflow-wrap: anywhere; }
+.sk-gone code { font-size: 10.5px; }
 /* a note on the ring around the board (decision 16): what it is about is lit while the pointer is on
    it, on this layer under the notes */
 .sticky.ring:hover .sk-card { box-shadow: 0 0 0 1px var(--note-icon), var(--shadow); }

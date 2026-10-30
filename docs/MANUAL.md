@@ -551,7 +551,10 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   board, on the side of what it is about (hover it to light those declarations), its card hanging
   outward, until you drag it into a cluster there; let go where no cluster is, it goes on the ring at
   that angle. A build that
-  renames its folder or namespace carries it along. *Add a note for this view* writes a note of that
+  renames its folder or namespace carries it along. Dropped on a declaration, a note is attached to
+  it: beside its point on every board that holds it, following its renames; a build without it (no
+  rename found) leaves the note on the ring toward where it was, its card saying which declaration is
+  not in this build, until it comes back or you drag the note elsewhere. *Add a note for this view* writes a note of that
   view alone, drawn with a dashed ring and edge; a note's menu makes it *Only in this
   view* or *In every view*, keeping its text and author. A folded cluster hides its notes and shows
   how many. A click on the icon expands or collapses a note, for everyone; zoomed out, only the

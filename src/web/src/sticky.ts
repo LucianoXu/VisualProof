@@ -517,7 +517,7 @@ export class Stickies {
       };
       const all: { kind: NoteKind; note: ProjectNote | StickyNote; spot: NoteSpot | null; why: ItemWhy | null }[] = [
         ...project.map((n) => ({ kind: "project" as const, note: n, ...projectSpot(n) })),
-        ...view.map((n) => ({ kind: "view" as const, note: n, spot: viewSpot(n, nb, (key) => index.get(key) ?? -1) as NoteSpot | null, why: null })),
+        ...view.map((n) => ({ kind: "view" as const, note: n, spot: viewSpot(n, nb, (key) => index.get(key) ?? -1, exists) as NoteSpot | null, why: null })),
       ];
       for (const { kind, note: n, spot, why } of all) {
         if (!spot || keep.has(n.id)) continue;
@@ -601,17 +601,20 @@ export class Stickies {
   }
 
   /** What the pointer on an icon says: the note's first line, what it carries, whose it is, what it is
-   *  about on the ring, and what a click does. */
+   *  about on the ring — or the declaration it is attached to, there because this build does not
+   *  have it —, and what a click does. */
   private iconTitle(n: ProjectNote | StickyNote, own: boolean, spot: NoteSpot, why: ItemWhy | null): string {
     const cs = n.carries ?? [];
     const carried = cs.length ? ` — carries ${cs.map((c) => this.carryWords(c)).join("; ")}` : "";
     const whose = own ? " — only in this view" : why === "added" ? " — added to this view" : "";
-    const about = spot.at === "ring" && spot.about ? ` — ${aboutWords(spot.about)}` : spot.at === "decl" ? ` — attached to ${spot.name}` : "";
+    const about = spot.at === "ring" && spot.gone ? ` — attached to ${spot.gone}, not in this build` : spot.at === "ring" && spot.about ? ` — ${aboutWords(spot.about)}` : spot.at === "decl" ? ` — attached to ${spot.name}` : "";
     const first = noteExcerpt(n.text.split("\n").find((l) => l.trim()) ?? n.text, 120);
     return `${first}${carried}${whose}${about}`;
   }
 
-  /** A note's card: its text, what it carries, who wrote it, and, for a view's own (`own`), whose it is. */
+  /** A note's card: its text, what it carries, who wrote it, for a view's own (`own`) whose it is, and,
+   *  on the ring because this build does not have the declaration it is attached to, which that is
+   *  (the owner's decision of 2026-10-30). */
   private cardHtml(n: ProjectNote | StickyNote, own: boolean, spot: NoteSpot): string {
     // someone invited by a personal link under the name they go by now, with its ✓ (CollabSpec
     // decision 9)
@@ -623,6 +626,7 @@ export class Stickies {
     // a view note says whose it is: the view's mark, and "only in this view" rather than the view's
     // name, as it is only ever drawn on its own view's board (the owner's decision of 2026-10-12)
     const whose = own ? `<div class="sk-whose">${VIEW_MARK}only in this view</div>` : "";
+    const gone = spot.at === "ring" && spot.gone ? `<div class="sk-whose sk-gone">attached to <code>${escapeHtml(spot.gone)}</code>, not in this build</div>` : "";
     const words = spot.at === "ring" && spot.about ? aboutWords(spot.about) : "";
     const about = words ? `${words.charAt(0).toUpperCase()}${words.slice(1)}` : "";
     const cs = n.carries ?? [];
@@ -630,7 +634,7 @@ export class Stickies {
     return (
       `<div class="sk-text"${about ? ` title="${escapeHtml(about)}"` : ""}>${renderMarkdown(n.text, (name) => this.hooks.resolve(name))}</div>` +
       (cs.length ? `<div class="sk-carries">${cs.map((c, k) => this.carryHtml(c, k, w)).join("")}</div>` : "") +
-      `<div class="sk-by">${by}${edited}</div>${whose}`
+      `<div class="sk-by">${by}${edited}</div>${whose}${gone}`
     );
   }
 

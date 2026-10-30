@@ -35,10 +35,11 @@
 //   declaration wherever the board holds it — a reader's visitor counts — under every clustering,
 //   and a board that holds the declaration shows a note of the project attached to it (the derived
 //   clause of items). A board of a past build reads the declaration by its name in that build. Where
-//   the board's graph does not have the declaration (gone, with no rename carrying the note), its
-//   places stand instead, as any note's do (decision 18); where the graph has it but the board does
-//   not, a note of the project shows only where it is linked or added, on the ring, and a view note
-//   where its place puts it.
+//   the board's graph does not have the declaration (gone, with no rename carrying the note), the note
+//   is on the ring, still attached, toward the cluster its place had it in (the owner's decision of
+//   2026-10-30), shown on the boards its places show it on (decision 18), and at the declaration
+//   again should it come back; where the graph has it but the board does not, a note of the project
+//   shows only where it is linked or added, on the ring, and a view note where its place puts it.
 //
 // A key is never matched across clusterings: a namespace and a folder may share a key.
 
@@ -164,8 +165,9 @@ export type NoteSpot =
   /** a view note on the canvas, at a spot of the board's world */
   | { at: "world"; x: number; y: number }
   /** on the ring: at an angle where it was let go (degrees clockwise from the top), or null: at the
-   *  angle of what it is about, else in the order notes were written */
-  | { at: "ring"; angle: number | null; about: About };
+   *  angle of what it is about, else in the order notes were written; `gone`, the declaration it is
+   *  attached to, where the board's graph does not have it */
+  | { at: "ring"; angle: number | null; about: About; gone?: string };
 
 /** The links of the library by the file they point into: each file's subjects (`decl(X)`, `ns(P)`,
  *  `file(P)`), in the order the links were made, once each. */
@@ -333,16 +335,20 @@ export function itemsShownOn(
 
 /** Where project note `n` is on board `b`, which shows it (itemWhy): at the declaration it is
  *  attached to, where the board holds it (a visitor counts); attached to one the board's graph has
- *  but the board does not, on the ring, toward what it carries a file linked to on this board; else,
- *  attached to none or its declaration gone, in its cluster under the board's clustering where the
- *  board draws it; else on the ring — at the angle where it was let go, else toward what it carries
- *  a file linked to on this board (`linked`, linkedOn), else about its cluster under the other
- *  clustering where that holds a declaration of the board (decision 16), else in the order notes were
- *  written. */
+ *  but the board does not, on the ring, toward what it carries a file linked to on this board;
+ *  attached to one the graph does not have (gone), on the ring, toward the cluster its places had it
+ *  in (placedAbout), else toward what it carries a file linked to; else, attached to none, in its
+ *  cluster under the board's clustering where the board draws it; else on the ring — at the angle
+ *  where it was let go, else toward what it carries a file linked to on this board (`linked`,
+ *  linkedOn), else about its cluster under the other clustering where that holds a declaration of
+ *  the board (decision 16), else in the order notes were written. */
 export function itemSpot(n: ProjectNote, b: NoteBoard, exists: Exists, linked: readonly string[] = []): NoteSpot {
   const at = declOf(n, b, exists);
   if (at && typeof at === "object") return { at: "decl", j: at.j, name: at.name, d: [n.decl!.at[0], n.decl!.at[1]] };
   if (at === "off") return { at: "ring", angle: null, about: linked.length ? { links: [...linked] } : null };
+  // its declaration gone, no rename carrying it (the owner's decision of 2026-10-30): on the ring,
+  // still attached, where the declaration was rather than at a spot that now holds other things
+  if (at === "gone") return { at: "ring", angle: null, about: placedAbout(n.places, b, exists) ?? (linked.length ? { links: [...linked] } : null), gone: n.decl!.name };
   const m = b.mode;
   const place = n.places[m];
   const h = holderOf(place, m, exists);
@@ -367,6 +373,21 @@ export function itemSpot(n: ProjectNote, b: NoteBoard, exists: Exists, linked: r
   return { at: "ring", angle: place && "ring" in place ? place.ring : null, about };
 }
 
+/** What a note on the ring whose declaration is gone is about (the owner's decision of 2026-10-30):
+ *  the cluster its place puts it in — the innermost of its keys that is still a cluster and holds a
+ *  declaration of board `b` —, under the board's clustering, else under the other; null where none
+ *  does. A note attached to a declaration has its places beside it (declPlace), so this is where the
+ *  declaration was. */
+export function placedAbout(places: Partial<Record<ClusterMode, ClusterPlace>>, b: Pick<NoteBoard, "mode" | "on">, exists: (mode: ClusterMode, key: string) => boolean): About {
+  for (const m of [b.mode, otherMode(b.mode)]) {
+    const p = places[m];
+    if (!p || !("in" in p)) continue;
+    const key = p.in.map((e) => e[0]).find((k) => exists(m, k) && b.on[m].has(k));
+    if (key) return { mode: m, key };
+  }
+  return null;
+}
+
 /** The declarations of board `b` a note on the ring is about, in the board's numbering: those of
  *  its cluster, or those its files are linked to — a declaration, or what a namespace or a folder
  *  holds on the board. */
@@ -385,20 +406,23 @@ export function aboutMembers(b: NoteBoard, about: About): number[] {
 }
 
 /** Where view note `n` is on its board `b`: at the declaration it is attached to, where the board
- *  holds it (a visitor counts), under every clustering; else under its own clustering as it always
- *  was, by the keys of the layout drawn (`index`); under the other, on the ring about the innermost
- *  cluster of its place that holds a declaration of the board. */
-export function viewSpot(n: StickyNote, b: NoteBoard, index: (key: string) => number): NoteSpot {
-  const at = declOf(n, b, NO_GRAPH);
+ *  holds it (a visitor counts), under every clustering; attached to one the board's graph does not
+ *  have (`exists`; unknown, it is taken to be there), on the ring about the innermost cluster of its
+ *  place that holds a declaration of the board (the owner's decision of 2026-10-30); else under its
+ *  own clustering as it always was, by the keys of the layout drawn (`index`); under the other, on
+ *  the ring about that cluster. */
+export function viewSpot(n: StickyNote, b: NoteBoard, index: (key: string) => number, exists: Exists = NO_GRAPH): NoteSpot {
+  const at = declOf(n, b, exists);
   if (at && typeof at === "object") return { at: "decl", j: at.j, name: at.name, d: [n.decl!.at[0], n.decl!.at[1]] };
+  const key = n.place.in.map((e) => e[0]).find((k) => b.on[n.place.mode].has(k));
+  const about: About = key ? { mode: n.place.mode, key } : null;
+  if (at === "gone") return { at: "ring", angle: null, about, gone: n.decl!.name };
   const r = resolvePlace(n.place, b.mode, index);
   if (r) return r.c >= 0 ? { at: "offset", c: r.c, d: [r.dx, r.dy] } : { at: "world", x: r.dx, y: r.dy };
-  const key = n.place.in.map((e) => e[0]).find((k) => b.on[n.place.mode].has(k));
-  return { at: "ring", angle: null, about: key ? { mode: n.place.mode, key } : null };
+  return { at: "ring", angle: null, about };
 }
 
-/** what a view note's attachment reads where the graph is not asked: off the board or gone, its place
- *  stands all the same */
+/** what a view note's attachment reads where the graph is not asked: off the board, its place stands */
 const NO_GRAPH: Exists = () => true;
 
 /** The place under a layout's clustering of a note attached to declaration `i` of layout `L` (its
