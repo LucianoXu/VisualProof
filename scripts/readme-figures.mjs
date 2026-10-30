@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// The README's pictures, made again: the five posters (docs/images/artwork-*.webp), each drawn by
-// this checkout's `visualproof artwork` from a recipe this script holds, of a project of the corpus
+// The README's pictures, made again: the five posters (docs/images/artwork-*.webp, and each at its
+// full size, artwork-*-full.webp, which the README's poster opens), each drawn by this checkout's
+// `visualproof artwork` from a recipe this script holds, of a project of the corpus
 // (CONTRIBUTING.md, "Real projects") at its commit; and the board (docs/images/board.webp), the live
 // demo's page in the middle of a review, taken in a headless Chromium on the flt-regular showcase
 // served by this checkout. ImageMagick (`magick`, or `convert` before version 7) writes the WebP. A
@@ -35,7 +36,8 @@ import { fileURLToPath } from "node:url";
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // the posters (2026-10-15): A2 portrait, light, a border; the clusters to depth 1 and the targets
-// named; the main target's TCB lit, every edge drawn; the source in the foot; 640 px wide in the README
+// named; the main target's TCB lit, every edge drawn; the source in the foot; 640 px wide in the README,
+// and at their full size (A2 at 300 dpi) behind it
 const POSTER = { size: "a2", orientation: "portrait", theme: "light", border: true, edges: "all", lit: true, keys: false, notes: false, source: true };
 const POSTERS = [
   {
@@ -144,7 +146,7 @@ const kb = (path) => `${(statSync(path).size / 1024).toFixed(0)} KB`;
 const sleep = (ms) => new Promise((d) => setTimeout(d, ms));
 
 /** A poster: the recipe drawn by this checkout's `visualproof artwork` (no site: the board as a new
- *  site lays it out, the recipe's targets), then 640 px wide as WebP. */
+ *  site lays it out, the recipe's targets), then as WebP, 640 px wide and at its full size. */
 function poster(p, work) {
   const root = join(resolve(dirs[p.name]), p.sub ?? "");
   const head = headOf(root);
@@ -159,6 +161,9 @@ function poster(p, work) {
   const out = join(REPO, "docs", "images", `${p.name}.webp`);
   execFileSync(im, [`${png}.png`, "-resize", "640x", out]);
   console.log(`  docs/images/${p.name}.webp (${kb(out)})`);
+  const full = join(REPO, "docs", "images", `${p.name}-full.webp`);
+  execFileSync(im, [`${png}.png`, full]);
+  console.log(`  docs/images/${p.name}-full.webp (${kb(full)})`);
 }
 
 /** The board: the showcase served by this checkout on a new copy of its site, behind a key of its
