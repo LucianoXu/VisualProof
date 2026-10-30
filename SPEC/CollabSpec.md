@@ -357,6 +357,13 @@ selections and ripples (decision 4), which every press goes through.
   name's window or a menu, or does what it does in a field of the reader's own (the conversation's
   box, the search box).
 - It ends when the followed reader leaves ("Alice left").
+- **Follow again** (the owner's decision of 2026-10-30): ended by the reader's own action — a press,
+  the wheel, a key, Back or Forward, a link followed from the conversation —, the strip stays as
+  "Stopped following Alice · Follow again ✕", its dot hollow. Follow again follows the same reader,
+  as starting to follow does (decision 4); its ✕ puts it away. It stays until then, with no timer,
+  or until the reader follows anyone or the reader it names leaves. Esc, the strip's ✕ and the
+  followed initials clicked again mean to stop, and offer nothing; nor does following someone else,
+  or the followed reader leaving.
 
 ### What following leaves (PROPOSED 2026-10-17, for the owner's review)
 

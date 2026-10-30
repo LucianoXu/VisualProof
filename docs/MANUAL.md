@@ -1358,7 +1358,9 @@ what each one looks at stays their own.
   you start, gives way to it), with their settings, and the document they generate: its progress,
   then the same downloads, offered to you too. Changing any of these ends following, as acting on what
   you are shown does (a button of the panel, typing a comment, a setting of the Export window), and
-  Esc. Nothing of yours ends it:
+  Esc. Ended by something you did (not Esc or the strip's ✕), the strip stays, "Stopped following
+  Alice · **Follow again**": it takes you back to them, until you close it, follow someone or they
+  leave. Nothing of yours ends it:
   where windows sit, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
   Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
   selecting text, copying it, downloading the document the Export window offers. When it ends, what you were shown stays, yours: the Export window too,

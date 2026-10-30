@@ -256,7 +256,7 @@ export const YOURS = [
   // link followed from a message — the reader's own tool changing a followed part, which says so
   // itself (web/src/talk.ts) — and Esc; its button and a mention's notice open it
   { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
-  { id: "followingStrip", what: "the following strip: whom you follow, and its ✕", where: "#following", whole: true },
+  { id: "followingStrip", what: "the following strip: whom you follow, and its ✕; once following has ended by a move, Follow again", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
   // the downloads of a followed reader's Export window (the owner's decision of 2026-10-21): taking
   // the file is reading, as copying text is; every other control of the window ends following

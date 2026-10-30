@@ -7,7 +7,8 @@
 // menu follows it or talks with it (web/src/peermenu.ts), in the reader's own conversation window
 // (web/src/talk.ts), which following never opens, closes or changes (CollabSpec decision 13, the
 // owner's decisions of 2026-10-19). Offline, it is greyed, with when it was last seen. Following
-// someone shows the following strip, which says whom and stops it.
+// someone shows the following strip, which says whom and stops it; ended by the reader's own action,
+// it offers to follow them again (the owner's decision of 2026-10-30).
 //
 // A reader may be private (CollabSpec decision 8), from the menu under their name (web/src/whomenu.ts):
 // the page then says nothing of where they are — its heartbeat says only that it is here, and whom it
@@ -174,6 +175,10 @@ export class People {
   private store: Store;
   private hooks: PeopleHooks;
   private followed: { key: string; name: string } | null = null;
+  /** whom following last ended with by the reader's own action (the owner's decision of
+   *  2026-10-30): the strip offers to follow them again until the reader answers it, follows anyone,
+   *  or they leave */
+  private again: { key: string; name: string } | null = null;
   /** the followed reader's place as last gone to: their place again (a presence list that changed
    *  elsewhere) is not gone to again */
   private applied = "";
@@ -502,7 +507,7 @@ export class People {
         return this.unfollow();
       }
       if (!acts(e)) return;
-      this.unfollow();
+      this.leave();
     };
     // a request to follow that shows takes Esc first, as its Not now (web/src/askfollow.ts): listened
     // for before following's own Esc, so that it does not stop following too
@@ -518,7 +523,7 @@ export class People {
     );
     for (const ev of ["pointerdown", "wheel", "keydown", "dblclick"]) window.addEventListener(ev, stop, { capture: true });
     // Back and Forward move the reader however they come, a mouse's side button over the panel too
-    window.addEventListener("popstate", () => this.unfollow());
+    window.addEventListener("popstate", () => this.leave());
     $("#peers").addEventListener("click", (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>("[data-person]");
       if (!b) return;
@@ -526,9 +531,16 @@ export class People {
       // decision 10), talking with an agent (decision 13)
       if (!this.hooks.menu?.(b.dataset.person!, b)) this.follow(b.dataset.person!);
     });
-    // the strip's ✕ stops following
+    // the strip's ✕ stops following; once it has ended, Follow again follows the same reader, and ✕
+    // puts the offer away
     $("#following").addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).closest("[data-unfollow]")) this.unfollow();
+      const t = e.target as HTMLElement;
+      if (t.closest("[data-unfollow]")) this.unfollow();
+      else if (t.closest("[data-again]")) {
+        const key = this.again?.key;
+        this.dropAgain();
+        if (key) this.follow(key);
+      } else if (t.closest("[data-dismiss]")) this.dropAgain();
     });
     void this.beat();
   }
@@ -604,6 +616,8 @@ export class People {
     this.followersChanged();
     this.hooks.changed();
     this.hooks.roomChanged?.();
+    // the offer to follow again goes with the reader it names
+    if (this.again && !this.people().some((x) => x.key === this.again!.key)) this.dropAgain();
     if (!this.followed) return;
     const p = this.people().find((x) => x.key === this.followed!.key);
     if (!p) {
@@ -708,11 +722,13 @@ export class People {
     if (this.followed?.key === key) return this.unfollow();
     // from one reader straight to another: following the first ended
     if (this.followed) this.hooks.unfollowed();
+    this.again = null;
     this.followed = { key, name: this.nameOf(p) };
     this.applied = "";
     this.toldFollowing();
     const box = $("#following");
     box.style.setProperty("--c", this.colorOf(p));
+    box.classList.remove("again");
     this.renderStrip(p.agent);
     box.hidden = false;
     document.body.classList.add("following");
@@ -735,9 +751,40 @@ export class People {
       const strip = $(".fl-strip");
       strip.textContent = why;
       setTimeout(() => {
-        if (!this.followed) box.hidden = true;
+        if (!this.followed && !this.again) box.hidden = true;
       }, 2500);
     } else box.hidden = true;
+  }
+
+  /** Following ended by the reader's own action — a move, a control of what they were shown, Back or
+   *  Forward, a link followed from the conversation (CollabSpec decision 4): the strip stays, offering
+   *  to follow the same reader again (the owner's decision of 2026-10-30). Esc and the strip's ✕,
+   *  which mean to stop, end it without the offer, as the followed reader leaving does. */
+  leave(): void {
+    const was = this.followed;
+    if (!was) return;
+    this.unfollow();
+    const p = this.people().find((x) => x.key === was.key);
+    if (!p) return;
+    this.again = was;
+    const box = $("#following");
+    box.style.setProperty("--c", this.colorOf(p));
+    box.classList.add("again");
+    $(".fl-strip").innerHTML =
+      `<span class="dot"></span>${p.agent ? BOT : ""}<span class="fl-who">Stopped following <b>${escapeHtml(was.name)}</b></span>` +
+      `<button data-again type="button" class="fl-again">Follow again</button>` +
+      `<button data-dismiss type="button" title="Close" aria-label="Close">✕</button>`;
+    box.hidden = false;
+  }
+
+  /** Put the offer to follow again away. */
+  private dropAgain(): void {
+    if (!this.again) return;
+    this.again = null;
+    const box = $("#following");
+    box.classList.remove("again");
+    if (box.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+    if (!this.followed) box.hidden = true;
   }
 
   /** The strip: "Following X · Esc to stop", and its ✕. */
