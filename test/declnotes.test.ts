@@ -357,12 +357,12 @@ test("renames followed; the declaration gone with no rename, the note is on the 
     assert.deepEqual(itemSpot(n, board(less, "namespace"), existsIn(less)), { at: "ring", angle: null, about: { mode: "namespace", key: "N" }, gone: "N.A.t" });
     // with no place under the board's clustering, toward its cluster under the other
     const placedByModule = { ...n, places: { module: { in: [["N.A", 0.1, 0.1]] as [string, number, number][] } } };
-    assert.deepEqual(itemSpot(placedByModule, board(gone, "namespace"), ex).about, { mode: "module", key: "N.A" });
+    assert.deepEqual(itemSpot(placedByModule, board(gone, "namespace"), ex), { at: "ring", angle: null, about: { mode: "module", key: "N.A" }, gone: "N.A.t" });
     // none of its clusters left either: the ring, in the order written, toward what it carries a file
     // linked to where it does
     const far = [{ name: "M.z", kind: "def", module: "M", ax: 0 }] as ViewNode[];
     assert.deepEqual(itemSpot(n, board(far, "namespace"), existsIn(far)), { at: "ring", angle: null, about: null, gone: "N.A.t" });
-    assert.deepEqual(itemSpot(n, board(far, "namespace"), existsIn(far), ["decl(M.z)"]).about, { links: ["decl(M.z)"] });
+    assert.deepEqual(itemSpot(n, board(far, "namespace"), existsIn(far), ["decl(M.z)"]), { at: "ring", angle: null, about: { links: ["decl(M.z)"] }, gone: "N.A.t" });
     // a view note alike, toward the cluster its place had it in; where the graph is not asked, its
     // place stands as before
     const v = views.book.project().notes![0];
