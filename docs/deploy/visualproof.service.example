@@ -15,6 +15,8 @@ Wants=network-online.target
 Environment=PATH=%h/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
 # --jobs: how many modules the usage pass (notation, exact contexts) elaborates at once; about a
 # quarter of the cores: import is bound by memory bandwidth, and each worker takes 400 MB or more.
+# --lean-files: how many files Lean keeps open at once for hovers and the InfoView (2 by default);
+# each holds what its imports take, several GB on Mathlib: raise it with the memory to spare.
 # --host 0.0.0.0 with --access-key-file lets in only those given the link; put a proxy with TLS in
 # front of it (and give --public-url) when the server is reached over the internet.
 # --site: the site's folder: the review's logs and what this site accumulates (the history of

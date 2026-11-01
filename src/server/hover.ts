@@ -6,7 +6,8 @@
 // lakefile in the directory it was started from. Started elsewhere with the project's LEAN_PATH,
 // it reads the `.olean` files the owner's builds left and writes nothing (SPEC.md: "No .lake
 // conflict"). It elaborates the file it is asked about once, then answers hovers in milliseconds.
-// At most two files are kept open; the server stops after ten idle minutes. A file outside the
+// At most `--lean-files` files are kept open (two by default); the server stops after ten idle
+// minutes. A file outside the
 // project — a package's, Lean's core's, whose source the window shows too (the owner's decision of
 // 2026-10-20; server/outside.ts) — is opened by the same Lean in the same way: elaborated against
 // the `.olean` files of what it imports, nothing built.
@@ -89,7 +90,10 @@ interface Diagnostic {
 
 const SEVERITY: Message["severity"][] = ["error", "error", "warning", "information", "hint"];
 
-const KEEP_OPEN = 2;
+/** the files kept open at most, where the server is not told otherwise (`--lean-files`), and the
+ *  most it may be told */
+export const KEEP_OPEN = 2;
+export const MAX_LEAN_FILES = 16;
 const IDLE_MS = 10 * 60 * 1000;
 /** the longest a question waits for Lean's answer before it is answered that there was none */
 const REQUEST_MS = 5 * 60 * 1000;
@@ -223,12 +227,15 @@ export class LeanHover {
   /** what Lean last published about each document it has open: the version it is about, and the
    *  messages (a `#print` says what it prints so) */
   private diagnostics = new Map<string, { version: number | null; items: Diagnostic[] }>();
+  /** the files kept open at most (`--lean-files`) */
+  readonly keepOpen: number;
   /** what tells the RPC sessions they are still in use, while there is one */
   private alive: ReturnType<typeof setInterval> | null = null;
 
-  constructor(project: Project, cacheDir: string) {
+  constructor(project: Project, cacheDir: string, keepOpen = KEEP_OPEN) {
     this.project = project;
     this.dir = join(cacheDir, "lean-server");
+    this.keepOpen = Math.max(1, Math.floor(keepOpen));
   }
 
   /** The project's `lean` and LEAN_PATH, found once. */
@@ -490,7 +497,7 @@ export class LeanHover {
     this.idle.unref();
   }
 
-  /** Have Lean elaborate a file (its present text), keeping at most KEEP_OPEN open. */
+  /** Have Lean elaborate a file (its present text), keeping at most `keepOpen` open. */
   async open(file: HoverFile, text: string, hash: string): Promise<Doc> {
     await this.start();
     this.touch();
@@ -516,7 +523,7 @@ export class LeanHover {
       this.docs.set(rel, doc);
       this.notify("textDocument/didOpen", { textDocument: { uri, languageId: "lean4", version: 1, text } });
       // too many open: the one least recently asked about is closed
-      if (this.docs.size > KEEP_OPEN) {
+      if (this.docs.size > this.keepOpen) {
         const [old] = [...this.docs.entries()].filter(([k]) => k !== rel).sort((a, b) => a[1].used - b[1].used)[0];
         this.notify("textDocument/didClose", { textDocument: { uri: this.docs.get(old)!.uri } });
         this.diagnostics.delete(this.docs.get(old)!.uri);

@@ -81,7 +81,7 @@ test("the goals at a place: before and after its tactic, tagged; a subterm's typ
     const built = listing(join(dir, ".lake"));
     writeFileSync(join(dir, "Fixture", "Steps.lean"), STEPS);
     writeFileSync(join(dir, "Fixture", "Widget.lean"), WIDGET);
-    const hover = new LeanHover(openProject(dir, [], true), state);
+    const hover = new LeanHover(openProject(dir, [], true), state, 3);
     started = hover;
     // what the server tells Lean, to see what it lets go of
     const said: string[] = [];

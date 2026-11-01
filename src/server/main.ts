@@ -14,7 +14,7 @@ import { ProjectError, openProject, targetsInWords } from "./project.ts";
 import type { Project } from "./project.ts";
 import { Live } from "./live.ts";
 import { ReviewStore } from "./review.ts";
-import { LeanHover } from "./hover.ts";
+import { KEEP_OPEN, LeanHover } from "./hover.ts";
 import { Identities } from "./identity.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import { readProjectView, Views } from "./views.ts";
@@ -133,7 +133,8 @@ async function main(): Promise<void> {
   const review = new ReviewStore(project.root, dirs.site);
   const live = new Live(project, dirs, o.graph, review, o.editor, o.jobs);
   live.library.limit = o.libraryLimit;
-  const hover = new LeanHover(project, dirs.cache);
+  // hovers and the InfoView: at most --lean-files files open at once (ReviewSpec, "The InfoView")
+  const hover = new LeanHover(project, dirs.cache, o.leanFiles ?? KEEP_OPEN);
   const ids = new Identities(o.identityHeader);
   let key: { key: string; made: boolean } | null = null;
   try {

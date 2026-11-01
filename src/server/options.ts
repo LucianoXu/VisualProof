@@ -13,6 +13,7 @@ import { UPDATE_MODES } from "./updates.ts";
 import type { UpdateMode } from "./updates.ts";
 import { DEFAULT_JOBS } from "./usage.ts";
 import { invalidTemplate } from "../shared/editor.ts";
+import { KEEP_OPEN, MAX_LEAN_FILES } from "./hover.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
 
 export interface Options {
@@ -39,6 +40,9 @@ export interface Options {
   accessKeyFile: string | null;
   /** how many usage-pass workers run at once (server/usage.ts); 0: no pass */
   jobs: number;
+  /** --lean-files: how many files Lean's language server keeps open at once, for hovers and the
+   *  InfoView (server/hover.ts); null: KEEP_OPEN */
+  leanFiles: number | null;
   /** the server's address as people reach it, for the prompt Share makes for an agent; null: the
    *  address the person's browser used */
   publicUrl: string | null;
@@ -83,7 +87,7 @@ function usage(code = 2): never {
                                          [--mathlib-cache shared|own] [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
-                                         [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}]
+                                         [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}] [--lean-files ${KEEP_OPEN}]
                                          [--public-url https://host] [--allowed-host name]... [--library-limit GB]
                                          [--updates auto|notify|off]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
@@ -172,6 +176,12 @@ function usage(code = 2): never {
            short, fewer run at a time. The import of a module is bound by memory bandwidth: past
            about a quarter of the cores it gains little.
 
+  --lean-files  how many files Lean's language server keeps open at once for hovers and the
+           InfoView (default ${KEEP_OPEN}; 1 to ${MAX_LEAN_FILES}): each is elaborated once, then answered at once,
+           and the one least recently asked about is closed past this many. A file's worker holds
+           what its imports take — a few hundred MB, several GB on Mathlib (4.1 GB for a module of
+           Sphere-Packing-Lean) — for ten idle minutes at most.
+
   --access-key-file  let in only those given the link http://<host>:<port>/k/<key>, the key being
            what the file holds (one is made there, readable by its owner alone, if there is none).
            The link leaves a cookie in the browser; agents send Authorization: Bearer <key>.
@@ -235,7 +245,7 @@ export function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, leanFiles: null, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -285,6 +295,14 @@ export function parseArgs(argv: string[]): Options {
       const n = Number(val());
       if (!Number.isInteger(n) || n < 0 || n > 256) usage();
       o.jobs = n;
+    }
+    else if (a === "--lean-files" && cmd === "serve") {
+      const n = Number(val());
+      if (!Number.isInteger(n) || n < 1 || n > MAX_LEAN_FILES) {
+        console.error(`visualproof: --lean-files ${String(n).slice(0, 40)}: say how many files Lean keeps open at once, from 1 to ${MAX_LEAN_FILES}`);
+        process.exit(2);
+      }
+      o.leanFiles = n;
     }
     else if (a === "--branch" && cmd === "serve") o.branch = val();
     else if (a === "--poll" && cmd === "serve") {

@@ -39,6 +39,8 @@ WorkingDirectory=/var/lib/visualproof-<name>
 # --mathlib-cache own, Mathlib's cache the deployment's own, in its folder of the cache (about
 # 0.45 GB, the version of Mathlib checked out alone, removed with that folder) rather than the
 # user's.
+# --lean-files: how many files Lean keeps open at once for hovers and the InfoView (2 by default);
+# each holds what its imports take, several GB on Mathlib: raise it with the memory to spare.
 # --access-key-file lets in only those given the link; put a proxy with TLS in front of it (and give
 # --public-url) when the server is reached over the internet. --updates auto (the
 # default): the server takes VisualProof's patches by itself at a quiet moment — never during a
