@@ -6,7 +6,7 @@
 // lakefile in the directory it was started from. Started elsewhere with the project's LEAN_PATH,
 // it reads the `.olean` files the owner's builds left and writes nothing (SPEC.md: "No .lake
 // conflict"). It elaborates the file it is asked about once, then answers hovers in milliseconds.
-// At most `--lean-files` files are kept open (two by default); the server stops after ten idle
+// At most `--lean-files` files are kept open (four by default); the server stops after ten idle
 // minutes. A file outside the
 // project — a package's, Lean's core's, whose source the window shows too (the owner's decision of
 // 2026-10-20; server/outside.ts) — is opened by the same Lean in the same way: elaborated against
@@ -19,7 +19,8 @@
 // (a diagnostic), not as a hover.
 //
 // Lean runs each open file in a worker process of its own, which can die (a worker on a large
-// project holds gigabytes: 4.1 GB for Sphere-Packing-Lean's main theorem's module; and the kernel's OOM killer picks the
+// project holds gigabytes: 1.9 GB resident for Sphere-Packing-Lean's main theorem's module, 5.2 GB
+// for its Leech lattice's norm, measured on 2026-11-01; and the kernel's OOM killer picks the
 // largest). Lean then says the file's progress
 // is a fatal error, and starts the worker again only when the document changes: until then every
 // question about it would wait forever. So a crashed document is closed and opened again here, as a
@@ -92,7 +93,7 @@ const SEVERITY: Message["severity"][] = ["error", "error", "warning", "informati
 
 /** the files kept open at most, where the server is not told otherwise (`--lean-files`), and the
  *  most it may be told */
-export const KEEP_OPEN = 2;
+export const KEEP_OPEN = 4;
 export const MAX_LEAN_FILES = 16;
 const IDLE_MS = 10 * 60 * 1000;
 /** the longest a question waits for Lean's answer before it is answered that there was none */

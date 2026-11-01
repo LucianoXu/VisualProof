@@ -273,8 +273,8 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   project's folder of the cache (`lean-server/`) with the project's LEAN_PATH: with no lakefile
   there, it never runs `lake setup-file`, so it reads the owner's build and builds nothing. A file
   outside the project is opened by the same server in the same way. Until a
-  file is elaborated the hover says how far Lean is. At most two files open (`--lean-files`, the
-  owner's decision of 2026-11-01); it stops after ten idle minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
+  file is elaborated the hover says how far Lean is. At most four files open (`--lean-files`, the
+  owner's decisions of 2026-11-01); it stops after ten idle minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
   statement and doc.
 - **Hover cards nest**: a name in a card opens a card beside it; a card closes a moment after the
   pointer leaves it for anything but a card nested in it. A nested card is the name `#check`ed in
@@ -309,7 +309,8 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     says how far it has got ("Lean has elaborated line 120 of 800"); a place Lean has passed is
     answered at once.
   - **Limits**: the files Lean keeps open, for hovers and the InfoView, are a server option
-    (`--lean-files`).
+    (`--lean-files`), four by default (the owner's decision of 2026-11-01: a Mathlib-heavy file's
+    worker holds 1.9 to 2.6 GB resident, the heaviest measured 5.2 GB).
   - **Scope**: the latest build only — a past build, a snapshot and the exported document have no
     InfoView, and the pane says why; a file changed since it was compiled has none either, with why.
     Files outside the project as hovers. Read-only readers within the bounds hovers have: what Lean
