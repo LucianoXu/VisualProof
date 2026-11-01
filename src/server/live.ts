@@ -105,6 +105,8 @@ export const BUILD_DELTA_PART = 1 / 8;
 
 /** The graph's modules and their files (meta.modules), per graph read (agentviews.ts, graphOf). */
 const moduleFiles = new WeakMap<ViewMeta, Map<string, string | null>>();
+/** The Lake hashes of the texts the graph's modules were compiled from, per graph read. */
+const compiledHashes = new WeakMap<ViewMeta, Map<string, string | null | undefined>>();
 /** The modules the graph's outside declarations are in, per graph read: the only outside modules
  *  whose source is served or handed to Lean (server/outside.ts). */
 const outsideModules = new WeakMap<ViewMeta, Set<string>>();
@@ -550,6 +552,17 @@ export class Live {
     let files = moduleFiles.get(G.meta);
     if (!files) moduleFiles.set(G.meta, (files = new Map(G.meta.modules.map((m) => [m.name, m.file]))));
     return files.get(module);
+  }
+
+  /** The Lake hash of the text a module of the graph on show was compiled from (meta.modules[].compiled):
+   *  the InfoView's goals are of that text alone (ReviewSpec, "The InfoView"). Undefined where the
+   *  graph has no such module, or does not say. */
+  compiledOf(module: string): string | null | undefined {
+    const G = graphOf(this);
+    if (!G) return undefined;
+    let hashes = compiledHashes.get(G.meta);
+    if (!hashes) compiledHashes.set(G.meta, (hashes = new Map(G.meta.modules.map((m) => [m.name, m.compiled]))));
+    return hashes.get(module);
   }
 
   /** The file of a module outside the project, where an outside declaration of the graph on show

@@ -15,7 +15,8 @@ export function readOnlyAllows(method: string, path: string): boolean {
     if (["/api/status", "/api/updates", "/api/meta", "/api/edges", "/api/git", "/api/source", "/api/review", "/api/build", "/api/activity", "/api/identity", "/api/share"].includes(path)) return true;
     // a stream is opened by GET alone: a HEAD would take one of their places for nothing
     if (path === "/api/events") return method === "GET";
-    if (path === "/api/hover" || path === "/api/hover/describe" || path === "/api/hover/print") return true;
+    // and the InfoView's goals at a place, and what a subterm of them is (ReviewSpec, "The InfoView")
+    if (path === "/api/hover" || path === "/api/hover/describe" || path === "/api/hover/print" || path === "/api/hover/goals" || path === "/api/hover/goals/info") return true;
     for (const p of ["/api/views", "/api/history", "/api/library", "/api/export"]) if (path === p || path.startsWith(`${p}/`)) return true;
     return false;
   }

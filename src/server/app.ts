@@ -325,7 +325,7 @@ export class App {
       if (path === "/api/layout/undo" && req.method === "POST") return layoutUndo(this, req, res, agent);
       if (path === "/api/git") return git(this, res);
       if (path === "/api/meta" || path === "/api/edges") return graphParts(this, req, res, url);
-      if (path === "/api/hover" || path === "/api/hover/open" || path === "/api/hover/names" || path === "/api/hover/describe" || path === "/api/hover/print") return hover(this, req, res, url, reader);
+      if (path === "/api/hover" || path === "/api/hover/open" || path === "/api/hover/names" || path === "/api/hover/describe" || path === "/api/hover/print" || path === "/api/hover/goals" || path === "/api/hover/goals/info") return hover(this, req, res, url, reader);
       if (path === "/api/source") return source(this, res, url);
       sendJson(res, { error: "not found" }, 404);
     }

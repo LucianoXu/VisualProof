@@ -25,6 +25,16 @@
 // new version, and its questions asked anew; one that keeps crashing is given up on for a while,
 // with why; a question Lean does not answer in REQUEST_MS is answered that it did not; and what
 // Lean is doing is part of /api/status (`state`).
+//
+// The InfoView (ReviewSpec, "The InfoView"; the owner's decisions of 2026-11-01) asks the same Lean,
+// of the same open file, the goals at a place: before the tactic there and after it, and the
+// expected type of the term there (`goals`). Lean is asked at positions alone, which the server
+// reads from the file's text (shared/goals.ts, tacticSpan). It asks through Lean's RPC first — one
+// session per open file, kept alive while the file is open — for goals whose subterms Lean can say
+// more of (`subterm`: their type and doc, asked by the number the answer gives each); where the RPC
+// cannot be had, Lean's plain answers. Lean's answers keep what they refer to alive in the session:
+// the server holds the last ANSWERS of each file's, and releases what it lets go. The widgets Lean has
+// at a place are counted, never fetched nor drawn (SECURITY.md).
 
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
@@ -32,6 +42,10 @@ import { childEnv, DETACH, end, grouped } from "./children.ts";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { tacticSpan } from "../shared/goals.ts";
+import type { GoalsAnswer, SubtermInfo } from "../shared/goals.ts";
+import { readInfo, readInteractiveGoals, readInteractiveTermGoal, readPlainGoals, readPlainTermGoal, readWidgets, Reading, refsIn } from "./goals.ts";
+import type { RpcRef } from "./goals.ts";
 import type { Project } from "./project.ts";
 
 /** A Lean name, dotted, and nothing else: no spaces, no line breaks, no commands. */
@@ -92,6 +106,13 @@ const GIVE_UP_MS = 5 * 60 * 1000;
 const FATAL = 2;
 /** questions waiting for their turn in the scratch file, at most */
 const MAX_QUEUED = 16;
+/** how often an RPC session is told it is still in use: Lean ends one it hears nothing of for 30 s */
+const KEEP_ALIVE_MS = 10_000;
+/** the goals answers kept per open file, with what Lean holds for their subterms */
+const ANSWERS = 32;
+/** Lean's codes: the RPC session is gone (its worker restarted, or it expired); no such method */
+const RPC_RECONNECT = -32900;
+const NO_METHOD = -32601;
 
 /** A file Lean is asked about: one of the project, by its path in it; or one outside it (a package's,
  *  Lean's core's: server/outside.ts), by what it is called (`mathlib: Mathlib/Logic/Basic.lean`, what
@@ -115,11 +136,30 @@ interface Doc extends Open {
   used: number;
   /** the first line still being elaborated, or -1 when done */
   processing: number;
+  /** the RPC session the InfoView asks this document's goals in, and its connection while it is made */
+  rpc: string | null;
+  connecting: Promise<string | null> | null;
+  /** the goals answers kept, by version and place, oldest first, and those being asked */
+  answers: Map<string, GoalsEntry>;
+  computing: Map<string, Promise<GoalsEntry>>;
+}
+
+/** A goals answer as the server keeps it: what the page is given; the references its subterms are
+ *  numbered by, and every reference Lean gave in it, released when it is let go; the session they
+ *  are of. */
+interface GoalsEntry {
+  answer: GoalsAnswer;
+  refs: RpcRef[];
+  held: RpcRef[];
+  session: string | null;
 }
 
 interface Scratch extends Open {
   done: boolean;
 }
+
+/** Lean's answer to a question: its result, or its error with Lean's code. */
+type Answered = { result?: unknown; error?: { message: string; code?: number } };
 
 /** A JSON-RPC message from Lean, as much of it as is read. */
 interface LspMessage {
@@ -154,7 +194,7 @@ export class LeanHover {
   private starting: Promise<void> | null = null;
   private buf = Buffer.alloc(0);
   private nextId = 0;
-  private waiting = new Map<number, (msg: { result?: unknown; error?: { message: string } }) => void>();
+  private waiting = new Map<number, (msg: Answered) => void>();
   /** crashes in a row per document (a uri), reset once it elaborates to its end */
   private crashes = new Map<string, number>();
   /** documents not opened again for now, with why and since when */
@@ -165,7 +205,7 @@ export class LeanHover {
   private garbled = { count: 0, said: 0 };
   private docs = new Map<string, Doc>();
   /** hover requests in flight, by uri:line:character, so a retry joins the one already asked */
-  private asked = new Map<string, Promise<{ result?: unknown; error?: { message: string } }>>();
+  private asked = new Map<string, Promise<Answered>>();
   private idle: ReturnType<typeof setTimeout> | null = null;
   private env: { lean: string; leanPath: string } | null = null;
   /** why Lean cannot be asked, once found out */
@@ -183,6 +223,8 @@ export class LeanHover {
   /** what Lean last published about each document it has open: the version it is about, and the
    *  messages (a `#print` says what it prints so) */
   private diagnostics = new Map<string, { version: number | null; items: Diagnostic[] }>();
+  /** what tells the RPC sessions they are still in use, while there is one */
+  private alive: ReturnType<typeof setInterval> | null = null;
 
   constructor(project: Project, cacheDir: string) {
     this.project = project;
@@ -370,7 +412,14 @@ export class LeanHover {
     }
     open.version = sc ? ++this.scratchVersion : open.version + 1;
     open.progressAt = Date.now();
-    if (doc) doc.processing = 0;
+    if (doc) {
+      doc.processing = 0;
+      // a new worker: the RPC session and what it held went with the old one
+      doc.rpc = null;
+      doc.connecting = null;
+      doc.answers.clear();
+      doc.computing.clear();
+    }
     if (sc) sc.done = false;
     this.notify("textDocument/didOpen", { textDocument: { uri, languageId: "lean4", version: open.version, text: open.text } });
   }
@@ -418,7 +467,7 @@ export class LeanHover {
 
   /** A question to Lean, answered by Lean, or after `timeoutMs` that it did not answer: nothing
    *  waits for Lean forever. Asked of a Lean that is not running, it is answered so at once. */
-  private request(method: string, params: unknown, timeoutMs = REQUEST_MS): Promise<{ result?: unknown; error?: { message: string } }> {
+  private request(method: string, params: unknown, timeoutMs = REQUEST_MS): Promise<Answered> {
     const id = ++this.nextId;
     return new Promise((ok) => {
       if (!this.proc?.stdin?.writable) return ok({ error: { message: "Lean is not running" } });
@@ -463,7 +512,7 @@ export class LeanHover {
       this.asked.clear();
       this.notify("textDocument/didChange", { textDocument: { uri, version: doc.version }, contentChanges: [{ text }] });
     } else if (!doc) {
-      doc = { uri, version: 1, text, progressAt: Date.now(), hash, lines: text.split("\n").length, used: 0, processing: 0 };
+      doc = { uri, version: 1, text, progressAt: Date.now(), hash, lines: text.split("\n").length, used: 0, processing: 0, rpc: null, connecting: null, answers: new Map(), computing: new Map() };
       this.docs.set(rel, doc);
       this.notify("textDocument/didOpen", { textDocument: { uri, languageId: "lean4", version: 1, text } });
       // too many open: the one least recently asked about is closed
@@ -516,6 +565,199 @@ export class LeanHover {
         return first ? first.replace(/\.\{.*$/, "") : null;
       }),
     };
+  }
+
+  /** The goals at (line, character) of the file, for the InfoView (ReviewSpec, "The InfoView"):
+   *  before the tactic there and after it, the expected type of the term there, how many widgets
+   *  Lean has there. Waits up to `waitMs` for Lean to elaborate that far, then says how far it is;
+   *  a place Lean has passed is answered at once. */
+  async goals(file: HoverFile, text: string, hash: string, line: number, character: number, waitMs: number): Promise<GoalsAnswer> {
+    let doc: Doc;
+    try {
+      doc = await this.open(file, text, hash);
+    } catch (e) {
+      return { error: this.failure ?? (e instanceof Error ? e.message : String(e)) };
+    }
+    const e = await Promise.race([this.goalsAt(doc, line, character), after(waitMs)]);
+    if (!e) return { pending: { line: doc.processing < 0 ? doc.lines : doc.processing, of: doc.lines } };
+    return e.answer;
+  }
+
+  /** What Lean says of subterm `k` of the goals answer at (line, character): its type, the term
+   *  with its implicit arguments, its doc. The answer is asked again where it was let go, or its
+   *  session ended; only Lean's own reference for the subterm reaches Lean. */
+  async subterm(file: HoverFile, text: string, hash: string, line: number, character: number, k: number, waitMs: number): Promise<SubtermInfo> {
+    let doc: Doc;
+    try {
+      doc = await this.open(file, text, hash);
+    } catch (e) {
+      return { error: this.failure ?? (e instanceof Error ? e.message : String(e)) };
+    }
+    const deadline = Date.now() + waitMs;
+    for (let tries = 0; tries < 2; tries++) {
+      const e = await Promise.race([this.goalsAt(doc, line, character), after(Math.max(0, deadline - Date.now()))]);
+      if (!e) return { pending: { line: doc.processing < 0 ? doc.lines : doc.processing, of: doc.lines } };
+      const ref = e.refs[k];
+      if (!e.answer.interactive || !ref || e.session === null) return { error: "Lean has no such subterm there" };
+      // the session the answer was had in has ended: asked again in a new one
+      if (e.session !== doc.rpc) {
+        this.forget(doc, line, character);
+        continue;
+      }
+      const position = { line, character };
+      const r = await Promise.race([this.request("$/lean/rpc/call", { textDocument: { uri: doc.uri }, position, sessionId: e.session, method: "Lean.Widget.InteractiveDiagnostics.infoToInteractive", params: ref }), after(Math.max(1000, deadline - Date.now()))]);
+      if (!r) return { pending: { line: doc.processing < 0 ? doc.lines : doc.processing, of: doc.lines } };
+      if (r.error?.code === RPC_RECONNECT) {
+        if (doc.rpc === e.session) doc.rpc = null;
+        this.forget(doc, line, character);
+        continue;
+      }
+      if (r.error) return { error: r.error.message };
+      // what the popup refers to is of no use once read
+      this.release(doc, e.session, refsIn(r.result));
+      return readInfo(r.result);
+    }
+    return { error: "Lean's RPC session ended" };
+  }
+
+  /** The goals answer at a place of a document, kept or asked; one being asked is joined. Kept, an
+   *  answer comes at once; one that came after the page stopped waiting is kept too, so that what it
+   *  holds in Lean is released in its turn. */
+  private goalsAt(doc: Doc, line: number, character: number): Promise<GoalsEntry> {
+    const key = `${doc.version}:${line}:${character}`;
+    const kept = doc.answers.get(key);
+    if (kept) {
+      doc.answers.delete(key);
+      doc.answers.set(key, kept);
+      return Promise.resolve(kept);
+    }
+    let p = doc.computing.get(key);
+    if (!p) {
+      const asked = this.askGoals(doc, line, character).then((e) => {
+        if (doc.computing.get(key) === asked) doc.computing.delete(key);
+        // a failure is asked again next time; an answer of a worker since replaced is let go
+        if (!e.answer.error && (e.session === null || e.session === doc.rpc)) this.keep(doc, key, e);
+        else if (e.session !== null) this.release(doc, e.session, e.held);
+        return e;
+      });
+      p = asked;
+      doc.computing.set(key, p);
+    }
+    return p;
+  }
+
+  /** Keep an answer of a document's, the oldest let go past ANSWERS (what Lean holds for it
+   *  released). */
+  private keep(doc: Doc, key: string, e: GoalsEntry): void {
+    doc.answers.set(key, e);
+    while (doc.answers.size > ANSWERS) {
+      const [old, gone] = doc.answers.entries().next().value!;
+      doc.answers.delete(old);
+      if (gone.session !== null) this.release(doc, gone.session, gone.held);
+    }
+  }
+
+  /** Let go of the answers kept for a place, of any version. */
+  private forget(doc: Doc, line: number, character: number): void {
+    for (const [key, e] of doc.answers)
+      if (key.endsWith(`:${line}:${character}`)) {
+        doc.answers.delete(key);
+        if (e.session !== null && e.session === doc.rpc) this.release(doc, e.session, e.held);
+      }
+  }
+
+  /** Tell Lean what of a session's it may let go of. */
+  private release(doc: Doc, session: string, refs: RpcRef[]): void {
+    if (!refs.length || doc.rpc !== session || !this.docOf(doc.uri)) return;
+    for (let i = 0; i < refs.length; i += 1000) this.notify("$/lean/rpc/release", { uri: doc.uri, sessionId: session, refs: refs.slice(i, i + 1000) });
+  }
+
+  /** The RPC session of a document, made once: null where Lean gives none. While there is one, every
+   *  session is told every KEEP_ALIVE_MS that it is still in use. */
+  private session(doc: Doc): Promise<string | null> {
+    if (doc.rpc) return Promise.resolve(doc.rpc);
+    if (!doc.connecting) {
+      const version = doc.version;
+      const c = this.request("$/lean/rpc/connect", { uri: doc.uri }, 60_000).then((m) => {
+        if (doc.connecting === c) doc.connecting = null;
+        const id = (m.result as { sessionId?: unknown } | null)?.sessionId;
+        const sid = typeof id === "string" || typeof id === "number" ? String(id) : null;
+        // a document opened again meanwhile has a new worker: this session was the old one's
+        if (!sid || !this.docOf(doc.uri) || doc.version < version) return null;
+        doc.rpc = sid;
+        this.alive ??= setInterval(() => {
+          for (const d of this.docs.values()) if (d.rpc) this.notify("$/lean/rpc/keepAlive", { uri: d.uri, sessionId: d.rpc });
+        }, KEEP_ALIVE_MS);
+        this.alive.unref?.();
+        return sid;
+      });
+      doc.connecting = c;
+    }
+    return doc.connecting;
+  }
+
+  /** Ask Lean the goals at a place: through its RPC, tagged, where it can (a session gone is made
+   *  again once); else its plain answers. Before the tactic at its first character, after it at its
+   *  end, the term's expected type and the widgets where the place is. */
+  private async askGoals(doc: Doc, line: number, character: number): Promise<GoalsEntry> {
+    const span = tacticSpan(doc.text.split("\n")[line] ?? "", character);
+    const at = {
+      before: { line, character: span ? span.from : character },
+      after: { line, character: span ? span.to : character },
+      here: { line, character },
+    };
+    const tactic = span ? { line, ...span } : null;
+    for (let tries = 0; tries < 2; tries++) {
+      const sid = await this.session(doc);
+      if (!sid) break;
+      const r = await this.interactive(doc, sid, at);
+      if (r === "plain") break;
+      if (r !== "reconnect") return { ...r, answer: { tactic, ...r.answer } };
+      if (doc.rpc === sid) doc.rpc = null;
+    }
+    const q = (method: string, position: { line: number; character: number }) => this.request(method, { textDocument: { uri: doc.uri }, position });
+    const [b, a, t] = await Promise.all([q("$/lean/plainGoal", at.before), q("$/lean/plainGoal", at.after), q("$/lean/plainTermGoal", at.here)]);
+    if (b.error && a.error && t.error) return { answer: { error: b.error.message }, refs: [], held: [], session: null };
+    return { answer: { tactic, before: b.error ? null : readPlainGoals(b.result), after: a.error ? null : readPlainGoals(a.result), term: t.error ? null : readPlainTermGoal(t.result), interactive: false }, refs: [], held: [], session: null };
+  }
+
+  /** The goals at the three places through Lean's RPC, in session `sid`; "reconnect" where the
+   *  session is gone, "plain" where Lean has no such methods. */
+  private async interactive(doc: Doc, sid: string, at: Record<"before" | "after" | "here", { line: number; character: number }>): Promise<GoalsEntry | "reconnect" | "plain"> {
+    const call = (method: string, params: unknown, position: { line: number; character: number }) =>
+      this.request("$/lean/rpc/call", { textDocument: { uri: doc.uri }, position, sessionId: sid, method, params });
+    const where = (position: { line: number; character: number }) => ({ textDocument: { uri: doc.uri }, position });
+    const asked = await Promise.all([
+      call("Lean.Widget.getInteractiveGoals", where(at.before), at.before),
+      call("Lean.Widget.getInteractiveGoals", where(at.after), at.after),
+      call("Lean.Widget.getInteractiveTermGoal", where(at.here), at.here),
+      // counted, never fetched nor drawn: a widget's JavaScript is the project's code
+      call("Lean.Widget.getWidgets", at.here, at.here),
+    ]);
+    const held = asked.flatMap((m) => refsIn(m.result));
+    const [b, a, t, w] = asked;
+    if (asked.some((m) => m.error?.code === RPC_RECONNECT)) {
+      this.release(doc, sid, held);
+      return "reconnect";
+    }
+    if (b.error?.code === NO_METHOD || t.error?.code === NO_METHOD) {
+      this.release(doc, sid, held);
+      return "plain";
+    }
+    if (b.error && a.error && t.error) {
+      this.release(doc, sid, held);
+      return { answer: { error: b.error.message }, refs: [], held: [], session: null };
+    }
+    const reading = new Reading();
+    const widgets = w.error ? 0 : readWidgets(w.result);
+    const answer: GoalsAnswer = {
+      before: b.error ? null : readInteractiveGoals(b.result, reading),
+      after: a.error ? null : readInteractiveGoals(a.result, reading),
+      term: t.error ? null : readInteractiveTermGoal(t.result, reading),
+      ...(widgets ? { widgets } : {}),
+      interactive: true,
+    };
+    return { answer, refs: reading.refs, held, session: sid };
   }
 
   /** What Lean says about the declaration `name` — its signature and doc, as its hover shows
@@ -623,7 +865,7 @@ export class LeanHover {
   }
 
   /** One hover request; a request for the same place while one is in flight joins it. */
-  private ask(doc: Doc, line: number, character: number): Promise<{ result?: unknown; error?: { message: string } }> {
+  private ask(doc: Doc, line: number, character: number): Promise<Answered> {
     const key = `${doc.uri}:${doc.version}:${line}:${character}`;
     let p = this.asked.get(key);
     if (!p) {
@@ -639,6 +881,8 @@ export class LeanHover {
 
   /** Forget the running Lean: what it had open, and the questions it will not answer now. */
   private reset(): void {
+    if (this.alive) clearInterval(this.alive);
+    this.alive = null;
     this.ready = false;
     this.proc = null;
     this.buf = Buffer.alloc(0);
