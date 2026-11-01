@@ -33,7 +33,10 @@ export function editDistance(a: string, b: string, most: number): number {
  *  declaration or of one so generated, which is a name one component below it. A name one
  *  component below a declaration that is a typo or two away from a declaration beside it is
  *  taken for that typo, not for something folded, unless its last component is one Lean
- *  generates. */
+ *  generates. Below a declaration of the outside world only such a component folds: the graph
+ *  holds of the outside world what the project refers to, and cannot tell a constructor or a
+ *  field of it from a declaration of its own that nothing names (`Nat.succ_le_of_lt` is not
+ *  `Nat`). */
 export function foldedAt(g: Graph, name: string): number | undefined {
   const direct = g.foldedInto.get(name);
   if (direct !== undefined) return direct;
@@ -42,6 +45,7 @@ export function foldedAt(g: Graph, name: string): number | undefined {
   const head = name.slice(0, dot), last = name.slice(dot + 1);
   const at = g.byName.get(head) ?? g.foldedInto.get(head);
   if (at === undefined || !last) return undefined;
+  if (g.isExt(at)) return GENERATED_LAST.test(last) ? at : undefined;
   if (!GENERATED_LAST.test(last)) {
     const most = last.length < 5 ? 1 : 2;
     const near = (n: string) => n.length > head.length + 1 && n.startsWith(head + ".") && !n.includes(".", head.length + 1) && editDistance(n.slice(head.length + 1).toLowerCase(), last.toLowerCase(), most) <= most;
@@ -51,8 +55,10 @@ export function foldedAt(g: Graph, name: string): number | undefined {
   return at;
 }
 
-/** Up to five names like `name`: the same name in another case; then the same last component,
- *  or one a typo or two away, in the same namespace first; then what the search finds. */
+/** Up to five names like `name`: the same name in another case; the declaration of the outside
+ *  world it is one component below, whose constructor or field it may be (`foldedAt`); then the
+ *  same last component, or one a typo or two away, in the same namespace first; then what the
+ *  search finds. */
 export function guessNames(g: Graph, index: SearchIndex, name: string): string[] {
   const dot = name.lastIndexOf(".");
   const last = name.slice(dot + 1).toLowerCase();
@@ -61,6 +67,8 @@ export function guessNames(g: Graph, index: SearchIndex, name: string): string[]
   const offer = (n: string, score: number) => {
     if ((scored.get(n) ?? Infinity) > score) scored.set(n, score);
   };
+  const under = outsideAbove(g, name);
+  if (under !== undefined) offer(g.nodes[under].name, -0.5);
   const lower = name.toLowerCase();
   const most = last.length < 5 ? 1 : 2;
   // the graph's declarations, and the names Lean generated from a command that they fold
@@ -80,6 +88,16 @@ export function guessNames(g: Graph, index: SearchIndex, name: string): string[]
     .sort((a, b) => a[1] - b[1] || a[0].length - b[0].length || (a[0] < b[0] ? -1 : 1))
     .slice(0, 5)
     .map(([n]) => n);
+}
+
+/** The declaration of the outside world `name` is one component below, where the graph has no
+ *  `name` (foldedAt): what a constructor or a field of it would be folded into. */
+export function outsideAbove(g: Graph, name: string): number | undefined {
+  const n = name.trim();
+  const dot = n.lastIndexOf(".");
+  if (dot <= 0 || g.byName.has(n)) return undefined;
+  const at = g.byName.get(n.slice(0, dot));
+  return at !== undefined && g.isExt(at) ? at : undefined;
 }
 
 /** The declaration `name` names, its own or the one it is folded into; undefined where none is. */
