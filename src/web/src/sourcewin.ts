@@ -1755,15 +1755,18 @@ export class SourceWindow implements SourcePane {
     return `<span class="dm s-${m}" data-dm="${d}" aria-hidden="true" title="${escapeHtml(`${v.name}: ${FILE_MARK_LABEL[m]}`)}"></span>`;
   }
 
-  /** Each declaration's mark, from the review as it is now: shown only where the text is the one
-   *  compiled, which the review is about (a file changed since: where its text is still that). */
+  /** Each declaration's mark, as Status shows it — the build, `sorry`, the review as it is now —:
+   *  shown only where the text is the one compiled, which they are about (a file changed since:
+   *  where its text is still that). */
   private marksOf(w: WholeFile): void {
     const d = this.hooks.review(w.g);
     const inReview = this.hooks.inReview(w.g);
+    // its file's build, as Status reads it: being compiled, failed (none for a past build's text)
+    const file = w.era === "now" ? this.hooks.fileOf(w.module) : undefined;
     w.marks = w.decls.map((fd) => {
       const r = w.g.nodes[fd.i].range;
       if (w.edited && !(w.compiled && r && sameText(w.compiled, r, w.lines, fd))) return null;
-      return fileMark(d, w.g, fd.i, inReview);
+      return fileMark(d, w.g, fd.i, inReview, file);
     });
   }
 

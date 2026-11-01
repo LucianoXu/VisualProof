@@ -219,22 +219,28 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
       title bar. Pinning, collapsing, placing, the review box and following stay the window's.
     - **The whole file**: the declaration highlighted (a bar at the gutter's edge, a faint ground)
       and scrolled to as the window opens or switches mode; the line numbers as in Declaration
-      mode; each declaration of the file a mark in the gutter, where its command starts, for its
-      review status in the Status scheme's colours (approved, commented, stale, not yet reviewed,
-      trusted: CanvasSpec, "Colour schemes"); names linked as in Declaration mode, and Lean's hovers
-      across the whole file (the language server opens the whole file already).
-      - *Proposed*: a declaration in no target's review set — there are targets, and none needs it —
-        shows a hollow ring, "in no target's review set", in the not-yet-reviewed grey; with no
-        targets at all, not yet reviewed, as the board shows it.
-      - *Proposed*: the review box, the declaration's, stands under its lines in the file, under
-        the same scrollbar, as it stands under its code in Declaration mode.
+      mode; each declaration of the file a mark in the gutter, where its command starts; names
+      linked as in Declaration mode, and Lean's hovers across the whole file (the language server
+      opens the whole file already).
+      - **The marks show what Status shows** (the owner's decision of 2026-11-01), in its colours
+        and with its priorities (CanvasSpec, "Colour schemes"): its file being compiled, its file's
+        build failed or never done, *contains sorry* (`sorry` anywhere beneath it), before the review
+        states — commented, stale, approved, not yet reviewed, trusted. A file outside the project
+        has no build of its own to say, a past build's text none of now.
+      - A declaration in no target's review set — there are targets, and none needs it — shows a
+        hollow ring, "in no target's review set", in the not-yet-reviewed grey; with no targets at
+        all, not yet reviewed, as the board shows it (the owner's decision of 2026-11-01).
+      - The review box, the declaration's, stands under its lines in the file, under the same
+        scrollbar, as it stands under its code in Declaration mode (the owner's decision of
+        2026-11-01).
     - **Proofs are shown by default.** *Fold proofs*, in the window, folds each to a one-line mark,
       *⋯ proof*, which shows that one proof on a click; the reader's own, kept in the browser, not
       followed. It folds by the proof ranges the usage pass records (`proofs`, which the exported
       document cuts by: ExportSpec decision 8) and a theorem's value, read off its text as the
       document reads it, from after its `:=`.
-      - *Proposed*: where the pass did not read the text on show (a file changed since it was
-        compiled, a file outside the project, a past build's text) only theorems' proofs fold:
+      - Where the pass did not read the text on show (the owner's decision of 2026-11-01: a file
+        changed since it was compiled, a file outside the project, a past build's text) only
+        theorems' proofs fold:
         reading the text cannot tell a `by` that proves from one that builds data. A proof no
         longer than the mark stays as it is.
     - **Scrolling never changes the selection**: the review box stays the selected declaration's. A
@@ -244,10 +250,10 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
       a file's row (a button on the row under the pointer or the keyboard's focus, as hiding a level
       is: ViewSpec decision 24); from the board's menu on a file cluster, *Open the file* — is not
       tied to the selection.
-      - *Proposed*: a *file window*: a window pinned on the file, in File mode, at its top, which
-        does not follow the selection and has no declaration of its own (Declaration is not to be
-        had in it, nor a review box, nor `a` `m` `k`); a name in it, or its sticky header, goes to
-        the page as in any pinned window. One on the file already comes in front. It counts among
+      - A *file window* (the owner's decision of 2026-11-01): a window pinned on the file, in File
+        mode, at its top, which does not follow the selection and has no declaration of its own
+        (Declaration is not to be had in it, nor a review box, nor `a` `m` `k`); a name in it, or
+        its sticky header, goes to the page as in any pinned window. One on the file already comes in front. It counts among
         the six pinned windows. Pinned windows are followed, so followers see it.
     - **Following**: the mode of each window and the file windows are part of the followed source
       windows (CollabSpec, "Surfaces"). Switching the mode is a control of a followed surface, as

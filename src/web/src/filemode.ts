@@ -14,15 +14,17 @@
 // - **the proofs it folds** (`proofFolds`): a theorem's value, read off its text as the exported
 //   document reads it (shared/doc/proof.ts, valueStart), and the proofs inside a definition's body
 //   where the usage pass found them in this very text (RawNode.proofs, ExportSpec decision 8);
-// - **the mark each declaration has in the gutter** (`fileMark`), in the Status scheme's colours.
+// - **the mark each declaration has in the gutter** (`fileMark`): what the Status scheme shows of it,
+//   in its colours.
 //
 // web/src/sourcewin.ts draws it; test/filemode.test.ts holds it.
 
 import { compiledExcerpt, excerptOf } from "../../shared/excerpt.ts";
 import { valueStart } from "../../shared/doc/proof.ts";
-import { statusOf } from "../../shared/review.ts";
+import type { FileStatus } from "../../shared/build.ts";
 import type { ReviewData } from "../../shared/review.ts";
-import { needsReview } from "../../shared/reviewqueue.ts";
+import { STATUS_LABEL, STATUSES, statusState } from "./status.ts";
+import type { StatusState } from "./status.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 
 /** The window's two modes: the declaration with its context, or the whole file it is in. */
@@ -234,31 +236,26 @@ export function proofFolds(g: Graph, decls: readonly FileDecl[], lines: readonly
   return apart;
 }
 
-/** A declaration's mark in the gutter of File mode: Status's review states (CanvasSpec, "Colour
- *  schemes"), and `free` for one in no target's review set (a proposal of 2026-11-01: a hollow
- *  ring, there being nothing a target needs of it). */
-export type FileMark = "commented" | "stale" | "approved" | "unreviewed" | "trusted" | "free";
+/** A declaration's mark in the gutter of File mode: what the Status scheme shows of it (CanvasSpec,
+ *  "Colour schemes"; the owner's decision of 2026-11-01) — its file building, failed or not built,
+ *  it resting on `sorry`, then what reviewers said, then whether it needs review —, and `free` for
+ *  one that needs review that no target's review set holds (the owner's decision of 2026-11-01: a
+ *  hollow ring, there being nothing a target needs of it). */
+export type FileMark = StatusState | "free";
 
-/** How a mark is said, in its tooltip. */
-export const FILE_MARK_LABEL: Record<FileMark, string> = {
-  commented: "commented",
-  stale: "stale",
-  approved: "approved",
-  unreviewed: "not yet reviewed",
-  trusted: "trusted",
-  free: "in no target's review set",
-};
+/** How a mark is said, in its tooltip and the sticky header: as the legend says Status's states. */
+export const FILE_MARK_LABEL: Record<FileMark, string> = { ...STATUS_LABEL, free: "in no target's review set" };
 
-/** Declaration `i`'s mark: what reviewers said of its present version, as Status says it — a
- *  comment, else an approval, else stale where every opinion is on an earlier version; with none,
- *  trusted where nothing needs its review, else not yet reviewed where some target's review set
- *  holds it (`inReview`; null where the page does not know, as without targets), else free. */
-export function fileMark(d: ReviewData, g: Graph, i: number, inReview: ((i: number) => boolean) | null): FileMark {
-  const v = g.nodes[i];
-  const s = statusOf(d, v.name, v.hash);
-  if (s === "commented" || s === "stale" || s === "approved") return s;
-  if (!needsReview(g, d, i)) return "trusted";
-  return !inReview || inReview(i) ? "unreviewed" : "free";
+/** Declaration `i`'s mark, as the Status scheme colours it on the board, the most urgent state
+ *  winning (web/src/status.ts, `statusState`): its file being compiled, its file's build failed or
+ *  never done (`file`, the build status of its module; none outside the project or on a past
+ *  build), `sorry` anywhere beneath it (its axioms hold `sorryAx`); else a comment on its present
+ *  version, else stale, else an approval; with no opinion, trusted where nothing needs its review,
+ *  else not yet reviewed where some target's review set holds it (`inReview`; null where the page
+ *  does not know, as without targets), else free. */
+export function fileMark(d: ReviewData, g: Graph, i: number, inReview: ((i: number) => boolean) | null, file?: FileStatus): FileMark {
+  const s = STATUSES[statusState(d, g, i, g.isExt(i) ? undefined : file, g.axiomsOf(i).includes("sorryAx"))];
+  return s === "unreviewed" && inReview && !inReview(i) ? "free" : s;
 }
 
 /** Whether a declaration's text in a file changed since it was compiled is still its compiled text:
