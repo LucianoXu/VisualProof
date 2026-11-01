@@ -268,6 +268,10 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     tall: "as on a larger screen (decision 18)",
     monitor: "as on a larger screen (decision 30)",
   },
+  infoView: {
+    tall: "in the source window, as its InfoView (decision 21)",
+    monitor: "in the source window, as its InfoView (decision 34)",
+  },
   pointer: {
     tall: "as on a larger screen (decision 18)",
     monitor: "as on a larger screen (decision 30)",

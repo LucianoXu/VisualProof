@@ -258,6 +258,8 @@ export const YOURS = [
   { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
   { id: "followingStrip", what: "the following strip: whom you follow, and its ✕; once following has ended by a move, Follow again", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
+  // the InfoView hidden or shown (ReviewSpec, "The InfoView"): how the reader looks at the source
+  { id: "infoView", what: "the InfoView hidden or shown, in every source window (kept in the browser)", where: "[data-iv-hide], [data-iv-show]" },
   // the downloads of a followed reader's Export window (the owner's decision of 2026-10-21): taking
   // the file is reading, as copying text is; every other control of the window ends following
   { id: "exportDownloads", what: "the downloads the Export window offers: the PDF, the LaTeX sources, the .tex and the .sty", where: "#export-modal .ex-dl a" },

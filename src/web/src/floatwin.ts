@@ -324,6 +324,12 @@ export class FloatWindow {
     }
   }
 
+  /** Whether it is fitted to its content now: it grows and shrinks with it (the InfoView beside the
+   *  code, web/src/infoview.ts). */
+  get fitted(): boolean {
+    return this.fitting;
+  }
+
   /** Bring the window to the front of the others; one on top is there already. */
   front(): void {
     if (this.o.onTop || stack[stack.length - 1] === this.el) return;

@@ -53,6 +53,12 @@
 // unit, the declarations Lean generated from its command (ViewNode.also), each with what Lean's
 // `#print` says of it when asked.
 //
+// Beside the code, or below it in a narrow window, the InfoView (ReviewSpec, "The InfoView"; the
+// owner's decisions of 2026-11-01; web/src/infoview.ts): what Lean says at the caret — a click in the
+// code, the keyboard's caret, ↑ and ↓ —, the goals before and after the tactic there, the expected
+// type of the term. The window tells it the code on show and maps a place of its text to the file's
+// line and column, as for hovers.
+//
 // Lines of the code are quoted into the window's comment (ReviewSpec, "Comments", decided
 // 2026-10-09): text selected in the code shows a small "Quote in comment" button at the right edge,
 // under the selection's last line, which puts the lines it touches, whole — source lines, not the
@@ -78,6 +84,8 @@ import type { PastGraph } from "./past.ts";
 import { pastNote, pastText } from "./pastsource.ts";
 import type { RefAnswer } from "./highlight.ts";
 import { HoverCards } from "./hovercards.ts";
+import { caretOf, InfoView } from "./infoview.ts";
+import type { Caret, InfoCode } from "./infoview.ts";
 import { FLASH_MS } from "./reviewbox.ts";
 import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
@@ -125,6 +133,14 @@ export interface SourceHooks {
   docked?(w: SourceWindow): { room(vp: Size): Size; at(size: Size, vp: Size): Rect } | null;
   /** tell the reader something for a moment */
   say(text: string): void;
+  /** the InfoView hidden by the reader, in every window (kept in the browser), and hiding it */
+  infoHidden?(): boolean;
+  hideInfo?(on: boolean): void;
+  /** the reader put the InfoView's caret in window `w`, or turned it to before or after: the page's
+   *  one caret is there now, and those following are told */
+  caretMoved?(w: SourceWindow): void;
+  /** the reader follows someone: a click in the code is reading, the caret the followed reader's */
+  following?(): boolean;
 }
 
 /** What every source window of the page shares: what Lean said the names of an excerpt mean (by
@@ -214,6 +230,10 @@ export class SourceWindow implements SourcePane {
   private reading = 0;
   private readWait: ReturnType<typeof setTimeout> | null = null;
   private waiting: (() => void)[] = [];
+  /** the InfoView: what Lean says at the caret (web/src/infoview.ts) */
+  private info: InfoView;
+  /** when a key was last pressed in the window: the keyboard's caret moves the selection */
+  private keyAt = 0;
 
   /** A window in `layer`, following the selection until it is pinned. */
   constructor(layer: HTMLElement, g: Graph, data: DataSource, box: ReviewBox, hooks: SourceHooks, memory: SourceMemory) {
@@ -281,6 +301,9 @@ export class SourceWindow implements SourcePane {
         if (this.g.byName.has(ref.dataset.ref!)) this.hooks.go(ref.dataset.ref!);
         return;
       }
+      // a click in the code, not a drag that selected some: the InfoView's caret there
+      const pre = t.closest<HTMLElement>("pre.src");
+      if (pre && document.getSelection()?.isCollapsed !== false) return this.caretAtPoint(pre, e.clientX, e.clientY);
       // the whole context, or its first lines again
       const ctx = t.closest<HTMLElement>("[data-sw-ctx]");
       if (ctx) {
@@ -317,7 +340,30 @@ export class SourceWindow implements SourcePane {
         if (this.g.byName.has(name)) this.hooks.go(name);
       },
     });
+    this.info = new InfoView({
+      goals: (m, line, ch, hash) => this.data.goals(m, line, ch, hash),
+      subterm: (m, line, ch, hash, k) => this.data.subterm(m, line, ch, hash, k),
+      resolve: (w) => (this.resolve ? this.resolve(w) : this.g.byName.has(w) ? w : null),
+      cards: this.cards,
+      card: (name) => ({ html: this.fromGraph(name), more: this.describe(name) }),
+      hidden: () => this.hooks.infoHidden?.() ?? false,
+      hide: (on) => this.hooks.hideInfo?.(on),
+      moved: () => this.hooks.caretMoved?.(this),
+      win: () => this.el,
+      fitted: () => this.win.fitted,
+      stale: () => void this.render(false),
+    });
+    // ↑ and ↓ step the InfoView's caret from tactic to tactic, where it is in this window
+    el.addEventListener("keydown", (e) => {
+      this.keyAt = Date.now();
+      if ((e.key !== "ArrowUp" && e.key !== "ArrowDown") || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const t = e.target as HTMLElement;
+      if (t.closest?.("input, textarea, select, [contenteditable]")) return;
+      if (this.info.step(e.key === "ArrowDown" ? 1 : -1)) e.preventDefault();
+    });
     el.addEventListener("mousemove", (e) => {
+      // the InfoView's own cards: its subterms and names
+      if ((e.target as HTMLElement).closest?.(".sw-info")) return;
       const pre = (e.target as HTMLElement).closest?.("pre.src") as HTMLElement | null;
       this.pointer = pre ? { pre, x: e.clientX, y: e.clientY } : null;
       if (this.hoverWait) clearTimeout(this.hoverWait);
@@ -524,6 +570,7 @@ export class SourceWindow implements SourcePane {
     this.pointer = null;
     this.shown = null;
     this.cards.dispose();
+    this.info.dispose();
     this.win.dispose();
     // the keys go back to the page
     if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
@@ -546,6 +593,7 @@ export class SourceWindow implements SourcePane {
   private selectionChanged(): void {
     const pre = this.el.querySelector<HTMLElement>("pre.src");
     const s = document.getSelection();
+    this.caretChanged(pre, s);
     const range = s && !s.isCollapsed && s.rangeCount ? s.getRangeAt(0) : null;
     const c = this.code;
     if (!pre || !c || !range || this.collapsed || !this.el.querySelector("[data-rv-comment]") || !range.intersectsNode(pre)) return this.unpick();
@@ -573,6 +621,47 @@ export class SourceWindow implements SourcePane {
     b.textContent = "❝ Quote in comment";
     b.title = `Quote ${n === 1 ? "this line" : `these ${n} lines`} in your comment on ${this.name}, with where they are`;
     b.style.top = `${last.getBoundingClientRect().bottom - body.getBoundingClientRect().top + 3}px`;
+  }
+
+  /** The keyboard's caret moved in the code (caret browsing: the selection collapsed there, a key just
+   *  pressed) puts the InfoView's caret there, as a click does (caretAtPoint). */
+  private caretChanged(pre: HTMLElement | null, s: Selection | null): void {
+    if (!pre || !s || !s.isCollapsed || !s.rangeCount || Date.now() - this.keyAt > 500) return;
+    const r = s.getRangeAt(0);
+    if (pre.contains(r.startContainer)) this.caretIn(pre, r.startContainer, r.startOffset);
+  }
+
+  /** A click or a tap in the code puts the InfoView's caret where it landed. */
+  private caretAtPoint(pre: HTMLElement, x: number, y: number): void {
+    const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null; caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null };
+    const r = d.caretRangeFromPoint?.(x, y);
+    const c = r ? null : d.caretPositionFromPoint?.(x, y);
+    const node = r ? r.startContainer : c?.offsetNode;
+    if (node && pre.contains(node)) this.caretIn(pre, node, r ? r.startOffset : c!.offset);
+  }
+
+  /** The InfoView's caret at a place of the code (a node and an offset there), at its line and column
+   *  in the file; not while the reader follows someone, whose caret it is (a click is reading then). */
+  private caretIn(pre: HTMLElement, node: Node, off: number): void {
+    if (!this.shown || !this.code || this.collapsed || this.hooks.following?.()) return;
+    const at = caretOf(this.code.lines.join("\n"), offsetIn(pre, node, off));
+    this.info.place(this.shown.start + at.line, at.ch);
+  }
+
+  /** The InfoView's caret: where it is in the file, and whether the goals after the tactic are on
+   *  show; null where there is none in this window. */
+  get caret(): Caret | null {
+    return this.info.caret ? { ...this.info.caret } : null;
+  }
+
+  /** The caret as a followed reader's is, or none here (the page's one caret is in another window). */
+  followCaret(c: Caret | null): void {
+    this.info.follow(c);
+  }
+
+  /** The InfoView hidden or shown again by the reader, in every window. */
+  infoChanged(): void {
+    this.info.draw();
   }
 
   /** Nothing picked: the quote button goes. */
@@ -861,7 +950,7 @@ export class SourceWindow implements SourcePane {
       this.el.setAttribute("aria-label", `Source of ${v.name}${pinned ? ", pinned" : ""}`);
       this.frameEl.innerHTML =
         `${head(where, editor)}${this.pairHtml()}${notes}` +
-        `<div class="sw-scroll"><div class="sw-body">${body}</div><div class="sw-review">${this.box.html(i)}</div></div>`;
+        `<div class="sw-scroll"><div class="sw-split"><div class="sw-body">${body}</div><aside class="sw-info" hidden></aside></div><div class="sw-review">${this.box.html(i)}</div></div>`;
       // collapsed, a pill with the declaration's name; a click opens the window again
       this.pillEl.innerHTML =
         `<button class="sw-pill-open" type="button" title="Open the source of ${escapeHtml(v.name)} again"><span class="dot ${kindDot(v.kind, ext)}"></span>` +
@@ -871,12 +960,16 @@ export class SourceWindow implements SourcePane {
     };
     if (!v.range) {
       frame(escapeHtml(v.module), "", `<div class="sw-none">No source position was recorded for it.</div>`);
+      this.attachInfo(null);
       this.box.reveal(this.el);
       return;
     }
     if (fresh) this.awaitCode(turn, () => frame(escapeHtml(v.module), "", `<div class="sw-none">Reading the source…</div>`, undefined, false));
+    /** the code the InfoView is about, once drawn, and why Lean is not asked about it */
+    let infoCode: InfoCode | null = null;
     /** the window drawn: where the reader was in it, and what a click in a comment asked for */
     const settle = () => {
+      this.attachInfo(infoCode);
       const scrolled = this.el.querySelector<HTMLElement>(".sw-scroll");
       if (scrolled && keep !== null) scrolled.scrollTop = keep;
       if (hadFocus) {
@@ -917,6 +1010,7 @@ export class SourceWindow implements SourcePane {
       }
       // what the pointer is over is asked of nobody: names show what the build knew of them
       this.shown = { module: v.module, start: shot.start, hash: "" };
+      infoCode = { module: v.module, start: shot.start, text: shot.text, hash: "", off: "A past build has no InfoView: Lean knows only the latest build. Its goals are there, in the window of the board of now." };
       const notes = [`<div class="banner sw-then">${escapeHtml(pastNote(then.when, commit, got.check, got.outside))}</div>`];
       if (v.gen !== undefined) notes.unshift(`<div class="banner">${genNote()}</div>`);
       frame(
@@ -933,6 +1027,7 @@ export class SourceWindow implements SourcePane {
     if (turn !== this.turn || this.current !== i) return;
     if (!src) {
       frame(escapeHtml(v.module), "", `<div class="sw-none">${ext ? "A declaration from outside the project: its source is not found here." : "The file could not be read."}</div>`);
+      this.attachInfo(null);
       this.box.reveal(this.el);
       return;
     }
@@ -962,6 +1057,7 @@ export class SourceWindow implements SourcePane {
     const place = (out ? `${packageWords(out)} · ` : "") + src.file;
     if (!at) {
       frame(escapeHtml(place), notes.join(""), `<div class="sw-none">Not found in the present text.</div>`);
+      this.attachInfo(null);
       this.box.reveal(this.el);
       return;
     }
@@ -993,7 +1089,24 @@ export class SourceWindow implements SourcePane {
       },
       at.start + 1,
     );
-    // Lean starts on the file now, so that the first hover finds it elaborated
+    // the InfoView: Lean's goals are of the build's text alone (ReviewSpec, "The InfoView")
+    infoCode = {
+      module: v.module,
+      start: at.start,
+      text,
+      hash: src.hash ?? "",
+      off: this.data.snapshot
+        ? "A snapshot of the page has no InfoView: there is no Lean in it. The server's page shows the goals."
+        : edited && out
+          ? `${out.core ? "The toolchain" : out.package} is at another revision than when the graph was read: its goals would be another text's than Lean checked.`
+          : edited
+            ? "This file has changed since it was compiled: its goals would be the present text's, not what Lean checked. They come back once it is compiled again."
+            : !src.hash
+              ? "Lean cannot be asked about this file here."
+              : null,
+    };
+    // Lean starts on the file now, so that the first hover finds it elaborated, and the InfoView's
+    // first answer
     if (src.hash) {
       this.shown = { module: v.module, start: at.start, hash: src.hash };
       if (fresh && !this.still) this.data.hoverOpen(v.module);
@@ -1021,6 +1134,11 @@ export class SourceWindow implements SourcePane {
     }
     settle();
     if (src.hash && !known && !this.still) void this.learn(turn, v.name, key, v.module, src.hash, text, at.start, words, resolve);
+  }
+
+  /** The InfoView told the code drawn now, its element and the code's (none: no code on show). */
+  private attachInfo(code: InfoCode | null): void {
+    this.info.attach(this.frameEl.querySelector<HTMLElement>(".sw-info"), this.frameEl.querySelector<HTMLElement>("pre.src"), code);
   }
 
   /** The context the code on show is written in, as Lean, muted above it: folded when long to
@@ -1184,6 +1302,7 @@ export class SourceWindow implements SourcePane {
     if (!pre || turn !== this.turn) return;
     pre.innerHTML = highlightLines(text, (w, off) => (learned.has(off) ? learned.get(off) : resolve(w)), start + 1);
     this.flashLines();
+    this.info.marks();
   }
 }
 

@@ -261,6 +261,20 @@ export function panelsPart(page: Page): PanelsPart {
     },
     // the reference window paired with a source window stands beside it, on the right of the two
     docked: (w) => papers.dockFor(w),
+    // the InfoView (ReviewSpec, "The InfoView"): hidden by the reader in every window, kept in the
+    // browser; the page's one caret, in the window the reader put it in last, which those following
+    // see (CollabSpec, "Surfaces": caret)
+    infoHidden: () => !!store.data.infoHidden,
+    hideInfo: (on) => {
+      store.data.infoHidden = on ? true : undefined;
+      store.save();
+      for (const w of sources.all) w.infoChanged();
+    },
+    caretMoved: (w) => {
+      for (const o of sources.all) if (o !== w) o.followCaret(null);
+      page.people.report();
+    },
+    following: () => !!page.people.following,
   };
   const memory = sourceMemory();
   const sources: Sources<SourceWindow> = new Sources({
