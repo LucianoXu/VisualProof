@@ -959,8 +959,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   goals before the tactic at the caret, **After** for the goals after it, and at a term its expected
   type. After a tactic that holds a proof of its own (`have h : P := by simp`) is after the whole
   line: the goals the proof goes on from at its next line ("As line 50 begins"), `h` marked as added,
-  not the nested proof's "No goals". The tactic is marked in the code. **↑** and **↓** step from
-  tactic to tactic, the pane
+  not the nested proof's "No goals". The tactic is marked in the code; a click into the code shows
+  no hover card for the word it lands on until the pointer moves to another word. **↑** and **↓**
+  step from tactic to tactic, the pane
   following; the reader's caret is followed, so those who follow you watch as you step through a
   proof (a click in the code is reading for them; ↑, ↓, Before or After stop their following).
   Hypotheses and goals are highlighted as code, what the tactic changes tinted (Lean's goal diff);

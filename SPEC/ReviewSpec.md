@@ -275,7 +275,11 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   outside the project is opened by the same server in the same way. Until a
   file is elaborated the hover says how far Lean is. At most four files open (`--lean-files`, the
   owner's decisions of 2026-11-01); it stops after ten idle minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
-  statement and doc.
+  statement and doc. A click into the code with the mouse, which puts the InfoView's caret there,
+  shows no card for the word it lands on (the owner's decision of 2026-11-01): one open goes, and
+  none comes for that word until the pointer is on another word, or leaves the code; resting on it
+  brings none, since resting is what the pointer does while its reader reads the InfoView. A tap
+  and the keyboard as before.
 - **Hover cards nest**: a name in a card opens a card beside it; a card closes a moment after the
   pointer leaves it for anything but a card nested in it. A nested card is the name `#check`ed in
   `Describe.lean` in that folder, importing the module on show; the graph's statement shows until

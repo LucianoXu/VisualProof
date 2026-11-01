@@ -3,6 +3,16 @@
 // on; a click on a name goes to its declaration. A card closes a moment after the pointer has
 // left it for anything but a card nested in it, so moving onto a card never loses it.
 
+/** After a click into the code with the mouse, which puts the InfoView's caret there
+ *  (web/src/infoview.ts), the word it landed on (`clicked`, its key) has no card: the click is no
+ *  question about the word, and a card would cover the code the reader is placing the caret in. The
+ *  word the pointer rests on (`word`) may have its card again once it is another word; a rest on the
+ *  clicked word brings none, since resting there is what a pointer does while its reader reads the
+ *  InfoView. What may show, and what stays quiet. */
+export function afterClick(clicked: string, word: string): { show: boolean; clicked: string } {
+  return clicked && word === clicked ? { show: false, clicked } : { show: true, clicked: "" };
+}
+
 /** how long the pointer may be away before cards close, and rest on a name before one opens */
 const GRACE_MS = 350;
 const OPEN_MS = 280;
