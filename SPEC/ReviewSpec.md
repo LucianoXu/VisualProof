@@ -213,6 +213,62 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
       dependency updated, a branch being built), the present text found by name, under a warning,
       as for a file changed since it was compiled; an opinion on an outside declaration records no
       text, as before.
+  - **File mode** (the owner's decisions of 2026-11-01, on the owner's TODO "a way to show the
+    holistic file"): the window shows the whole file its declaration is in.
+    - **A mode of the window, not a window of another kind**: a *Declaration | File* switch in its
+      title bar. Pinning, collapsing, placing, the review box and following stay the window's.
+    - **The whole file**: the declaration highlighted (a bar at the gutter's edge, a faint ground)
+      and scrolled to as the window opens or switches mode; the line numbers as in Declaration
+      mode; each declaration of the file a mark in the gutter, where its command starts, for its
+      review status in the Status scheme's colours (approved, commented, stale, not yet reviewed,
+      trusted: CanvasSpec, "Colour schemes"); names linked as in Declaration mode, and Lean's hovers
+      across the whole file (the language server opens the whole file already).
+      - *Proposed*: a declaration in no target's review set — there are targets, and none needs it —
+        shows a hollow ring, "in no target's review set", in the not-yet-reviewed grey; with no
+        targets at all, not yet reviewed, as the board shows it.
+      - *Proposed*: the review box, the declaration's, stands under its lines in the file, under
+        the same scrollbar, as it stands under its code in Declaration mode.
+    - **Proofs are shown by default.** *Fold proofs*, in the window, folds each to a one-line mark,
+      *⋯ proof*, which shows that one proof on a click; the reader's own, kept in the browser, not
+      followed. It folds by the proof ranges the usage pass records (`proofs`, which the exported
+      document cuts by: ExportSpec decision 8) and a theorem's value, read off its text as the
+      document reads it, from after its `:=`.
+      - *Proposed*: where the pass did not read the text on show (a file changed since it was
+        compiled, a file outside the project, a past build's text) only theorems' proofs fold:
+        reading the text cannot tell a `by` that proves from one that builds data. A proof no
+        longer than the mark stays as it is.
+    - **Scrolling never changes the selection**: the review box stays the selected declaration's. A
+      sticky header over the code names the declaration the reading position is in, with its mark;
+      pressing it selects that declaration, an ordinary selection, which ends following like any.
+    - **Opening a file** — from the switch; from the side panel's tree clustered by file, *Files*,
+      a file's row (a button on the row under the pointer or the keyboard's focus, as hiding a level
+      is: ViewSpec decision 24); from the board's menu on a file cluster, *Open the file* — is not
+      tied to the selection.
+      - *Proposed*: a *file window*: a window pinned on the file, in File mode, at its top, which
+        does not follow the selection and has no declaration of its own (Declaration is not to be
+        had in it, nor a review box, nor `a` `m` `k`); a name in it, or its sticky header, goes to
+        the page as in any pinned window. One on the file already comes in front. It counts among
+        the six pinned windows. Pinned windows are followed, so followers see it.
+    - **Following**: the mode of each window and the file windows are part of the followed source
+      windows (CollabSpec, "Surfaces"). Switching the mode is a control of a followed surface, as
+      pinning is: it ends following. Scrolling stays the reader's own; others' pointers are by the
+      file's line and column, in either mode.
+    - **Bounds**: a file outside the project shows in File mode within the bounds above (only the
+      modules the graph's outside declarations are in). A past build shows that build's text where
+      it is kept (HistorySpec decision 23), else says why. A file changed since it was compiled
+      shows its present text under the warning; a declaration's mark shows only where its text is
+      still the compiled one (the latest build's text, as the history keeps it). A snapshot shows
+      its project files as it does now.
+    - **The phone**: the window as on the phone now (PhoneSpec decision 12), with the switch; no
+      file window, nothing being pinned there (PhoneSpec decision 13).
+    - **The InfoView** ("The InfoView" below) is about the whole file in File mode: its caret
+      anywhere in the file, the pane beside it under the sticky header, ↑ and ↓ stepping through the
+      file; by the same rules as in Declaration mode (none on a past build, in a snapshot, for a file
+      changed since it was compiled).
+    - **Large files stay quick**: the file is drawn in pieces — each declaration one, the lines
+      between a few dozen at a time — filled, and asked Lean about, as they come near the screen.
+    - **Agents** read a file too: `GET /api/agent/module` with `lines`, a few hundred lines at a
+      time, within the same bounds (docs/agent-api/reading.md).
 - **Hovering the source** shows Lean's hover from Lean's own language server, started in the
   project's folder of the cache (`lean-server/`) with the project's LEAN_PATH: with no lakefile
   there, it never runs `lake setup-file`, so it reads the owner's build and builds nothing. A file

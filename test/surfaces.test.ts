@@ -115,7 +115,9 @@ function reading(): PageParts["read"] {
     focus: () => ({ focus: "A.t" }),
     visitors: () => ({ visitors: [{ decl: "A.v", from: "A.b" }] }),
     panel: () => ({ sel: "A.b" }),
-    sources: () => ({ source: true, sourceCollapsed: true, pinned: [{ decl: "A.c", collapsed: false }] }),
+    // the following window in File mode, a pinned one, and a file window (the owner's decisions of
+    // 2026-11-01)
+    sources: () => ({ source: true, sourceCollapsed: true, sourceMode: "file", pinned: [{ decl: "A.c", collapsed: false }, { decl: "A.d", collapsed: false, mode: "file" }, { file: "A.M", collapsed: true }] }),
     paper: () => ({ paper: { file: "a".repeat(64), page: 3 } }),
     caret: () => ({ caret: { decl: "A.c", line: 41, character: 4, after: true, pinned: true } }),
     activity: () => ({ activity: { open: true, kind: "review", who: "people", mine: "Alice" } }),

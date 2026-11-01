@@ -144,7 +144,7 @@ export const SNAPSHOT_FORMS = {
     read: (o, clean) => ("visitors" in o && clean.visitors ? { visitors: clean.visitors } : {}),
   },
   panel: same("sel"),
-  sources: same("source", "sourceCollapsed", "pinned"),
+  sources: same("source", "sourceCollapsed", "sourceMode", "pinned"),
   paper: same("paper"),
   // the InfoView's caret, in the window it is in (the owner's decision of 2026-11-01)
   caret: same("caret"),
@@ -269,7 +269,7 @@ export function sortOut(v: Partial<PresenceView>, has: { build(id: number): bool
  *  tells of, the declarations of the selection (`picked`), the visitors, the pinned windows — and a
  *  focus on what is no target now. */
 export function goneNames(v: Partial<PresenceView>, picked: readonly string[], has: { decl(name: string): boolean; target(name: string): boolean }): Pick<Missing, "decls" | "focus"> {
-  const named = [v.sel, ...picked, ...(v.visitors ?? []).map((w) => w.decl), ...(v.pinned ?? []).map((w) => w.decl)];
+  const named = [v.sel, ...picked, ...(v.visitors ?? []).map((w) => w.decl), ...(v.pinned ?? []).flatMap((w) => ("decl" in w ? [w.decl] : []))];
   const decls = [...new Set(named.filter((n): n is string => !!n && !has.decl(n)))];
   return { decls, ...(typeof v.focus === "string" && !has.target(v.focus) ? { focus: v.focus } : {}) };
 }

@@ -4,7 +4,10 @@
 //
 // A part of the page: web/src/main.ts makes the parts in order, web/src/page.ts says what they share.
 
-import type { PresenceView } from "../../shared/collab.ts";
+import type { PinnedWindow, PresenceView } from "../../shared/collab.ts";
+import { moduleDecls } from "./filemode.ts";
+import type { SharedPin } from "./sources.ts";
+import type { SourceWindow } from "./sourcewin.ts";
 import { focusFrom } from "../../shared/views.ts";
 import { applyOwn, presenceOf } from "./surfaces.ts";
 import type { PageParts } from "./surfaces.ts";
@@ -26,6 +29,9 @@ export interface FollowPart {
 
 export function followPart(page: Page): FollowPart {
   const { S } = page;
+  /** A pinned window as presence carries it: its declaration, or a file window's file. */
+  const pinnedOf = (p: SourceWindow): PinnedWindow =>
+    p.file !== null ? { file: p.file, collapsed: p.collapsed } : { decl: p.name, collapsed: p.collapsed, ...(p.mode === "file" ? { mode: "file" as const } : {}) };
 
   /** What those following this reader see (CollabSpec decision 4, the owner's decision of
    *  2026-10-11: what you see is followed), part by part as web/src/surfaces.ts declares them: how
@@ -44,11 +50,13 @@ export function followPart(page: Page): FollowPart {
       focus: () => (page.mine !== undefined ? { focus: page.mine } : {}),
       visitors: () => (page.visitors.length ? { visitors: shareVisitors(page.visitors, (k) => page.canvas.visitorPos(k)) } : {}),
       panel: () => ({ sel: page.shown && "decl" in page.shown ? page.shown.decl : null }),
-      // the source windows, the following one and those pinned (decided 2026-10-09)
+      // the source windows, the following one and those pinned (decided 2026-10-09), each in its
+      // mode, and the file windows (the owner's decisions of 2026-11-01)
       sources: () => ({
         source: page.sources.open,
         ...(page.sources.following?.collapsed ? { sourceCollapsed: true } : {}),
-        ...(page.sources.pinned.length ? { pinned: page.sources.pinned.map((p) => ({ decl: p.name, collapsed: p.collapsed })) } : {}),
+        ...(page.sources.following?.mode === "file" ? { sourceMode: "file" as const } : {}),
+        ...(page.sources.pinned.length ? { pinned: page.sources.pinned.map(pinnedOf) } : {}),
       }),
       // the reference window (AttachmentSpec decision 11)
       paper: () => (page.papers.state() ? { paper: page.papers.state()! } : {}),
@@ -141,10 +149,12 @@ export function followPart(page: Page): FollowPart {
     // has none
     if (!page.pastShown()) {
       page.sources.mirror({
-        following: v.source ? { decl: page.selected(), collapsed: v.sourceCollapsed === true } : null,
-        pinned: (v.pinned ?? []).flatMap((w) => {
+        following: v.source ? { decl: page.selected(), collapsed: v.sourceCollapsed === true, mode: v.sourceMode === "file" ? "file" : "decl" } : null,
+        pinned: (v.pinned ?? []).flatMap((w): SharedPin[] => {
+          // a file window on a file of this page's graph
+          if ("file" in w) return moduleDecls(page.g, w.file).length ? [{ file: w.file, collapsed: w.collapsed }] : [];
           const i = page.g.byName.get(w.decl);
-          return i === undefined ? [] : [{ decl: i, collapsed: w.collapsed }];
+          return i === undefined ? [] : [{ decl: i, collapsed: w.collapsed, ...(w.mode === "file" ? { mode: "file" as const } : {}) }];
         }),
       });
       // their InfoView's caret, in the window that stands for theirs (shown once its code is drawn);

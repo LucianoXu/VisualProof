@@ -73,6 +73,11 @@ test("on a cluster: fold, hide its level, the view, trust, a note; on the empty 
   assert.deepEqual(acts(menuItems({ kind: "cluster", key: "A.B", folded: false, folder: false, trust: { prefix: "A.B", on: false } }, ctx({ write: false }))), ["fold", "hide", "remove", "add", "note", "note-view"]);
   assert.deepEqual(acts(menuItems({ kind: "canvas" }, ctx())), ["note", "note-view", "fit", "relayout"]);
   assert.deepEqual(acts(menuItems({ kind: "canvas" }, ctx({ arrange: false }))), ["fit"]);
+  // clustered by file, a file of the project: the whole file in a window of its own, first (the
+  // owner's decision of 2026-11-01), for every reader — a read-only one too
+  const file = menuItems({ kind: "cluster", key: "A.B", folded: false, folder: true, file: "A.B", trust: null }, ctx());
+  assert.deepEqual(file.slice(0, 2).map((it) => [it.act, it.label, !!it.sep]), [["file", "Open the file", false], ["fold", "Fold", true]]);
+  assert.deepEqual(acts(menuItems({ kind: "cluster", key: "A.B", folded: false, folder: true, file: "A.B", trust: null }, ctx({ arrange: false, write: false }))), ["file", "fold"]);
   // a reader who cannot arrange (no name, no snapshot) sees no board item on a cluster, Hide this level
   // included: left out, not greyed (ViewSpec decision 21)
   assert.deepEqual(acts(menuItems({ kind: "cluster", key: "A.B", folded: false, folder: false, trust: null }, ctx({ arrange: false }))), ["fold"]);
@@ -160,6 +165,8 @@ test("a copy of a view with a scope of its own: the copy's arrangement, the scop
 class Pane implements SourcePane {
   decl = -1;
   name = "";
+  file: string | null = null;
+  mode: "decl" | "file" = "decl";
   collapsed = false;
   aside = 0;
   fronted = 0;
@@ -169,6 +176,13 @@ class Pane implements SourcePane {
     this.name = `D${i}`;
   }
   redrawReview() {}
+  showFile(m: string) {
+    this.file = m;
+    this.mode = "file";
+  }
+  setMode(m: "decl" | "file") {
+    this.mode = m;
+  }
   pin() {}
   pinAside(step: number) {
     this.aside = step;

@@ -87,9 +87,11 @@ export function keysPart(page: Page): KeysPart {
     }
     if (win && route === "own") {
       // approve, comment on or mark key the window's own declaration, as its buttons do: in a pinned
-      // window that is not the selection
+      // window that is not the selection; a file window has none (the owner's decision of
+      // 2026-11-01), and says so
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
       e.preventDefault();
+      if (win.decl < 0) return page.say("This window is on a file, not on a declaration: select one first, from a name in it or the bar over the code.");
       if (e.key === "k") page.toggleKey(win.decl);
       else page.reviewBox.give(e.key === "a" ? "approve" : "comment", win.decl, win.el);
       return;

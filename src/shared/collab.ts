@@ -139,11 +139,10 @@ export function cleanFollowing(x: unknown): string | null {
 export const MAX_PINNED = 6;
 
 /** A source window a reader pinned (ReviewSpec, "The source window"): the declaration it stays on,
- *  by name, and whether it is collapsed to its pill. */
-export interface PinnedWindow {
-  decl: string;
-  collapsed: boolean;
-}
+ *  by name, or a file window's file (by its module: opened on a file, with no declaration of its
+ *  own; the owner's decision of 2026-11-01) — one or the other —, whether it is collapsed to its
+ *  pill, and whether it shows the whole file (File mode, which a file window is in always). */
+export type PinnedWindow = { decl: string; collapsed: boolean; mode?: "file" } | { file: string; collapsed: boolean };
 
 /** The InfoView's caret (ReviewSpec, "The InfoView"; followed, the owner's decision of 2026-11-01):
  *  the source window it is in — the one following the selection, or the reader's pinned window
@@ -171,6 +170,9 @@ export interface PresenceView {
   source: boolean;
   /** that window is collapsed to its pill; absent when it is not, or closed */
   sourceCollapsed?: boolean;
+  /** that window shows the whole file its declaration is in (File mode, the owner's decision of
+   *  2026-11-01); absent where it shows the declaration, or is closed */
+  sourceMode?: "file";
   /** the source windows the reader pinned, the first pinned first (decided 2026-10-09: a follower's
    *  windows mirror them too); absent when there are none, or from an agent, which pins none */
   pinned?: PinnedWindow[];
@@ -667,8 +669,10 @@ export function cleanView(v: unknown): PresenceView | null {
     ? o.pinned
         .slice(0, MAX_PINNED)
         .map((w): PinnedWindow | null => {
-          const decl = w && typeof w === "object" ? str((w as Record<string, unknown>).decl) : null;
-          return decl ? { decl, collapsed: (w as Record<string, unknown>).collapsed === true } : null;
+          const x = w && typeof w === "object" ? (w as Record<string, unknown>) : null;
+          const decl = x ? str(x.decl) : null, file = x && !decl ? str(x.file, 300) : null;
+          if (decl) return { decl, collapsed: x!.collapsed === true, ...(x!.mode === "file" ? { mode: "file" as const } : {}) };
+          return file ? { file, collapsed: x!.collapsed === true } : null;
         })
         .filter((w): w is PinnedWindow => w !== null)
     : [];
@@ -678,6 +682,7 @@ export function cleanView(v: unknown): PresenceView | null {
     ...(selection !== null ? { selection } : {}),
     source,
     ...(source && o.sourceCollapsed === true ? { sourceCollapsed: true } : {}),
+    ...(source && o.sourceMode === "file" ? { sourceMode: "file" as const } : {}),
     ...(pinned.length ? { pinned } : {}),
     clusterMode: str(o.clusterMode, 16) ?? "namespace",
     cam: cx !== null && cy !== null && ck !== null ? { x: cx, y: cy, k: ck } : null,

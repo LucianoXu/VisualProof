@@ -378,6 +378,11 @@ Implementation notes:
   the quieter, the closer to the ground — trusted a dim green, not yet reviewed a mid grey, failed
   the brightest, near white, as the light theme's failed is its darkest. Agents' advice is never a
   state.
+- **In a source window's File mode** (ReviewSpec, "The source window", the owner's decision of
+  2026-11-01) each declaration has a mark in the gutter in Status's colours for its review states —
+  commented, stale, approved, not yet reviewed, trusted —, whatever the board's colouring; a hollow
+  ring in the not-yet-reviewed grey where no target's review set holds it (proposed). Nothing of the
+  build or of `sorry` there: the window says those of its file in its banners.
 - **Mine** (the owner's decision of 2026-10-20): Status's review states — commented, stale,
   approved, not yet reviewed, trusted — from one reader's own current opinions alone: theirs on the
   present version (a comment, an approval), on an earlier one (stale), else not yet reviewed or

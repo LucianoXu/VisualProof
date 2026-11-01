@@ -626,6 +626,15 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .o-hide svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .o-hide:hover { color: var(--accent); background: var(--code-bg); }
 .o-row:not(:hover) .o-hide:not(:focus-visible) { visibility: hidden; }
+/* a file's row opens the file, whole, in a window of its own (the owner's decision of 2026-11-01):
+   on the row under the pointer, or with the keyboard on it, as hiding a level is */
+.o-file {
+  display: grid; place-items: center; flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 5px;
+  background: transparent; color: var(--text-3); cursor: pointer;
+}
+.o-file svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+.o-file:hover { color: var(--accent); background: var(--code-bg); }
+.o-row:not(:hover):not(:focus-within) .o-file:not(:focus-visible) { visibility: hidden; }
 /* a popover lies above the floating windows (#windows) */
 #trust-pop {
   position: fixed; z-index: 36; width: min(340px, calc(100vw - 24px)); border-radius: 14px; padding: 14px 16px 12px;
@@ -856,6 +865,70 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 ::highlight(vp-tactic) { background-color: color-mix(in srgb, var(--accent) 20%, transparent); }
 .sw-review { border-top: 1px solid var(--line); padding: 10px 16px 12px; }
 .sw-review .sec { margin-top: 0; }
+/* the window's two modes, in its title bar (the owner's decision of 2026-11-01): the declaration, or
+   the whole file it is in */
+.sw-mode { display: inline-flex; flex: none; align-self: center; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.sw-mode button { border: 0; background: transparent; color: var(--text-2); font: 500 11.5px var(--font); line-height: 18px; padding: 2px 8px; cursor: pointer; }
+.sw-mode button + button { border-left: 1px solid var(--line); }
+.sw-mode button:hover:not(:disabled) { color: var(--text); }
+.sw-mode button[aria-pressed="true"] { background: var(--code-bg); color: var(--text); font-weight: 600; }
+.sw-mode button:disabled { cursor: default; opacity: 0.45; }
+/* a file window's mark, where a declaration's window has its kind's dot */
+.sw-glyph { display: inline-grid; place-items: center; flex: none; align-self: center; color: var(--text-2); }
+.sw-glyph svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+/* File mode's sticky header: the declaration the reading position is in, which a press selects, and
+   Fold proofs, the reader's own */
+.sw-sticky {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; min-height: 30px; box-sizing: border-box;
+  padding: 3px 10px 3px 16px; background: var(--surface-solid); border-bottom: 1px solid var(--line);
+}
+.sw-at-slot { flex: 1 1 auto; min-width: 0; display: flex; }
+.sw-at {
+  display: inline-flex; align-items: center; gap: 7px; min-width: 0; max-width: 100%; margin-left: -6px; padding: 2px 6px; border: 0;
+  border-radius: 6px; background: transparent; color: var(--text); font: 600 12.5px var(--font); cursor: pointer; text-align: left;
+}
+.sw-at:hover { background: var(--code-bg); }
+.sw-at-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-at-st { color: var(--text-2); font-weight: 400; font-size: 11.5px; white-space: nowrap; }
+.sw-at-file { color: var(--text-3); font: 11.5px var(--mono); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-folds-btn {
+  flex: none; padding: 1px 10px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--text-2);
+  font: 500 11.5px var(--font); line-height: 18px; cursor: pointer;
+}
+.sw-folds-btn:hover { color: var(--text); }
+.sw-folds-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); color: var(--text); }
+/* the InfoView beside the whole file: under the sticky header, within the view the header leaves */
+.sw-file-mode .sw-split.iv-side > .sw-info { top: 31px; max-height: calc(var(--sw-view, 70vh) - 31px); }
+/* the file's pieces (web/src/filemode.ts): each laid out only near the screen, so that a file of
+   thousands of lines opens at once; one off the screen stands as tall as its lines unwrapped */
+.sw-file pre.sw-piece { content-visibility: auto; }
+.sw-file pre.sw-piece + pre.sw-piece { margin-top: 0; }
+/* its gutter makes room for the declarations' marks, left of the numbers */
+.sw-file-mode .sw-body pre.src { --gut-mark: 13px; --gut: calc(var(--gw, 0) * var(--gut-digit) + var(--gut-pad) + var(--gut-mark)); }
+.sw-file .ln { position: relative; }
+/* a declaration's mark, where its command starts: its review state in the Status scheme's colours
+   (CanvasSpec, "Colour schemes"); hollow where no target's review set holds it */
+.dm { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--s, var(--status-unreviewed)); flex: none; }
+.sw-file .ln > .dm { position: absolute; left: 1px; top: calc(0.775em - 4px); text-indent: 0; }
+.dm.s-free { background: transparent; box-shadow: inset 0 0 0 1.5px var(--status-unreviewed); }
+.dm.s-trusted { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-approved) 45%, transparent); }
+/* the window's declaration: a bar at the gutter's edge, a faint ground */
+.sw-file .ln.hl {
+  background: linear-gradient(var(--accent), var(--accent)) no-repeat calc(var(--gut) - var(--gut-pad) / 2 - 1px) 0 / 2px 100%,
+    color-mix(in srgb, var(--accent) 6%, transparent);
+}
+/* its review box, under its lines */
+.sw-file > .sw-review { margin: 10px -16px 12px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent) 3%, var(--surface-solid)); }
+/* a proof folded (the reader's own, kept in the browser): what it holds hidden, its text still there
+   for the positions Lean is asked at, a mark in its place that shows it */
+.pf-mark { display: none; }
+.sw-folds .pf-mark:not(.pf-open) {
+  display: inline; margin: 0 1px 0 0.5ch; padding: 0 6px; border: 0; border-radius: 5px; background: var(--code-bg); color: var(--text-2);
+  font: 11.5px/1.4 var(--mono); text-indent: 0; cursor: pointer; vertical-align: baseline;
+}
+.sw-folds .pf-mark:not(.pf-open)::before { content: "⋯ proof"; }
+.sw-folds .pf-mark:hover { color: var(--accent); }
+.sw-folds .pf-t:not(.pf-open), .sw-folds .ln.pf-l:not(.pf-open) { display: none; }
 
 /* what Lean says is under the pointer, in the source window (as VS Code shows it) */
 /* hover cards (web/src/hovercards.ts): the pointer can move onto them; a name in one opens the next */

@@ -187,7 +187,9 @@ export class InfoView {
   /** bumped at each new question, so that a slow answer to an earlier one is dropped */
   private turn = 0;
   private pane: HTMLElement | null = null;
-  private pre: HTMLElement | null = null;
+  /** a line of the file in the code on show: the code's element, or the window's way of finding
+   *  one (File mode's pieces, drawn as they are reached) */
+  private lines: HTMLElement | ((line: number) => HTMLElement | null) | null = null;
   private again: ReturnType<typeof setTimeout> | null = null;
   private slow: ReturnType<typeof setTimeout> | null = null;
   /** the subterm the pointer rests on, and the wait before its card */
@@ -200,12 +202,13 @@ export class InfoView {
     this.hooks = hooks;
   }
 
-  /** The window drew its frame: the pane's element in it, the code's element, and the code on show
-   *  (null: none). A caret outside the code on show goes. */
-  attach(pane: HTMLElement | null, pre: HTMLElement | null, code: InfoCode | null): void {
+  /** The window drew its frame: the pane's element in it, the code's element — or how the element of
+   *  a line of the file is found (File mode, the owner's decision of 2026-11-01: the whole file, in
+   *  pieces) —, and the code on show (null: none). A caret outside the code on show goes. */
+  attach(pane: HTMLElement | null, lines: HTMLElement | ((line: number) => HTMLElement | null) | null, code: InfoCode | null): void {
     const was = this.code;
     this.code = code;
-    this.pre = pre;
+    this.lines = lines;
     if (this.pane !== pane) {
       this.pane = pane;
       if (pane) this.listen(pane);
@@ -216,6 +219,13 @@ export class InfoView {
     this.watchSize();
     if (this.caret && !same) this.ask();
     else this.draw();
+  }
+
+  /** The element of line `line` of the file in the code on show, or null. */
+  private lineEl(line: number): HTMLElement | null {
+    const c = this.code, l = this.lines;
+    if (!c || !l) return null;
+    return typeof l === "function" ? l(line) : (l.querySelectorAll<HTMLElement>(".ln")[line - c.start] ?? null);
   }
 
   /** Whether line `line` of the file is in the code on show. */
@@ -244,7 +254,7 @@ export class InfoView {
     this.caret = { line: c.start + to.line, ch: to.ch, after: k.after };
     this.ask();
     this.hooks.moved();
-    this.pre?.querySelectorAll<HTMLElement>(".ln")[to.line]?.scrollIntoView({ block: "nearest" });
+    this.lineEl(c.start + to.line)?.scrollIntoView({ block: "nearest" });
     return true;
   }
 
@@ -259,7 +269,7 @@ export class InfoView {
     if (!this.holds(c.line)) return;
     if (moved) {
       this.ask();
-      this.pre?.querySelectorAll<HTMLElement>(".ln")[c.line - this.code.start]?.scrollIntoView({ block: "nearest" });
+      this.lineEl(c.line)?.scrollIntoView({ block: "nearest" });
     } else this.draw();
   }
 
@@ -279,7 +289,7 @@ export class InfoView {
     this.sizer?.disconnect();
     this.sizer = null;
     this.pane = null;
-    this.pre = null;
+    this.lines = null;
   }
 
   private stopWaits(): void {
@@ -360,12 +370,12 @@ export class InfoView {
   /** The caret's line marked in the code, and its tactic, where the browser can (the CSS Custom
    *  Highlight API): marks the code keeps however often it is drawn again. */
   marks(): void {
-    const pre = this.pre, c = this.code, k = this.caret;
-    for (const l of pre?.querySelectorAll(".ln.ln-caret") ?? []) l.classList.remove("ln-caret");
+    const c = this.code, k = this.caret;
+    for (const l of this.hooks.win().querySelectorAll(".ln.ln-caret")) l.classList.remove("ln-caret");
     const hl = (globalThis as { CSS?: { highlights?: Map<string, unknown> } }).CSS?.highlights;
     const Hl = (globalThis as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
-    if (!pre || !c || !k || !this.holds(k.line)) return;
-    const ln = pre.querySelectorAll<HTMLElement>(".ln")[k.line - c.start];
+    if (!c || !k || !this.holds(k.line)) return;
+    const ln = this.lineEl(k.line);
     ln?.classList.add("ln-caret");
     // the tactic, where Lean has a tactic state there: elsewhere the line is no tactic's
     const a = this.answer;

@@ -14,6 +14,7 @@ import { doubleClickActs, pressActs } from "../src/web/src/surfaces.ts";
 import type { PageEl } from "../src/web/src/surfaces.ts";
 import { asideRect, FIT_W, MAX_PINNED, MIN, openBounds, openRect, PIN_CAP, routeKey, Sources } from "../src/web/src/sources.ts";
 import type { SourcePane } from "../src/web/src/sources.ts";
+import type { SourceMode } from "../src/web/src/filemode.ts";
 
 const VP = { w: 1440, h: 900 };
 /** where the following window is kept */
@@ -23,6 +24,10 @@ const HOME: Rect = { x: 334, y: 128, w: 640, h: 500 };
 class Pane implements SourcePane {
   decl = -1;
   name = "";
+  file: string | null = null;
+  mode: SourceMode = "decl";
+  /** the modes it was set in, in order */
+  modes: SourceMode[] = [];
   collapsed = false;
   pinnedAt: Rect | null = null;
   /** pinned as it opened, this many steps aside (a followed reader's window) */
@@ -39,6 +44,17 @@ class Pane implements SourcePane {
   }
   redrawReview() {
     this.reviews++;
+  }
+  showFile(m: string) {
+    this.file = m;
+    this.mode = "file";
+    this.decl = -1;
+    this.name = "";
+  }
+  setMode(m: SourceMode) {
+    if (this.file !== null && m === "decl") return;
+    this.mode = m;
+    this.modes.push(m);
   }
   pin(at: Rect) {
     this.pinnedAt = at;
@@ -446,4 +462,69 @@ test("following ends on acting, and on any change to which windows there are or 
   assert.equal(doubleClickActs(at(".sw-win:not(.collapsed) .sw-head", "button")), false);
   assert.equal(doubleClickActs(at(".sw-win")), false);
   assert.equal(doubleClickActs(at()), false);
+});
+
+test("File mode (the owner's decisions of 2026-11-01): a window's mode is its own and stays as it follows; a file window is pinned on its file, in File mode, not tied to the selection", () => {
+  const { s, made, said } = page();
+  const f = s.show(1);
+  f.setMode("file");
+  // the following window keeps its mode as it follows the selection
+  s.follow(4);
+  assert.deepEqual([f.decl, f.mode], [4, "file"]);
+  // a file opened from the Files tree or the board's menu: a window of its own, pinned a step aside,
+  // in File mode, on no declaration; the following window as it was
+  const w = s.openFile("P.Basic")!;
+  assert.deepEqual([w.file, w.mode, w.decl, w.asideAt, s.following === f, s.pinned.length], ["P.Basic", "file", -1, 1, true, 1]);
+  // the selection changing leaves it on its file
+  s.follow(7);
+  assert.deepEqual([w.file, w.decl, f.decl], ["P.Basic", -1, 7]);
+  // opened again: the same, in front; nothing paired, it being no declaration's
+  const fronted = w.fronted;
+  assert.equal(s.openFile("P.Basic"), w);
+  assert.equal(w.fronted, fronted + 1);
+  // Declaration is not to be had in it
+  w.setMode("decl");
+  assert.equal(w.mode, "file");
+  // it counts among the pinned windows: at most six
+  for (let k = 0; k < MAX_PINNED - 1; k++) s.openFile(`P.F${k}`);
+  assert.equal(s.openFile("P.More"), null);
+  assert.deepEqual(said, [PIN_CAP]);
+  // a new graph: a file window on a file it still has stays, one on a file it has not closes
+  const t = page();
+  const kept = t.s.openFile("P.Basic")!;
+  const gone = t.s.openFile("P.Gone")!;
+  const hooks = (t.s as unknown as { hooks: { hasFile?: (m: string) => boolean } }).hooks;
+  hooks.hasFile = (m) => m !== "P.Gone";
+  t.s.redraw(() => undefined);
+  assert.deepEqual([kept.removed, gone.removed, t.s.pinned.length], [false, true, 1]);
+  assert.equal(made.length, 1 + MAX_PINNED);
+});
+
+test("following someone in File mode: their following window's mode, each pinned window's, and their file windows, mirrored", () => {
+  const { s, made } = page();
+  // they read the whole file of 2, and pinned 3 in File mode and the file P.Basic
+  s.mirror({ following: { decl: 2, collapsed: false, mode: "file" }, pinned: [{ decl: 3, collapsed: false, mode: "file" }, { file: "P.Basic", collapsed: true }] });
+  const [p3, file] = s.pinned;
+  assert.deepEqual([s.following!.decl, s.following!.mode], [2, "file"]);
+  // a new window is set in their mode before it is drawn: never drawn once in the other
+  assert.deepEqual(s.following!.modes, ["file"]);
+  assert.deepEqual([p3.decl, p3.mode, p3.modes], [3, "file", ["file"]]);
+  assert.deepEqual([file.file, file.mode, file.collapsed], ["P.Basic", "file", true]);
+  // they switch back to the declaration: so does this reader's window; their file window, the same
+  // one stands for it
+  s.mirror({ following: { decl: 2, collapsed: false }, pinned: [{ decl: 3, collapsed: false }, { file: "P.Basic", collapsed: false }] });
+  assert.deepEqual([s.following!.mode, p3.mode, s.pinned[1] === file, file.collapsed], ["decl", "decl", true, false]);
+  // they close their file window: it closes here
+  s.mirror({ following: { decl: 2, collapsed: false }, pinned: [{ decl: 3, collapsed: false }] });
+  assert.equal(file.removed, true);
+  assert.equal(made.length, 3);
+});
+
+test("the switch between the declaration and the file is a control of a followed surface: it ends following; folding proofs, and opening a folded one, are the reader's own", () => {
+  assert.equal(pressActs(at(".sw-win", "button", "[data-sw-mode]")), true);
+  assert.equal(pressActs(at(".sw-win", "button", "[data-sw-at]")), true, "the sticky header selects");
+  assert.equal(pressActs(at(".sw-win", "button", "[data-sw-folds]")), false);
+  assert.equal(pressActs(at(".sw-win", "button", "[data-pf-open]")), false);
+  // the Files tree: a file opened is a window opened; the row's name selects, as before
+  assert.equal(pressActs(at("#side", "#outline [data-o-file]")), true);
 });

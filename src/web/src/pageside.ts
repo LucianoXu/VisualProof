@@ -14,7 +14,18 @@ import { besideSide, Popover } from "./popover.ts";
 import { clusterOn } from "./selection.ts";
 import { SHIELD, Trust } from "./trust.ts";
 import { $, STATE_LABEL, PAST_REVIEW, READ_ONLY_REVIEW } from "./page.ts";
+import { moduleDecls } from "./filemode.ts";
+import { isPhone } from "./phone.ts";
 import type { Page } from "./page.ts";
+
+/** The file of the project a cluster stands for, as its module, where the board is clustered by
+ *  file and a window of its own can be opened on it (not on a phone: PhoneSpec decision 13); null
+ *  elsewhere. The outline's file rows and the board's menu ask it. */
+export function fileCluster(page: Page, key: string): string | null {
+  if (page.cm() !== "module" || isPhone()) return null;
+  const g = page.g;
+  return moduleDecls(g, key).some((i) => !g.isExt(i)) ? key : null;
+}
 
 /** What the side panel gives the page's other parts. */
 export interface SidePart {
@@ -97,6 +108,13 @@ export function sidePart(page: Page): SidePart {
     trustCell: (c) => trust.cell(page.canvas.layout.clusters[c], page.cm()),
     trustClicked: (c, row) => trust.clicked(page.canvas.layout.clusters[c], page.cm(), row),
     hide: (c) => hideLevel(page.canvas.layout.clusters[c].key),
+    // clustered by file, a file of the project opens whole (the owner's decision of 2026-11-01); a
+    // phone pins no window (PhoneSpec decision 13), and opens it by a window's switch alone
+    file: (c) => fileCluster(page, page.canvas.layout.clusters[c].key),
+    openFile: (c) => {
+      const m = fileCluster(page, page.canvas.layout.clusters[c].key);
+      if (m) page.sources.openFile(m);
+    },
   });
   page.fileIndex = files();
 

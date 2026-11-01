@@ -280,6 +280,13 @@ test("the companion: where every person is, and the agents; it waits until someo
     const hers = after.people.find((p: Json) => p.name === "Alice").place;
     assert.deepEqual([hers.sourceCollapsed, hers.pinned], [true, [{ declaration: "N.a", collapsed: false }, { declaration: "N.b", collapsed: true }]]);
     assert.match(hers.inWords, /with the source of N\.a, N\.b pinned/);
+    // the whole file shown (File mode, the owner's decision of 2026-11-01): the following window's,
+    // a pinned one's, and a file window, opened on a file
+    const files = [{ decl: "N.a", collapsed: false, mode: "file" }, { file: "M", collapsed: false }];
+    await S.ask("POST", "/api/presence", { token: hello.token, view: { ...here, sourceMode: "file", pinned: files }, idle: false }, ALICE);
+    const whole = (await S.ask("GET", "/api/agent/companion", undefined, bearer(token))).json!.people.find((p: Json) => p.name === "Alice").place;
+    assert.deepEqual([whole.sourceMode, whole.pinned], ["file", [{ declaration: "N.a", collapsed: false, mode: "file" }, { file: "M", collapsed: false }]]);
+    assert.match(whole.inWords, /reading the whole file of N\.b, .*with the source of N\.a \(its whole file\) and the file M pinned/);
     // what else those following her see (CollabSpec decision 4, the owner's decision of
     // 2026-10-11): Activity and its filters, the lost-and-found, the colouring, the edges — said
     // where her page says them, which an older page does not; a move
@@ -357,6 +364,19 @@ test("what the trial of the prompt missed: a module's doc comments and declarati
     assert.deepEqual(m.json!.docs, [{ line: 1, endLine: 2, text: "# M\nWhy `b` doubles nothing." }]);
     assert.deepEqual(m.json!.declarations.map((d: Json) => d.name), ["N.a", "N.b"]);
     assert.equal((await S.ask("GET", "/api/agent/module?name=m", undefined, bearer(token))).json!.didYouMean[0], "M");
+    // the file itself, as File mode shows it (the owner's decision of 2026-11-01): some lines at a
+    // time, the next to ask said until its end
+    const all = readFileSync(join(S.dir, "M.lean"), "utf8").split("\n");
+    const head = (await S.ask("GET", "/api/agent/module?name=M&lines=1-2", undefined, bearer(token))).json!;
+    assert.deepEqual([head.lines, head.text, head.more], [{ from: 1, to: 2, of: all.length }, all.slice(0, 2).join("\n"), `lines=3-${all.length}`]);
+    const rest = (await S.ask("GET", `/api/agent/module?name=M&${head.more}`, undefined, bearer(token))).json!;
+    assert.deepEqual([rest.text, rest.more], [all.slice(2).join("\n"), undefined]);
+    for (const bad of ["0-3", "3-2", "1-401", "a"]) assert.equal((await S.ask("GET", `/api/agent/module?name=M&lines=${bad}`, undefined, bearer(token))).status, 400, bad);
+    // outside the project, a module an outside declaration of the graph is in, its file in the
+    // toolchain; no other
+    const core = await S.ask("GET", "/api/agent/module?name=Init.Prelude&lines=1-10", undefined, bearer(token));
+    assert.deepEqual([core.status, core.json!.file, core.json!.lines.from, core.json!.text.split("\n").length, typeof core.json!.outside], [200, "Init/Prelude.lean", 1, 10, "object"]);
+    assert.equal((await S.ask("GET", "/api/agent/module?name=Init.NotInTheGraph&lines=1-10", undefined, bearer(token))).status, 404);
     // what is already said about a declaration, apart from the rest
     await S.ask("POST", "/api/agent/note", { name: "N.a", text: "start at `N.a`" }, bearer(token));
     await S.ask("POST", "/api/agent/note", { name: "N.b", text: "then N.b, which doubles nothing" }, bearer(token));

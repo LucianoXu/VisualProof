@@ -9,10 +9,15 @@
 // panel — opens in a new following window, in the middle again, beside the pinned one. At most
 // MAX_PINNED are pinned at once.
 //
+// A window shows its declaration, or the whole file it is in (File mode, the owner's decisions of
+// 2026-11-01); a file window is opened on a file (the Files tree, the board's menu), pinned as it
+// opens, in File mode, with no declaration of its own: it does not follow the selection.
+//
 // What a reader shares (CollabSpec decision 4) is all of them: the following window, open or not,
-// on which declaration, collapsed or not, and each pinned window's declaration, collapsed or not. A
-// follower's windows mirror theirs (Sources.mirror), each placed by the follower's own rules, since
-// screens differ; once following ends, the windows that stood for theirs are the follower's own.
+// on which declaration, collapsed or not, in which mode, and each pinned window's declaration — a
+// file window's file —, collapsed or not, in which mode. A follower's windows mirror theirs
+// (Sources.mirror), each placed by the follower's own rules, since screens differ; once following
+// ends, the windows that stood for theirs are the follower's own.
 //
 // This is the windows' logic alone, with no page in it, so that it is tested without a browser
 // (test/sources.test.ts); web/src/sourcewin.ts draws each window, web/src/pagepanels.ts wires them.
@@ -20,6 +25,7 @@
 import { MAX_PINNED } from "../../shared/collab.ts";
 import { cascadeRect, CASCADE, EDGE, insideRect, onTop } from "./floatwin.ts";
 import type { Rect, Size } from "./floatwin.ts";
+import type { SourceMode } from "./filemode.ts";
 
 /** the most windows pinned at once: a few declarations side by side, not a wall of them */
 export { MAX_PINNED };
@@ -34,12 +40,21 @@ export const PIN_CAP = `${MAX_PINNED} source windows are pinned already: close o
 
 /** One source window, as the page's set of them drives it. */
 export interface SourcePane {
-  /** the declaration it shows, and its name (what it is found by in a new graph) */
+  /** the declaration it shows, and its name (what it is found by in a new graph); -1 and "" for a
+   *  file window */
   readonly decl: number;
   readonly name: string;
+  /** a file window's module (opened on a file, no declaration of its own), else null */
+  readonly file: string | null;
   readonly collapsed: boolean;
+  /** what it shows: its declaration, or the whole file it is in */
+  readonly mode: SourceMode;
   /** show declaration `i`: another, or the same drawn again */
   show(i: number): void;
+  /** be a file window on module `module`, in File mode: another file, or the same drawn again */
+  showFile(module: string): void;
+  /** shown in mode `m` (a file window has File mode alone) */
+  setMode(m: SourceMode): void;
   /** draw its review again: the review changed */
   redrawReview(): void;
   /** it is pinned, at `at`: it stays on its declaration, its place its own */
@@ -71,18 +86,25 @@ export interface SourcesHooks<P extends SourcePane> {
    *  pinned window — or the following window stepped to it: the reference window opens its first
    *  link beside that window, pinned or not (AttachmentSpec decision 8) */
   shown?(p: P, i: number): void;
+  /** whether a module is still one the graph's declarations are in: a file window on one no longer
+   *  closes as a new graph comes */
+  hasFile?(module: string): boolean;
   /** where a pinned window's top may be: under the page's bars (web/src/paperdock.ts, pairTop) */
   top?(): number;
 }
 
 /** What a followed reader's windows are, as the follower's page reads their presence
  *  (shared/collab.ts, PresenceView): their following window, open on a declaration (null: on
- *  nothing that is one here) or closed (null); their pinned windows, the first pinned first, each
- *  on a declaration this page has. */
+ *  nothing that is one here) or closed (null), in its mode; their pinned windows, the first pinned
+ *  first, each on a declaration this page has, or a file window on a file of its graph. The mode is
+ *  Declaration where none is said (a page from before 2026-11-01). */
 export interface Shared {
-  following: { decl: number | null; collapsed: boolean } | null;
-  pinned: { decl: number; collapsed: boolean }[];
+  following: { decl: number | null; collapsed: boolean; mode?: SourceMode } | null;
+  pinned: SharedPin[];
 }
+
+/** A followed reader's pinned window, as Shared has it. */
+export type SharedPin = { decl: number; collapsed: boolean; mode?: SourceMode } | { file: string; collapsed: boolean };
 
 export class Sources<P extends SourcePane> {
   /** the window that follows the selection, or null */
@@ -135,7 +157,7 @@ export class Sources<P extends SourcePane> {
   reveal(p: P): void {
     if (p.collapsed) p.collapse(false);
     p.front();
-    if (p.decl >= 0) this.hooks.shown?.(p, p.decl);
+    if (p.decl >= 0 && p.file === null) this.hooks.shown?.(p, p.decl);
   }
 
   /** Space: the following window closes; collapsed, it opens again; with none, one opens on the
@@ -170,10 +192,10 @@ export class Sources<P extends SourcePane> {
     // theirs matched to those here: first the windows that stood for them, then any on the same
     // declaration
     const left = new Set(this.pinned);
-    const states: [P, boolean][] = [];
+    const states: [P, boolean, SourceMode][] = [];
     const missing: Shared["pinned"] = [];
     for (const e of s.pinned) {
-      const on = [...left].filter((p) => p.decl === e.decl);
+      const on = [...left].filter((p) => ("file" in e ? p.file === e.file : p.file === null && p.decl === e.decl));
       const p = on.find((q) => this.mirrored.has(q)) ?? on[0];
       if (!p) {
         missing.push(e);
@@ -181,7 +203,7 @@ export class Sources<P extends SourcePane> {
       }
       left.delete(p);
       this.mirrored.add(p);
-      states.push([p, e.collapsed]);
+      states.push([p, e.collapsed, modeOf(e)]);
     }
     // closed there, closed here
     for (const p of left) if (this.mirrored.has(p)) this.close(p);
@@ -190,27 +212,45 @@ export class Sources<P extends SourcePane> {
       const f = this.following;
       let p: P;
       // they pinned their following window: this one is pinned as this reader would pin it
-      if (f && f.decl === e.decl && s.following?.decl !== e.decl) {
+      if (!("file" in e) && f && f.decl === e.decl && s.following?.decl !== e.decl) {
         this.pinAt(f);
         p = f;
       } else {
         p = this.hooks.make();
         p.pinAside(this.pinned.length + 1);
-        p.show(e.decl);
+        if ("file" in e) p.showFile(e.file);
+        else {
+          // in their window's mode from the start, rather than drawn once in the other
+          if (p.mode !== modeOf(e)) p.setMode(modeOf(e));
+          p.show(e.decl);
+        }
         this.pinned.push(p);
         this.hooks.changed();
       }
       this.mirrored.add(p);
-      states.push([p, e.collapsed]);
+      states.push([p, e.collapsed, modeOf(e)]);
     }
-    for (const [p, on] of states) if (p.collapsed !== on) p.collapse(on);
+    for (const [p, on, mode] of states) {
+      if (p.mode !== mode) p.setMode(mode);
+      if (p.collapsed !== on) p.collapse(on);
+    }
     // their following window: open on their declaration, or closed; on nothing that is a
     // declaration here, as it is
     const f = s.following;
     if (f && f.decl !== null) {
       let p = this.following;
-      if (!p) p = this.show(f.decl);
-      else if (p.decl !== f.decl) {
+      const mode = f.mode ?? "decl";
+      // a new one opens in their mode, rather than drawn once in the other
+      if (!p) {
+        p = this.hooks.make();
+        if (mode !== p.mode) p.setMode(mode);
+        this.following = p;
+        p.show(f.decl);
+        this.hooks.changed();
+        p.front();
+        this.hooks.shown?.(p, f.decl);
+      } else if (p.mode !== mode) p.setMode(mode);
+      if (p.decl !== f.decl) {
         // a step as any other, which the pairing is told of: it pairs nothing while this reader
         // follows, and the window says so
         p.show(f.decl);
@@ -238,11 +278,34 @@ export class Sources<P extends SourcePane> {
     return true;
   }
 
+  /** A file opened from the Files tree or the board's menu (the owner's decision of 2026-11-01): a
+   *  file window on module `module`, pinned as it opens a step aside from the middle of the screen,
+   *  in File mode at the file's top; one on it already comes in front instead. It is no
+   *  declaration's: nothing is paired. Refused, with why, when MAX_PINNED are pinned already. */
+  openFile(module: string): P | null {
+    const have = this.pinned.find((p) => p.file === module);
+    if (have) {
+      this.reveal(have);
+      return have;
+    }
+    if (this.pinned.length >= MAX_PINNED) {
+      this.hooks.say(PIN_CAP);
+      return null;
+    }
+    const p = this.hooks.make();
+    p.pinAside(this.pinned.length + 1);
+    p.showFile(module);
+    this.pinned.push(p);
+    p.front();
+    this.hooks.changed();
+    return p;
+  }
+
   /** "Open in a pinned window" (the canvas's menu): declaration `i` in a window of its own, pinned
    *  as it opens a step aside from the middle of the screen; a pinned window on it already comes
    *  in front instead. Either is paired. Refused, with why, when MAX_PINNED are pinned already. */
   openPinned(i: number): P | null {
-    const have = this.pinned.find((p) => p.decl === i);
+    const have = this.pinned.find((p) => p.file === null && p.decl === i);
     if (have) {
       this.reveal(have);
       return have;
@@ -292,15 +355,24 @@ export class Sources<P extends SourcePane> {
   }
 
   /** A new graph, or files that changed: each pinned window shows its declaration again, found by
-   *  name; one whose declaration the graph no longer holds closes. */
+   *  name, a file window its file; one whose declaration — or file — the graph no longer holds
+   *  closes. */
   redraw(find: (name: string) => number | undefined): void {
     for (const p of [...this.pinned]) {
+      if (p.file !== null) {
+        if (this.hooks.hasFile && !this.hooks.hasFile(p.file)) this.close(p);
+        else p.showFile(p.file);
+        continue;
+      }
       const i = find(p.name);
       if (i === undefined) this.close(p);
       else p.show(i);
     }
   }
 }
+
+/** The mode a followed reader's pinned window is in: a file window's is File's. */
+const modeOf = (e: SharedPin): SourceMode => ("file" in e ? "file" : (e.mode ?? "decl"));
 
 /** How large a source window may be while it is fitted to its code (decided 2026-10-09, as the
  *  modal window was): at most 92 % × 88 % of the screen, and a margin from its edges — from `top`

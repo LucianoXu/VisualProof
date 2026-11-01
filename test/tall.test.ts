@@ -165,6 +165,12 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     tall: "the sheet's TCB list (decision 20)",
     monitor: "the panel's TCB list (decision 33)",
   },
+  // File mode's proofs folded (the owner's decision of 2026-11-01): in the source windows, where they
+  // stand
+  proofFolds: {
+    tall: "in the source windows, docked in the sheet's place (decision 21)",
+    monitor: "in the source windows, in the windows' column (decision 34)",
+  },
   opinions: {
     tall: "the review box, in the sheet and in the windows docked in its place (decisions 20, 21)",
     monitor: "the review box, in the panel's pane and the windows' column (decisions 33, 34)",
