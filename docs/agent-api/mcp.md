@@ -24,7 +24,7 @@ Each wraps the endpoints of a topic, which says what their answers hold. `*`: th
 | `search` | — | `GET search`, [reading](reading.md) |
 | `declaration` | — (`name`, or `names` for several) | `GET declaration`, [reading](reading.md) |
 | `source` | `source`\*, `context`, `module` | `GET source`, `context`, `module`, [reading](reading.md) |
-| `lean` | `describe`, `print` | `GET describe`, `print`, [reading](reading.md) |
+| `lean` | `describe`, `print`, `goals` | `GET describe`, `print`, `goals`, [reading](reading.md) |
 | `refs` | `uses`, `users` | `GET uses`, `users`, [tcb](tcb.md) |
 | `review` | `targets`, `tcb`, `keys`, `why` | `GET targets`, `tcb`, `keys`, `why`, [tcb](tcb.md) |
 | `activity` | — | `GET activity`, [history](history.md) |

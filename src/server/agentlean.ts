@@ -1,9 +1,13 @@
 // What Lean itself says of a name, the endpoints of server/agent.ts that ask Lean's language server
 // (server/hover.ts): its hover (describe) and what `#print` shows of it (print), asked where a module
 // of the project's graph is imported, and only there — the module is chosen from the graph, and only
-// a name that passes isDeclName is ever written into Lean source.
+// a name that passes isDeclName is ever written into Lean source. And the goals at a place of a
+// file (goals), as the InfoView shows them: only the place, numbers, reaches Lean.
 
 import { isDeclName } from "./hover.ts";
+import type { HoverFile } from "./hover.ts";
+import { excerptOf } from "../shared/excerpt.ts";
+import { goalText } from "../shared/goals.ts";
 import { View } from "./agentgraph.ts";
 import type { AgentApi, Answer, Ask } from "./agent.ts";
 import { clampInt, fail, flag, ok } from "./agent.ts";
@@ -150,4 +154,74 @@ interface LeanTarget {
   under?: string;
   /** the notation unit asked about, where its Lean constant (`name`) is asked instead */
   unit?: string;
+}
+
+/** The goals at a place, as the InfoView shows them (ReviewSpec, "The InfoView"; the owner's decision
+ *  of 2026-11-01), from Lean's language server: a line of a declaration's text (`name`) or of a
+ *  module's file (`module`), and a column; each goal as Lean writes it. Only the place (numbers) and
+ *  the module, one of the graph's, reach Lean. The build's text alone: a file changed since it was
+ *  compiled has none. */
+export async function goals(api: AgentApi, a: Ask): Promise<Answer> {
+  const v = api.graph();
+  if (!(v instanceof View)) return v;
+  if (!api.lean?.goals) return fail(503, "There is no Lean to ask here.", "GET /api/agent/source gives the declaration's text.");
+  const q = a.query;
+  const name = q.get("name")?.trim() || null;
+  const given = q.get("module")?.trim() || null;
+  const line = Number(q.get("line"));
+  if (!Number.isInteger(line) || line < 1) return fail(400, "line is missing, or not a line.", "Give line=<n>, from 1: of the declaration's text with name, of the file with module.");
+  const colRaw = q.get("column");
+  const column = colRaw === null || colRaw === "" ? null : Number(colRaw);
+  if (column !== null && (!Number.isInteger(column) || column < 1 || column > 100_000)) return fail(400, "column is not a column.", "Give column=<n>, from 1, or leave it out: where the line's code starts.");
+  // the file: the declaration's module's, or the module given
+  let module: string;
+  let start = 0;
+  let end: number | null = null;
+  if (name) {
+    const i = api.find(v, name);
+    if (typeof i !== "number") return i;
+    const n = v.g.nodes[i];
+    if (!n.range) return fail(404, `The graph records no place for ${n.name} in its file.`, "GET /api/agent/print gives what Lean elaborated.");
+    module = n.module;
+    const f = v.g.isExt(i) ? api.outsideText(module) : api.file(v, module);
+    if (!f) return fail(404, `The file of ${module} cannot be read here.`, "GET /api/agent/declaration gives its statement.");
+    const at = excerptOf(f.lines, f.edited, n.name, n.range);
+    if (!at) return fail(404, `${n.name} is no longer in ${f.rel}.`, "Wait for the build; GET /api/agent/declaration gives the compiled statement.");
+    start = at.start;
+    end = at.end;
+  } else if (given) {
+    if (!isDeclName(given) || (!v.modules.has(given) && !api.world.outsideFile?.(given)))
+      return fail(404, `${given.slice(0, 300)} is not a module of the graph.`, "Give a module of the project's graph, or name=<a declaration> and a line of its text.");
+    module = given;
+  } else return fail(400, "name or module is missing.", "Give name=<a declaration> and line=<a line of its text, from 1>; or module=<a module> and line=<a line of its file>.");
+  // the file as Lean is given it: the project's, or a package's by its resolved path
+  const own = v.modules.get(module);
+  const out = own ? null : api.world.outsideFile?.(module) ?? null;
+  const f = own ? api.file(v, module) : api.outsideText(module);
+  if (!f || (!own && !out)) return fail(404, `The file of ${module} cannot be read here.`, "GET /api/agent/source gives a declaration's text.");
+  if (f.edited)
+    return fail(409, out ? `${out.file.package.name} is at another revision than the graph was read at: its goals would be another text's than Lean checked.` : `${f.rel} has changed since it was compiled: its goals would be the present text's, not what Lean checked.`, "Wait for the build; GET /api/agent/source gives the text.");
+  const fileLine = start + line - 1;
+  if (fileLine >= f.lines.length || (end !== null && fileLine > end))
+    return fail(400, `line ${line} is past the ${name ? `text of ${name} (${end! - start + 1} lines)` : `file (${f.lines.length} lines)`}.`, name ? "Lines count from 1, the declaration's first line, as source gives its text." : "Lines count from 1.");
+  const text = f.lines[fileLine];
+  const ch = column !== null ? Math.min(column - 1, text.length) : /^\s*/.exec(text)![0].length;
+  const file: HoverFile = out ? { name: `${out.file.package.name}: ${out.file.file}`, path: out.file.path } : f.rel;
+  const r = await api.lean.goals(file, f.lines.join("\n"), f.hash, fileLine, ch, clampInt(q.get("wait"), 20_000, 1000, MAX_WAIT));
+  if (r.pending) return fail(503, `Lean is still elaborating ${f.rel}: line ${r.pending.line.toLocaleString("en")} of ${r.pending.of.toLocaleString("en")}.`, "Ask again in a few seconds (Retry-After); the first question about a file can take a minute.", { elaborated: r.pending, retryAfter: 5 }, { "retry-after": "5" });
+  if (r.error) return fail(502, `Lean could not answer: ${r.error}`, "GET /api/agent/source gives the text; /api/agent/print what Lean elaborated.");
+  const t = r.tactic && r.tactic.to > r.tactic.from ? text.slice(r.tactic.from, r.tactic.to) : null;
+  return ok({
+    ...(name ? { name } : {}),
+    module,
+    file: f.rel,
+    line: fileLine + 1,
+    column: ch + 1,
+    text,
+    tactic: t,
+    before: r.before ? r.before.map(goalText) : null,
+    after: r.after ? r.after.map(goalText) : null,
+    expected: r.term ? goalText({ hyps: r.term.hyps, type: r.term.type }) : null,
+    ...(r.widgets ? { widgets: r.widgets, note: "A widget is here: its JavaScript is the project's code, and VisualProof never runs it. A person sees it in their editor." } : {}),
+  });
 }

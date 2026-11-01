@@ -142,6 +142,12 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
   so every count, status, colour and queue ignores advice; `advice()` reads the agents'.
 - The API reads the graph with the page's own shared code, so an agent and a page see the same
   graph, review queue, search and context.
+- **The goals at a place** (the owner's decision of 2026-11-01; ReviewSpec, "The InfoView"):
+  `GET /api/agent/goals`, and the MCP tool `lean`'s action `goals`, answer what the InfoView shows —
+  the goals before and after the tactic at a line of a declaration's text (or of a module's file)
+  and the expected type there — from the same language server, each goal as Lean writes it. Only
+  the place (numbers) and a module of the graph reach Lean; the build's text only; a widget there is
+  counted, never shown. docs/agent-api/reading.md documents it.
 - A note is the agent's own where an agent of its name wrote it. Notes, layouts and view changes go
   through the page's path (server/views.ts), so their author and timeline events are as a person's.
 - **Presence**: an agent without a token is one entry per name, kept by its requests (at most 32

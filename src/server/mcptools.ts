@@ -134,13 +134,19 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: "lean",
-    about: "Ask Lean about any name — a declaration, a constructor, a field, a generated name — where the project's module is imported.",
+    about: "Ask Lean about any name — a declaration, a constructor, a field, a generated name — where the project's module is imported; or the goals at a line of a proof, as its InfoView shows them.",
     actions: {
       describe: { method: "GET", path: "/api/agent/describe", says: "its signature and doc, as a hover", args: ["name", "module"] },
       print: { method: "GET", path: "/api/agent/print", says: "#print: the elaborated declaration, every name in full", args: ["name", "module", "proofs"] },
+      goals: { method: "GET", path: "/api/agent/goals", says: "the goals before and after the tactic at a line, and the expected type there", args: ["name", "module", "line", "column"] },
     },
-    args: { name: str("a full Lean name"), module: str("optional: the module to import"), proofs: bool("print: proofs too") },
-    required: ["name"],
+    args: {
+      name: str("a full Lean name; goals: a declaration"),
+      module: str("optional: the module to import; goals: a module, with a line of its file"),
+      proofs: bool("print: proofs too"),
+      line: int("goals: the line, from 1, of the declaration's text (or the module's file)"),
+      column: int("goals: optional, from 1"),
+    },
   },
   {
     name: "refs",
