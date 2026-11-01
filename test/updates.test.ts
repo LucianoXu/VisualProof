@@ -716,7 +716,8 @@ const memory = (): KeptStorage & { m: Map<string, string> } => {
 
 test("the page reloads into its server's new version, keeping what it holds, once nothing would be cut short", async () => {
   const storage = memory();
-  const kept: Kept = { root: "/p", at: Date.now(), sources: { following: { name: "N.a", collapsed: false }, pinned: [{ name: "N.b", collapsed: true }] }, review: [["N.a", "a comment"]], talk: [["claude", "hello"]], notes: [["n1", true]] };
+  // the windows each in its mode, and a file window (the owner's decisions of 2026-11-01)
+  const kept: Kept = { root: "/p", at: Date.now(), sources: { following: { name: "N.a", collapsed: false, mode: "file" }, pinned: [{ name: "N.b", collapsed: true }, { file: "N.M", collapsed: false }] }, review: [["N.a", "a comment"]], talk: [["claude", "hello"]], notes: [["n1", true]] };
   let busy: string | null = "text being typed";
   const offered: (string | null)[] = [];
   let reloads = 0;

@@ -90,10 +90,16 @@ import { FLASH_MS } from "./reviewbox.ts";
 import type { ReviewBox } from "./reviewbox.ts";
 import { editorAnchor } from "./editor.ts";
 import { namespacesOf, resolver, scopeAt } from "./scope.ts";
+import { scopesAt } from "../../shared/scope.ts";
 import { asideRect, MIN, openBounds, openRect } from "./sources.ts";
 import { kindDot } from "./axiomring.ts";
 import { reducedMotion } from "./theme.ts";
 import type { SourcePane } from "./sources.ts";
+import { chunksOf, declAt, FILE_MARK_LABEL, fileDecls, fileMark, proofFolds, sameText } from "./filemode.ts";
+import type { Chunk, FileDecl, FileMark, Fold, SourceMode } from "./filemode.ts";
+import type { ReviewData } from "../../shared/review.ts";
+import type { OutsideWhere } from "../../shared/outside.ts";
+import type { LineDecor } from "./highlight.ts";
 
 export interface SourceHooks {
   /** go to a declaration named in the source, by its name in the window's graph */
@@ -141,6 +147,21 @@ export interface SourceHooks {
   caretMoved?(w: SourceWindow): void;
   /** the reader follows someone: a click in the code is reading, the caret the followed reader's */
   following?(): boolean;
+  /** File mode (the owner's decisions of 2026-11-01): the review graph `g` is read with, for the
+   *  marks in the gutter (the board's: a past graph's under its names then) */
+  review(g: Graph): ReviewData;
+  /** whether some target's review set holds declaration `i` of graph `g`; null where the page has no
+   *  targets to say it by */
+  inReview(g: Graph): ((i: number) => boolean) | null;
+  /** the text module `module` was compiled from, the latest build's as the history keeps it
+   *  (HistorySpec decision 20): in a file changed since, what tells the declarations whose text is
+   *  still the one compiled; null where it is not kept */
+  compiledText(module: string): Promise<string[] | null>;
+  /** whether File mode folds proofs: the reader's own, kept in the browser; and its change */
+  foldProofs(): boolean;
+  setFoldProofs(on: boolean): void;
+  /** the window was switched to the other mode: what the others are told changed */
+  moded(w: SourceWindow): void;
 }
 
 /** What every source window of the page shares: what Lean said the names of an excerpt mean (by
@@ -162,6 +183,71 @@ const COLLAPSE = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="t
  *  new window appears with "Reading the source…", one that showed another declaration says so over
  *  it, keeping its size */
 const READ_WAIT = 1000;
+/** what a file window's anchor starts with: no declaration's name does */
+const FILE_ANCHOR = "⟨file⟩";
+/** a sheet with a folded corner: a file window's mark in its title bar and its pill */
+const FILE_GLYPH = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4zM9 1.8V5.2h3.4"/></svg>`;
+/** File mode's width while it is fitted: a hundred characters of code and the gutter, where the
+ *  screen has it, the same whatever part of the file is drawn yet */
+const FILE_W = 900;
+/** the height a line of File mode's code takes before it is laid out: what a piece off the screen
+ *  stands as (12.5 px at 1.55) */
+const LINE_H = 19.4;
+/** the most positions Lean is asked about at once (server/appgraph.ts takes 5,000) */
+const NAMES_MAX = 5000;
+
+/** "Open on GitHub": where, at which commit, and of which package outside the project. */
+type Remote = { href: string; commit: string; what?: string };
+
+/** File mode as the window draws it (web/src/filemode.ts). */
+interface WholeFile {
+  g: Graph;
+  module: string;
+  /** the text on show, its file and its Lake hash ("" where Lean is not asked: a past build's) */
+  text: string;
+  file: string;
+  hash: string;
+  lines: string[];
+  era: "now" | "then";
+  /** changed since it was compiled (or, outside the project, its package at another revision) */
+  edited: boolean;
+  decls: FileDecl[];
+  chunks: Chunk[];
+  /** per piece, the declaration it is written for (whose own name links nowhere) and how a name in
+   *  it resolves: from the namespaces and opens in force where it starts */
+  selfs: string[];
+  resolvers: ((w: string) => string | null)[];
+  folds: Fold[];
+  /** per declaration (as `decls`), its mark; null where none is shown: its text not the compiled one */
+  marks: (FileMark | null)[];
+  /** the text compiled, for a file changed since; null where not kept, or not asked */
+  compiled: string[] | null;
+}
+
+/** The piece of `chunks` holding line `line`, or -1. */
+function chunkAt(chunks: readonly Chunk[], line: number): number {
+  let lo = 0, hi = chunks.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (chunks[mid].end < line) lo = mid + 1;
+    else if (chunks[mid].start > line) hi = mid - 1;
+    else return mid;
+  }
+  return -1;
+}
+
+/** The title bar's switch between the window's two modes (the owner's decision of 2026-11-01). A
+ *  file window has no declaration of its own: Declaration is not to be had there. */
+function modeSwitch(mode: SourceMode, fileOnly: boolean): string {
+  const b = (m: SourceMode, label: string, title: string) =>
+    `<button type="button" data-sw-mode="${m}" aria-pressed="${mode === m}"${m === "decl" && fileOnly ? " disabled" : ""} title="${escapeHtml(title)}">${label}</button>`;
+  return (
+    `<span class="sw-mode" role="group" aria-label="Show">` +
+    b("decl", "Declaration", fileOnly ? "This window is on the file, not on a declaration: a name in it, or the bar over the code, selects one" : "The declaration, with the context it is written in") +
+    b("file", "File", "The whole file it is in, the declaration highlighted") +
+    `</span>`
+  );
+}
 
 export class SourceWindow implements SourcePane {
   g: Graph;
@@ -234,6 +320,22 @@ export class SourceWindow implements SourcePane {
   private info: InfoView;
   /** when a key was last pressed in the window: the keyboard's caret moves the selection */
   private keyAt = 0;
+  /** what it shows (the owner's decision of 2026-11-01): the declaration, or the whole file it is in */
+  mode: SourceMode = "decl";
+  /** a file window, opened on a file by its module (the Files tree, the board's menu; the owner's
+   *  decision of 2026-11-01): File mode alone, with no declaration of its own; null on a declaration */
+  file: string | null = null;
+  /** File mode as drawn: kept while the window steps to another declaration of the same text, which
+   *  moves only what is the declaration's, the reader's place staying */
+  private whole: WholeFile | null = null;
+  /** the proofs opened one by one while proofs are folded, by where they start */
+  private openFolds = new Set<string>();
+  /** where File mode, once drawn, scrolls: to the window's declaration (opening, a switch of mode),
+   *  a file window's top */
+  private scrollWanted = false;
+  private stickyWait = 0;
+  /** File mode's pieces coming into sight: Lean is asked about the names of each then */
+  private seen: IntersectionObserver | null = null;
 
   /** A window in `layer`, following the selection until it is pinned. */
   constructor(layer: HTMLElement, g: Graph, data: DataSource, box: ReviewBox, hooks: SourceHooks, memory: SourceMemory) {
@@ -266,7 +368,12 @@ export class SourceWindow implements SourcePane {
         // tall as it, so that their tops and bottoms line up
         bounds: (vp) => {
           // a pinned window opened for a followed reader's stands under the page's bars
-          const b = openBounds(vp, this.aside ? this.hooks.top() : EDGE);
+          let b = openBounds(vp, this.aside ? this.hooks.top() : EDGE);
+          // the whole file: as tall as it may be, at one width whatever is drawn of it yet
+          if (this.mode === "file") {
+            const w = Math.min(b.max.w, Math.max(b.min.w, FILE_W));
+            b = { max: { w, h: b.max.h }, min: { w, h: b.max.h } };
+          }
           const d = this.hooks.docked?.(this);
           if (!d) return b;
           const r = d.room(vp);
@@ -296,6 +403,21 @@ export class SourceWindow implements SourcePane {
       if (t.closest("[data-sw-back]")) return this.hooks.back();
       if (t.closest("[data-sw-fwd]")) return this.hooks.forward();
       if (t.closest(".sw-pill, [data-sw-collapse]")) return;
+      // the switch between the declaration and the whole file, a control of what is followed as the
+      // pin is (CollabSpec, "Surfaces")
+      const mode = t.closest<HTMLElement>("[data-sw-mode]");
+      if (mode) return this.setMode(mode.dataset.swMode === "file" ? "file" : "decl");
+      // the reader's own: proofs folded, and a folded one opened
+      if (t.closest("[data-sw-folds]")) return this.foldProofs(!this.hooks.foldProofs());
+      const fold = t.closest<HTMLElement>("[data-pf-open]");
+      if (fold) return this.openFold(fold.dataset.pfOpen!);
+      // the sticky header: the declaration the reading position is in, selected as any (it ends
+      // following as a selection does); scrolling itself selects nothing
+      const here = t.closest<HTMLElement>("[data-sw-at]");
+      if (here) {
+        if (this.g.byName.has(here.dataset.swAt!)) this.hooks.go(here.dataset.swAt!);
+        return;
+      }
       const ref = t.closest<HTMLElement>("[data-ref]");
       if (ref) {
         if (this.g.byName.has(ref.dataset.ref!)) this.hooks.go(ref.dataset.ref!);
@@ -343,7 +465,11 @@ export class SourceWindow implements SourcePane {
     this.info = new InfoView({
       goals: (m, line, ch, hash) => this.data.goals(m, line, ch, hash),
       subterm: (m, line, ch, hash, k) => this.data.subterm(m, line, ch, hash, k),
-      resolve: (w) => (this.resolve ? this.resolve(w) : this.g.byName.has(w) ? w : null),
+      // as the names of the code at the caret resolve: the declaration's, or in File mode the piece's
+      resolve: (w) => {
+        const r = this.namesAt(this.info?.caret?.line ?? 0).resolve;
+        return r ? r(w) : this.g.byName.has(w) ? w : null;
+      },
       cards: this.cards,
       card: (name) => ({ html: this.fromGraph(name), more: this.describe(name) }),
       hidden: () => this.hooks.infoHidden?.() ?? false,
@@ -384,6 +510,7 @@ export class SourceWindow implements SourcePane {
       "scroll",
       () => {
         this.hideTip();
+        this.stickyLater();
         if (this.scrollEnd) clearTimeout(this.scrollEnd);
         this.scrollEnd = setTimeout(() => {
           const p = this.pointer;
@@ -414,10 +541,44 @@ export class SourceWindow implements SourcePane {
     if (first) this.win.layout();
   }
 
+  /** A file window on module `module` (the owner's decision of 2026-11-01): the whole file in File
+   *  mode from its top, not tied to the selection, with no declaration of its own; drawn again where
+   *  it is on it already. */
+  showFile(module: string): void {
+    const first = !this.drawnOnce && this.file === null && this.current < 0;
+    const fresh = module !== this.file;
+    this.file = module;
+    this.mode = "file";
+    this.current = -1;
+    this.name = "";
+    if (fresh) this.scrollWanted = true;
+    void this.render(fresh);
+    if (first) this.win.layout();
+  }
+
+  /** What a page finds it by in its windows, and others' pointers in it: its declaration's name, a
+   *  file window's module under a mark of its own (no declaration's name is written so). */
+  get anchor(): string {
+    return this.file !== null ? `${FILE_ANCHOR}${this.file}` : this.name;
+  }
+
+  /** Shown in mode `m` (the owner's decision of 2026-11-01): its declaration, or the whole file it
+   *  is in, scrolled to it; switched by the reader in the title bar, or as a followed reader's window
+   *  is. A file window has File mode alone. */
+  setMode(m: SourceMode): void {
+    if (m === this.mode || (this.file !== null && m === "decl")) return;
+    this.mode = m;
+    this.scrollWanted = true;
+    this.unpick();
+    // fitted again to what it shows, where the reader has not placed it
+    if (this.current >= 0) void this.render(true).then(() => this.win.layout());
+    this.hooks.moded(this);
+  }
+
   /** Laid out again where it is kept or fitted: a reference window paired beside it, or gone,
    *  changes the room it has. */
   relayout(): void {
-    if (this.current >= 0) this.win.layout();
+    if (this.current >= 0 || this.file !== null) this.win.layout();
   }
 
   /** Whether the reader moved or resized it since the page last placed it: paired, their choice is
@@ -458,6 +619,8 @@ export class SourceWindow implements SourcePane {
    *  code of another declaration is read, the frame is still the one before's: the new frame draws
    *  the review. */
   redrawReview(): void {
+    // File mode's marks are the review's too
+    if (this.mode === "file" && !this.reading) this.refreshMarks();
     const r = this.el.querySelector<HTMLElement>(".sw-review");
     if (!r || this.current < 0 || this.reading) return;
     const a = document.activeElement;
@@ -489,7 +652,7 @@ export class SourceWindow implements SourcePane {
     this.pinned = true;
     this.aside = step;
     this.el.classList.add("pinned");
-    if (this.current < 0) return;
+    if (this.current < 0 && this.file === null) return;
     this.win.layout();
     void this.render(false);
   }
@@ -567,6 +730,8 @@ export class SourceWindow implements SourcePane {
     if (this.selWait) cancelAnimationFrame(this.selWait);
     this.unpick();
     if (this.scrollEnd) clearTimeout(this.scrollEnd);
+    if (this.stickyWait) cancelAnimationFrame(this.stickyWait);
+    this.seen?.disconnect();
     this.pointer = null;
     this.shown = null;
     this.cards.dispose();
@@ -591,20 +756,26 @@ export class SourceWindow implements SourcePane {
    *  a comment box, the lines it touches are picked, with the button that quotes them under the
    *  last; elsewhere, nothing is. Hover cards close as text is picked. */
   private selectionChanged(): void {
-    const pre = this.el.querySelector<HTMLElement>("pre.src");
     const s = document.getSelection();
-    this.caretChanged(pre, s);
+    this.caretChanged(s);
     const range = s && !s.isCollapsed && s.rangeCount ? s.getRangeAt(0) : null;
     const c = this.code;
-    if (!pre || !c || !range || this.collapsed || !this.el.querySelector("[data-rv-comment]") || !range.intersectsNode(pre)) return this.unpick();
-    // where it starts or ends outside the code, from the code's start or to its end
+    // the code's blocks: one in Declaration mode, File mode's pieces, each from its line (data-line)
+    const pres = range ? [...this.el.querySelectorAll<HTMLElement>("pre.src")].filter((p) => range.intersectsNode(p)) : [];
+    if (!pres.length || !c || !range || this.collapsed || !this.el.querySelector("[data-rv-comment]")) return this.unpick();
+    // where it starts or ends outside the code, from the start of the first block it touches or to
+    // the end of the last; offsets in the code's text, its lines joined as in the file
     const text = c.lines.join("\n");
-    const from = pre.contains(range.startContainer) ? offsetIn(pre, range.startContainer, range.startOffset) : 0;
-    const to = pre.contains(range.endContainer) ? offsetIn(pre, range.endContainer, range.endOffset) : text.length;
+    const starts = [0];
+    for (let k = 0; k < c.lines.length; k++) starts.push(starts[k] + c.lines[k].length + 1);
+    const base = (pre: HTMLElement) => starts[Math.max(0, Math.min(c.lines.length - 1, Number(pre.dataset.line ?? c.start) - c.start))];
+    const first = pres[0], last = pres[pres.length - 1];
+    const from = first.contains(range.startContainer) ? base(first) + offsetIn(first, range.startContainer, range.startOffset) : base(first);
+    const to = last.contains(range.endContainer) ? base(last) + offsetIn(last, range.endContainer, range.endOffset) : base(last) + (last.textContent ?? "").length;
     const picked = selectedLines(text, from, to);
-    const body = pre.closest<HTMLElement>(".sw-body");
-    const last = picked && pre.querySelectorAll<HTMLElement>(".ln")[picked.last];
-    if (!picked || !body || !last) return this.unpick();
+    const body = first.closest<HTMLElement>(".sw-body");
+    const end = picked && this.lineEl(c.start + picked.last);
+    if (!picked || !body || !end) return this.unpick();
     if (!this.picked) this.hideTip();
     this.picked = picked;
     let b = this.quoteBtn;
@@ -620,15 +791,33 @@ export class SourceWindow implements SourcePane {
     const n = picked.last - picked.first + 1;
     b.textContent = "❝ Quote in comment";
     b.title = `Quote ${n === 1 ? "this line" : `these ${n} lines`} in your comment on ${this.name}, with where they are`;
-    b.style.top = `${last.getBoundingClientRect().bottom - body.getBoundingClientRect().top + 3}px`;
+    b.style.top = `${end.getBoundingClientRect().bottom - body.getBoundingClientRect().top + 3}px`;
+  }
+
+  /** The element of line `line` of the file (from 0) in the code on show, or null: the code's
+   *  blocks each say the line they start at (`data-line`), one block in Declaration mode, File
+   *  mode's pieces. */
+  private lineEl(line: number): HTMLElement | null {
+    for (const pre of this.el.querySelectorAll<HTMLElement>("pre.src")) {
+      const from = Number(pre.dataset.line ?? 0);
+      // File mode's piece not drawn yet (off the screen) says its last line: drawn now
+      const to = pre.dataset.end !== undefined ? Number(pre.dataset.end) : from + pre.children.length - 1;
+      if (line < from || line > to) continue;
+      if (pre.dataset.end !== undefined) this.fill(pre);
+      return (pre.children[line - from] as HTMLElement | undefined) ?? null;
+    }
+    return null;
   }
 
   /** The keyboard's caret moved in the code (caret browsing: the selection collapsed there, a key just
    *  pressed) puts the InfoView's caret there, as a click does (caretAtPoint). */
-  private caretChanged(pre: HTMLElement | null, s: Selection | null): void {
-    if (!pre || !s || !s.isCollapsed || !s.rangeCount || Date.now() - this.keyAt > 500) return;
+  private caretChanged(s: Selection | null): void {
+    if (!s || !s.isCollapsed || !s.rangeCount || Date.now() - this.keyAt > 500) return;
     const r = s.getRangeAt(0);
-    if (pre.contains(r.startContainer)) this.caretIn(pre, r.startContainer, r.startOffset);
+    const at = r.startContainer.nodeType === Node.ELEMENT_NODE ? (r.startContainer as Element) : r.startContainer.parentElement;
+    // the code's block it is in: Declaration mode's one, or a piece of File mode's
+    const pre = at?.closest<HTMLElement>("pre.src");
+    if (pre && this.el.contains(pre)) this.caretIn(pre, r.startContainer, r.startOffset);
   }
 
   /** A click or a tap in the code puts the InfoView's caret where it landed. */
@@ -644,8 +833,10 @@ export class SourceWindow implements SourcePane {
    *  in the file; not while the reader follows someone, whose caret it is (a click is reading then). */
   private caretIn(pre: HTMLElement, node: Node, off: number): void {
     if (!this.shown || !this.code || this.collapsed || this.hooks.following?.()) return;
-    const at = caretOf(this.code.lines.join("\n"), offsetIn(pre, node, off));
-    this.info.place(this.shown.start + at.line, at.ch);
+    // counted in the block's own text from the line it starts at in the file (`data-line`): the
+    // declaration's first line, or a piece's of the whole file
+    const at = caretOf(pre.textContent ?? "", offsetIn(pre, node, off));
+    this.info.place(Number(pre.dataset.line ?? this.shown.start) + at.line, at.ch);
   }
 
   /** The InfoView's caret: where it is in the file, and whether the goals after the tactic are on
@@ -698,26 +889,26 @@ export class SourceWindow implements SourcePane {
   private flashLines(): void {
     const w = this.linesWanted;
     const c = this.code;
-    const pre = this.el.querySelector<HTMLElement>("pre.src");
-    if (!w || !c || !pre) return;
+    if (!w || !c || !this.el.querySelector("pre.src")) return;
     const now = Date.now();
     if (now > (w.since ? w.since + FLASH_MS : w.until)) {
       this.linesWanted = null;
       return;
     }
     const span = locateLines(c.lines, c.start, w.from, w.to, w.quoted);
+    // lines of the file outside the declaration's (quoted from File mode): the whole file shows them
+    if (!span && this.mode === "decl" && !this.still) return this.setMode("file");
     if (!span) {
       this.linesWanted = null;
       return this.hooks.say(`Line${w.to > w.from ? `s ${w.from}–${w.to} are` : ` ${w.from} is`} not in the text of ${this.name} ${this.era === "then" ? "at this build" : "now"}.`);
     }
-    const lns = pre.querySelectorAll<HTMLElement>(".ln");
     for (let k = span[0]; k <= span[1]; k++) {
-      const l = lns[k];
+      const l = this.lineEl(c.start + k);
       if (!l) continue;
       l.style.animationDelay = w.since ? `${w.since - now}ms` : "";
       l.classList.add("ln-flash");
     }
-    if (!w.since) lns[span[0]]?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+    if (!w.since) this.lineEl(c.start + span[0])?.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
     w.since ||= now;
   }
 
@@ -750,11 +941,12 @@ export class SourceWindow implements SourcePane {
     return null;
   }
 
-  /** The character of `pre` under (x, y): its line and UTF-16 column in the code, and the box of
-   *  the word it is in (one part of a dotted name: `o` and `elim` in `o.elim` are different
+  /** The character of `pre` under (x, y): its line in the file (from 0) and UTF-16 column, and the
+   *  box of the word it is in (one part of a dotted name: `o` and `elim` in `o.elim` are different
    *  things); null over nothing (past the end of a line, between lines, in the indentation a
    *  wrapped line hangs from). Lines are counted by the line breaks in the text, which the code
-   *  keeps as it wraps (highlightLines): a line wrapped on the screen is one line here. */
+   *  keeps as it wraps (highlightLines): a line wrapped on the screen is one line here; from the
+   *  line the block starts at in the file (`data-line`), so that both modes count in the file. */
   private positionAt(pre: HTMLElement, x: number, y: number): { line: number; ch: number; word: string; box: DOMRect } | null {
     const d = document as Document & { caretRangeFromPoint?(x: number, y: number): Range | null; caretPositionFromPoint?(x: number, y: number): { offsetNode: Node; offset: number } | null };
     let node: Node | null = null, off = 0;
@@ -807,7 +999,8 @@ export class SourceWindow implements SourcePane {
       while (isWord(text[to])) to++;
     }
     const range = this.rangeIn(texts, from, to);
-    return { line, ch: abs - (before + 1), word: `${line}:${from - (before + 1)}`, box: range ? range.getBoundingClientRect() : hit.rect };
+    const at = Number(pre.dataset.line ?? 0) + line;
+    return { line: at, ch: abs - (before + 1), word: `${at}:${from - (before + 1)}`, box: range ? range.getBoundingClientRect() : hit.rect };
   }
 
   /** A range over characters `from`–`to` of the text nodes `texts`. */
@@ -857,6 +1050,34 @@ export class SourceWindow implements SourcePane {
     );
   }
 
+  /** Where a place in the code on show is in its file, as Lean counts it: the line from 0 and the
+   *  UTF-16 character, in the module and the text (its Lake hash) on show — in either mode, the
+   *  code's blocks each counting from the line they start at in the file (`data-line`), a folded
+   *  proof's text being there still, hidden. `node` and `offset` as a caret or a selection's end
+   *  gives them; null outside the code, or where no text Lean knows is on show (a past build's).
+   *  What the hovers ask Lean at; what a pane beside the code may ask it at too. */
+  positionOf(node: Node, offset: number): { module: string; hash: string; line: number; character: number } | null {
+    const s = this.shown;
+    const e = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    const pre = e?.closest<HTMLElement>("pre.src");
+    if (!s || !s.hash || !pre || !this.el.contains(pre)) return null;
+    const o = offsetIn(pre, node, offset);
+    const before = (pre.textContent ?? "").slice(0, o);
+    const nl = before.lastIndexOf("\n");
+    let line = 0;
+    for (let k = before.indexOf("\n"); k >= 0; k = before.indexOf("\n", k + 1)) line++;
+    return { module: s.module, hash: s.hash, line: Number(pre.dataset.line ?? 0) + line, character: o - nl - 1 };
+  }
+
+  /** How a name written at line `line` of the file on show resolves, and whose own name links
+   *  nowhere there: the declaration on show's; in File mode, the piece's there. */
+  private namesAt(line: number): { self: string; resolve: ((w: string) => string | null) | null } {
+    const w = this.whole;
+    if (this.mode !== "file" || !w) return { self: this.current >= 0 ? this.g.nodes[this.current].name : "", resolve: this.resolve };
+    const k = chunkAt(w.chunks, line);
+    return k < 0 ? { self: "", resolve: null } : { self: w.selfs[k], resolve: w.resolvers[k] };
+  }
+
   private async ask(line: number, ch: number, box: DOMRect, ref: string | null): Promise<void> {
     const s = this.shown;
     if (!s) return;
@@ -866,7 +1087,7 @@ export class SourceWindow implements SourcePane {
       return graph ? this.showTip(graph, box) : this.cards.leave();
     }
     const turn = ++this.hoverTurn;
-    const res = await this.data.hover(s.module, s.start + line, ch, s.hash);
+    const res = await this.data.hover(s.module, line, ch, s.hash);
     if (turn !== this.hoverTurn) return;
     const graph = this.fromGraph(ref);
     if (res === null) return graph ? this.showTip(graph, box) : this.cards.leave();
@@ -886,8 +1107,7 @@ export class SourceWindow implements SourcePane {
     if (!res.contents) return graph ? this.showTip(graph, box) : this.cards.leave();
     // Lean writes the declaration under the pointer by its full name, and the names in its type as
     // the code there would: resolved in the same scope
-    const self = this.current >= 0 ? this.g.nodes[this.current].name : "";
-    const resolve = this.resolve;
+    const { self, resolve } = this.namesAt(line);
     // what the card is about: the declaration Lean names first, when it names one
     const head = /^```[^\n]*\n(\S+)/.exec(res.contents)?.[1]?.replace(/\.\{.*$/, "") ?? null;
     const subject = head && this.g.byName.has(head) ? head : null;
@@ -895,8 +1115,10 @@ export class SourceWindow implements SourcePane {
   }
 
   private async render(fresh: boolean): Promise<void> {
+    if (this.mode === "file") return this.renderFile(fresh);
     const i = this.current;
     if (i < 0) return;
+    this.leaveFile();
     const turn = ++this.turn;
     this.hideTip();
     this.shown = null;
@@ -943,6 +1165,7 @@ export class SourceWindow implements SourcePane {
       `<span class="sw-ns">${escapeHtml(parts.slice(0, -1).join("."))}</span><span class="sw-loc">${where}</span>` +
       (editor ? editorAnchor(editor) : "") +
       (remote ? githubAnchor(remote.href, remote.commit, remote.what) : "") +
+      modeSwitch("decl", false) +
       `<span class="sw-acts">${pin}<button class="icon" data-sw-collapse aria-label="Collapse" title="Collapse to one line (or double-click the title bar)">${COLLAPSE}</button>` +
       `<button class="icon sw-close" data-sw-close aria-label="Close" title="${pinned ? "Close (Esc)" : "Close (Esc, or Space)"}">✕</button></span></div>`;
     // `final`: the declaration's own frame, not what stands for it while its code is read
@@ -1077,7 +1300,8 @@ export class SourceWindow implements SourcePane {
     // where it has been asked already
     const resolve = resolver(g, v.name, scopeAt(lines, at.start, (n) => namespacesOf(g).has(n)));
     this.resolve = resolve;
-    const key = `${v.module}:${src.hash ?? ""}:${at.start}`;
+    // what Lean said of the names of these lines: shared with File mode's piece of the same lines
+    const key = `${v.module}:${src.hash ?? ""}:${at.start}-${at.end}`;
     // what Lean said names the latest build's declarations, which a past graph may not hold
     const known = this.still ? undefined : this.memory.learned.get(key);
     const words: { word: string; at: number }[] = [];
@@ -1133,12 +1357,608 @@ export class SourceWindow implements SourcePane {
       if (name && !this.memory.printed.has(name)) void this.printInto(turn, i, name, out);
     }
     settle();
-    if (src.hash && !known && !this.still) void this.learn(turn, v.name, key, v.module, src.hash, text, at.start, words, resolve);
+    if (src.hash && !known && !this.still)
+      void this.learn(() => turn === this.turn, v.name, key, v.module, src.hash, text, at.start, words, (learned) => {
+        const pre = this.el.querySelector<HTMLElement>("pre.src");
+        if (!pre) return;
+        pre.innerHTML = highlightLines(text, (w, off) => (learned.has(off) ? learned.get(off) : resolve(w)), at.start + 1);
+        this.flashLines();
+        this.info.marks();
+      });
+  }
+
+  // ---------------------------------------------------------------- File mode
+
+  /** Out of File mode: what it drew of the file goes. */
+  private leaveFile(): void {
+    this.whole = null;
+    this.seen?.disconnect();
+    this.seen = null;
+    this.el.classList.remove("sw-file-mode", "sw-folds");
+  }
+
+  /** File mode's title bar: the declaration's, as Declaration mode's (its name, its namespace, where
+   *  it is, the editor's and GitHub's links), or a file window's, the file's name and folder; the
+   *  switch, set on File; the pin, collapse and close. */
+  private fileHead(where: string, editor: string | null, remote: Remote | null): string {
+    const pinned = this.pinned;
+    const nav =
+      `<span class="nav"><button data-sw-back title="Back (Alt ←)" aria-label="Back"${this.hooks.steps().back ? "" : " disabled"}>${BACK}</button>` +
+      `<button data-sw-fwd title="Forward (Alt →)" aria-label="Forward"${this.hooks.steps().forward ? "" : " disabled"}>${FORWARD}</button></span>`;
+    const what = this.file !== null ? `the file ${this.file}` : this.g.nodes[this.current].name;
+    const pin = pinned
+      ? `<span class="sw-pinned" role="img" aria-label="Pinned" title="Pinned: it stays on ${escapeHtml(what)}, whatever is selected">${PIN}</span>`
+      : `<button class="icon sw-pin" data-sw-pin aria-label="Pin" title="Pin: keep this window on ${escapeHtml(what)}; the next source you open (Space) opens in a new window beside it">${PIN}</button>`;
+    let title: string;
+    if (this.file !== null) {
+      const parts = this.file.split(".");
+      title = `<span class="sw-glyph">${FILE_GLYPH}</span><span class="sw-name" title="${escapeHtml(this.file)}">${escapeHtml(parts[parts.length - 1])}</span><span class="sw-ns">${escapeHtml(parts.slice(0, -1).join("."))}</span>`;
+    } else {
+      const v = this.g.nodes[this.current];
+      const parts = v.name.split(".");
+      title =
+        `<span class="dot ${kindDot(v.kind, this.g.isExt(this.current))}"></span><span class="sw-name" title="${escapeHtml(v.name)}">${escapeHtml(v.display ?? parts[parts.length - 1])}</span>` +
+        `<span class="sw-ns">${escapeHtml(parts.slice(0, -1).join("."))}</span>`;
+    }
+    return (
+      `<div class="sw-head">${pinned ? "" : nav}${title}<span class="sw-loc">${where}</span>` +
+      (editor ? editorAnchor(editor) : "") +
+      (remote ? githubAnchor(remote.href, remote.commit, remote.what) : "") +
+      modeSwitch("file", this.file !== null) +
+      `<span class="sw-acts">${pin}<button class="icon" data-sw-collapse aria-label="Collapse" title="Collapse to one line (or double-click the title bar)">${COLLAPSE}</button>` +
+      `<button class="icon sw-close" data-sw-close aria-label="Close" title="${pinned ? "Close (Esc)" : "Close (Esc, or Space)"}">✕</button></span></div>`
+    );
+  }
+
+  /** File mode's frame: the title bar, the notes under it, and what scrolls — the sticky header and
+   *  the code, with the review box under the declaration's lines; `final`: the file's own, not
+   *  what stands for it while it is read. */
+  private paintFile(head: string, notes: string, inner: string, final = true): void {
+    const pinned = this.pinned;
+    const v = this.current >= 0 ? this.g.nodes[this.current] : null;
+    this.el.setAttribute("aria-label", v ? `Source of ${v.name}, the whole file${pinned ? ", pinned" : ""}` : `The file ${this.file}${pinned ? ", pinned" : ""}`);
+    this.frameEl.innerHTML = `${head}${this.pairHtml()}${notes}<div class="sw-scroll">${inner}</div>`;
+    const name = v ? escapeHtml(v.display ?? v.name.split(".").pop()!) : escapeHtml(this.file!.split(".").pop()!);
+    this.pillEl.innerHTML =
+      `<button class="sw-pill-open" type="button" title="Open ${v ? `the source of ${escapeHtml(v.name)}` : `the file ${escapeHtml(this.file!)}`} again">` +
+      (v ? `<span class="dot ${kindDot(v.kind, this.g.isExt(this.current))}"></span>` : `<span class="sw-glyph">${FILE_GLYPH}</span>`) +
+      `<span class="sw-pill-name">${name}</span>${pinned ? `<span class="sw-pinned" aria-label="Pinned">${PIN}</span>` : ""}</button>` +
+      `<button class="icon sw-close" data-sw-close aria-label="Close" title="Close">✕</button>`;
+    if (final) this.drew();
+  }
+
+  /** File mode (ReviewSpec, "The source window", the owner's decisions of 2026-11-01): the whole
+   *  file the window's declaration is in — a file window's, the file it was opened on — as the graph
+   *  was read from it, as it is now under the warning where it changed since, or as a past build
+   *  compiled it. The declaration is highlighted and scrolled to as the window opens or switches
+   *  mode; each declaration has its mark in the gutter; the review box is the declaration's, under
+   *  its lines; a sticky header names the declaration the reading position is in. A step to another
+   *  declaration of the same text moves only what is the declaration's, the reader's place staying. */
+  private async renderFile(fresh: boolean): Promise<void> {
+    const g = this.g;
+    const i = this.current;
+    const v = i >= 0 ? g.nodes[i] : null;
+    const module = this.file ?? v?.module;
+    if (!module) return;
+    const turn = ++this.turn;
+    this.hideTip();
+    this.unpick();
+    const past = this.hooks.pastOf(g);
+    this.still = !!past;
+    this.era = past ? "then" : "now";
+    this.el.classList.add("sw-file-mode");
+    this.el.classList.toggle("sw-folds", this.hooks.foldProofs());
+    const before = this.whole;
+    const scroll = this.el.querySelector<HTMLElement>(".sw-scroll");
+    const keep = !this.scrollWanted && before?.module === module && scroll ? scroll.scrollTop : null;
+    if (fresh && !(before && before.module === module && before.g === g)) this.awaitCode(turn, () => this.paintFile(this.fileHead(escapeHtml(module), null, null), "", `<div class="sw-body"><div class="sw-none">Reading the file…</div></div>`, false));
+    // the text: the build's of a past board (HistorySpec decision 23), else the file's now
+    let text: string, file: string, hash = "", edited = false, out: OutsideWhere | undefined;
+    let passRead: (j: number) => boolean = () => false;
+    const notes: string[] = [];
+    // GitHub's link to lines of the text on show, where it is a commit's (DeploySpec decision 13)
+    let remoteFor: (from: number, to: number) => Remote | null = () => null;
+    const nowhere = (where: string, note: string, why: string) => {
+      this.leaveFile();
+      this.paintFile(this.fileHead(escapeHtml(where), null, null), note, `<div class="sw-body"><div class="sw-none">${why}</div></div>${v ? `<div class="sw-review">${this.box.html(i)}</div>` : ""}`);
+      this.attachInfo(null);
+      this.box.reveal(this.el);
+    };
+    if (past) {
+      const got = await this.data.pastSource(past.past.snapshot.id, module);
+      if (turn !== this.turn) return;
+      const commit = past.past.snapshot.commit?.hash ?? null;
+      if ("missing" in got) {
+        const why = got.why ? `: ${escapeHtml(got.why)}` : "";
+        return nowhere(got.file || module, `<div class="banner sw-then">As built ${escapeHtml(past.when)}${commit ? ` · <code>${escapeHtml(commit.slice(0, 7))}</code>` : ""}</div>`, `This file at this build ${got.outside ? "was" : "is"} not kept${why}.`);
+      }
+      ({ text, file, outside: out } = got);
+      notes.push(`<div class="banner sw-then">${escapeHtml(pastNote(past.when, commit, got.check, got.outside))}</div>`);
+      // the text kept is that commit's own: the build read from a clean checkout of it; outside the
+      // project, the package's at the revision it had then, which it has now
+      const pc = past.past.snapshot.commit;
+      const o = out;
+      remoteFor = (from, to) => {
+        const href = o?.github ? outsideLink(o, from, to) : !o && pc && !pc.dirty && !pc.guessed && (got.from === "tree" || got.from === `git:${pc.hash}`) ? this.hooks.githubLink?.(file, pc.hash, from, to) : null;
+        return href ? (o?.github ? { href, commit: o.github.rev, what: packageWords(o) } : { href, commit: pc!.hash }) : null;
+      };
+    } else {
+      const src = await this.data.source(module);
+      if (turn !== this.turn) return;
+      if (!src) return nowhere(module, "", this.file === null && v && g.isExt(i) ? "A declaration from outside the project: its source is not found here." : "The file could not be read.");
+      ({ text, file, outside: out } = src);
+      hash = src.hash ?? "";
+      const compiled = this.hooks.compiledOf(module);
+      edited = out ? !!out.changed : !!compiled && !!src.hash && compiled !== src.hash;
+      const o = out, e = edited, at = file;
+      remoteFor = (from, to) => this.nowRemote(at, o, e, from, to);
+      // the usage pass read this very text: where it found proofs inside definitions holds in it
+      passRead = (j) => !edited && !!src.hash && src.contexts?.hash === src.hash && Object.hasOwn(src.contexts.decls, g.nodes[j].name);
+      const f = this.hooks.fileOf(module);
+      if (f && (f.state === "failed" || f.state === "unbuilt")) notes.push(`<div class="banner bad">The last build of this file failed: the graph shows it as it was last compiled.</div>`);
+      if (edited && out)
+        notes.push(`<div class="banner warn">${escapeHtml(out.core ? "The toolchain" : out.package)} is at another revision than when the graph was read (${escapeHtml(packageWords(out))} now). Below is its present text; the graph refers to what was read then, and no declaration's mark is shown.</div>`);
+      else if (edited)
+        notes.push(`<div class="banner warn">This file has changed since it was compiled. Below is its present text; the statements, the TCBs and the review refer to the compiled version, and a declaration's mark shows only where its text is still the one compiled.</div>`);
+    }
+    const place = (out ? `${packageWords(out)} · ` : "") + file;
+    // the same text drawn already, on the same graph: only what is the declaration's moves
+    if (before && before.g === g && before.module === module && before.text === text && before.era === this.era && this.el.querySelector(".sw-file")) {
+      this.whole = before;
+      this.placeOwn(fresh, notes, place, edited, remoteFor, out);
+      return;
+    }
+    const lines = text.split("\n");
+    const decls = fileDecls(g, module, lines, edited);
+    const chunks = chunksOf(decls, lines.length);
+    const spaces = namespacesOf(g);
+    const scopes = scopesAt(lines, chunks.map((c) => c.start), (n) => spaces.has(n));
+    // each piece is written for the first declaration starting in it, whose own name links nowhere
+    let d = 0;
+    const selfs = chunks.map((c) => {
+      while (d < decls.length && decls[d].start < c.start) d++;
+      return d < decls.length && decls[d].start <= c.end ? g.nodes[decls[d].i].name : "";
+    });
+    const resolvers = chunks.map((_, k) => resolver(g, selfs[k], scopes[k]));
+    const folds = proofFolds(g, decls, lines, passRead);
+    // a file changed since it was compiled: which declarations keep the text compiled, from the
+    // text the history kept of the build; outside the project, none is known
+    const compiled = edited && !out && !past ? await this.hooks.compiledText(module) : null;
+    if (turn !== this.turn) return;
+    if (before?.module !== module) this.openFolds.clear();
+    const w: WholeFile = { g, module, text, file, hash, lines, era: this.era, edited, decls, chunks, selfs, resolvers, folds, marks: [], compiled };
+    this.whole = w;
+    this.marksOf(w);
+    const own = this.ownDecl();
+    const ownAt = own ? chunkAt(chunks, own.start) : -1;
+    const review = v ? `<div class="sw-review">${this.box.html(i)}</div>` : "";
+    if (v && !own) notes.push(`<div class="banner bad">${escapeHtml(v.name)} is not in this text${this.era === "then" ? " at this build" : " any more under this name"}.</div>`);
+    const body = chunks.map((_, k) => this.pieceHtml(k) + (k === ownAt ? review : "")).join("");
+    this.paintFile(
+      this.fileHead(this.fileWhere(place, edited), this.ownEditor(edited), remoteFor(...this.ownLines())),
+      notes.join(""),
+      `<div class="sw-sticky"><span class="sw-at-slot"></span>${this.foldsButton()}</div>` +
+        `<div class="sw-split"><div class="sw-body sw-file">${own || !v ? "" : review}${body}</div><aside class="sw-info" hidden></aside></div>`,
+    );
+    this.code = { file, start: 0, lines };
+    this.resolve = null;
+    this.shown = { module, start: 0, hash };
+    // the InfoView, about the whole file: Lean's goals anywhere in it, by the rules of Declaration
+    // mode (ReviewSpec, "The InfoView")
+    this.attachInfo(this.fileInfo(w, past !== null, out));
+    // Lean starts on the file now, so that the first hover finds it elaborated
+    if (fresh && !this.still && hash) this.data.hoverOpen(module);
+    // what is on the screen as it opens drawn now, the rest as it comes near
+    this.fillAround(own ? own.start : 0);
+    this.watchPieces(w);
+    const sc = this.el.querySelector<HTMLElement>(".sw-scroll");
+    if (sc && keep !== null) sc.scrollTop = keep;
+    if (this.scrollWanted || fresh) this.scrollToOwn();
+    this.scrollWanted = false;
+    this.updateSticky();
+    this.box.reveal(this.el);
+    this.flashLines();
+  }
+
+  /** The InfoView's code in File mode: the whole file from its first line; why Lean is not asked
+   *  about it, as in Declaration mode — a past build's, a snapshot's, a text changed since it was
+   *  compiled. */
+  private fileInfo(w: WholeFile, past: boolean, out: OutsideWhere | undefined): InfoCode {
+    const off = past
+      ? "A past build has no InfoView: Lean knows only the latest build. Its goals are there, in the window of the board of now."
+      : this.data.snapshot
+        ? "A snapshot of the page has no InfoView: there is no Lean in it. The server's page shows the goals."
+        : w.edited && out
+          ? `${out.core ? "The toolchain" : out.package} is at another revision than when the graph was read: its goals would be another text's than Lean checked.`
+          : w.edited
+            ? "This file has changed since it was compiled: its goals would be the present text's, not what Lean checked. They come back once it is compiled again."
+            : !w.hash
+              ? "Lean cannot be asked about this file here."
+              : null;
+    return { module: w.module, start: 0, text: w.text, hash: w.hash, off };
+  }
+
+  /** Where File mode's file is, as the title bar says it: the file, the declaration's lines in it. */
+  private fileWhere(place: string, edited: boolean): string {
+    const own = this.ownDecl();
+    return `${escapeHtml(place)}${own ? `:${own.start + 1}–${own.end + 1}` : ""}${edited ? " · present text" : ""}`;
+  }
+
+  /** The editor's link to the window's declaration in File mode, as in Declaration mode; none for a
+   *  file window or a past build. */
+  private ownEditor(edited: boolean): string | null {
+    const own = this.ownDecl();
+    if (this.still || this.current < 0) return null;
+    return this.hooks.editorLink(this.g, this.current, edited && own ? { line: own.start + 1, col: 1 } : undefined);
+  }
+
+  /** GitHub's link to lines `from`–`to` of the file of now (DeploySpec decision 13): at the build's
+   *  commit, outside the project in its package at its revision; none for a text changed since. */
+  private nowRemote(file: string, out: OutsideWhere | undefined, edited: boolean, from: number, to: number): Remote | null {
+    if (edited) return null;
+    if (out) {
+      const href = outsideLink(out, from, to);
+      return href && out.github ? { href, commit: out.github.rev, what: packageWords(out) } : null;
+    }
+    const built = this.hooks.builtCommit?.();
+    const href = built ? this.hooks.githubLink?.(file, built, from, to) : null;
+    return href && built ? { href, commit: built } : null;
+  }
+
+  /** The window's declaration's lines (from 1), what GitHub's link shows; a file window's first. */
+  private ownLines(): [number, number] {
+    const own = this.ownDecl();
+    return own ? [own.start + 1, own.end + 1] : [1, 1];
+  }
+
+  /** The window's declaration among the file's, where it is in this text; null for a file window,
+   *  or one not found. */
+  private ownDecl(): FileDecl | null {
+    const w = this.whole;
+    return w && this.current >= 0 ? (w.decls.find((d) => d.i === this.current) ?? null) : null;
+  }
+
+  /** The window stepped to another declaration of the text on show (the selection followed, the
+   *  sticky header pressed), or drawn again: the title bar and the notes are the new declaration's,
+   *  its lines are highlighted, the review box goes under them; the reader's place stays, scrolled
+   *  to the declaration only where none of it is in sight. */
+  private placeOwn(fresh: boolean, notes: string[], place: string, edited: boolean, remoteFor: (from: number, to: number) => Remote | null, out: OutsideWhere | undefined): void {
+    const w = this.whole!;
+    const v = this.current >= 0 ? this.g.nodes[this.current] : null;
+    const own = this.ownDecl();
+    if (v && !own) notes.push(`<div class="banner bad">${escapeHtml(v.name)} is not in this text${this.era === "then" ? " at this build" : " any more under this name"}.</div>`);
+    const headEl = this.frameEl.querySelector(".sw-head");
+    if (headEl) headEl.outerHTML = this.fileHead(this.fileWhere(place, edited), this.ownEditor(edited), remoteFor(...this.ownLines()));
+    for (const b of this.frameEl.querySelectorAll(":scope > .banner")) b.remove();
+    (this.frameEl.querySelector(".sw-pair") ?? this.frameEl.querySelector(".sw-head"))?.insertAdjacentHTML("afterend", notes.join(""));
+    // the highlight, and the review box under the declaration's lines (atop where it is not found)
+    for (const l of this.frameEl.querySelectorAll(".ln.hl")) l.classList.remove("hl");
+    if (own) for (let l = own.start; l <= own.end; l++) this.lineEl(l)?.classList.add("hl");
+    const body = this.frameEl.querySelector<HTMLElement>(".sw-file");
+    let r = this.frameEl.querySelector<HTMLElement>(".sw-review");
+    if (!v) r?.remove();
+    else if (body) {
+      if (!r) {
+        r = document.createElement("div");
+        r.className = "sw-review";
+      }
+      r.innerHTML = this.box.html(this.current);
+      const at = own ? body.querySelector(`pre.src[data-piece="${chunkAt(w.chunks, own.start)}"]`) : null;
+      if (at) at.after(r);
+      else body.prepend(r);
+    }
+    this.el.setAttribute("aria-label", v ? `Source of ${v.name}, the whole file${this.pinned ? ", pinned" : ""}` : `The file ${this.file}${this.pinned ? ", pinned" : ""}`);
+    this.refreshMarks();
+    this.drew();
+    this.code = { file: w.file, start: 0, lines: w.lines };
+    this.shown = { module: w.module, start: 0, hash: w.hash };
+    this.attachInfo(this.fileInfo(w, w.era === "then", out));
+    if (this.scrollWanted || (fresh && !this.ownInSight())) this.scrollToOwn();
+    this.scrollWanted = false;
+    this.updateSticky();
+    this.box.reveal(this.el);
+    this.flashLines();
+  }
+
+  /** Piece `k` of the file on show as a code block of its own, empty until it comes near the screen
+   *  (`fill`), standing meanwhile as tall as its lines would be unwrapped: a file of thousands of
+   *  lines is highlighted and laid out where it is read, not all at once. */
+  private pieceHtml(k: number): string {
+    const w = this.whole!;
+    const c = w.chunks[k];
+    const h = Math.round((c.end - c.start + 1) * LINE_H);
+    return `<pre class="code src sw-piece" data-line="${c.start}" data-end="${c.end}" data-piece="${k}" style="--gw:${gutterDigits(w.lines.length)};height:${h}px;contain-intrinsic-block-size:auto ${h}px"></pre>`;
+  }
+
+  /** A piece drawn, where it is not yet: its lines highlighted, the names in them linked (as Lean
+   *  said, where it was asked), the window's declaration's lines highlighted, a declaration's mark
+   *  where its command starts, its proofs marked to fold, those opened one by one open. Laid out
+   *  only near the screen after that (web/style.css). */
+  private fill(pre: HTMLElement): void {
+    if (pre.dataset.end === undefined || !this.whole) return;
+    delete pre.dataset.end;
+    pre.innerHTML = this.pieceLines(Number(pre.dataset.piece));
+    pre.style.height = "";
+    this.applyOpen(pre);
+    // the caret's line, where it is in this piece
+    const k = this.info.caret;
+    if (k && k.line >= Number(pre.dataset.line) && k.line < Number(pre.dataset.line) + pre.children.length) this.info.marks();
+  }
+
+  /** The pieces of the file around line `line` drawn at once, `n` lines either way: what is on the
+   *  screen as the window opens on it, before the pieces coming near are drawn as they come. */
+  private fillAround(line: number, n = 120): void {
+    for (const pre of this.el.querySelectorAll<HTMLElement>("pre.sw-piece[data-end]")) {
+      const from = Number(pre.dataset.line), to = Number(pre.dataset.end);
+      if (to >= line - n && from <= line + n) this.fill(pre);
+    }
+  }
+
+  private pieceLines(k: number): string {
+    const w = this.whole!;
+    const c = w.chunks[k];
+    const lines = w.lines.slice(c.start, c.end + 1);
+    const text = lines.join("\n");
+    const known = this.still ? undefined : this.memory.learned.get(`${w.module}:${w.hash}:${c.start}-${c.end}`);
+    const resolve = w.resolvers[k];
+    const own = this.ownDecl();
+    // the declarations whose command starts in it: their marks
+    const heads = new Map<number, number>();
+    w.decls.forEach((fd, d) => {
+      if (fd.head >= c.start && fd.head <= c.end && !heads.has(fd.head)) heads.set(fd.head, d);
+    });
+    const starts = [0];
+    for (const l of lines) starts.push(starts[starts.length - 1] + l.length + 1);
+    const off = ([line, col]: [number, number]) => starts[Math.max(0, Math.min(lines.length, line - c.start))] + col;
+    const folds = w.folds.filter((f) => f.from[0] >= c.start && f.from[0] <= c.end).map((f) => ({ from: off(f.from), to: Math.min(text.length, off(f.to)), id: `${f.from[0]}:${f.from[1]}` }));
+    const decor: LineDecor = {
+      line: (j) => {
+        const l = c.start + j;
+        const hl = !!own && l >= own.start && l <= own.end;
+        const d = heads.get(l);
+        const lead = d === undefined ? "" : this.markHtml(d);
+        return hl || lead ? { cls: hl ? " hl" : "", lead } : undefined;
+      },
+      folds,
+    };
+    return highlightLines(text, (word, at) => (known?.has(at) ? known.get(at) : resolve(word)), c.start + 1, decor);
+  }
+
+  /** Declaration `d`'s mark in the gutter, where its command starts: its review state in the Status
+   *  scheme's colours, with its name and state as its tooltip; nothing where none is shown. No
+   *  text: the code's text stays the source's. */
+  private markHtml(d: number): string {
+    const w = this.whole!;
+    const m = w.marks[d];
+    if (!m) return "";
+    const v = w.g.nodes[w.decls[d].i];
+    return `<span class="dm s-${m}" data-dm="${d}" aria-hidden="true" title="${escapeHtml(`${v.name}: ${FILE_MARK_LABEL[m]}`)}"></span>`;
+  }
+
+  /** Each declaration's mark, from the review as it is now: shown only where the text is the one
+   *  compiled, which the review is about (a file changed since: where its text is still that). */
+  private marksOf(w: WholeFile): void {
+    const d = this.hooks.review(w.g);
+    const inReview = this.hooks.inReview(w.g);
+    w.marks = w.decls.map((fd) => {
+      const r = w.g.nodes[fd.i].range;
+      if (w.edited && !(w.compiled && r && sameText(w.compiled, r, w.lines, fd))) return null;
+      return fileMark(d, w.g, fd.i, inReview);
+    });
+  }
+
+  /** The review changed: the marks again, where they are drawn, and the sticky header's. */
+  private refreshMarks(): void {
+    const w = this.whole;
+    if (!w) return;
+    this.marksOf(w);
+    for (const el of this.frameEl.querySelectorAll<HTMLElement>(".dm[data-dm]")) {
+      const d = Number(el.dataset.dm);
+      const m = w.marks[d];
+      if (!m) {
+        el.remove();
+        continue;
+      }
+      el.className = `dm s-${m}`;
+      el.title = `${w.g.nodes[w.decls[d].i].name}: ${FILE_MARK_LABEL[m]}`;
+    }
+    this.stickyAt = null;
+    this.updateSticky();
+  }
+
+  /** "Fold proofs", in the sticky header: the reader's own, remembered in this browser. */
+  private foldsButton(): string {
+    const on = this.hooks.foldProofs();
+    return `<button type="button" class="sw-folds-btn" data-sw-folds aria-pressed="${on}" title="${on ? "Show every proof again" : "Fold every proof to one line, ⋯ proof: a click on one shows it"} (in every window, in this browser)">Fold proofs</button>`;
+  }
+
+  /** Proofs folded or shown, the reader's choice, in every window of the page (the page tells each,
+   *  `refold`). */
+  private foldProofs(on: boolean): void {
+    this.hooks.setFoldProofs(on);
+  }
+
+  /** Proofs folded or shown as the reader chose: the place in the file stays where it was read. */
+  refold(): void {
+    if (this.mode !== "file") return;
+    const on = this.hooks.foldProofs();
+    if (on) this.openFolds.clear();
+    this.keepPlace(() => {
+      this.el.classList.toggle("sw-folds", on);
+      for (const el of this.el.querySelectorAll(".pf-open")) el.classList.remove("pf-open");
+      this.applyOpen();
+    });
+    const b = this.el.querySelector<HTMLElement>("[data-sw-folds]");
+    if (b) b.outerHTML = this.foldsButton();
+    this.updateSticky();
+  }
+
+  /** A folded proof opened: that one alone, its place staying. */
+  private openFold(id: string): void {
+    this.openFolds.add(id);
+    this.keepPlace(() => this.applyOpen());
+  }
+
+  /** The proofs opened one by one shown, in the code as drawn now. */
+  private applyOpen(root: ParentNode = this.frameEl): void {
+    for (const id of this.openFolds) for (const el of root.querySelectorAll(`[data-pf="${CSS.escape(id)}"], [data-pf-open="${CSS.escape(id)}"]`)) el.classList.add("pf-open");
+  }
+
+  /** Do `change` to what is drawn, the line read at the top of the code staying where it was. */
+  private keepPlace(change: () => void): void {
+    const sc = this.el.querySelector<HTMLElement>(".sw-scroll");
+    const top = sc ? this.topLine() : null;
+    const el = top ? (this.lineEl(top.line) ?? null) : null;
+    const was = el?.getBoundingClientRect().top ?? null;
+    change();
+    if (!sc || !el || was === null) return;
+    // a line now folded away: its block stands for it
+    const now = (el.getClientRects().length ? el : el.parentElement!).getBoundingClientRect().top;
+    sc.scrollTop += now - was;
+  }
+
+  /** The line of the file at the top of the code, under the sticky header, and the element there;
+   *  null where nothing is. */
+  private topLine(): { line: number; inReview: boolean } | null {
+    const sc = this.el.querySelector<HTMLElement>(".sw-scroll");
+    const body = this.el.querySelector<HTMLElement>(".sw-file");
+    if (!sc || !body) return null;
+    const r = sc.getBoundingClientRect();
+    const y = r.top + (sc.querySelector<HTMLElement>(".sw-sticky")?.offsetHeight ?? 0) + LINE_H * 0.75;
+    const x = body.getBoundingClientRect().left + 24;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || !this.el.contains(hit)) return null;
+    if (hit.closest(".sw-review")) {
+      const own = this.ownDecl();
+      return own ? { line: own.end, inReview: true } : null;
+    }
+    const ln = hit.closest<HTMLElement>(".ln");
+    const pre = (ln?.parentElement ?? hit.closest("pre.src")) as HTMLElement | null;
+    if (!pre?.matches("pre.src")) return null;
+    return { line: Number(pre.dataset.line ?? 0) + (ln ? Array.prototype.indexOf.call(pre.children, ln) : 0), inReview: false };
+  }
+
+  /** what the sticky header names, as last drawn */
+  private stickyAt: string | null = null;
+
+  private stickyLater(): void {
+    if (this.mode !== "file" || this.stickyWait) return;
+    this.stickyWait = requestAnimationFrame(() => {
+      this.stickyWait = 0;
+      this.updateSticky();
+    });
+  }
+
+  /** The sticky header: the declaration the reading position is in, with its state — pressed, it is
+   *  selected (the owner's decision of 2026-11-01: scrolling never selects) —, or the file between
+   *  declarations. */
+  private updateSticky(): void {
+    const w = this.whole;
+    const slot = this.el.querySelector<HTMLElement>(".sw-at-slot");
+    if (!w || !slot) return;
+    const top = this.topLine();
+    const fd = top ? declAt(w.decls, top.line) : null;
+    const d = fd ? w.decls.indexOf(fd) : -1;
+    const key = fd ? `${fd.i}:${w.marks[d] ?? ""}:${fd.i === this.current}` : `-${w.file}`;
+    if (key === this.stickyAt) return;
+    this.stickyAt = key;
+    if (!fd) {
+      slot.innerHTML = `<span class="sw-at-file">${escapeHtml(w.file)}</span>`;
+      return;
+    }
+    const v = w.g.nodes[fd.i];
+    const m = w.marks[d];
+    const short = v.display ?? v.name.split(".").pop()!;
+    slot.innerHTML =
+      `<button type="button" class="sw-at" data-sw-at="${escapeHtml(v.name)}" title="${escapeHtml(fd.i === this.current ? `${v.name}: on show in this window` : `Select ${v.name}`)}">` +
+      `${m ? `<span class="dm s-${m}" aria-hidden="true"></span>` : ""}<span class="sw-at-name">${escapeHtml(short)}</span>` +
+      `<span class="sw-at-st">${m ? escapeHtml(FILE_MARK_LABEL[m]) : ""}</span></button>`;
+  }
+
+  /** Scrolled to the window's declaration, under the sticky header; a file window, to its top. */
+  private scrollToOwn(): void {
+    const sc = this.el.querySelector<HTMLElement>(".sw-scroll");
+    if (!sc) return;
+    const own = this.ownDecl();
+    if (!own) {
+      if (this.file !== null) sc.scrollTop = 0;
+      return;
+    }
+    const go = () => {
+      const el = this.lineEl(own.start);
+      if (!el) return;
+      const sticky = sc.querySelector<HTMLElement>(".sw-sticky")?.offsetHeight ?? 0;
+      sc.scrollTop += el.getBoundingClientRect().top - sc.getBoundingClientRect().top - sticky - 10;
+    };
+    go();
+    // the pieces around it, laid out as they come into sight, may stand otherwise than estimated
+    requestAnimationFrame(() => {
+      go();
+      this.updateSticky();
+    });
+  }
+
+  /** Whether some of the window's declaration's lines are in sight. */
+  private ownInSight(): boolean {
+    const sc = this.el.querySelector<HTMLElement>(".sw-scroll");
+    const own = this.ownDecl();
+    const a = own && this.lineEl(own.start), b = own && this.lineEl(own.end);
+    if (!sc || !a || !b) return false;
+    const r = sc.getBoundingClientRect();
+    return a.getBoundingClientRect().top < r.bottom && b.getBoundingClientRect().bottom > r.top + (sc.querySelector<HTMLElement>(".sw-sticky")?.offsetHeight ?? 0);
+  }
+
+  /** Lean asked what the names of each piece mean as it comes into sight (or near it), once per
+   *  text: a file's thousands of names are not asked at once. */
+  private watchPieces(w: WholeFile): void {
+    this.seen?.disconnect();
+    this.seen = null;
+    const sc = this.el.querySelector<HTMLElement>(".sw-scroll");
+    if (!sc) return;
+    const learn = !this.still && !!w.hash;
+    // without the observer (an old browser), every piece is drawn at once
+    if (typeof IntersectionObserver === "undefined") return void this.fillAround(0, Infinity);
+    const seen = new IntersectionObserver(
+      (es) => {
+        for (const e of es) {
+          if (!e.isIntersecting) continue;
+          seen.unobserve(e.target);
+          this.fill(e.target as HTMLElement);
+          if (learn) void this.learnPiece(w, Number((e.target as HTMLElement).dataset.piece));
+        }
+      },
+      { root: sc, rootMargin: "600px 0px" },
+    );
+    for (const pre of sc.querySelectorAll("pre.sw-piece")) seen.observe(pre);
+    this.seen = seen;
+  }
+
+  /** What Lean says each name of piece `k` means, the piece drawn again with it. */
+  private async learnPiece(w: WholeFile, k: number): Promise<void> {
+    const c = w.chunks[k];
+    if (!c) return;
+    const key = `${w.module}:${w.hash}:${c.start}-${c.end}`;
+    if (this.memory.learned.has(key)) return;
+    const text = w.lines.slice(c.start, c.end + 1).join("\n");
+    const words: { word: string; at: number }[] = [];
+    highlightLines(text, (word, at) => (words.push({ word, at }), null));
+    if (!words.length) return;
+    const live = () => this.whole === w && this.mode === "file";
+    await this.learn(live, w.selfs[k], key, w.module, w.hash, text, c.start, words, () => {
+      const pre = this.frameEl.querySelector<HTMLElement>(`pre.sw-piece[data-piece="${k}"]`);
+      if (!pre) return;
+      pre.innerHTML = this.pieceLines(k);
+      this.applyOpen(pre);
+      this.flashLines();
+      this.info.marks();
+    });
   }
 
   /** The InfoView told the code drawn now, its element and the code's (none: no code on show). */
   private attachInfo(code: InfoCode | null): void {
-    this.info.attach(this.frameEl.querySelector<HTMLElement>(".sw-info"), this.frameEl.querySelector<HTMLElement>("pre.src"), code);
+    // a line of the file found as the window finds it: in Declaration mode's block, in File mode's
+    // pieces (drawn as they are reached)
+    this.info.attach(this.frameEl.querySelector<HTMLElement>(".sw-info"), (line) => this.lineEl(line), code);
   }
 
   /** The context the code on show is written in, as Lean, muted above it: folded when long to
@@ -1227,7 +2047,7 @@ export class SourceWindow implements SourcePane {
    *  names by its answers: a declaration where it names one, nothing where it names a variable;
    *  the page's own reading stays where Lean says nothing. */
   private async learn(
-    turn: number,
+    live: () => boolean,
     self: string,
     key: string,
     module: string,
@@ -1235,7 +2055,7 @@ export class SourceWindow implements SourcePane {
     text: string,
     start: number,
     words: { word: string; at: number }[],
-    resolve: (w: string) => string | null,
+    apply: (learned: Map<number, RefAnswer>) => void,
   ): Promise<void> {
     const g = this.g;
     const lineStarts = [0];
@@ -1261,18 +2081,24 @@ export class SourceWindow implements SourcePane {
       }
     });
     if (!positions.length) return;
+    // at most what the server takes at once (server/appgraph.ts): the names past it keep the page's
+    // reading
+    if (positions.length > NAMES_MAX) {
+      positions.length = NAMES_MAX;
+      parts.length = NAMES_MAX;
+    }
     let heads: (string | null)[] | undefined;
     for (let tries = 0; tries < 120 && !heads; tries++) {
       const res = await this.data.names(module, positions, hash);
-      if (turn !== this.turn || !res || res.stale || res.error) return;
+      if (!live() || !res || res.stale || res.error) return;
       if (res.pending) await new Promise((ok) => setTimeout(ok, 1000));
       else heads = res.heads;
     }
-    if (!heads || turn !== this.turn) return;
+    if (!heads || !live()) return;
     const byWord = new Map<number, (string | null)[]>();
     parts.forEach((p, k) => {
       const segs = byWord.get(p.word) ?? [];
-      segs.push(heads![k]);
+      segs.push(heads![k] ?? null);
       byWord.set(p.word, segs);
     });
     const learned = new Map<number, RefAnswer>();
@@ -1297,12 +2123,9 @@ export class SourceWindow implements SourcePane {
       } else if (segs.length === 1 && each[0] === null) learned.set(at, null);
     }
     this.memory.learned.set(key, learned);
-    if (this.memory.learned.size > 64) this.memory.learned.delete(this.memory.learned.keys().next().value!);
-    const pre = this.el.querySelector<HTMLElement>("pre.src");
-    if (!pre || turn !== this.turn) return;
-    pre.innerHTML = highlightLines(text, (w, off) => (learned.has(off) ? learned.get(off) : resolve(w)), start + 1);
-    this.flashLines();
-    this.info.marks();
+    // a file's pieces each have theirs: room for a few files
+    if (this.memory.learned.size > 256) this.memory.learned.delete(this.memory.learned.keys().next().value!);
+    if (live()) apply(learned);
   }
 }
 
@@ -1319,7 +2142,7 @@ function offsetIn(root: Node, node: Node, off: number): number {
  *  line after `start`, from 0, where `text` starts in its file), the gutter holding room for the
  *  digits of its last line's number. */
 function codeHtml(lines: string, start: number, text: string): string {
-  return `<pre class="code src" style="--gw:${gutterDigits(start + text.split("\n").length)}">${lines}</pre>`;
+  return `<pre class="code src" data-line="${start}" style="--gw:${gutterDigits(start + text.split("\n").length)}">${lines}</pre>`;
 }
 
 /** "Open on GitHub" (DeploySpec decision 13): the declaration's lines in the build's commit, in a

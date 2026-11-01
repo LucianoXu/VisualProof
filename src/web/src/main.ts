@@ -33,7 +33,9 @@ import { deployWaiting } from "./buildpop.ts";
 import { Editor } from "./editor.ts";
 import { keptFocus } from "./focus.ts";
 import { takeKept } from "./reload.ts";
-import type { Kept } from "./reload.ts";
+import type { Kept, KeptWindow } from "./reload.ts";
+import { moduleDecls } from "./filemode.ts";
+import type { SharedPin } from "./sources.ts";
 import { snapshotIn } from "../../shared/sharesnap.ts";
 import { recipeIn } from "../../shared/artrecipe.ts";
 import { noteIn, siteOrigins } from "./chatlinks.ts";
@@ -248,12 +250,14 @@ async function boot(): Promise<void> {
   // the source windows the page had before it reloaded into its server's new version, on the
   // declarations found by name (web/src/reload.ts)
   if (kept && (kept.sources.following || kept.sources.pinned.length)) {
-    const on = (w: { name: string; collapsed: boolean }) => {
+    // each in its mode; a file window on a file the graph still has
+    const on = (w: KeptWindow): SharedPin | null => {
+      if ("file" in w) return moduleDecls(page.present, w.file).length ? { file: w.file, collapsed: w.collapsed } : null;
       const decl = page.present.byName.get(w.name);
-      return decl === undefined ? null : { decl, collapsed: w.collapsed };
+      return decl === undefined ? null : { decl, collapsed: w.collapsed, mode: w.mode ?? "decl" };
     };
     const f = kept.sources.following && on(kept.sources.following);
-    page.sources.mirror({ following: f, pinned: kept.sources.pinned.map(on).filter((w) => w !== null) });
+    page.sources.mirror({ following: f && "decl" in f ? f : null, pinned: kept.sources.pinned.map(on).filter((w) => w !== null) });
     page.sources.release();
   }
   $("#loader").classList.add("gone");

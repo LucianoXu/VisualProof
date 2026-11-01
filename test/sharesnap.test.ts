@@ -42,7 +42,13 @@ function heavy(): PresenceView {
     sel: N("Units.unitsBound"),
     source: true,
     sourceCollapsed: true,
-    pinned: Array.from({ length: 6 }, (_, i) => ({ decl: N(`Galois.galois_${i}_commutes`), collapsed: i % 2 === 0 })),
+    // the whole file shown, a pinned window's too, and a file window (the owner's decisions of
+    // 2026-11-01)
+    sourceMode: "file",
+    pinned: [
+      ...Array.from({ length: 5 }, (_, i) => ({ decl: N(`Galois.galois_${i}_commutes`), collapsed: i % 2 === 0, ...(i === 1 ? { mode: "file" as const } : {}) })),
+      { file: "FltRegular.NumberTheory.Galois", collapsed: false },
+    ],
     paper: { file: "3f".repeat(32), page: 12, link: "l0123456789ab", collapsed: true },
     activity: { open: true, kind: "review", who: "people", mine: "Olivia Park" },
     lostFound: { open: true },
@@ -191,10 +197,10 @@ test("a snapshot naming what is no longer there: what still makes sense is appli
   // once applied: the declarations the board's graph lacks, a focus on what is no target now
   const kept = new Set([N("Units.unitsBound"), N("Norm.normLemma0"), N("Galois.galois_0_commutes")]);
   const names = goneNames(view, [N("Units.unitsBound"), N("Ideal.idealPrincipal")], { decl: (n) => kept.has(n), target: () => false });
-  assert.equal(names.decls!.length, 1 + 7 + 5, "the selection's, the visitors' and the pinned windows' it lacks, each once");
+  assert.equal(names.decls!.length, 1 + 7 + 4, "the selection's, the visitors' and the pinned windows' it lacks, each once (a file window names no declaration)");
   assert.ok(names.decls!.includes(N("Ideal.idealPrincipal")) && !names.decls!.includes(N("Units.unitsBound")));
   assert.equal(names.focus, "flt_regular");
-  assert.match(missingLine({ ...gone, ...names, view: true })!, /^Not shown from the link \(no longer here\): its view, its build, 13 declarations \(idealPrincipal, normLemma1, normLemma2, …\), the focus ★flt_regular, the link in the reference\.$/);
+  assert.match(missingLine({ ...gone, ...names, view: true })!, /^Not shown from the link \(no longer here\): its view, its build, 12 declarations \(idealPrincipal, normLemma1, normLemma2, …\), the focus ★flt_regular, the link in the reference\.$/);
   // everything there: nothing said
   const all = sortOut(shot.view, { build: () => true, file: () => true, link: () => true });
   assert.equal(missingLine({ ...all.gone, ...goneNames(all.view, [], { decl: () => true, target: () => true }) }), null);

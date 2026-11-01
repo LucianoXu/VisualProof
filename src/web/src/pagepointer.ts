@@ -38,10 +38,11 @@ export function pointerPart(page: Page): PointerPart {
       page.linear.shown
         ? { at: (x, y) => page.linear.pointAt(x, y), screenOf: (p) => page.linear.screenOf(p), room: () => page.linear.room(), reveal: (k) => page.linear.reveal(k) }
         : null,
-    windowDecl: (el) => page.sources.all.find((w) => w.el === el)?.name ?? null,
+    // a window by its declaration's name, a file window by its file (SourceWindow.anchor)
+    windowDecl: (el) => page.sources.all.find((w) => w.el === el)?.anchor || null,
     // the window open on it, the following one first; a collapsed one is a pill, which holds no code
     windowOf: (decl) => {
-      const all = page.sources.all.filter((w) => w.name === decl);
+      const all = page.sources.all.filter((w) => w.anchor === decl);
       return (all.find((w) => !w.collapsed) ?? all[0])?.el ?? null;
     },
     yours: (el) => inYours(el),

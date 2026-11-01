@@ -85,6 +85,15 @@ export function followersOf(P: { privateFollowers(): Map<string, number> }, peer
   return { people, private: P.privateFollowers().get(key) ?? 0 };
 }
 
+/** The pinned windows in words: the declarations whose source is pinned (the whole file of some,
+ *  File mode), then the file windows. */
+function pinnedWords(pinned: NonNullable<PresenceView["pinned"]>): string {
+  const decls = pinned.flatMap((w) => ("decl" in w ? [`${w.decl}${w.mode === "file" ? " (its whole file)" : ""}`] : []));
+  const files = pinned.flatMap((w) => ("file" in w ? [`the file ${w.file}`] : []));
+  const all = [...(decls.length ? [`the source of ${decls.join(", ")}`] : []), ...files];
+  return all.length ? `, with ${all.join(" and ")} pinned` : "";
+}
+
 /** A page's or an agent's place, as the companion tells it (and a conversation's message, where
  *  its writer was): with its source windows, the one following the selection and those pinned,
  *  each collapsed or not (decided 2026-10-09: what a follower's windows mirror), the build it
@@ -101,7 +110,7 @@ export function placeOf(api: AgentApi, v: PresenceView): {
   declaration: string | null;
   source: boolean;
   sourceCollapsed: boolean;
-  pinned: { declaration: string; collapsed: boolean }[];
+  pinned: ({ declaration: string; collapsed: boolean; mode?: "file" } | { file: string; collapsed: boolean })[];
   inWords: string;
 } & Record<string, unknown> {
   const on = v.view ? api.world.views.book.get(v.view) : undefined;
@@ -113,9 +122,9 @@ export function placeOf(api: AgentApi, v: PresenceView): {
     (on && on.id !== PROJECT ? `the view ${JSON.stringify(title)}` : v.scope ? `a view on ${v.scope}` : "the Project view") +
     (on?.targets ? `, ${on.targets.join(" and ")}'s view` : "") +
     (v.focus !== undefined ? (v.focus ? `, focused on ${v.focus} for themselves` : ", with no focus for themselves") : "") +
-    (v.sel ? `, ${v.source ? "reading the source of" : "looking at"} ${v.sel}` : "") +
+    (v.sel ? `, ${v.source ? (v.sourceMode === "file" ? "reading the whole file of" : "reading the source of") : "looking at"} ${v.sel}` : "") +
     (v.selection ? `, with ${v.selection} selected` : "") +
-    (v.pinned?.length ? `, with the source of ${v.pinned.map((w) => w.decl).join(", ")} pinned` : "");
+    pinnedWords(v.pinned ?? []);
   const built = v.history ? api.world.history?.get(v.history.snapshot)?.at ?? null : null;
   const then = v.history ? `, in the Time Machine at snapshot ${v.history.snapshot}${built ? ` (built ${built})` : ""}` : "";
   // the panels and the board besides, in words where they are not as a page starts
@@ -143,7 +152,9 @@ export function placeOf(api: AgentApi, v: PresenceView): {
     declaration: v.sel,
     source: v.source,
     sourceCollapsed: v.source && v.sourceCollapsed === true,
-    pinned: (v.pinned ?? []).map((w) => ({ declaration: w.decl, collapsed: w.collapsed })),
+    // the whole file shown (File mode, the owner's decision of 2026-11-01), and a file window
+    ...(v.source && v.sourceMode === "file" ? { sourceMode: "file" } : {}),
+    pinned: (v.pinned ?? []).map((w) => ("file" in w ? { file: w.file, collapsed: w.collapsed } : { declaration: w.decl, collapsed: w.collapsed, ...(w.mode === "file" ? { mode: "file" as const } : {}) })),
     ...(v.history ? { history: { snapshot: v.history.snapshot, built } } : {}),
     ...(v.activity ? { activity: { ...v.activity } } : {}),
     ...(v.lostFound ? { lostAndFound: { open: v.lostFound.open } } : {}),

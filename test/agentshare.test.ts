@@ -280,6 +280,13 @@ test("the companion: where every person is, and the agents; it waits until someo
     const hers = after.people.find((p: Json) => p.name === "Alice").place;
     assert.deepEqual([hers.sourceCollapsed, hers.pinned], [true, [{ declaration: "N.a", collapsed: false }, { declaration: "N.b", collapsed: true }]]);
     assert.match(hers.inWords, /with the source of N\.a, N\.b pinned/);
+    // the whole file shown (File mode, the owner's decision of 2026-11-01): the following window's,
+    // a pinned one's, and a file window, opened on a file
+    const files = [{ decl: "N.a", collapsed: false, mode: "file" }, { file: "M", collapsed: false }];
+    await S.ask("POST", "/api/presence", { token: hello.token, view: { ...here, sourceMode: "file", pinned: files }, idle: false }, ALICE);
+    const whole = (await S.ask("GET", "/api/agent/companion", undefined, bearer(token))).json!.people.find((p: Json) => p.name === "Alice").place;
+    assert.deepEqual([whole.sourceMode, whole.pinned], ["file", [{ declaration: "N.a", collapsed: false, mode: "file" }, { file: "M", collapsed: false }]]);
+    assert.match(whole.inWords, /reading the whole file of N\.b, .*with the source of N\.a \(its whole file\) and the file M pinned/);
     // what else those following her see (CollabSpec decision 4, the owner's decision of
     // 2026-10-11): Activity and its filters, the lost-and-found, the colouring, the edges — said
     // where her page says them, which an older page does not; a move

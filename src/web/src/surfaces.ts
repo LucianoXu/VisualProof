@@ -140,8 +140,12 @@ export const FOLLOWED = [
   },
   {
     part: "sources",
-    what: "the source windows: the one following the selection and each pinned one — open, collapsed or not, on what",
-    fields: ["source", "sourceCollapsed", "pinned"],
+    what: "the source windows: the one following the selection and each pinned one — open, collapsed or not, on what, showing the declaration or the whole file (File mode); a file window, opened on a file",
+    fields: ["source", "sourceCollapsed", "sourceMode", "pinned"],
+    // a file opened from the Files tree, where a press opens a file window (the owner's decision of
+    // 2026-11-01); in a window, its switch between the declaration and the file is a control of it,
+    // as its pin is
+    changes: "#outline [data-o-file]",
     reads: ".sw-win",
     keys: [" "],
     dblclick: ".sw-win:not(.collapsed) .sw-head",
@@ -232,6 +236,9 @@ export const YOURS = [
   { id: "tcbOrder", what: "the TCB list's order, and what of it is kept to by the reader's own review", where: "[data-tcb-order], [data-q-own]" },
   // the review box's opinions all folded or all shown (ReviewSpec, "One review box", the owner's
   // decision of 2026-10-20), a reading preference, and What changed under a stale one opened
+  // File mode's proofs folded (the owner's decision of 2026-11-01): the reader's own, kept in the
+  // browser, as is a folded proof opened
+  { id: "proofFolds", what: "File mode's proofs folded to a line each, and a folded proof opened", where: "[data-sw-folds], [data-pf-open]" },
   { id: "opinions", what: "the review box's opinions, all folded or all shown, and What changed under a stale one", where: "[data-rv-fold], [data-rv-changes] > summary" },
   { id: "outline", what: "the outline's levels opened", where: "#outline .tw" },
   { id: "whatChanged", what: "\"What changed\" opened: the Time Machine's counts and the lists they open", where: "#tmbar .tm-sum, [data-tm-list], #tm-list" },

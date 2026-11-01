@@ -15,6 +15,7 @@ import { clusterIndex, remove, shownOf } from "./selection.ts";
 import { SourceWindow, sourceMemory } from "./sourcewin.ts";
 import type { SourceHooks } from "./sourcewin.ts";
 import { Sources } from "./sources.ts";
+import { moduleDecls } from "./filemode.ts";
 import { pairTop } from "./paperdock.ts";
 import { Papers } from "./paperlinks.ts";
 import { clusterSubject, PAST_LINK } from "../../shared/library.ts";
@@ -275,6 +276,48 @@ export function panelsPart(page: Page): PanelsPart {
       page.people.report();
     },
     following: () => !!page.people.following,
+    // File mode (the owner's decisions of 2026-11-01): the marks are the board's review, as its
+    // Status colouring reads it
+    review: () => page.boardReview(),
+    inReview: (G) => inReviewOf(G),
+    compiledText: async (m) => {
+      // the latest build's text, as the history keeps it (HistorySpec decision 20)
+      if (data.snapshot) return null;
+      await page.tm.load().catch(() => {});
+      const id = page.tm.latest;
+      const got = id === null ? null : await data.pastSource(id, m);
+      return got && !("missing" in got) ? got.text.split("\n") : null;
+    },
+    foldProofs: () => store.data.proofsFolded === true,
+    setFoldProofs: (on) => {
+      store.data.proofsFolded = on ? true : undefined;
+      store.save();
+      for (const w of sources.all) w.refold();
+    },
+    moded: () => {
+      page.people.report();
+      papers.redock();
+    },
+  };
+  /** Whether some target's review set holds a declaration (File mode's marks): the union of the
+   *  targets' review sets, worked out again when the graph, the targets or what is trusted change;
+   *  null where there are no targets, or for a graph that is not the board's. */
+  let reviewed: { g: unknown; key: string; set: Uint8Array | null } | null = null;
+  const inReviewOf = (G: SourceWindow["g"]): ((i: number) => boolean) | null => {
+    if (G !== page.g) return null;
+    const d = page.boardReview();
+    const key = Object.keys(d.targets).sort().join("\n") + "\n\n" + d.trusted.join("\n");
+    if (!reviewed || reviewed.g !== G || reviewed.key !== key) {
+      const roots = Object.keys(d.targets).map((n) => G.byName.get(n)).filter((i): i is number => i !== undefined);
+      let set: Uint8Array | null = null;
+      if (roots.length) {
+        set = new Uint8Array(G.n);
+        for (const r of roots) for (const i of page.flow.order(r)) set[i] = 1;
+      }
+      reviewed = { g: G, key, set };
+    }
+    const set = reviewed.set;
+    return set ? (i) => set[i] === 1 : null;
   };
   const memory = sourceMemory();
   const sources: Sources<SourceWindow> = new Sources({
@@ -291,6 +334,8 @@ export function panelsPart(page: Page): PanelsPart {
     // the reference window opens the declaration's first link beside the window opened or stepped,
     // pinned or not (AttachmentSpec decision 8)
     shown: (w, i) => papers.paired(i, w),
+    // a file window stays while the graph has declarations in its file
+    hasFile: (m) => moduleDecls(page.g, m).length > 0,
   });
 
   /** Open declaration `name`'s source at lines `from`–`to` of its file (a code quote's header in a

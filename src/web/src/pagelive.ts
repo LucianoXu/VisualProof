@@ -191,8 +191,8 @@ export function livePart(page: Page): LivePart {
       root: page.meta.project.root,
       at: Date.now(),
       sources: {
-        following: page.sources.following ? { name: page.sources.following.name, collapsed: page.sources.following.collapsed } : null,
-        pinned: page.sources.pinned.map((p) => ({ name: p.name, collapsed: p.collapsed })),
+        following: page.sources.following ? { name: page.sources.following.name, collapsed: page.sources.following.collapsed, ...(page.sources.following.mode === "file" ? { mode: "file" as const } : {}) } : null,
+        pinned: page.sources.pinned.map((p) => (p.file !== null ? { file: p.file, collapsed: p.collapsed } : { name: p.name, collapsed: p.collapsed, ...(p.mode === "file" ? { mode: "file" as const } : {}) })),
       },
       review: page.reviewBox.keptDrafts,
       talk: page.talk.keptDrafts,

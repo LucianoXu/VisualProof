@@ -160,6 +160,8 @@ test("a copy of a view with a scope of its own: the copy's arrangement, the scop
 class Pane implements SourcePane {
   decl = -1;
   name = "";
+  file: string | null = null;
+  mode: "decl" | "file" = "decl";
   collapsed = false;
   aside = 0;
   fronted = 0;
@@ -169,6 +171,13 @@ class Pane implements SourcePane {
     this.name = `D${i}`;
   }
   redrawReview() {}
+  showFile(m: string) {
+    this.file = m;
+    this.mode = "file";
+  }
+  setMode(m: "decl" | "file") {
+    this.mode = m;
+  }
   pin() {}
   pinAside(step: number) {
     this.aside = step;

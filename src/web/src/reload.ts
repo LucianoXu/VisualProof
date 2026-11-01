@@ -22,8 +22,9 @@ export interface Kept {
   /** the project it is of */
   root: string;
   at: number;
-  /** the source windows, by their declarations' names */
-  sources: { following: { name: string; collapsed: boolean } | null; pinned: { name: string; collapsed: boolean }[] };
+  /** the source windows, by their declarations' names — a file window by its file's module — each
+   *  with its mode (File mode, the owner's decision of 2026-11-01) */
+  sources: { following: KeptWindow | null; pinned: KeptWindow[] };
   /** the drafts of comments, by what they are about (web/src/reviewbox.ts) */
   review: [string, string][];
   /** the drafts of messages to agents, by agent (web/src/talk.ts) */
@@ -31,6 +32,9 @@ export interface Kept {
   /** a read-only reader's notes opened or collapsed, by id */
   notes: [string, boolean][];
 }
+
+/** A source window kept: on a declaration, by its name, or a file window, by its module. */
+export type KeptWindow = { name: string; collapsed: boolean; mode?: "file" } | { file: string; collapsed: boolean };
 
 const KEY = "visualproof:reload";
 /** the version this tab last reloaded for: a page whose code is still not of it after the reload
@@ -66,8 +70,12 @@ const pairs = <V>(x: unknown, ok: (v: unknown) => v is V): [string, V][] =>
   Array.isArray(x) ? x.filter((p): p is [string, V] => Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && ok(p[1])) : [];
 const isString = (v: unknown): v is string => typeof v === "string";
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
-const win = (v: unknown): { name: string; collapsed: boolean } | null =>
-  v && typeof v === "object" && typeof (v as { name?: unknown }).name === "string" ? { name: (v as { name: string }).name, collapsed: (v as { collapsed?: unknown }).collapsed === true } : null;
+const win = (v: unknown): KeptWindow | null => {
+  if (!v || typeof v !== "object") return null;
+  const o = v as { name?: unknown; file?: unknown; collapsed?: unknown; mode?: unknown };
+  if (typeof o.name === "string") return { name: o.name, collapsed: o.collapsed === true, ...(o.mode === "file" ? { mode: "file" as const } : {}) };
+  return typeof o.file === "string" ? { file: o.file, collapsed: o.collapsed === true } : null;
+};
 
 /** What was kept for this page's project by the reload that made it, once: taken out as it is read. */
 export function takeKept(root: string, now = Date.now(), storage: KeptStorage | null = session()): Kept | null {
@@ -82,8 +90,9 @@ export function takeKept(root: string, now = Date.now(), storage: KeptStorage | 
   try {
     const k = JSON.parse(raw) as Partial<Kept> & { sources?: { following?: unknown; pinned?: unknown } };
     if (k.root !== root || typeof k.at !== "number" || now - k.at > FRESH_MS || now < k.at) return null;
-    const pinned = Array.isArray(k.sources?.pinned) ? k.sources.pinned.map(win).filter((w): w is { name: string; collapsed: boolean } => w !== null) : [];
-    return { root, at: k.at, sources: { following: win(k.sources?.following), pinned }, review: pairs(k.review, isString), talk: pairs(k.talk, isString), notes: pairs(k.notes, isBool) };
+    const pinned = Array.isArray(k.sources?.pinned) ? k.sources.pinned.map(win).filter((w): w is KeptWindow => w !== null) : [];
+    const f = win(k.sources?.following);
+    return { root, at: k.at, sources: { following: f && "name" in f ? f : null, pinned }, review: pairs(k.review, isString), talk: pairs(k.talk, isString), notes: pairs(k.notes, isBool) };
   } catch {
     return null;
   }

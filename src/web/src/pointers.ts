@@ -49,8 +49,14 @@ export interface AnchorHooks {
 /** What inside a source window's code is no text of it: what the code's own text is drawn beside
  *  (line numbers, marks), which a page leaves out of what is copied. */
 const NOT_TEXT = '[aria-hidden="true"]';
-/** the code of a source window */
+/** the code of a source window: one block in Declaration mode, File mode's pieces (the owner's
+ *  decision of 2026-11-01), each saying the line of the file it starts at (`data-line`) */
 const CODE = "pre.code.src";
+/** The line of the file a block of code starts at. */
+const baseOf = (code: Element) => Number((code as HTMLElement).dataset?.line ?? 0) || 0;
+/** A line and column in a block of code, as one of the file: what pages tell each other, the same
+ *  in either mode. */
+const inFile = (code: Element, [line, col]: [number, number]): [number, number] => [baseOf(code) + line, col];
 /** where a point is the board's */
 const BOARD = "#canvas, #labels, #cards, #stickies";
 
@@ -231,7 +237,7 @@ export function anchorAt(x: number, y: number, t: Element | null, h: AnchorHooks
     const decl = h.windowDecl(sw);
     const c = caretAt(x, y);
     const o = decl && c ? offsetIn(code, c.node, c.offset) : null;
-    if (decl && o !== null) return { sw: decl, lc: lineColOf(textOf(code), o) };
+    if (decl && o !== null) return { sw: decl, lc: inFile(code, lineColOf(textOf(code), o)) };
   }
   const page = t.closest(".pw-win .pw-page, .pw-win .pw-img");
   if (page) {
@@ -255,7 +261,7 @@ export function textAt(node: Node, offset: number, h: AnchorHooks): TextAt | nul
   if (sw && code) {
     const decl = h.windowDecl(sw);
     const o = decl ? offsetIn(code, node, offset) : null;
-    return decl && o !== null ? { sw: decl, lc: lineColOf(textOf(code), o) } : null;
+    return decl && o !== null ? { sw: decl, lc: inFile(code, lineColOf(textOf(code), o)) } : null;
   }
   const from = rootOf(e, h);
   const path = from ? stepsTo(from.el, e) : null;
@@ -358,9 +364,10 @@ function caretRect(p: { node: Text; offset: number }): DOMRect | null {
 function textHere(t: TextAt, h: AnchorHooks): { p: { node: Text; offset: number }; holder: Element; root: Element } | null {
   if ("lc" in t) {
     const win = h.windowOf(t.sw);
-    const code = win?.querySelector(CODE);
+    // the block holding the line, by the line each starts at
+    const code = win ? [...win.querySelectorAll(CODE)].find((c) => t.lc[0] >= baseOf(c) && t.lc[0] < baseOf(c) + c.children.length) : undefined;
     if (!win || !code) return null;
-    const o = offsetOf(textOf(code), t.lc);
+    const o = offsetOf(textOf(code), [t.lc[0] - baseOf(code), t.lc[1]]);
     const p = o === null ? null : pointIn(code, o);
     return p ? { p, holder: code, root: win } : null;
   }
