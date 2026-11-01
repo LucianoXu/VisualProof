@@ -119,6 +119,11 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     tall: "docked in the sheet's place, beside or under the source (decision 21)",
     monitor: "the column, under the source (decision 34)",
   },
+  // the InfoView is a pane of the source window, below its code in a docked or narrow window
+  caret: {
+    tall: "in the source window, below its code (decision 21)",
+    monitor: "in the source window, in the column (decision 34)",
+  },
   activity: {
     tall: "in the sheet's place (decision 20)",
     monitor: "in the panel's pane (decision 33)",
@@ -267,6 +272,10 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
   hoverCards: {
     tall: "as on a larger screen (decision 18)",
     monitor: "as on a larger screen (decision 30)",
+  },
+  infoView: {
+    tall: "in the source window, as its InfoView (decision 21)",
+    monitor: "in the source window, as its InfoView (decision 34)",
   },
   pointer: {
     tall: "as on a larger screen (decision 18)",

@@ -52,6 +52,13 @@ export function followPart(page: Page): FollowPart {
       }),
       // the reference window (AttachmentSpec decision 11)
       paper: () => (page.papers.state() ? { paper: page.papers.state()! } : {}),
+      // the InfoView's caret (ReviewSpec, "The InfoView"; the owner's decision of 2026-11-01): the
+      // page's one, in the window the reader put it in
+      caret: () => {
+        const w = page.sources.all.find((p) => p.caret);
+        const c = w?.caret;
+        return w && c ? { caret: { decl: w.name, line: c.line, character: c.ch, ...(c.after ? { after: true as const } : {}), ...(w !== page.sources.following ? { pinned: true as const } : {}) } } : {};
+      },
       activity: () => ({ activity: page.activity.state() }),
       lostFound: () => ({ lostFound: { open: page.lostDrawer.open } }),
       // the reader's own, under an artwork's, which the artwork's part carries
@@ -132,7 +139,7 @@ export function followPart(page: Page): FollowPart {
     // their source windows, mirrored in this reader's, each where this page puts it: the one
     // following their selection, and those they pinned that this page's graph has; a past build
     // has none
-    if (!page.pastShown())
+    if (!page.pastShown()) {
       page.sources.mirror({
         following: v.source ? { decl: page.selected(), collapsed: v.sourceCollapsed === true } : null,
         pinned: (v.pinned ?? []).flatMap((w) => {
@@ -140,6 +147,13 @@ export function followPart(page: Page): FollowPart {
           return i === undefined ? [] : [{ decl: i, collapsed: w.collapsed }];
         }),
       });
+      // their InfoView's caret, in the window that stands for theirs (shown once its code is drawn);
+      // none there, none here
+      const c = v.caret;
+      const f = page.sources.following;
+      const at = c ? (c.pinned ? page.sources.pinned.find((p) => p.name === c.decl) : f && f.name === c.decl ? f : undefined) : undefined;
+      for (const p of page.sources.all) p.followCaret(p === at && c ? { line: c.line, ch: c.character, after: c.after === true } : null);
+    }
     if (once) {
       page.papers.mirror(v.paper);
       // the windows are this reader's own from now on, as when following ends

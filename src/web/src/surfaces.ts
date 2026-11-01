@@ -44,8 +44,9 @@ interface Followed {
   /** where the wheel changes it: on the canvas it zooms */
   wheel?: string;
   /** applied with the place, by one step of the page's (web/src/pagepeople.ts, `follow`): the view opened
-   *  first, then the build, then the camera, tool, selection, focus and visitors, then the windows;
-   *  the other parts are applied on their own once the place is reached */
+   *  first, then the build, then the camera, tool, selection, focus and visitors, then the windows
+   *  and the InfoView's caret in them; the other parts are applied on their own once the place is
+   *  reached */
   place?: true;
 }
 
@@ -156,6 +157,17 @@ export const FOLLOWED = [
     place: true,
   },
   {
+    part: "caret",
+    // ReviewSpec, "The InfoView" (the owner's decision of 2026-11-01): one reader steps through a
+    // proof, those following them watch. ↑ and ↓ step it, in a source window: no page's key, they end
+    // following as any key does that is not the reader's own
+    what: "the InfoView's caret: the source window it is in, where in the file, and the goals before or after the tactic there",
+    fields: ["caret"],
+    changes: ".sw-info [data-iv-when]",
+    reads: ".sw-info",
+    place: true,
+  },
+  {
     part: "activity",
     what: "Activity: open or closed, and its filters",
     fields: ["activity"],
@@ -258,6 +270,8 @@ export const YOURS = [
   { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
   { id: "followingStrip", what: "the following strip: whom you follow, and its ✕; once following has ended by a move, Follow again", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
+  // the InfoView hidden or shown (ReviewSpec, "The InfoView"): how the reader looks at the source
+  { id: "infoView", what: "the InfoView hidden or shown, in every source window (kept in the browser)", where: "[data-iv-hide], [data-iv-show]" },
   // the downloads of a followed reader's Export window (the owner's decision of 2026-10-21): taking
   // the file is reading, as copying text is; every other control of the window ends following
   { id: "exportDownloads", what: "the downloads the Export window offers: the PDF, the LaTeX sources, the .tex and the .sty", where: "#export-modal .ex-dl a" },

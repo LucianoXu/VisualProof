@@ -67,7 +67,8 @@ import type { Asks } from "./askfollow.ts";
 import type { Library } from "./library.ts";
 import { viewEndpoints } from "./agentviews.ts";
 import type { ExportFile, Exporter } from "./export.ts";
-import type { HoverAnswer, PrintAnswer } from "./hover.ts";
+import type { HoverAnswer, HoverFile, PrintAnswer } from "./hover.ts";
+import type { GoalsAnswer } from "../shared/goals.ts";
 import type { Kind } from "./identity.ts";
 import type { AgentWho } from "./presence.ts";
 import type { ReviewStore } from "./review.ts";
@@ -84,7 +85,7 @@ import { DOC_TOPICS } from "./agentdocs.ts";
 import { View } from "./agentgraph.ts";
 import { TALKING, conversation, doingOf, inbox, publicChannel, reply, status } from "./agenttalk.ts";
 import { docs, endpointList, index, mcpFile, mcpInstallGet, mcpTools } from "./agententry.ts";
-import { MAX_PRINT, describe, print } from "./agentlean.ts";
+import { MAX_PRINT, describe, goals, print } from "./agentlean.ts";
 import { MAX_NAMES, PARTS, context, declaration, declarations, moduleGet, refsGet, searchGet, source } from "./agentread.ts";
 import { MAX_OPINIONS, opinionPost, opinionsPost, withdrawPost } from "./agentadvice.ts";
 import { keyPost, keysGet, targetPost, targets, tcb, trustPost, why } from "./agenttcb.ts";
@@ -224,10 +225,12 @@ export interface World {
 }
 
 /** Lean, asked about a name where a module is imported (server/hover.ts): what its hover says
- *  (`describe`), and what `#print` says (`print`). */
+ *  (`describe`), and what `#print` says (`print`); and the goals at a place of a file (`goals`). */
 export interface Lean {
   describe(module: string, name: string, waitMs: number): Promise<HoverAnswer>;
   print(module: string, name: string, proofs: boolean, waitMs: number): Promise<PrintAnswer>;
+  /** the goals at a place of a file, as the InfoView shows them (ReviewSpec, "The InfoView") */
+  goals?(file: HoverFile, text: string, hash: string, line: number, character: number, waitMs: number): Promise<GoalsAnswer>;
 }
 
 /** An error, as every refusal is shaped: what went wrong, and what to do instead. */
@@ -609,6 +612,12 @@ export class AgentApi {
         params: { name: "a full Lean name", module: "optional, as for describe", proofs: "1: print proofs too (a theorem's value is its proof)", wait: "as for describe" },
         returns: "{name, unit?, module, moduleChosen, inGraph, proofs, lean: text, truncated?: {shown, length}, note?, warnings?, seeAlso?: [names Lean generated from the same command], seeAlsoNote?}",
         run: (a) => print(this, a),
+      },
+      {
+        method: "GET", path: "/api/agent/goals", brief: "Lean's goals at a line of a proof, before and after its tactic", about: "What Lean's InfoView shows at a place, live from Lean's language server: the goals before the tactic there and after it, and the expected type of the term there, as Lean writes them. The place: a line of a declaration's text (name; 1 is its first line, as source gives the text), or of a module's file (module; 1 is the file's first); column from 1, by default where the line's code starts. The tactic is read from the line (what runs from the separator before the column to the one after it: ;, <;>, a by, a case's =>). The build's text only: 409 for a file changed since it was compiled. A widget there is counted, never shown. 503 with Retry-After while Lean elaborates the file (elaborated: how far).",
+        params: { name: "a declaration of the graph — or —", module: "a module of the graph (or one an outside declaration is in)", line: "the line, from 1: of the declaration's text with name, of the file with module", column: "optional, from 1: the column (default: where the line's code starts)", wait: "how long to wait for Lean, ms (default 20000, at most 60000)" },
+        returns: "{name?, module, file, line (the file's, from 1), column, text (the line), tactic: its text | null, before: [goal] | null, after: [goal] | null, expected: goal | null, widgets?, note?} — a goal as Lean writes it: case, hypotheses, ⊢ type; null: no tactic state there (not in a proof's tactic block), or no term",
+        run: (a) => goals(this, a),
       },
       {
         method: "GET", path: "/api/agent/targets", brief: "the targets, and how far each review has come", about: "The targets people review, each with how far its review has come.",

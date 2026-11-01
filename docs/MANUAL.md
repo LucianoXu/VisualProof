@@ -178,6 +178,11 @@ The README says how to install the `visualproof` command. A checkout also runs a
   so in its log.
   Progress is in `GET /api/status` (`usage`) and the log; a module that cannot be elaborated is
   reported there and keeps the text-based context and no notation edges.
+- `--lean-files N` (default 2, at most 16): how many files Lean's language server keeps open at
+  once, for hovers and the InfoView. Each is elaborated once and then answered at once; past N, the
+  file least recently asked about is closed, and asked again it is elaborated anew. A file's worker
+  holds what its imports take — a few hundred MB, several GB on Mathlib (4.1 GB for
+  Sphere-Packing-Lean's main theorem's module) — and the server stops after ten idle minutes.
 - `--graph <saved.json>` serves a saved extraction instead of reading the build.
 - `--editor "<URL template>"` links each declaration to an editor: `{path}` is the file on the
   server, `{rel}` the file in the project, `{line}` and `{col}` where it starts (from 1). E.g.
@@ -943,6 +948,23 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   the toolchain's tag), where it is on GitHub. Where the package is at another revision than when
   the graph was read, the window shows its present text, found by name, under a warning. A
   read-only reader reads these too.
+- **The InfoView** (the owner's decisions of 2026-11-01): click in the code of a source window — or
+  move the keyboard's caret there — and a pane beside the code (below it in a narrow window and on a
+  phone) shows what Lean's InfoView shows in an editor, live from the same language server: the
+  goals before the tactic at the caret, **After** for the goals after it, and at a term its expected
+  type. The tactic is marked in the code. **↑** and **↓** step from tactic to tactic, the pane
+  following; the reader's caret is followed, so those who follow you watch as you step through a
+  proof (a click in the code is reading for them; ↑, ↓, Before or After stop their following).
+  Hypotheses and goals are highlighted as code, what the tactic changes tinted (Lean's goal diff);
+  names link to the board and open cards as in the code, and resting on a subterm shows its type and
+  doc. While Lean elaborates the file the pane says how far it has got ("Lean has elaborated line
+  120 of 800"); a place it has passed is answered at once, and opening a window starts Lean on the
+  file. The pane shows only where there is something to show — a proof, a `by` block, a term with
+  an expected type — and its › hides it in every window (a ⊢ Lean tab brings it back; kept in this
+  browser). A widget (ProofWidgets, `#html`, a panel widget) is never drawn — its JavaScript is the
+  project's code, which would run in every reader's browser —: the pane says one is there, to be
+  opened in an editor. There is no InfoView on a past build, in a snapshot of the page, or for a file
+  changed since it was compiled: the pane says why. Agents ask the same (`GET /api/agent/goals`).
 - On the canvas, the Status colours say what reviewers said about the present version (bluish
   green approved, a calm cobalt blue commented, orange stale, mid grey nobody yet, very light green
   trusted without review — in the dark theme a dim green, the quietest); the rows of a TCB list carry a dot of the same meaning. A target carries

@@ -9,6 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { isDeclName } from "./hover.ts";
 import type { HoverFile } from "./hover.ts";
+import { MAX_TAGS } from "./goals.ts";
 import { outsideSource } from "./outside.ts";
 import { lakeTextHash } from "./status.ts";
 import { finalAnswer } from "./readonlygate.ts";
@@ -138,6 +139,23 @@ export async function hover(app: App, req: IncomingMessage, res: ServerResponse,
   // the page shows another text than there is now: it reads the source again first
   const want = url.searchParams.get("hash");
   if (want && want !== hash) return sendJson(res, { stale: true });
+  if (path === "/api/hover/goals" || path === "/api/hover/goals/info") {
+    // the InfoView (ReviewSpec, "The InfoView"; the owner's decisions of 2026-11-01): of the text the
+    // graph was read from alone. A file changed since it was compiled, or a package at another
+    // revision than the graph was read at, has none: its goals would be another text's than Lean
+    // checked. Only the place (numbers) and, for a subterm, its number in the answer reach Lean
+    const compiled = out ? undefined : live.compiledOf(mod);
+    if (out?.changed) return reply({ off: `${out.file.package.name} is at another revision than when the graph was read: its goals would be another text's than Lean checked.` });
+    if (compiled && compiled !== hash) return reply({ off: "This file has changed since it was compiled: its goals would be the present text's, not what Lean checked." });
+    const gl = Number(url.searchParams.get("line")), gc = Number(url.searchParams.get("character"));
+    if (!Number.isInteger(gl) || !Number.isInteger(gc) || gl < 0 || gc < 0 || gl > 10_000_000 || gc > 100_000) return sendJson(res, { error: "position" }, 400);
+    // a place Lean has not reached yet is said so after a moment, and asked again: the pane says how
+    // far Lean is meanwhile
+    if (path === "/api/hover/goals") return reply(await app.hover.goals(file, text, hash, gl, gc, 2000));
+    const k = Number(url.searchParams.get("k"));
+    if (!Number.isInteger(k) || k < 0 || k >= MAX_TAGS) return sendJson(res, { error: "k: a subterm's number in the answer" }, 400);
+    return reply(await app.hover.subterm(file, text, hash, gl, gc, k, 6000));
+  }
   if (path === "/api/hover/names") {
     // the positions of the names in a declaration's source, as JSON [[line, character], …]
     const r = await app.json(req, 1 << 20);

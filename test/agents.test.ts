@@ -3,6 +3,7 @@
 // layout batch.
 
 import assert from "node:assert/strict";
+import type { HoverFile } from "../src/server/hover.ts";
 import type { IncomingMessage } from "node:http";
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -209,6 +210,14 @@ function world(level: AgentLevel = "full") {
       // a theorem's proof, printed, can be long
       if (name === "N.t" && proofs) return { messages: [{ severity: "information" as const, text: `theorem N.t : T N.t :=\n${"  proof\n".repeat(10_000)}` }] };
       return { messages: [{ severity: "information" as const, text: `def ${name} : Nat :=\n${proofs ? "proofs" : "⋯"}` }] };
+    },
+    // the goals at a place (the InfoView): still elaborating as far as line 8, else one goal
+    // before the tactic and none after it
+    goals: async (file: HoverFile, _text: string, _hash: string, line: number, character: number) => {
+      asked.push({ what: "goals", module: String(file), name: `${line}:${character}` });
+      if (line === 7) return { pending: { line: 3, of: 11 } };
+      if (line === 3) return { tactic: { line, from: 0, to: 16 }, before: null, after: null, term: { hyps: [], type: "Nat", range: [3, 15, 3, 16] as [number, number, number, number] }, interactive: true };
+      return { tactic: { line, from: 2, to: 7 }, before: [{ hyps: [{ names: ["n"], type: "Nat" }], type: ["z + ", { k: 0, t: "1" }, " = 1"] }], after: [], term: null, interactive: true };
     },
   };
   const api = new AgentApi(w, lean, level);
@@ -857,6 +866,40 @@ test("key declarations through the API: read by agents, written at level full as
     assert.ok(!activity.events.some((e: Json) => e.kind === "explain"));
     assert.ok(!json(await W.ask("GET", "/api/agent/endpoints")).endpoints.some((e: Json) => e.path === "/api/agent/explain"));
     assert.equal((await W.ask("POST", "/api/agent/explain", { name: "N.z", text: "The base." })).status, 404);
+  } finally {
+    W.done();
+  }
+});
+
+test("the goals at a line of a proof, as the InfoView shows them: of a declaration's text or a module's file, the build's text alone, as Lean writes them", async () => {
+  const W = world();
+  try {
+    // line 2 of N.a's text is the file's line 9, its code from column 3
+    const a = json(await W.ask("GET", "/api/agent/goals", { name: "N.a", line: "2" }));
+    assert.deepEqual(W.asked.at(-1), { what: "goals", module: "M.lean", name: "8:2" }, "only the place, numbers, reaches Lean");
+    assert.deepEqual(a, { name: "N.a", module: "M", file: "M.lean", line: 9, column: 3, text: "  z + 1", tactic: "z + 1", before: ["n : Nat\n⊢ z + 1 = 1"], after: [], expected: null });
+    await W.ask("GET", "/api/agent/goals", { name: "N.a", line: "2", column: "1" });
+    assert.deepEqual(W.asked.at(-1), { what: "goals", module: "M.lean", name: "8:0" });
+    // past the declaration's text, or no line
+    assert.equal((await W.ask("GET", "/api/agent/goals", { name: "N.a", line: "3" })).status, 400);
+    assert.equal((await W.ask("GET", "/api/agent/goals", { name: "N.a" })).status, 400);
+    assert.equal((await W.ask("GET", "/api/agent/goals", { line: "2" })).status, 400);
+    // a module's file, by its own lines: Lean still elaborating there
+    const p = await W.ask("GET", "/api/agent/goals", { module: "M", line: "8" });
+    assert.equal(p.status, 503);
+    assert.deepEqual((p.body as Json).elaborated, { line: 3, of: 11 });
+    assert.equal(p.headers?.["retry-after"], "5");
+    assert.equal((await W.ask("GET", "/api/agent/goals", { module: "Nope", line: "1" })).status, 404);
+    // a line of no tactic block: no tactic named
+    const term = json(await W.ask("GET", "/api/agent/goals", { module: "M", line: "4" }));
+    assert.equal(term.tactic, null);
+    assert.equal(term.expected, "⊢ Nat");
+    assert.equal((await W.ask("GET", "/api/agent/goals", { name: "N.nope", line: "1" })).status, 404);
+    // a file changed since it was compiled: its goals would be another text's
+    const n = W.asked.length;
+    writeFileSync(join(W.dir, "M.lean"), SOURCE + "\n-- changed\n");
+    assert.equal((await W.ask("GET", "/api/agent/goals", { name: "N.a", line: "2" })).status, 409);
+    assert.equal(W.asked.length, n, "Lean is not asked");
   } finally {
     W.done();
   }

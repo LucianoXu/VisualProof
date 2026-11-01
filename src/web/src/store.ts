@@ -75,6 +75,8 @@ export interface Saved {
   /** the review box's opinions folded to a line each, in every review box (ReviewSpec, "One review
    *  box", the owner's decision of 2026-10-20); shown, each in full with the earlier ones, where absent */
   opinionsFolded?: true;
+  /** the InfoView hidden, in every source window (ReviewSpec, "The InfoView"); shown where absent */
+  infoHidden?: true;
   /** the Export window's choices last time (web/src/exportmodal.ts): the settings it sets (what a
    *  page before 2026-10-09 kept besides, its targets and preset, is not read) */
   export?: { settings?: Record<string, unknown> };

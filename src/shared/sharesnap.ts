@@ -146,6 +146,8 @@ export const SNAPSHOT_FORMS = {
   panel: same("sel"),
   sources: same("source", "sourceCollapsed", "pinned"),
   paper: same("paper"),
+  // the InfoView's caret, in the window it is in (the owner's decision of 2026-11-01)
+  caret: same("caret"),
   activity: same("activity"),
   lostFound: same("lostFound"),
   colouring: same("scheme"),

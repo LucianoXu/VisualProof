@@ -2,6 +2,7 @@
 // (`visualproof export`), which opens from disk with no server at all.
 
 import type { BuildStatus, BuildWhole } from "../../shared/build.ts";
+import type { GoalsAnswer, SubtermInfo } from "../../shared/goals.ts";
 import type { DeployStatus } from "../../shared/deploy.ts";
 import type { UpdateStatus } from "./guide.ts";
 import type { Outline } from "../../shared/doc/outline.ts";
@@ -160,6 +161,12 @@ export interface DataSource {
   hover(module: string, line: number, character: number, hash: string): Promise<HoverReply | null>;
   /** have Lean start on a module's file, before the first hover */
   hoverOpen(module: string): void;
+  /** the InfoView (ReviewSpec, "The InfoView"): what Lean says at a place of a module's file — the
+   *  goals before and after the tactic there, the expected type of the term (server/hover.ts,
+   *  `goals`); null where there is no Lean to ask (a snapshot) */
+  goals(module: string, line: number, character: number, hash: string): Promise<GoalsAnswer | null>;
+  /** what subterm `k` of the goals answer at that place is: its type and doc */
+  subterm(module: string, line: number, character: number, hash: string, k: number): Promise<SubtermInfo | null>;
   /** what Lean says about a declaration by name, where `module` is imported (server/hover.ts,
    *  `describe`); null without Lean */
   describe(module: string, name: string): Promise<HoverReply | null>;
@@ -498,6 +505,8 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     activity: async () => [],
     hover: async () => null,
     hoverOpen: () => {},
+    goals: async () => null,
+    subterm: async () => null,
     names: async () => null,
     describe: async () => null,
     print: async () => null,
@@ -581,6 +590,14 @@ function serverSource(): DataSource {
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
     hoverOpen: (module) => void fetch(`/api/hover/open?module=${encodeURIComponent(module)}`, { method: "POST" }).catch(() => {}),
+    goals: (module, line, character, hash) =>
+      fetch(`/api/hover/goals?module=${encodeURIComponent(module)}&line=${line}&character=${character}&hash=${hash}`)
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
+    subterm: (module, line, character, hash, k) =>
+      fetch(`/api/hover/goals/info?module=${encodeURIComponent(module)}&line=${line}&character=${character}&hash=${hash}&k=${k}`)
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
     describe: (module, name) =>
       fetch(`/api/hover/describe?module=${encodeURIComponent(module)}&name=${encodeURIComponent(name)}`)
         .then((r) => r.json())

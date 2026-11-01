@@ -80,7 +80,7 @@ parameters and answer.
 |---|---|
 | [requests](requests.md) | requests and answers, errors, tokens, the entry, the endpoint reference |
 | [words](words.md) | declaration, unit, notation, grammar, TCB, trusted, review order, status, target, key |
-| [reading](reading.md) | search, declaration(s), source, context, module, what Lean says (describe, print) |
+| [reading](reading.md) | search, declaration(s), source, context, module, what Lean says (describe, print, goals) |
 | [tcb](tcb.md) | targets, review sets, key declarations, why, uses and users; marking targets and keys, trust |
 | [advice](advice.md) | opinions, the format of comments, a pre-review step by step |
 | [notes](notes.md) | notes that point people at something |

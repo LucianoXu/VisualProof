@@ -292,7 +292,7 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
 
 ## Surfaces (decision 4)
 
-Followed parts, in the order a follower applies them. The first ten are the place, applied in one
+Followed parts, in the order a follower applies them. The first eleven are the place, applied in one
 step; the rest each on its own once the place is reached.
 
 | Part | What | Presence fields | Keys |
@@ -307,6 +307,7 @@ step; the rest each on its own once the place is reached.
 | panel | what the right panel tells of | `sel` | `a`, `m`, `k` |
 | sources | source windows, following and pinned: open, collapsed, on what | `source`, `sourceCollapsed`, `pinned` | Space |
 | paper | the reference window: open, collapsed, file, page, link | `paper` | |
+| caret | the InfoView's caret (ReviewSpec, "The InfoView"; the owner's decision of 2026-11-01): the source window it is in (the following one, or a pinned one), where in the file, the goals before or after the tactic there — one reader steps through a proof while their followers watch | `caret` (`decl`, `line`, `character`, `after`, `pinned`) | ↑, ↓ in a source window (no page's key: any key ends following) |
 | activity | Activity open or closed, its filters | `activity` (`open`, `kind`, `who`, `mine`) | |
 | lostFound | the lost-and-found open or closed | `lostFound` (`open`) | |
 | colouring | the legend's Kind, Status or Mine (the followed reader's own opinions: CanvasSpec, "Colour schemes") | `scheme` | `c` |
@@ -328,7 +329,7 @@ zoom, find and the box tool of the reference window; Share and its switch; Help 
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
 others' initials and a person's menu; the request banner; the conversation window (decision 13) and
-the following strip; hover cards; the Export window's downloads (the owner's decision of
+the following strip; hover cards; the InfoView hidden or shown (ReviewSpec, "The InfoView"); the Export window's downloads (the owner's decision of
 2026-10-21: taking the file is reading); the pointer's highlight; the mark at an edge of another's pointer
 scrolled away; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.

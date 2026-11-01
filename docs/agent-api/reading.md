@@ -4,7 +4,7 @@ Search, a declaration's record, source, context, module, and what Lean says; any
 `declaration?include=source,context,uses,users,describe,print` gets all six parts in one request.
 `uses`, `users`: [Targets and their TCB](tcb.md); terms: [Words](words.md). MCP: `search`;
 `declaration` (`names` for several); `source` (`source`, `context`, `module`); `lean` (`describe`,
-`print`).
+`print`, `goals`).
 
 ## `GET /api/agent/search?q=&limit=`
 
@@ -172,3 +172,30 @@ name; module and `wait` as for `describe`. Proofs show as `⋯` (a TCB never loo
 `warnings` when Lean gave any. `seeAlso`: names generated from the same command that the value
 refers to (which `#print` shows only by name), to print in turn. 503 while Lean loads, 404 for an
 unknown name (as `describe`), 422 when Lean refused otherwise (`lean`: what it said).
+
+## `GET /api/agent/goals?name=&line=&column=&wait=`
+
+What Lean's InfoView shows at a place of a proof, live from Lean's language server (the page's
+source window shows the same, beside the code): the goals before the tactic there and after it,
+and the expected type of the term there, each as Lean writes it (`case`, the hypotheses, `⊢`). The
+place: `line` of a declaration's text (`name`; 1 is its first line, as `source` gives the text), or
+of a module's file (`module` instead of `name`; 1 is the file's first line); `column` from 1, by
+default where the line's code starts. The tactic is read from the line: from the separator before
+the column (`;`, `<;>`, a `by`, a case's `=>`) to the one after it, focusing dots left out. Step
+through a proof a line at a time.
+
+`name=FltRegular.p_dvd_c_of_ab_of_anegc&line=10` (its tenth line, the file's 48th):
+
+```json
+{"name": "FltRegular.p_dvd_c_of_ab_of_anegc", "module": "FltRegular.MayAssume.Lemmas", "file": "FltRegular/MayAssume/Lemmas.lean",
+ "line": 48, "column": 3, "text": "  ring_nf at h", "tactic": "ring_nf at h",
+ "before": ["p : ℕ\na b c : ℤ\n…\nh : ↑(-c - c - c) = 0\nhbc : ↑b = -↑c\nhab : ↑a = ↑b\n⊢ ↑p ∣ c"],
+ "after": ["p : ℕ\na b c : ℤ\n…\nhab : ↑a = ↑b\nh : ↑(-(c * 3)) = 0\n⊢ ↑p ∣ c"], "expected": null}
+```
+
+`before`, `after`: `null` where Lean has no tactic state there (outside a `by` block; `tactic` is
+`null` then too), `[]` where the tactic closes the goal. `expected`: the expected type of the term at the column, or `null`.
+`widgets`: a widget is there (its JavaScript is the project's code, never run: a person sees it in
+an editor). The build's text only: 409 for a file changed since it was compiled (or a package at
+another revision). 503 with `Retry-After: 5` while Lean elaborates the file (`elaborated: {line,
+of}`, how far; the first question about a file can take a minute); 400 for a line past the text.
