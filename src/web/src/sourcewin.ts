@@ -187,9 +187,10 @@ const READ_WAIT = 1000;
 const FILE_ANCHOR = "⟨file⟩";
 /** a sheet with a folded corner: a file window's mark in its title bar and its pill */
 const FILE_GLYPH = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4zM9 1.8V5.2h3.4"/></svg>`;
-/** File mode's width while it is fitted: a hundred characters of code and the gutter, where the
- *  screen has it, the same whatever part of the file is drawn yet */
-const FILE_W = 900;
+/** File mode's width while it is fitted, the same whatever part of the file is drawn yet: a hundred
+ *  characters of code and the gutter, and room beside them for most of the InfoView's pane, where the
+ *  screen has it */
+const FILE_W = 1040;
 /** the height a line of File mode's code takes before it is laid out: what a piece off the screen
  *  stands as (12.5 px at 1.55) */
 const LINE_H = 19.4;
