@@ -1,13 +1,20 @@
 // The InfoView's pane (web/src/infoview.ts; ReviewSpec, "The InfoView"): what it shows from what is
 // known at the caret, the goals drawn as code with their subterms numbered, where it stands, a place
-// of the code as the file's line and column.
+// of the code as the file's line and column; and the caret followed (CollabSpec, "Surfaces": caret)
+// — carried by presence and a share link, checked as the server checks a heartbeat, a press on
+// Before or After ending following and hiding the pane not.
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { cleanView } from "../src/shared/collab.ts";
+import type { PresenceView } from "../src/shared/collab.ts";
 import type { GoalsAnswer } from "../src/shared/goals.ts";
+import { readSnapshot, writeSnapshot } from "../src/shared/sharesnap.ts";
 import { readInteractiveGoals, readInteractiveTermGoal, Reading } from "../src/server/goals.ts";
 import { INTERACTIVE, TERM } from "./leananswers.ts";
 import { caretOf, goalHtml, paneSide, paneView, subtermHtml, taggedHtml } from "../src/web/src/infoview.ts";
+import { keyActs, pressActs } from "../src/web/src/surfaces.ts";
+import type { PageEl } from "../src/web/src/surfaces.ts";
 
 const resolve = (w: string) => ({ Point: "Fixture.Point", size: null, b: "Fixture.b" })[w] ?? null;
 
@@ -69,4 +76,30 @@ test("a place of the code on show is a line and a UTF-16 column, as Lean counts"
   assert.deepEqual(caretOf(text, text.length + 5), { line: 2, ch: 6 }, "past the end: its end");
   // a character outside the BMP counts two, as in the page's text and Lean's positions
   assert.deepEqual(caretOf("𝔽 x", 3), { line: 0, ch: 3 });
+});
+
+/** An element of the page as the rule reads it (test/surfaces.test.ts). */
+const at = (...chain: string[]): PageEl | null =>
+  chain.reduce<PageEl | null>((parentElement, own) => {
+    const mine = own.split("|");
+    return { matches: (sel: string) => sel.split(",").some((s) => mine.includes(s.trim())), parentElement };
+  }, null);
+
+test("the caret is followed: carried by presence and a share link as the server checks it; Before or After ends following, hiding the pane and reading do not", async () => {
+  const base: PresenceView = { mode: "tcb", sel: "A.b", source: true, clusterMode: "namespace", cam: null, view: null, scope: null, tabs: [] };
+  const caret = { decl: "FltRegular.p_dvd_c_of_ab_of_anegc", line: 49, character: 2, after: true as const };
+  assert.deepEqual(cleanView({ ...base, caret })!.caret, caret);
+  assert.deepEqual(cleanView({ ...base, caret: { ...caret, after: "yes", pinned: true } })!.caret, { decl: caret.decl, line: 49, character: 2, pinned: true });
+  for (const bad of [{ ...caret, line: -1 }, { ...caret, character: 1.5 }, { ...caret, decl: 5 }, { ...caret, line: 1e9 }, "here"]) assert.equal(cleanView({ ...base, caret: bad })!.caret, undefined, JSON.stringify(bad));
+  // a share link carries it, and its opener's page takes it once
+  const snap = await writeSnapshot({ ...base, caret }, null);
+  assert.deepEqual((await readSnapshot(snap, null))!.view.caret, caret);
+  // Before and After change it; the pane's text is read; hiding it is the reader's own
+  assert.equal(pressActs(at(".sw-win", ".sw-info", ".sw-info [data-iv-when]")), true);
+  assert.equal(pressActs(at(".sw-win", ".sw-info")), false, "the goals read, selected");
+  assert.equal(pressActs(at(".sw-win", ".sw-info", "[data-iv-hide]")), false);
+  assert.equal(pressActs(at(".sw-win", "[data-iv-show]")), false);
+  assert.equal(pressActs(at(".sw-win", "pre")), false, "a click in the code is reading, while following");
+  // ↑ and ↓ step it: no page's key, they end following as a key does
+  assert.equal(keyActs({ key: "ArrowDown" }, at(".sw-win"), false), true);
 });

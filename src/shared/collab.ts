@@ -145,6 +145,18 @@ export interface PinnedWindow {
   collapsed: boolean;
 }
 
+/** The InfoView's caret (ReviewSpec, "The InfoView"; followed, the owner's decision of 2026-11-01):
+ *  the source window it is in — the one following the selection, or the reader's pinned window
+ *  (`pinned`) on that declaration —, where in the file (a line from 0, a UTF-16 column, as Lean
+ *  counts), and whether the goals after the tactic are on show rather than those before. */
+export interface CaretView {
+  decl: string;
+  line: number;
+  character: number;
+  after?: true;
+  pinned?: true;
+}
+
 /** Where a reader is: what the others see of them, and what following them restores. */
 export interface PresenceView {
   /** the tool, how a click selects (the Mode buttons: plain; the steps of Rests on, deps, tcb, keys;
@@ -192,6 +204,9 @@ export interface PresenceView {
    *  link it was opened on, and whether it is collapsed; absent where it is closed. A follower's
    *  shows the same */
   paper?: PaperWindow;
+  /** the InfoView's caret, in one of the reader's source windows (the owner's decision of 2026-11-01):
+   *  a follower's InfoView shows the goals there; absent where there is none */
+  caret?: CaretView;
   // What the panels and the board show besides (CollabSpec decision 4, the owner's decision of
   // 2026-10-11: what you see is followed). A page from before that day, and an agent, say none of
   // them: whoever follows it keeps their own.
@@ -640,6 +655,14 @@ export function cleanView(v: unknown): PresenceView | null {
     av && typeof av.open === "boolean" && kind && who ? { open: av.open, kind, who, ...(typeof av.mine === "string" && validName(av.mine) ? { mine: av.mine } : {}) } : null;
   const lost = o.lostFound && typeof o.lostFound === "object" ? (o.lostFound as Record<string, unknown>).open : undefined;
   const scheme = one(BOARD_SCHEMES, o.scheme);
+  // the InfoView's caret: a declaration's name, a place within any file's bounds
+  const cv = o.caret && typeof o.caret === "object" ? (o.caret as Record<string, unknown>) : null;
+  const place = (n: unknown, max: number) => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= max;
+  const caretDecl = cv ? str(cv.decl) : null;
+  const caret: CaretView | null =
+    cv && caretDecl && place(cv.line, 10_000_000) && place(cv.character, 100_000)
+      ? { decl: caretDecl, line: cv.line as number, character: cv.character as number, ...(cv.after === true ? { after: true } : {}), ...(cv.pinned === true ? { pinned: true } : {}) }
+      : null;
   const pinned = Array.isArray(o.pinned)
     ? o.pinned
         .slice(0, MAX_PINNED)
@@ -666,6 +689,7 @@ export function cleanView(v: unknown): PresenceView | null {
     ...(o.focus === null || str(o.focus) ? { focus: o.focus as string | null } : {}),
     ...(visitors.length ? { visitors } : {}),
     ...(paper ? { paper } : {}),
+    ...(caret ? { caret } : {}),
     ...(activity ? { activity } : {}),
     ...(typeof lost === "boolean" ? { lostFound: { open: lost } } : {}),
     ...(scheme ? { scheme } : {}),

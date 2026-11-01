@@ -98,7 +98,7 @@ test("the registry declares every surface of the page: each element of its skele
   const ids: string[] = [...FOLLOWED.map((p) => p.part), ...YOURS.map((y) => y.id)];
   assert.equal(new Set(ids).size, ids.length);
   // the parts the owner named followed, and the surfaces named the reader's own
-  assert.deepEqual(FOLLOWED.map((p) => p.part), ["view", "history", "camera", "tool", "selection", "focus", "visitors", "panel", "sources", "paper", "activity", "lostFound", "colouring", "edges", "linear", "export", "artwork"]);
+  assert.deepEqual(FOLLOWED.map((p) => p.part), ["view", "history", "camera", "tool", "selection", "focus", "visitors", "panel", "sources", "paper", "caret", "activity", "lostFound", "colouring", "edges", "linear", "export", "artwork"]);
   for (const y of ["windowPlaces", "scroll", "sections", "tcbOrder", "outline", "whatChanged", "theme", "lock", "share", "help", "library", "board", "trusted", "viewsMenu", "search", "name", "conversation", "followingStrip", "hoverCards", "pointer"]) assert.ok(ids.includes(y), y);
   // the Export window is followed since the owner's decision of 2026-10-20: no longer the reader's own
   assert.ok(!YOURS.some((y) => y.id === ("export" as string)));
@@ -117,6 +117,7 @@ function reading(): PageParts["read"] {
     panel: () => ({ sel: "A.b" }),
     sources: () => ({ source: true, sourceCollapsed: true, pinned: [{ decl: "A.c", collapsed: false }] }),
     paper: () => ({ paper: { file: "a".repeat(64), page: 3 } }),
+    caret: () => ({ caret: { decl: "A.c", line: 41, character: 4, after: true, pinned: true } }),
     activity: () => ({ activity: { open: true, kind: "review", who: "people", mine: "Alice" } }),
     lostFound: () => ({ lostFound: { open: false } }),
     colouring: () => ({ scheme: "status" }),

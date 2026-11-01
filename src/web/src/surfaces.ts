@@ -44,8 +44,9 @@ interface Followed {
   /** where the wheel changes it: on the canvas it zooms */
   wheel?: string;
   /** applied with the place, by one step of the page's (web/src/pagepeople.ts, `follow`): the view opened
-   *  first, then the build, then the camera, tool, selection, focus and visitors, then the windows;
-   *  the other parts are applied on their own once the place is reached */
+   *  first, then the build, then the camera, tool, selection, focus and visitors, then the windows
+   *  and the InfoView's caret in them; the other parts are applied on their own once the place is
+   *  reached */
   place?: true;
 }
 
@@ -153,6 +154,17 @@ export const FOLLOWED = [
     changes: "#library-pop [data-lb-open]",
     reads: ".pw-win",
     dblclick: ".pw-win:not(.collapsed) .pw-head",
+    place: true,
+  },
+  {
+    part: "caret",
+    // ReviewSpec, "The InfoView" (the owner's decision of 2026-11-01): one reader steps through a
+    // proof, those following them watch. ↑ and ↓ step it, in a source window: no page's key, they end
+    // following as any key does that is not the reader's own
+    what: "the InfoView's caret: the source window it is in, where in the file, and the goals before or after the tactic there",
+    fields: ["caret"],
+    changes: ".sw-info [data-iv-when]",
+    reads: ".sw-info",
     place: true,
   },
   {
