@@ -16,6 +16,7 @@ import type { MenuContext, MenuTarget, TrustTo } from "./ctxmenu.ts";
 import { clusterSet, selectionText } from "./selection.ts";
 import { chipText, copyLink, noteHash } from "./chatlinks.ts";
 import { isPhone } from "./phone.ts";
+import { fileCluster } from "./pageside.ts";
 import { encodeState } from "./state.ts";
 import { $, short } from "./page.ts";
 import type { Page } from "./page.ts";
@@ -142,6 +143,7 @@ export function menuPart(page: Page): MenuPart {
         key: cl.key,
         folded: folded ?? page.canvas.folded.has(t.c),
         folder: page.cm() === "module",
+        ...(fileCluster(page, cl.key) ? { file: cl.key } : {}),
         trust: st.prefix && (st.on || !st.by) ? { prefix: st.prefix, on: st.on } : null,
         ...(inArt !== undefined ? { art: inArt } : {}),
       };
@@ -271,6 +273,10 @@ export function menuPart(page: Page): MenuPart {
         return;
       case "pin":
         if (i !== undefined) page.sources.openPinned(i);
+        return;
+      case "file":
+        // the whole file, in a window of its own, not tied to the selection
+        if (t.kind === "cluster" && t.file) page.sources.openFile(t.file);
         return;
       case "tcb":
       case "deps":

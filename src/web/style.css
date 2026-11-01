@@ -626,6 +626,15 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .o-hide svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .o-hide:hover { color: var(--accent); background: var(--code-bg); }
 .o-row:not(:hover) .o-hide:not(:focus-visible) { visibility: hidden; }
+/* a file's row opens the file, whole, in a window of its own (the owner's decision of 2026-11-01):
+   on the row under the pointer, or with the keyboard on it, as hiding a level is */
+.o-file {
+  display: grid; place-items: center; flex: none; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 5px;
+  background: transparent; color: var(--text-3); cursor: pointer;
+}
+.o-file svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+.o-file:hover { color: var(--accent); background: var(--code-bg); }
+.o-row:not(:hover):not(:focus-within) .o-file:not(:focus-visible) { visibility: hidden; }
 /* a popover lies above the floating windows (#windows) */
 #trust-pop {
   position: fixed; z-index: 36; width: min(340px, calc(100vw - 24px)); border-radius: 14px; padding: 14px 16px 12px;

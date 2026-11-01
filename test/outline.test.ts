@@ -137,3 +137,34 @@ test("the outline writes only the rows that changed", (t) => {
   assert.equal(box.writes, 2);
   assert.equal(box.children.filter((r) => /o-row folded/.test(r.html)).length, 5);
 });
+
+test("Files: a file's row opens the file (the owner's decision of 2026-11-01), by its own button, which selects nothing; a folder's row has none", () => {
+  let click: ((e: unknown) => void) | null = null;
+  const el = { innerHTML: "", children: [], addEventListener: (_: string, f: (e: unknown) => void) => (click = f) };
+  const no = () => false;
+  const opened: number[] = [];
+  const selected: number[] = [];
+  const outline = new Outline(el as unknown as HTMLElement, {
+    select: (c) => selected.push(c),
+    picked: no,
+    toggleFold: () => {},
+    isFolded: no,
+    isCollapsed: no,
+    stateOf: () => "",
+    trustCell: () => "",
+    trustClicked: () => {},
+    hide: () => {},
+    // A is a folder; A.x a file of the project
+    file: (c) => (c === 1 ? "A.x" : null),
+    openFile: (c) => opened.push(c),
+  });
+  outline.setLayout(layout([["A", -1, 10], ["A.x", 0, 5]]), "project\u0000module");
+  const rowsHtml = el.innerHTML.split('<div class="o-row');
+  assert.ok(!rowsHtml[1].includes("data-o-file"), "a folder");
+  assert.match(rowsHtml[2], /<button class="o-file" type="button" data-o-file title="Open the file: the whole of A\.x in a window of its own" aria-label="Open the file x">/);
+  // its button opens it; the row's name still selects the cluster
+  const on = (sel: string) => ({ closest: (s: string) => (s === "[data-c]" ? { dataset: { c: "1" } } : s === sel ? {} : null) });
+  click!({ target: on("[data-o-file]"), shiftKey: false });
+  click!({ target: on(".o-label"), shiftKey: false });
+  assert.deepEqual([opened, selected], [[1], [1]]);
+});

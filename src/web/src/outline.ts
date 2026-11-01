@@ -1,6 +1,9 @@
 // The cluster tree beside the canvas: where things are, the switch that folds them, what is
 // trusted without review, and hiding a level (ViewSpec decision 24; a hidden level is not listed,
 // as the board does not have it). A click on a row is a click on its cluster (web/src/selection.ts).
+// Clustered by file, the tree is "Files": a file's row opens the file, the whole of it in a source
+// window of its own (the owner's decision of 2026-11-01), by a button shown on the row under the
+// pointer or the keyboard's focus, as trusting and hiding a level are.
 
 import type { Layout } from "../../shared/graph.ts";
 import { escapeHtml } from "./highlight.ts";
@@ -22,7 +25,15 @@ export interface OutlineHooks {
   trustClicked(c: number, row: HTMLElement): void;
   /** hide a cluster's level, for everyone on the board: what it holds moves up into its parent */
   hide(c: number): void;
+  /** the file a cluster's row stands for, as its module, where it can be opened (clustered by
+   *  file, a file of the project); null elsewhere */
+  file?(c: number): string | null;
+  /** its file opened, in a file window of its own (web/src/sources.ts, openFile) */
+  openFile?(c: number): void;
 }
+
+/** A sheet with a folded corner: the button that opens a file. */
+export const FILE_MARK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.8h5.2L12.5 5v9.2H4zM9 1.8V5.2h3.4"/></svg>`;
 
 /** An eye struck through, as the side panel's buttons draw their marks. */
 export const HIDE_MARK = `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/><path d="M2.5 13.5l11-11"/></svg>`;
@@ -74,6 +85,9 @@ export class Outline {
         this.hooks.trustClicked(c, row);
       } else if (t.closest("[data-hide]")) {
         this.hooks.hide(c);
+      } else if (t.closest("[data-o-file]")) {
+        // not a selection: the file opens beside whatever is selected
+        this.hooks.openFile?.(c);
       } else this.hooks.select(c, e.shiftKey);
     });
   }
@@ -121,6 +135,7 @@ export class Outline {
           `<button class="o-label" type="button">${escapeHtml(cl.label)}</button>` +
           (this.hooks.stateOf(c) ? `<span class="o-st ${this.hooks.stateOf(c)}"></span>` : "") +
           `<span class="o-count">${cl.count}</span>` +
+          (this.hooks.file?.(c) ? `<button class="o-file" type="button" data-o-file title="Open the file: the whole of ${escapeHtml(this.hooks.file(c)!)} in a window of its own" aria-label="Open the file ${escapeHtml(cl.label)}">${FILE_MARK}</button>` : "") +
           this.hooks.trustCell(c) +
           `<button class="o-hide" data-hide title="Hide this level, for everyone on this board: what it holds moves up into its parent (⚙ Board shows it again)" aria-label="Hide this level">${HIDE_MARK}</button>` +
           `<button class="fold" title="${folded ? "Unfold" : "Fold"} on the canvas" aria-label="${folded ? "Unfold" : "Fold"} ${escapeHtml(cl.label)} on the canvas">${folded ? "○" : "●"}</button>` +

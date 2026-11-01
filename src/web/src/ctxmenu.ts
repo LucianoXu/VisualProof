@@ -45,6 +45,9 @@ export type MenuTarget =
       folded: boolean;
       /** clustered by file: a folder, not a namespace */
       folder: boolean;
+      /** clustered by file, the file of the project it stands for, as its module, where a window of
+       *  its own can be opened on it (the owner's decision of 2026-11-01; not on a phone) */
+      file?: string;
       /** what trusting it is, as for a declaration's namespace */
       trust: TrustTo | null;
       /** as a declaration's: its name shown in the artwork, or not; absent outside it */
@@ -193,7 +196,9 @@ export function menuItems(t: MenuTarget, ctx: MenuContext, title = "View"): Menu
     if (review.length) review[0].sep = true;
     out.push(...review, ...note);
   } else if (t.kind === "cluster") {
-    out.push({ act: "fold", label: t.folded ? "Unfold" : "Fold", key: "double-click" });
+    // the file it is, whole, in a window of its own (the owner's decision of 2026-11-01)
+    if (t.file) out.push({ act: "file", label: "Open the file" });
+    out.push({ act: "fold", label: t.folded ? "Unfold" : "Fold", key: "double-click", ...(t.file ? { sep: true } : {}) });
     // hiding a level changes the view, which needs *arrange*: a reader who cannot sees no item (decision 21)
     if (ctx.arrange && !ctx.preview) out.push({ act: "hide", label: "Hide this level" });
     out.push(...link);
