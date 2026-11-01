@@ -5,6 +5,17 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.9.0
+
+- Read the whole file in the source window: *Declaration | File* in its title bar shows the file the declaration is in, every declaration marked as the Status colouring marks it, the one selected lit, the one you are reading named at the top; *Fold proofs* folds each proof to a line. Open a file from the Files tree or from the board's menu on a file. Agents read a file a few hundred lines at a time.
+- See Lean's goals: the InfoView beside the code shows the goals before or after the tactic at the caret (after a line, the state the whole line leaves), an expected type at a term; ↑/↓ steps through a proof, names lead to the board, a subterm tells its type. Those who follow you see each step. Agents ask for the goals at a line. `--lean-files` (4 by default) sets how many files Lean keeps open.
+- Follow again: when something you do ends following, the strip offers to follow the same reader again.
+- Keep a note attached to a declaration a build took away on the ring, toward where the declaration was and saying which; it is back at the declaration if that returns.
+- Read a build restored from Lake's artifact cache as compiled from its text while Lake's record says so: the usage pass, source texts and review work on it. A file with no record of what it was compiled from takes no opinion; before, one was taken.
+- Fold what `irreducible_def` hides into the definition, not its `_def` lemma, which no longer enters TCBs; no internal theorems stray on the board. An unknown name below an outside declaration is answered "not found" with suggestions.
+- Answer Lean's own requests instead of taking them for its answers: hovers and goals asked while a file loaded no longer come back empty.
+- Show no hover card over the code right after a click.
+
 ## 0.8.2
 
 - Load a page left with its conversation window open: since 0.7.0 it stopped while it was made, in every browser.
