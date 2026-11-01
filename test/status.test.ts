@@ -8,9 +8,10 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { openProject } from "../src/server/project.ts";
 import type { Project } from "../src/server/project.ts";
-import { BuildTracker, commandsInProc, compiling, importable, lakeTextHash, parseImports, probeAll, scanModules, stampOf } from "../src/server/status.ts";
+import { BuildTracker, commandsInProc, compiledTextHash, compiling, importable, lakeTextHash, parseImports, probeAll, scanModules, stampOf } from "../src/server/status.ts";
 import type { ModuleInfo } from "../src/server/status.ts";
 import { copyFixture, leanAtLeast } from "./fixturecopy.ts";
+import { isCompiledText } from "../src/shared/build.ts";
 
 let haveLake = true;
 try {
@@ -220,3 +221,108 @@ test("a look reads each module's files once: the stamp moves with an output writ
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Lake's traces, each shape: a compile records the source's hash; a build restored from Lake's artifact cache records none, and its source counts as compiled while not modified since (docs/LAKE.md)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "vp-traces-"));
+  try {
+    const lib = join(root, ".lake/build/lib/lean");
+    mkdirSync(lib, { recursive: true });
+    const text = "def a : Nat := 1\n";
+    const outputs = { o: ["9ad0c4595f4ab6b5.olean"], i: "4b9e5fece5fb37cd.ilean", c: "f75f4dfcfcbbe577.c" };
+    // as Lake 4.28 to 4.35 write them (BuildMetadata, schema 2025-09-10)
+    const shapes: Record<string, (file: string) => object> = {
+      // a compile: the source's hash among the inputs
+      Compiled: (file) => ({ schemaVersion: "2025-09-10", depHash: "a21713e86f7921b7", inputs: [["deps", []], [join(root, file), lakeTextHash(text)], ["options", []]], outputs, log: [], synthetic: false }),
+      // restored from the local artifact cache (`enableArtifactCache`): `BuildMetadata.ofFetch`
+      Local: () => ({ synthetic: true, schemaVersion: "2025-09-10", outputs, log: [], inputs: [], depHash: "12451e0ab6c43dac" }),
+      // unpacked from a cache's .ltar (`lake cache get`): the outputs, and the log of the build that
+      // made it, here empty (as Physlib's)
+      Ltar: () => ({ schemaVersion: "2025-09-10", depHash: "6f5598d56a1c3dbe", outputs }),
+      // the same with a log: what it says still holds
+      LtarSorry: () => ({ schemaVersion: "2025-09-10", depHash: "0e0a2f7d0c1b9a33", outputs, log: [{ level: "warning", message: "declaration uses `sorry`" }] }),
+    };
+    const files = new Map(Object.keys(shapes).map((m) => [m, `${m}.lean`]));
+    const p: Project = { root, name: "traces", toolchain: "leanprover/lean4:v4.35.0", roots: [...files.keys()], libDir: lib, files };
+    const t0 = Date.now() / 1000 - 3600;
+    const at = (f: string, s: number) => utimesSync(f, t0 + s, t0 + s);
+    for (const [m, shape] of Object.entries(shapes)) {
+      writeFileSync(join(root, `${m}.lean`), text);
+      writeFileSync(join(lib, `${m}.olean`), "olean");
+      writeFileSync(join(lib, `${m}.trace`), JSON.stringify(shape(`${m}.lean`)));
+      // the sources first, then what Lake writes
+      at(join(root, `${m}.lean`), 0);
+      at(join(lib, `${m}.olean`), 10);
+      at(join(lib, `${m}.trace`), 10);
+    }
+    const compiled = (m: string) => compiledTextHash(p, m, `${m}.lean`);
+    const states = async () => Object.fromEntries((await new BuildTracker(p).status(scanModules(p), undefined, new Set())).files.map((f) => [f.module, f.state]));
+    const h = lakeTextHash(text);
+    assert.deepEqual([compiled("Compiled"), compiled("Local"), compiled("Ltar"), compiled("LtarSorry")], [h, h, h, h], "each its text's: the compile by its trace, a restored build by its source not modified since");
+    assert.deepEqual(await states(), { Compiled: "ok", Local: "ok", Ltar: "ok", LtarSorry: "sorry" });
+    // what the page and the server ask of it (shared/build.ts): the text is the compiled one only
+    // where the build records it and it is this one
+    assert.deepEqual([isCompiledText(h, h), isCompiledText(h, "0"), isCompiledText(null, h), isCompiledText(undefined, h), isCompiledText(h, null)], [true, false, false, false, false]);
+
+    // saved again unchanged: the compile's trace still says so; a restored build's text was seen
+    // compiled under that trace, and is the same text
+    for (const m of files.keys()) at(join(root, `${m}.lean`), 20);
+    assert.deepEqual([compiled("Compiled"), compiled("Local"), compiled("Ltar")], [h, h, h]);
+
+    // edited: the compile's trace says what was compiled, which is not this; of a restored build
+    // nothing says what was, and nothing is claimed
+    for (const m of files.keys()) writeFileSync(join(root, `${m}.lean`), text + "def b : Nat := 2\n");
+    assert.deepEqual([compiled("Compiled"), compiled("Local"), compiled("Ltar")], [h, null, null]);
+    assert.deepEqual(await states(), { Compiled: "stale", Local: "stale", Ltar: "stale", LtarSorry: "stale" });
+
+    // a restored build never seen before, its source modified since its trace was written, even
+    // back to what it was: nothing records the text, and it is not taken for the compiled one
+    writeFileSync(join(root, "Fresh.lean"), text);
+    writeFileSync(join(lib, "Fresh.olean"), "olean");
+    writeFileSync(join(lib, "Fresh.trace"), JSON.stringify(shapes.Ltar("Fresh.lean")));
+    at(join(lib, "Fresh.trace"), 10);
+    at(join(root, "Fresh.lean"), 20);
+    assert.equal(compiledTextHash(p, "Fresh", "Fresh.lean"), null);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a build Lake restored from its artifact cache: what the graph reads of each file is its text, until the file is edited; a build compiles it again (docs/LAKE.md)", { skip: !haveLake }, async () => {
+  const other = copyFixture("vp-status-restored-");
+  const cache = mkdtempSync(join(tmpdir(), "vp-lake-cache-"));
+  const env = { ...process.env, LAKE_CACHE_DIR: cache };
+  try {
+    // as Physlib has it: Lake's artifact cache, every artifact restored into the build folder
+    const lakefile = join(other, "lakefile.toml");
+    writeFileSync(lakefile, readFileSync(lakefile, "utf8").replace(/^(name = .*)$/m, "$1\nenableArtifactCache = true\nrestoreAllArtifacts = true"));
+    execFileSync("lake", ["build"], { cwd: other, stdio: "ignore", env });
+    rmSync(join(other, ".lake", "build"), { recursive: true, force: true });
+    execFileSync("lake", ["build"], { cwd: other, stdio: "ignore", env });
+    const trace = JSON.parse(readFileSync(join(other, ".lake/build/lib/lean/Fixture/Use.trace"), "utf8"));
+    assert.equal(trace.synthetic, true, "restored, not compiled");
+    assert.deepEqual(trace.inputs ?? [], [], "the trace records no inputs");
+    const p = openProject(other, [], false);
+    const mods = scanModules(p);
+    for (const m of mods.values()) assert.equal(compiledTextHash(p, m.name, m.file), lakeTextHash(readFileSync(join(other, m.file), "utf8")), m.name);
+    const states = async () => Object.fromEntries((await new BuildTracker(p).status(scanModules(p))).files.map((f) => [f.module, f.state]));
+    // (the trace keeps no log, so a restored `sorry` is not seen here: Fixture.Axioms reads ok)
+    assert.equal((await states())["Fixture.Use"], "ok");
+
+    const use = join(other, "Fixture/Use.lean");
+    writeFileSync(use, readFileSync(use, "utf8").replace("def helper (n : Nat) : Nat := n + 0", "def helper (n : Nat) : Nat := n + 0 + 0"));
+    assert.equal(compiledTextHash(p, "Fixture.Use", "Fixture/Use.lean"), null);
+    let s = await states();
+    assert.equal(s["Fixture.Use"], "stale");
+    assert.equal(s["Fixture.Leaf"], "stale", "what imports it is out of date");
+
+    // Lake finds no artifact for the new text, and compiles it: its trace records the text again
+    execFileSync("lake", ["build"], { cwd: other, stdio: "ignore", env });
+    assert.equal(compiledTextHash(p, "Fixture.Use", "Fixture/Use.lean"), lakeTextHash(readFileSync(use, "utf8")));
+    s = await states();
+    assert.equal(s["Fixture.Use"], "ok");
+  } finally {
+    rmSync(other, { recursive: true, force: true });
+    rmSync(cache, { recursive: true, force: true });
+  }
+});
+

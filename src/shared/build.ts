@@ -95,3 +95,13 @@ export function applyBuildDelta(held: BuildWhole, d: BuildDelta): BuildWhole | n
   files.push(...changed.values());
   return { epoch: d.epoch, rev: d.rev, status: { active: d.active, progress: d.progress, files, counts: d.counts } };
 }
+
+/** Whether a module's text, of Lake hash `now`, is the one its build was compiled from, `compiled`
+ *  (the graph's `modules[].compiled`, server/status.ts `compiledTextHash`): only where the build
+ *  records it and it is that text. Where the build records none — a build restored from Lake's
+ *  artifact cache whose source was modified since, a module without a trace — nothing says what was
+ *  compiled, and the text is not taken for it: an opinion is bound to the compiled version, and
+ *  the usage pass's places are about the compiled text. */
+export function isCompiledText(compiled: string | null | undefined, now: string | null | undefined): boolean {
+  return !!compiled && !!now && compiled === now;
+}

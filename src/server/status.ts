@@ -8,7 +8,11 @@
 //   - modules downstream of a failure are not rebuilt and keep their old .olean;
 //   - there is no build lock. A compile in progress is a `lean … -o <libDir>/Foo.olean` process;
 //   - the trace records the hash of the source it was built from. Lake rebuilds when that hash
-//     changes, not when the mtime does, so "stale" here compares the same hash (`lakeTextHash`).
+//     changes, not when the mtime does, so "stale" here compares the same hash (`lakeTextHash`);
+//   - a build restored from Lake's artifact cache (`lake cache get`, `enableArtifactCache`) has a
+//     trace with its outputs and the input hash they were found under, and no inputs (the source's
+//     hash among them); restored from the local cache, no log either: the source counts as compiled
+//     as long as it has not been modified since Lake wrote that trace (`compiledFrom`).
 
 import { execFile } from "node:child_process";
 import { tracked } from "./children.ts";
@@ -237,8 +241,12 @@ function mtime(f: string): number | null {
 interface TraceInfo {
   warnings: number;
   sorry: boolean;
-  /** the Lake hash of the source the last successful build compiled */
+  /** the Lake hash of the source the last successful build compiled, as the trace records it */
   builtFrom: string | null;
+  /** restored from Lake's artifact cache: the trace records outputs and no inputs */
+  restored: boolean;
+  /** the input hash Lake found the outputs under (`depHash`) */
+  depHash: string | null;
 }
 
 /** What a look finds of a module's files: its outputs' times, its source's time and Lake hash, and
@@ -256,7 +264,7 @@ const traceCache = new Map<string, TraceInfo & { mtime: number }>();
 function readTrace(file: string, at: number, source: string): TraceInfo {
   const hit = traceCache.get(file);
   if (hit && hit.mtime === at) return hit;
-  const v = { mtime: at, warnings: 0, sorry: false, builtFrom: null as string | null };
+  const v = { mtime: at, warnings: 0, sorry: false, builtFrom: null as string | null, restored: false, depHash: null as string | null };
   try {
     const t = JSON.parse(readFileSync(file, "utf8"));
     for (const e of (t.log ?? []) as { level: string; message: string }[]) {
@@ -266,6 +274,10 @@ function readTrace(file: string, at: number, source: string): TraceInfo {
     for (const inp of t.inputs ?? []) {
       if (Array.isArray(inp) && typeof inp[0] === "string" && inp[0].endsWith(source)) v.builtFrom = inp[1];
     }
+    // a restored build's trace (Lake's `BuildMetadata.ofFetch`, `synthetic`; or the one a cache's
+    // `.ltar` holds, which keeps the outputs and the log alone): the outputs, and no inputs at all
+    v.restored = v.builtFrom === null && t.outputs != null && !(Array.isArray(t.inputs) && t.inputs.length);
+    if (typeof t.depHash === "string") v.depHash = t.depHash;
   } catch {
     // a trace being written: read it next time
   }
@@ -273,12 +285,37 @@ function readTrace(file: string, at: number, source: string): TraceInfo {
   return v;
 }
 
+/** Each restored build's text found compiled, by its trace's file: the input hash Lake found the
+ *  outputs under and the text's hash (`compiledFrom`). */
+const restoredTexts = new Map<string, { depHash: string | null; hash: string }>();
+
+/** The Lake hash of the text a build was compiled from: the one its trace records; for a build
+ *  restored from Lake's artifact cache, which records none, the source's as it is now, where the
+ *  source has not been modified since Lake wrote the trace. Lake writes it once it has hashed the
+ *  source, with everything else the module is built from, into the input hash it found the outputs
+ *  under: the text there then is the text they were compiled from. Modified since, nothing is
+ *  known of it — Lake would hash it again — and nothing is claimed, but where the same trace was
+ *  seen with the same text before: a file saved or checked out again unchanged (Lake, finding the
+ *  same input hash, leaves the trace as it is). Seen by this process alone: after a restart such a
+ *  file counts as changed until Lake writes its trace again. */
+export function compiledFrom(t: TraceInfo, traceAt: number, src: { hash: string; at: number } | null, traceFile = ""): string | null {
+  if (t.builtFrom !== null) return t.builtFrom;
+  if (!t.restored || src === null) return null;
+  if (src.at <= traceAt) {
+    if (traceFile) restoredTexts.set(traceFile, { depHash: t.depHash, hash: src.hash });
+    return src.hash;
+  }
+  const seen = traceFile ? restoredTexts.get(traceFile) : undefined;
+  return seen && seen.depHash === t.depHash && seen.hash === src.hash ? src.hash : null;
+}
+
 function probe(p: Project, m: ModuleInfo): Probe {
   const base = join(p.libDir, ...m.name.split("."));
   const trace = mtime(base + ".trace");
-  const t = trace !== null ? readTrace(base + ".trace", trace, "/" + m.file) : { warnings: 0, sorry: false, builtFrom: null };
+  const t = trace !== null ? readTrace(base + ".trace", trace, "/" + m.file) : { warnings: 0, sorry: false, builtFrom: null, restored: false, depHash: null };
   const src = sourceHash(join(p.root, m.file));
-  return { olean: mtime(base + ".olean"), trace, source: src?.hash ?? null, sourceAt: src?.at ?? null, ...t };
+  const builtFrom = trace !== null ? compiledFrom(t, trace, src, base + ".trace") : null;
+  return { olean: mtime(base + ".olean"), trace, source: src?.hash ?? null, sourceAt: src?.at ?? null, ...t, builtFrom };
 }
 
 /** A look at every module's files: three times each (its outputs', its source's), read once. */
@@ -311,7 +348,7 @@ export function compiledTextHash(p: Project, module: string, file: string): stri
   const base = join(p.libDir, ...module.split("."));
   const trace = mtime(base + ".trace");
   if (trace === null || mtime(base + ".olean") === null) return null;
-  return readTrace(base + ".trace", trace, "/" + file).builtFrom;
+  return compiledFrom(readTrace(base + ".trace", trace, "/" + file), trace, sourceHash(join(p.root, file)), base + ".trace");
 }
 
 export class BuildTracker {
@@ -346,6 +383,8 @@ export class BuildTracker {
       if (running.has(m.name)) own.set(m.name, "building");
       else if (pr.olean === null) own.set(m.name, pr.trace !== null ? "failed" : "unbuilt");
       else if (pr.builtFrom !== null && pr.source !== null && pr.builtFrom !== pr.source) own.set(m.name, "stale");
+      // restored from Lake's artifact cache and modified since: not known to be what was compiled
+      else if (pr.restored && pr.builtFrom === null && pr.source !== null) own.set(m.name, "stale");
       else own.set(m.name, pr.sorry ? "sorry" : "ok");
     }
     const broken = (s: FileState | undefined) => s === "failed" || s === "unbuilt";

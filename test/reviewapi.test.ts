@@ -124,6 +124,13 @@ test("the server binds what an opinion is about; the request says only what the 
     assert.equal(edited.status, 409);
     assert.match(edited.body.error, /changed since it was compiled/);
     writeFileSync(join(W.dir, "M.lean"), SOURCE);
+    // a file of which nothing records the text compiled (a build restored from Lake's artifact cache,
+    // modified since: server/status.ts, compiledFrom): not taken for the compiled one either
+    W.view.modules.set("M", { file: "M.lean", compiled: null });
+    const unknown = W.post({ op: "opinion", name: "N.a", verdict: "approve" });
+    assert.equal(unknown.status, 409);
+    assert.match(unknown.body.error, /Nothing records which text M was compiled from/);
+    W.view.modules.set("M", { file: "M.lean", compiled: lakeTextHash(SOURCE) });
     // the graph not read yet: try again
     W.noGraph();
     assert.equal(W.post({ op: "opinion", name: "N.a", verdict: "approve" }).status, 503);
