@@ -508,9 +508,9 @@ export class AgentApi {
       { method: "GET", path: "/api/agent", about: "The entry: who you are here and what you may do, how to begin, the rules, the documentation's topics, the most used endpoints.", params: {}, returns: "{about, you: {name, kind, level, may, token?}, level, requests, start, rules, docs, topics, endpoints, errors, graph}", run: (a) => index(this, a) },
       { method: "GET", path: "/api/agent/endpoints", about: "Every endpoint of this API: what it does, its parameters, its answer and the level it needs.", params: { path: "optional: only this path's (e.g. /api/agent/tcb)" }, returns: "{endpoints: [{method, path, about, params, returns, needs?}]}", run: (a) => endpointList(this, a) },
       {
-        method: "GET", path: "/api/agent/module", about: "A module of the project: its file's doc comments (/-! … -/, where a project keeps the reasons behind its definitions), what it imports and what imports it, and every declaration in it in the order of the file — what sits beside a declaration: a variant, a weaker or stronger form.",
-        params: { name: "a module, e.g. Mathlib.NumberTheory.FLT.Four — or —", of: "a declaration: its module" },
-        returns: "{name, file, compiled, note?, imports, importedBy, docs: [{line, endLine, text}], docsCut?, count, declarations: [{name, kind, line, display?, grammar?, also?}]}",
+        method: "GET", path: "/api/agent/module", about: "A module of the project: its file's doc comments (/-! … -/, where a project keeps the reasons behind its definitions), what it imports and what imports it, and every declaration in it in the order of the file — what sits beside a declaration: a variant, a weaker or stronger form. With lines, the file itself, as the source window's File mode shows it, at most 400 lines at a time; outside the project too, for a module an outside declaration of the graph is in.",
+        params: { name: "a module, e.g. Mathlib.NumberTheory.FLT.Four — or —", of: "a declaration: its module", lines: "optional, <from>-<to> from 1 (at most 400): those lines of the file, as text" },
+        returns: "{name, file, compiled, note?, imports, importedBy, docs: [{line, endLine, text}], docsCut?, count, declarations: [{name, kind, line, display?, grammar?, also?}], lines?: {from, to, of}, text?, more?: the next lines to ask}; outside the project: {name, file, outside, compiled, lines, text, more?}",
         run: (a) => moduleGet(this, a),
       },
       {

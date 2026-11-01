@@ -128,9 +128,9 @@ export const TOOLS: ToolDef[] = [
     actions: {
       source: { method: "GET", path: "/api/agent/source", says: "its text and context; snapshot: at a past build", args: ["name", "snapshot"] },
       context: { method: "GET", path: "/api/agent/context", says: "namespaces, opens, variables, options in force there", args: ["name"] },
-      module: { method: "GET", path: "/api/agent/module", says: "a module's doc comments and declarations in file order", args: ["name", "of"] },
+      module: { method: "GET", path: "/api/agent/module", says: "a module's doc comments and declarations in file order; lines: the file's text", args: ["name", "of", "lines"] },
     },
-    args: { name: str("a declaration's full name; module: a module's name"), snapshot: SNAPSHOT, of: str("module: a declaration, for its module") },
+    args: { name: str("a declaration's full name; module: a module's name"), snapshot: SNAPSHOT, of: str("module: a declaration, for its module"), lines: str("module: <from>-<to> from 1, at most 400: the file's lines") },
   },
   {
     name: "lean",

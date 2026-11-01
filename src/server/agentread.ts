@@ -23,7 +23,10 @@ import { clampInt, fail, flag, ok } from "./agent.ts";
 /** A module of the project (AgentSpec, after the trial of decision 7): its file's doc comments
  *  (`/-! … -/`, where a project keeps the reasons behind its definitions) and every declaration
  *  in it in the order of the file, so that what sits beside a declaration — a variant, a weaker
- *  form — can be found without reading the file. */
+ *  form — can be found without reading the file. With `lines`, the file itself, as the source
+ *  window's File mode shows it (the owner's decision of 2026-11-01): a few hundred lines at a time,
+ *  a module of the project's, or outside it one an outside declaration of the graph is in (the
+ *  source window's bounds). */
 export function moduleGet(api: AgentApi, a: Ask): Answer {
   const v = api.graph();
   if (!(v instanceof View)) return v;
@@ -35,7 +38,13 @@ export function moduleGet(api: AgentApi, a: Ask): Answer {
     name = v.g.nodes[i].module;
   }
   if (!name) return fail(400, "name is missing.", "Give name=<a module of the project> (a declaration's module, as GET declaration says it), or of=<a declaration>.");
+  const want = a.query.get("lines");
+  const span = want === null ? null : readSpan(want);
+  if (want !== null && !span) return fail(400, `lines is ${JSON.stringify(want.slice(0, 40))}: give lines=<from>-<to>, from 1, at most ${MAX_FILE_LINES} lines.`, "lines=1-400 gives the file's first 400 lines.");
   const m = v.modules.get(name);
+  // outside the project, the file alone, of a module an outside declaration of the graph is in
+  const out = !m && span ? api.outsideText(name) : null;
+  if (out) return ok({ name, file: out.rel, outside: out.outside, compiled: !out.edited, ...fileLines(out.lines, span!) });
   if (!m) {
     const last = name.split(".").pop()!.toLowerCase();
     const near = [...v.modules.keys()].filter((x) => x.toLowerCase().split(".").pop() === last || x.toLowerCase() === name.toLowerCase()).slice(0, 5);
@@ -76,6 +85,7 @@ export function moduleGet(api: AgentApi, a: Ask): Answer {
     name,
     file: m.file,
     ...(f ? { compiled: !f.edited, ...(f.edited ? { note: "The file changed since it was compiled: its doc comments are read from the present text, its declarations are the compiled ones." } : {}) } : {}),
+    ...(f && span ? fileLines(f.lines, span) : {}),
     imports: m.imports,
     importedBy: [...v.modules].filter(([, x]) => x.imports.includes(name)).map(([k]) => k).sort(),
     docs,
@@ -86,6 +96,28 @@ export function moduleGet(api: AgentApi, a: Ask): Answer {
       return { name: n.name, kind: n.kind, line: n.range?.[0] ?? null, ...(n.display ? { display: n.display } : {}), ...(g.isGrammar(i) ? { grammar: true } : {}), ...(n.also?.length ? { also: n.also.length } : {}) };
     }),
   });
+}
+
+/** the most lines of a file one request reads (`module`, `lines`) */
+export const MAX_FILE_LINES = 400;
+
+/** `lines=<from>-<to>` read: lines from 1, at most MAX_FILE_LINES of them; `<from>` alone, from
+ *  there on. Null where it is not that. */
+function readSpan(x: string): { from: number; to: number } | null {
+  const m = /^(\d{1,7})(?:-(\d{1,7}))?$/.exec(x.trim());
+  if (!m) return null;
+  const from = Number(m[1]), to = m[2] === undefined ? from + MAX_FILE_LINES - 1 : Number(m[2]);
+  return from >= 1 && to >= from && to - from < MAX_FILE_LINES ? { from, to } : null;
+}
+
+/** Lines `from`–`to` of a file (from 1), cut at its end: the text, where it is, and how to ask on. */
+function fileLines(lines: readonly string[], { from, to }: { from: number; to: number }): Record<string, unknown> {
+  const last = Math.min(to, lines.length);
+  return {
+    lines: { from, to: last, of: lines.length },
+    text: from > lines.length ? "" : lines.slice(from - 1, last).join("\n"),
+    ...(last < lines.length ? { more: `lines=${last + 1}-${Math.min(lines.length, last + MAX_FILE_LINES)}` } : {}),
+  };
 }
 
 export function searchGet(api: AgentApi, a: Ask): Answer {

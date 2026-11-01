@@ -127,6 +127,11 @@ importers, declarations in file order (variants, weaker or stronger forms no TCB
 comments up to 60,000 characters (`docsCut` if more). A file changed since compiled is read as it
 is now (`note`).
 
+`lines=<from>-<to>` (from 1, at most 400) adds the file itself, as a page's File mode shows it:
+`lines: {from, to, of}`, `text`, and `more` (the next `lines` to ask) until its end. Outside the
+project, a module an outside declaration of the graph is in answers `{name, file, outside,
+compiled, lines, text, more?}`.
+
 ```json
 {"name": "FltRegular.NumberTheory.RegularPrimes", …, "imports": [], "importedBy": ["FltRegular", …],
  "docs": [{"line": 7, "endLine": 15, "text": "# Regular primes…"}], "count": 8, "declarations": [{"name": …, "kind": "def", "line": 27}, …]}
