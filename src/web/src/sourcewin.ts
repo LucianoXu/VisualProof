@@ -79,7 +79,7 @@ import { cascadeRect, EDGE, FloatWindow } from "./floatwin.ts";
 import type { Rect, Size } from "./floatwin.ts";
 import { contextGutter, cutMarks, gutterDigits, rowMarks } from "./gutter.ts";
 import { escapeHtml, highlightLean, highlightLines, KEYWORDS, renderDoc, renderHover } from "./highlight.ts";
-import { genNote, interpretsHtml } from "./panel.ts";
+import { generatedName, genNote, interpretsHtml } from "./panel.ts";
 import type { PastGraph } from "./past.ts";
 import { pastNote, pastText } from "./pastsource.ts";
 import type { RefAnswer } from "./highlight.ts";
@@ -1755,15 +1755,18 @@ export class SourceWindow implements SourcePane {
     return `<span class="dm s-${m}" data-dm="${d}" aria-hidden="true" title="${escapeHtml(`${v.name}: ${FILE_MARK_LABEL[m]}`)}"></span>`;
   }
 
-  /** Each declaration's mark, from the review as it is now: shown only where the text is the one
-   *  compiled, which the review is about (a file changed since: where its text is still that). */
+  /** Each declaration's mark, as Status shows it — the build, `sorry`, the review as it is now —:
+   *  shown only where the text is the one compiled, which they are about (a file changed since:
+   *  where its text is still that). */
   private marksOf(w: WholeFile): void {
     const d = this.hooks.review(w.g);
     const inReview = this.hooks.inReview(w.g);
+    // its file's build, as Status reads it: being compiled, failed (none for a past build's text)
+    const file = w.era === "now" ? this.hooks.fileOf(w.module) : undefined;
     w.marks = w.decls.map((fd) => {
       const r = w.g.nodes[fd.i].range;
       if (w.edited && !(w.compiled && r && sameText(w.compiled, r, w.lines, fd))) return null;
-      return fileMark(d, w.g, fd.i, inReview);
+      return fileMark(d, w.g, fd.i, inReview, file);
     });
   }
 
@@ -2023,11 +2026,15 @@ export class SourceWindow implements SourcePane {
    *  the latest build. */
   private generatedHtml(unit: string, also: readonly string[]): string {
     if (!also.length) return "";
-    const shortOf = (a: string) => (a.startsWith(unit + ".") ? a.slice(unit.length + 1) : a.split(".").pop()!);
+    const shortOf = (a: string) => generatedName(unit, a).short;
     if (this.still) return `<div class="sw-print"><div class="sw-print-h">What Lean generated from this command</div>${also.map((a) => `<div class="sw-gen-row"><code title="${escapeHtml(a)}">${escapeHtml(shortOf(a))}</code></div>`).join("")}</div>`;
     const rows = also
       .map((a) => {
         const short = shortOf(a);
+        // a name of the macro's hygiene (`irreducible_def`'s `definition`): said by what the macro
+        // wrote, with no #print, which cannot name it to Lean
+        if (generatedName(unit, a).hygienic)
+          return `<div class="sw-gen-row"><code class="sw-gen-hyg" title="${escapeHtml(`${a}: a name of the macro's hygiene, which Lean cannot be asked about`)}">${escapeHtml(short)}</code> <span class="sw-gen-cmd">· the macro's own name</span></div>`;
         const open = this.printOpen.has(a);
         return (
           `<div class="sw-gen-row"><button class="link sw-gen-name" data-sw-gen="${escapeHtml(a)}" title="What Lean made of ${escapeHtml(a)} (#print)">` +

@@ -970,8 +970,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
 - **The whole file** (the owner's decision, 2026-11-01): the switch *Declaration | File* in a source
   window's title bar shows the whole file its declaration is in, scrolled to it, its lines
   highlighted, its review box under them. Each declaration of the file has a mark beside its line
-  number for where its review stands, in the Status colours (approved, commented, stale, not yet
-  reviewed, trusted; a hollow ring where no target's review needs it). Names link and Lean's hovers
+  number for what the Status colours say of it — its file building or failed, *contains sorry*,
+  then commented, stale, approved, not yet reviewed, trusted, the most urgent first; a hollow ring
+  where no target's review needs it. Names link and Lean's hovers
   work across the whole file. Scrolling selects nothing: the bar over the code names the
   declaration you are reading, with its mark, and a click on it selects it. **Fold proofs**, in that
   bar, folds each proof to *⋯ proof* — a theorem's after its `:=`, and inside a definition those

@@ -11,6 +11,7 @@ import { emptyReview, record } from "../src/shared/review.ts";
 import { Graph } from "../src/shared/viewgraph.ts";
 import { chunksOf, declAt, FOLD_MARK, fileDecls, fileMark, headLine, moduleDecls, proofFolds, sameText } from "../src/web/src/filemode.ts";
 import { highlightLines } from "../src/web/src/highlight.ts";
+import { FILE_MARK_LABEL } from "../src/web/src/filemode.ts";
 
 /** A file of the project: a module doc, a definition with a proof inside it, a theorem whose proof
  *  starts on the line after its `:=`, a short one, a structure, a theorem with a docstring and an
@@ -44,7 +45,8 @@ const FILE = [
 
 const node = (name: string, kind: string, range: [number, number, number, number], more: Partial<ViewNode> = {}): ViewNode => ({ name, kind, module: "P.F", ax: 0, hash: `${name}#1`, range, ...more }) as ViewNode;
 
-function world() {
+/** The file's graph; `sorry`: the declarations that rest on `sorry` (their axioms hold `sorryAx`). */
+function world(sorry: readonly string[] = []) {
   const nodes: ViewNode[] = [
     node("P.big", "theorem", [18, 0, 22, 7]),
     node("P.half", "def", [4, 0, 4, 29]),
@@ -58,7 +60,8 @@ function world() {
     node("Q.other", "def", [1, 0, 1, 5], { module: "Q.G" }),
     { name: "Nat.add_comm", kind: "theorem", module: "Init.Core", ax: 0, ext: true, range: [10, 0, 12, 0] } as ViewNode,
   ];
-  const meta = { nodes, projectCount: 8, axioms: [], axiomSets: [[]], layouts: {}, edgeCount: 0 } as unknown as ViewMeta;
+  for (const n of nodes) if (sorry.includes(n.name)) n.ax = 1;
+  const meta = { nodes, projectCount: 8, axioms: ["sorryAx"], axiomSets: [[], [0]], layouts: {}, edgeCount: 0 } as unknown as ViewMeta;
   return new Graph(meta, new Int32Array(0));
 }
 
@@ -204,4 +207,27 @@ test("the marks: Status's review states, trusted, and hollow where no target's r
   assert.equal(sameText(FILE, [4, 0, 4, 29], now, { start: 1, end: 1 }), true);
   assert.equal(sameText(FILE, [13, 0, 13, 26], now, { start: 2, end: 2 }), false);
   assert.equal(sameText(FILE, [6, 0, 8, 12], now, { start: 1, end: 1 }), false, "fewer lines");
+});
+
+test("the marks show what Status shows (the owner's decision of 2026-11-01): the file being compiled, failed, `sorry` beneath, before any review state", () => {
+  const g = world(["P.half", "P.big"]);
+  const d = emptyReview();
+  const at = (k: number) => new Date(Date.UTC(2026, 10, 1, 10, 0, k)).toISOString();
+  record(d, { op: "opinion", name: "P.half", by: "Alice", verdict: "approve", hash: "P.half#1" }, "tc", at(1));
+  record(d, { op: "opinion", name: "P.pos", by: "Bob", verdict: "comment", comment: "why?", hash: "P.pos#1" }, "tc", at(2));
+  const mark = (n: string, file?: Parameters<typeof fileMark>[4], inReview: ((i: number) => boolean) | null = () => n !== "P.half_le") => fileMark(d, g, g.byName.get(n)!, inReview, file);
+  // `sorry` beneath it wins over an approval, and over being in no target's review set
+  assert.deepEqual(["P.half", "P.big", "P.pos", "P.half_le"].map((n) => mark(n)), ["sorry", "sorry", "commented", "free"]);
+  // the file being compiled, or its build failed or never done: before everything else, as on the board
+  const file = (state: string) => ({ module: "P.F", state }) as never;
+  assert.deepEqual(["P.half", "P.pos", "P.half_le"].map((n) => mark(n, file("building"))), ["building", "building", "building"]);
+  assert.deepEqual(["P.half", "P.pos"].map((n) => mark(n, file("failed"))), ["failed", "failed"]);
+  assert.equal(mark("P.pos", file("unbuilt")), "failed");
+  // out of date, queued, blocked, or built: as last built (a file "sorry" says it of some declaration of
+  // it; its own axioms say it of each)
+  for (const state of ["ok", "stale", "queued", "blocked"]) assert.equal(mark("P.pos", file(state)), "commented", state);
+  // outside the project there is no build of its own to say
+  assert.equal(fileMark(d, g, g.byName.get("Nat.add_comm")!, null, file("failed")), "trusted");
+  // each said as the legend says it
+  assert.deepEqual([FILE_MARK_LABEL.sorry, FILE_MARK_LABEL.failed, FILE_MARK_LABEL.building, FILE_MARK_LABEL.free], ["contains sorry", "failed or not built", "building", "in no target's review set"]);
 });

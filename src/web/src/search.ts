@@ -2,6 +2,7 @@
 // and the agent API (server/agent.ts) search the same way. The lost-and-found's Attach to… asks for a
 // declaration with it (`pick`): the one chosen is handed back instead of gone to.
 
+import { withoutMacroScopes } from "../../shared/hygiene.ts";
 import { escapeHtml } from "./highlight.ts";
 import type { Graph } from "../../shared/viewgraph.ts";
 import { lowerKeepingOffsets, marked, narrows, PLACES, search, SearchIndex, snippet } from "../../shared/search.ts";
@@ -180,8 +181,9 @@ export class SearchBox {
         `<span class="h-name">${piecesHtml(marked(name, lower, f.words, dot + 1))}</span>` +
         `<span class="h-ns">${piecesHtml(marked(name, lower, f.words, 0, Math.max(0, dot)))}</span></div>`;
       if (h.via !== undefined) {
-        // found by a name Lean generated from its command, which it folds
-        const via = h.via;
+        // found by a name Lean generated from its command, which it folds; one of a macro's hygiene
+        // by what the macro wrote (shared/hygiene.ts)
+        const via = withoutMacroScopes(h.via);
         html +=
           `<div class="h-snip h-also"><span class="h-where">also declares</span>` +
           `<span class="h-text">${piecesHtml(marked(via, lowerKeepingOffsets(via), f.words))}</span></div>`;
