@@ -28,6 +28,7 @@ import { reviewThen } from "./past.ts";
 import type { PastGraph } from "./past.ts";
 import { $, PAST_REVIEW, READ_ONLY_REVIEW } from "./page.ts";
 import type { Page } from "./page.ts";
+import { isCompiledText } from "../../shared/build.ts";
 
 /** What the review gives the page's other parts. */
 export interface ReviewPart {
@@ -95,7 +96,7 @@ export function reviewPart(page: Page): ReviewPart {
     if (known !== undefined) return known;
     const c = page.compiled.get(mod);
     const src = await data.source(mod);
-    const e = !!c && !!src?.hash && src.hash !== c;
+    const e = !!src && !isCompiledText(c, src.hash);
     edits.set(mod, e);
     served.set(mod, src ? src.text.split("\n") : null);
     servedContexts.set(mod, { contexts: src?.contexts ?? null, hash: src?.hash ?? null });

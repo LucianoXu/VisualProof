@@ -93,6 +93,7 @@ import { companion, viewLink, viewPost } from "./agentfollow.ts";
 import { MAX_PINS, pins, place, undoPost } from "./agentplaces.ts";
 import { EXPORT_PARAMS, artwork, exportFileGet, exportGet, exportJob, exportPost } from "./agentexport.ts";
 import { activity } from "./agentactivity.ts";
+import { isCompiledText } from "../shared/build.ts";
 
 /** What agents may change on a server (`--agents`): nothing; advice and notes; or everything a
  *  person can do through the page, their opinions still advice (AgentSpec decision 9). */
@@ -453,7 +454,7 @@ export class AgentApi {
     }
     const compiled = v.modules.get(module)?.compiled ?? null;
     const hash = lakeTextHash(text);
-    return { rel, lines: text.split("\n"), edited: !!compiled && hash !== compiled, hash };
+    return { rel, lines: text.split("\n"), edited: !isCompiledText(compiled, hash), hash };
   }
 
   /** The file of a module outside the project, as the source window reads it (server/outside.ts):

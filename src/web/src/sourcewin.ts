@@ -100,6 +100,7 @@ import type { Chunk, FileDecl, FileMark, Fold, SourceMode } from "./filemode.ts"
 import type { ReviewData } from "../../shared/review.ts";
 import type { OutsideWhere } from "../../shared/outside.ts";
 import type { LineDecor } from "./highlight.ts";
+import { isCompiledText } from "../../shared/build.ts";
 
 export interface SourceHooks {
   /** go to a declaration named in the source, by its name in the window's graph */
@@ -1267,7 +1268,7 @@ export class SourceWindow implements SourcePane {
     // outside the project, what was read is its package at the revision the graph was read at
     const out = src.outside;
     const compiled = this.hooks.compiledOf(v.module);
-    const edited = out ? !!out.changed : !!compiled && !!src.hash && compiled !== src.hash;
+    const edited = out ? !!out.changed : !isCompiledText(compiled, src.hash);
     const at = excerptOf(lines, edited, v.name, v.range);
     const notes: string[] = [];
     if (v.gen !== undefined) notes.push(`<div class="banner">${genNote()}${this.still ? "" : " What Lean made of it is below the command."}</div>`);
@@ -1498,7 +1499,7 @@ export class SourceWindow implements SourcePane {
       ({ text, file, outside: out } = src);
       hash = src.hash ?? "";
       const compiled = this.hooks.compiledOf(module);
-      edited = out ? !!out.changed : !!compiled && !!src.hash && compiled !== src.hash;
+      edited = out ? !!out.changed : !isCompiledText(compiled, src.hash);
       const o = out, e = edited, at = file;
       remoteFor = (from, to) => this.nowRemote(at, o, e, from, to);
       // the usage pass read this very text: where it found proofs inside definitions holds in it

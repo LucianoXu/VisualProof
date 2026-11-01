@@ -70,7 +70,8 @@ As the source window shows it: docstring, attributes and proof included.
   list plus `noncomputable section`, macros and `… in` commands right before it; elaborated (opens
   resolved, a `variable` per binder) or read from the text, per its `precision`.
 - Advice records `context`, a blank line, `text` (just `text` if `context` is ""), as people's do.
-- `compiled: false` (with `note`): file changed since compiled; the present text, found by name;
+- `compiled: false` (with `note`): file changed since compiled (or nothing records what was: a build
+  restored from Lake's cache, modified since); the present text, found by name;
   advice waits for the next build.
 - **Outside the project** (a package of the lake-manifest, Lean's core): its file in its package,
   with `outside`: `{package, core, rev, github}` (`github`: `{repo, rev, path}`, or null where not

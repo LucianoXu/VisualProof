@@ -469,6 +469,15 @@ itself: Following a branch):
   kept already (read-only `git`); the log says how complete each snapshot came out. On flt-regular
   every text of a build is 62 KB gzipped, and a later build adds a few KB (`GET
   /api/history/source?id=&module=`).
+- **A build restored from Lake's artifact cache** (`lake cache get`, as Physlib's `lake exe
+  get_cache` runs it, with `enableArtifactCache` and `restoreAllArtifacts`): Lake keeps no record of
+  the source such a module was compiled from, only the hash of all its inputs. A file counts as
+  compiled from its text while it has not been modified since Lake restored its build — Lake hashes
+  the source when it restores, and writes the trace then — or, modified, while its text is one this
+  server saw compiled under the same trace; else it is out of date, with no usage pass, review or
+  source text for it, until `lake build` compiles it again. Restored from Lake's local cache rather
+  than a remote one's archive, the trace keeps no log either: a file with `sorry` shows as built,
+  its declarations' axioms still saying `sorryAx` ([docs/LAKE.md](LAKE.md)).
 
 | State | Meaning | On the canvas, in the Status colours |
 |---|---|---|

@@ -17,6 +17,7 @@ import { slimDeploy } from "../shared/deploy.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
 import { packedGz, sendGz, sendJson } from "./send.ts";
 import type { App } from "./app.ts";
+import { isCompiledText } from "../shared/build.ts";
 
 /** with Lean's language server as it is (server/hover.ts): what is open, what crashed
  *  a read-only reader is told how the server is, not its log nor where its review is kept
@@ -146,7 +147,8 @@ export async function hover(app: App, req: IncomingMessage, res: ServerResponse,
     // checked. Only the place (numbers) and, for a subterm, its number in the answer reach Lean
     const compiled = out ? undefined : live.compiledOf(mod);
     if (out?.changed) return reply({ off: `${out.file.package.name} is at another revision than when the graph was read: its goals would be another text's than Lean checked.` });
-    if (compiled && compiled !== hash) return reply({ off: "This file has changed since it was compiled: its goals would be the present text's, not what Lean checked." });
+    if (!out && !isCompiledText(compiled, hash))
+      return reply({ off: compiled ? "This file has changed since it was compiled: its goals would be the present text's, not what Lean checked." : "Nothing records which text this file was compiled from (a build restored from Lake's cache, the file modified since): its goals could be another text's than Lean checked." });
     const gl = Number(url.searchParams.get("line")), gc = Number(url.searchParams.get("character"));
     if (!Number.isInteger(gl) || !Number.isInteger(gc) || gl < 0 || gc < 0 || gl > 10_000_000 || gc > 100_000) return sendJson(res, { error: "position" }, 400);
     // a place Lean has not reached yet is said so after a moment, and asked again: the pane says how

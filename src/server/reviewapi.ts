@@ -41,6 +41,7 @@ import type { NewEvent, StoredEvent } from "../shared/timeline.ts";
 import type { Graph } from "../shared/viewgraph.ts";
 import type { AppendResult, ReviewStore, Writer } from "./review.ts";
 import { lakeTextHash } from "./status.ts";
+import { isCompiledText } from "../shared/build.ts";
 
 /** The graph on show, as the review reads it: the agents' API keeps it (server/agentgraph.ts, View). */
 export interface GraphView {
@@ -130,8 +131,14 @@ export class ReviewApi {
         const text = readFileSync(join(this.world.project.root, rel), "utf8");
         const compiled = v.modules.get(n.module)?.compiled ?? null;
         hash = lakeTextHash(text);
-        if (compiled && hash !== compiled)
-          return refuse(409, `${n.module} changed since it was compiled: an opinion is about the compiled version, which is not what is there now.`, "Review it once the file is compiled again.");
+        if (!isCompiledText(compiled, hash))
+          return refuse(
+            409,
+            compiled
+              ? `${n.module} changed since it was compiled: an opinion is about the compiled version, which is not what is there now.`
+              : `Nothing records which text ${n.module} was compiled from (a build restored from Lake's artifact cache, its file modified since): an opinion is about the compiled version.`,
+            "Review it once the file is compiled again.",
+          );
         lines = text.split("\n");
       } catch {
         // a file gone since the build: the statement is what there is to judge

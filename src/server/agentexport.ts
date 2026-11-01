@@ -32,6 +32,7 @@ import { lakeTextHash } from "./status.ts";
 import { View } from "./agentgraph.ts";
 import type { AgentApi, Answer, Ask, Caller } from "./agent.ts";
 import { body, fail, needAgent, ok } from "./agent.ts";
+import { isCompiledText } from "../shared/build.ts";
 
 /** The build the document of view `rec` is of (ExportSpec decision 16): the view's own where the
  *  request names none — the past build it is kept at, if it is (HistorySpec decision 19) — else
@@ -102,7 +103,7 @@ async function docInput(api: AgentApi, view: unknown, settings: unknown, retired
     try {
       const text = readFileSync(join(root, rel), "utf8");
       const hash = lakeTextHash(text);
-      return { lines: text.split("\n"), edited: !!m?.compiled && hash !== m.compiled, contexts: api.world.contextsOf?.(module) ?? null, hash };
+      return { lines: text.split("\n"), edited: !isCompiledText(m?.compiled, hash), contexts: api.world.contextsOf?.(module) ?? null, hash };
     } catch {
       return null;
     }
