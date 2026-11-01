@@ -293,6 +293,10 @@ export class LeanHover {
   /** One message from Lean: an answer, how far a document is, what Lean says about one. */
   private take(msg: LspMessage): void {
     if (!msg || typeof msg !== "object") return;
+    // a request of Lean's own (`workspace/semanticTokens/refresh`, `workspace/inlayHint/refresh`, as
+    // a file is elaborated) carries an id of Lean's counting, which may be one of ours: it is no
+    // answer. It is answered, as an editor does, with nothing
+    if (msg.id !== undefined && msg.method !== undefined) return this.send({ id: msg.id, result: null });
     if (msg.id !== undefined && this.waiting.has(msg.id)) {
       this.waiting.get(msg.id)!(msg);
       this.waiting.delete(msg.id);

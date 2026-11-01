@@ -43,6 +43,10 @@ test("Lean's output is read a frame at a time: what cannot be read is skipped, a
     // not JSON, a header with no length, frames not shaped as Lean shapes them: skipped, never thrown
     const garbage = Buffer.concat([frame("{not json"), Buffer.from("X-Other: 1\r\n\r\n"), frame({ method: "$/lean/fileProgress" }), frame({ method: "$/lean/fileProgress", params: { textDocument: { uri: 5 }, processing: "x" } }), frame({ method: "textDocument/publishDiagnostics", params: null }), frame(null)]);
     assert.doesNotThrow(() => inner.read(garbage));
+    // a request of Lean's own, under an id of Lean's counting that is one of ours, is no answer
+    // (Lean sends `workspace/semanticTokens/refresh` as it elaborates a file)
+    inner.read(frame({ jsonrpc: "2.0", id: 7, method: "workspace/semanticTokens/refresh" }));
+    assert.equal(answered, null, "Lean's request is not taken for the answer");
     // and what comes after is read, even split across reads
     const answer = frame({ jsonrpc: "2.0", id: 7, result: "ok" });
     inner.read(answer.subarray(0, 10));
