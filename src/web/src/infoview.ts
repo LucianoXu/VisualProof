@@ -154,6 +154,9 @@ export function paneView(caret: Caret | null, off: string | null, answer: GoalsA
   if (any) {
     const n = goals?.length ?? 0;
     html += `<div class="iv-h">${goals == null ? "No tactic state here" : n === 0 ? "No goals" : n === 1 ? "1 goal" : `${n} goals`}</div>`;
+    // after a tactic that holds a proof of its own: the state the proof goes on from
+    if (caret.after && answer.afterFrom !== undefined && goals)
+      html += `<p class="iv-note" title="The tactic holds a proof of its own, which ends inside it: these are the goals after the whole line, where the proof goes on">As line ${answer.afterFrom + 1} begins, after the whole line</p>`;
     html += (goals ?? []).map((g) => goalHtml(g, resolve)).join("");
   }
   if (answer.term) {

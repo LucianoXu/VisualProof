@@ -285,6 +285,17 @@ export const TIPS: Tip[] = [
     about: [".sw-win [data-sw-mode=file]", ".sw-win [data-sw-folds]", "#outline [data-o-file]"],
     manual: "review",
   },
+  {
+    id: "infoview",
+    group: "seeing",
+    title: "Lean's goals, step by step",
+    text: "Click a tactic in a source window: the <b>InfoView</b> beside the code shows Lean's goals before it, <b>After</b> those after it, a subterm's type as you rest on it. <kbd>↑</kbd> <kbd>↓</kbd> step through the proof, those following you watching.",
+    who: "all",
+    where: "both",
+    since: "0.9.0",
+    about: [".sw-info", ".sw-info [data-iv-when=after]"],
+    manual: "review",
+  },
 
   // ─────────────────────────────────────────────────────────────── reviewing
   {

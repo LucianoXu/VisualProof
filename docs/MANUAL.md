@@ -178,11 +178,14 @@ The README says how to install the `visualproof` command. A checkout also runs a
   so in its log.
   Progress is in `GET /api/status` (`usage`) and the log; a module that cannot be elaborated is
   reported there and keeps the text-based context and no notation edges.
-- `--lean-files N` (default 2, at most 16): how many files Lean's language server keeps open at
+- `--lean-files N` (default 4, at most 16): how many files Lean's language server keeps open at
   once, for hovers and the InfoView. Each is elaborated once and then answered at once; past N, the
   file least recently asked about is closed, and asked again it is elaborated anew. A file's worker
-  holds what its imports take — a few hundred MB, several GB on Mathlib (4.1 GB for
-  Sphere-Packing-Lean's main theorem's module) — and the server stops after ten idle minutes.
+  holds what its imports take — a few hundred MB, several GB on Mathlib: on Sphere-Packing-Lean,
+  1.9 GB resident for the main theorem's module and 2.3 to 2.6 GB for its long files (about half of
+  it the `.olean` files, which every worker maps and the machine holds once), 5.2 GB for the Leech
+  lattice's norm — and the server stops after ten idle minutes. Four such files open hold about
+  10 GB resident.
 - `--graph <saved.json>` serves a saved extraction instead of reading the build.
 - `--editor "<URL template>"` links each declaration to an editor: `{path}` is the file on the
   server, `{rel}` the file in the project, `{line}` and `{col}` where it starts (from 1). E.g.
@@ -954,7 +957,11 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   move the keyboard's caret there — and a pane beside the code (below it in a narrow window and on a
   phone) shows what Lean's InfoView shows in an editor, live from the same language server: the
   goals before the tactic at the caret, **After** for the goals after it, and at a term its expected
-  type. The tactic is marked in the code. **↑** and **↓** step from tactic to tactic, the pane
+  type. After a tactic that holds a proof of its own (`have h : P := by simp`) is after the whole
+  line: the goals the proof goes on from at its next line ("As line 50 begins"), `h` marked as added,
+  not the nested proof's "No goals". The tactic is marked in the code; a click into the code shows
+  no hover card for the word it lands on until the pointer moves to another word. **↑** and **↓**
+  step from tactic to tactic, the pane
   following; the reader's caret is followed, so those who follow you watch as you step through a
   proof (a click in the code is reading for them; ↑, ↓, Before or After stop their following).
   Hypotheses and goals are highlighted as code, what the tactic changes tinted (Lean's goal diff);

@@ -13,6 +13,7 @@ import { readSnapshot, writeSnapshot } from "../src/shared/sharesnap.ts";
 import { readInteractiveGoals, readInteractiveTermGoal, Reading } from "../src/server/goals.ts";
 import { INTERACTIVE, TERM } from "./leananswers.ts";
 import { caretOf, goalHtml, paneSide, paneView, subtermHtml, taggedHtml } from "../src/web/src/infoview.ts";
+import { afterClick } from "../src/web/src/hovercards.ts";
 import { keyActs, pressActs } from "../src/web/src/surfaces.ts";
 import type { PageEl } from "../src/web/src/surfaces.ts";
 
@@ -102,4 +103,14 @@ test("the caret is followed: carried by presence and a share link as the server 
   assert.equal(pressActs(at(".sw-win", "pre")), false, "a click in the code is reading, while following");
   // ↑ and ↓ step it: no page's key, they end following as a key does
   assert.equal(keyActs({ key: "ArrowDown" }, at(".sw-win"), false), true);
+});
+
+test("a click into the code shows no card for the word it landed on, until the pointer is on another word; a rest there brings none", () => {
+  // no click: every word its card
+  assert.deepEqual(afterClick("", "12:4"), { show: true, clicked: "" });
+  // the word clicked into, rested on or moved within: quiet
+  assert.deepEqual(afterClick("12:4", "12:4"), { show: false, clicked: "12:4" });
+  // another word: its card, and the clicked one is forgotten
+  assert.deepEqual(afterClick("12:4", "12:9"), { show: true, clicked: "" });
+  assert.deepEqual(afterClick("", "12:4"), { show: true, clicked: "" }, "back on it: its card again");
 });

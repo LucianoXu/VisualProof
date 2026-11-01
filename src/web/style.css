@@ -851,6 +851,8 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .iv-t.iv-hot { background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 3px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); }
 .iv-off, .iv-wait, .iv-err, .iv-widget { margin: 2px 0; font: 12.5px/1.45 var(--font); color: var(--text-2); white-space: normal; }
 .iv-wait { font-style: italic; }
+/* the goals after a tactic that holds a proof of its own: where the proof goes on */
+.iv-note { margin: -2px 0 6px; font: italic 11px var(--font); color: var(--text-3); white-space: normal; }
 .iv-err { color: var(--bad); }
 .iv-widget { margin-bottom: 8px; padding: 5px 8px; border: 1px dashed color-mix(in srgb, var(--text-3) 50%, transparent); border-radius: 8px; }
 /* hidden by the reader: a tab at the code's top right shows it again */

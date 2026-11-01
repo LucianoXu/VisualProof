@@ -222,6 +222,9 @@ export async function goals(api: AgentApi, a: Ask): Promise<Answer> {
     tactic: t,
     before: r.before ? r.before.map(goalText) : null,
     after: r.after ? r.after.map(goalText) : null,
+    // after a tactic that holds a proof of its own: the goals where the proof goes on, that line's
+    // (the owner's decision of 2026-11-01)
+    ...(r.afterFrom !== undefined && r.after ? { afterFrom: r.afterFrom + 1 } : {}),
     expected: r.term ? goalText({ hyps: r.term.hyps, type: r.term.type }) : null,
     ...(r.widgets ? { widgets: r.widgets, note: "A widget is here: its JavaScript is the project's code, and VisualProof never runs it. A person sees it in their editor." } : {}),
   });

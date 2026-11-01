@@ -151,7 +151,7 @@ into the latest release only.
   goals at a place of a module's file: only the place (numbers) and a module of the graph, checked as
   for hovers, reach Lean, and through Lean's RPC only references Lean itself gave — a page names a
   subterm by its number in the server's answer, never by Lean's reference. Each file Lean keeps open
-  holds what its imports take (several GB on Mathlib): `--lean-files` bounds how many (2 by default),
+  holds what its imports take (several GB on Mathlib): `--lean-files` bounds how many (4 by default),
   whoever asks, read-only readers within the bounds above.
 - **Widgets are never drawn.** A project's own widgets (ProofWidgets, `#html`, panel widgets) are
   JavaScript the project ships, which would run in every reader's browser with the page's rights.

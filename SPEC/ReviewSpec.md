@@ -279,9 +279,13 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   project's folder of the cache (`lean-server/`) with the project's LEAN_PATH: with no lakefile
   there, it never runs `lake setup-file`, so it reads the owner's build and builds nothing. A file
   outside the project is opened by the same server in the same way. Until a
-  file is elaborated the hover says how far Lean is. At most two files open (`--lean-files`, the
-  owner's decision of 2026-11-01); it stops after ten idle minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
-  statement and doc.
+  file is elaborated the hover says how far Lean is. At most four files open (`--lean-files`, the
+  owner's decisions of 2026-11-01); it stops after ten idle minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
+  statement and doc. A click into the code with the mouse, which puts the InfoView's caret there,
+  shows no card for the word it lands on (the owner's decision of 2026-11-01): one open goes, and
+  none comes for that word until the pointer is on another word, or leaves the code; resting on it
+  brings none, since resting is what the pointer does while its reader reads the InfoView. A tap
+  and the keyboard as before.
 - **Hover cards nest**: a name in a card opens a card beside it; a card closes a moment after the
   pointer leaves it for anything but a card nested in it. A nested card is the name `#check`ed in
   `Describe.lean` in that folder, importing the module on show; the graph's statement shows until
@@ -303,13 +307,20 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     link to the board and open hover cards, nesting as in the source; with interactive goals a
     subterm shows its type on hover. ↑ and ↓, or the caret's own movement, step through the tactics,
     the pane following.
+  - **After a tactic that holds a proof of its own** (`have h : P := by simp`; the owner's decision
+    of 2026-11-01): the state after the whole line, the goals at the start of the next line of code
+    of the same proof — the outer goal with `h` added, not Lean's "No goals" inside the nested
+    block, where the tactic ends. The pane says which line's goals they are ("As line 50 begins"),
+    and marks what the line added. Where the proof does not go on (the last tactic), what Lean says
+    at the end, as for any tactic. The agents' `goals` follows the same rule.
   - **The caret is followed** (CollabSpec, "Surfaces": `caret`), so that one reader steps through a
     proof while those following them watch.
   - **Waiting**: when the window opens, Lean opens the file at once; while Lean elaborates, the pane
     says how far it has got ("Lean has elaborated line 120 of 800"); a place Lean has passed is
     answered at once.
   - **Limits**: the files Lean keeps open, for hovers and the InfoView, are a server option
-    (`--lean-files`).
+    (`--lean-files`), four by default (the owner's decision of 2026-11-01: a Mathlib-heavy file's
+    worker holds 1.9 to 2.6 GB resident, the heaviest measured 5.2 GB).
   - **Scope**: the latest build only — a past build, a snapshot and the exported document have no
     InfoView, and the pane says why; a file changed since it was compiled has none either, with why.
     Files outside the project as hovers. Read-only readers within the bounds hovers have: what Lean
@@ -323,7 +334,9 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     tactic at its first character and those after it from there to its end, so the server reads
     the tactic at the caret from its line — from the `by` or the separator before the caret (`;`,
     `<;>`, a match arm's `|`, a case's `=>`, focusing dots left out) to the one after it, at the same
-    depth of brackets — and asks before at its first character, after at its end, the expected type
+    depth of brackets — and asks before at its first character, after at its end (or, for a tactic
+    that holds a `by`, at the next line of code whose code starts no further right than the tactic:
+    a line further right is the nested block, or the tactic's own term going on), the expected type
     at the caret itself. Where the line is read wrong the answer is still Lean's own at that place.
     The page has one caret: placed in a window, it leaves the others. A follower's click in the code
     is reading; ↑, ↓, Before and After end following, as a change to a followed part does.

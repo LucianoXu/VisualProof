@@ -199,7 +199,10 @@ through a proof a line at a time.
 ```
 
 `before`, `after`: `null` where Lean has no tactic state there (outside a `by` block; `tactic` is
-`null` then too), `[]` where the tactic closes the goal. `expected`: the expected type of the term at the column, or `null`.
+`null` then too), `[]` where the tactic closes the goal. A tactic that holds a proof of its own
+(`have h : P := by simp`) ends inside it: `after` is then the state after the whole line, the goals
+where the proof goes on (`afterFrom`: that next line of code), or Lean's at the line's end where the
+proof does not go on. `expected`: the expected type of the term at the column, or `null`.
 `widgets`: a widget is there (its JavaScript is the project's code, never run: a person sees it in
 an editor). The build's text only: 409 for a file changed since it was compiled (or a package at
 another revision). 503 with `Retry-After: 5` while Lean elaborates the file (`elaborated: {line,

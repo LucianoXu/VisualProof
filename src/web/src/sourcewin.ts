@@ -83,7 +83,7 @@ import { generatedName, genNote, interpretsHtml } from "./panel.ts";
 import type { PastGraph } from "./past.ts";
 import { pastNote, pastText } from "./pastsource.ts";
 import type { RefAnswer } from "./highlight.ts";
-import { HoverCards } from "./hovercards.ts";
+import { afterClick, HoverCards } from "./hovercards.ts";
 import { caretOf, InfoView } from "./infoview.ts";
 import type { Caret, InfoCode } from "./infoview.ts";
 import { FLASH_MS } from "./reviewbox.ts";
@@ -287,6 +287,9 @@ export class SourceWindow implements SourcePane {
   /** the hover cards, and the word of the code the first one is for */
   private cards: HoverCards;
   private tipAt = "";
+  /** the word the reader last clicked into with the mouse: no card for it until the pointer is on
+   *  another word (hovercards.ts, afterClick); "" for none */
+  private clicked = "";
   private hoverTurn = 0;
   private hoverWait: ReturnType<typeof setTimeout> | null = null;
   /** where the pointer last was over the code, to ask again when scrolling stops under it */
@@ -403,6 +406,16 @@ export class SourceWindow implements SourcePane {
     const keep = (e: Event) => (e.target as HTMLElement).closest?.("[data-sw-quote]") && e.preventDefault();
     el.addEventListener("pointerdown", keep);
     el.addEventListener("mousedown", keep);
+    // a click into the code with the mouse puts the InfoView's caret there: the card of the word
+    // under it goes, and none comes for that word until the pointer is on another (afterClick). A
+    // finger's tap, and the keyboard, as before
+    el.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "touch" || e.button !== 0) return;
+      const pre = (e.target as HTMLElement).closest?.("pre.src") as HTMLElement | null;
+      if (!pre || !this.shown) return;
+      this.hideTip();
+      this.clicked = this.positionAt(pre, e.clientX, e.clientY)?.word ?? "";
+    });
     document.addEventListener("selectionchange", this.onSelection);
     el.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
@@ -505,12 +518,16 @@ export class SourceWindow implements SourcePane {
       // selecting, or something selected in the code: its quote button, not a card, is beside it
       if (e.buttons || this.picked) return;
       // off the code: the cards close unless the pointer is on its way onto one
-      if (!pre || !this.shown) return this.cards.leave();
+      if (!pre || !this.shown) {
+        this.clicked = "";
+        return this.cards.leave();
+      }
       const { clientX: x, clientY: y } = e;
       this.hoverWait = setTimeout(() => this.pointAt(pre, x, y), 120);
     });
     el.addEventListener("mouseleave", () => {
       this.pointer = null;
+      this.clicked = "";
       if (this.hoverWait) clearTimeout(this.hoverWait);
       this.cards.leave();
     });
@@ -1036,6 +1053,10 @@ export class SourceWindow implements SourcePane {
     // nothing there, or a comment — over a doc comment Lean would describe the `docComment`
     // parser, not the declaration: the cards close unless the pointer is on its way onto one
     if (!at || document.elementFromPoint(x, y)?.closest(".tk-doc, .tk-comment")) return this.cards.leave();
+    // the word just clicked into: no card, until the pointer is on another
+    const quiet = afterClick(this.clicked, at.word);
+    this.clicked = quiet.clicked;
+    if (!quiet.show) return;
     if (at.word === this.tipAt && this.cards.open) return;
     this.tipAt = at.word;
     const node = document.elementFromPoint(x, y);

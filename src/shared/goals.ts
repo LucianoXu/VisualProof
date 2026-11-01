@@ -12,6 +12,12 @@
 // and the goals after it from just past its first character to its end, so the goals before are
 // asked at the tactic's first character and those after at its end. Where the text is read wrong
 // the answer is still Lean's own at that place, as an editor would show it there.
+//
+// A tactic that holds a block of its own (`have h : P := by simp`) ends inside that block, where
+// Lean has the nested proof's goals ("No goals"), not the outer proof's: the state after the whole
+// line is the one the proof goes on from, the goals at the start of its next line of code (the
+// owner's decision of 2026-11-01; afterLine). Where the proof does not go on, Lean's answer at the
+// end.
 
 /** Lean's text, with the subterms it can tell more of tagged: a piece of text, pieces one after
  *  another, or a subterm — `k`, the number the server gives it in its answer, by which the page asks
@@ -66,6 +72,9 @@ export interface GoalsAnswer {
   /** Lean's goals before the tactic and after it; null where it has none there (no tactic block) */
   before?: Goal[] | null;
   after?: Goal[] | null;
+  /** the goals after are those at the start of this line (from 0), where the proof goes on: the
+   *  tactic holds a block of its own, whose end is no place of the outer proof (afterLine) */
+  afterFrom?: number;
   /** the expected type of the term at the place; null where there is none */
   term?: TermGoal | null;
   /** widgets Lean has at the place: how many. They are never drawn (SECURITY.md): their JavaScript
@@ -234,6 +243,28 @@ export function tacticSpan(line: string, ch: number): { from: number; to: number
   while (to > from && /\s/.test(line[to - 1])) to--;
   if (from >= to) return { from: Math.min(Math.max(start, at), end), to: Math.min(Math.max(start, at), end) };
   return { from, to };
+}
+
+/** Whether the tactic `from`–`to` of a line holds a `by` of its own: a block nested in it
+ *  (`have h : P := by simp`, `exact foo (by simp)`, a `by` that ends the line). */
+export function holdsBy(line: string, from: number, to: number): boolean {
+  return readLine(line).seps.some((s) => s.kind === "by" && s.at >= from && s.at < to);
+}
+
+/** Where the state after a tactic that holds a block of its own is (holdsBy): the start of the next
+ *  line of code of the same proof after line `k` — the first whose code starts no further right than
+ *  the tactic (`col`): a line further right is the nested block, or the tactic's term going on. Null
+ *  past the text's end. Whether the proof goes on there is Lean's to say (no tactic state there: it
+ *  does not). */
+export function afterLine(text: string, k: number, col: number): { line: number; ch: number } | null {
+  const has = codeLines(text);
+  const lines = text.split("\n");
+  for (let j = k + 1; j < lines.length; j++) {
+    if (!has[j]) continue;
+    const ch = /^\s*/.exec(lines[j])![0].length;
+    if (ch <= col) return { line: j, ch };
+  }
+  return null;
 }
 
 /** Whether each line of `text` holds code: something outside comments and docstrings, which spread

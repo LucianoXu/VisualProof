@@ -179,8 +179,8 @@ function usage(code = 2): never {
   --lean-files  how many files Lean's language server keeps open at once for hovers and the
            InfoView (default ${KEEP_OPEN}; 1 to ${MAX_LEAN_FILES}): each is elaborated once, then answered at once,
            and the one least recently asked about is closed past this many. A file's worker holds
-           what its imports take — a few hundred MB, several GB on Mathlib (4.1 GB for a module of
-           Sphere-Packing-Lean) — for ten idle minutes at most.
+           what its imports take — a few hundred MB, several GB on Mathlib (1.9 to 2.6 GB resident
+           for Sphere-Packing-Lean's files, 5.2 GB for its heaviest) — for ten idle minutes at most.
 
   --access-key-file  let in only those given the link http://<host>:<port>/k/<key>, the key being
            what the file holds (one is made there, readable by its owner alone, if there is none).
