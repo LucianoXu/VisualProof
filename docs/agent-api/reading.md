@@ -184,10 +184,13 @@ default where the line's code starts. The tactic is read from the line: from the
 the column (`;`, `<;>`, a `by`, a case's `=>`) to the one after it, focusing dots left out. Step
 through a proof a line at a time.
 
+`name=FltRegular.p_dvd_c_of_ab_of_anegc&line=10` (its tenth line, the file's 48th):
+
 ```json
 {"name": "FltRegular.p_dvd_c_of_ab_of_anegc", "module": "FltRegular.MayAssume.Lemmas", "file": "FltRegular/MayAssume/Lemmas.lean",
  "line": 48, "column": 3, "text": "  ring_nf at h", "tactic": "ring_nf at h",
- "before": ["p : ℕ\na b c : ℤ\n…\nh : ↑(-c - c - c) = 0\n…\n⊢ ↑p ∣ c"], "after": ["…\nh : -(↑c * 3) = 0\n…\n⊢ ↑p ∣ c"], "expected": null}
+ "before": ["p : ℕ\na b c : ℤ\n…\nh : ↑(-c - c - c) = 0\nhbc : ↑b = -↑c\nhab : ↑a = ↑b\n⊢ ↑p ∣ c"],
+ "after": ["p : ℕ\na b c : ℤ\n…\nhab : ↑a = ↑b\nh : ↑(-(c * 3)) = 0\n⊢ ↑p ∣ c"], "expected": null}
 ```
 
 `before`, `after`: `null` where Lean has no tactic state there (outside a `by` block), `[]` where
