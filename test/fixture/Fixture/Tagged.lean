@@ -29,4 +29,28 @@ tagged Pair
 /-- Uses the generated type by its constructor: the reference is one to the unit `Pair`. -/
 def firstTag : Pair.Tag := .left
 
+/-- `hidden_def X : T := v` declares `X : T`, equal to `v` only through the lemma `X_def`, as
+Mathlib's `irreducible_def` writes it: `X` is the value of an opaque constant (`wrapped`) that
+holds the value (`definition`), both named by the macro's hygiene (`definition._@.Fixture.Tagged.…`),
+their range the whole command; `X` and `X_def` both have the name in the text. -/
+macro doc:(docComment)? "hidden_def " x:ident " : " t:term " := " v:term : command => do
+  let xDef := Lean.mkIdentFrom x (x.getId.appendAfter "_def")
+  `(def definition : $t := $v
+    opaque wrapped : Subtype (Eq @definition) := ⟨_, rfl⟩
+    $[$doc:docComment]? def $x : $t := wrapped.val
+    theorem $xDef : $x = definition := wrapped.2.symm)
+
+/-- A number above zero, whose value only its lemma tells. The proof in it is abstracted beside
+the hidden constants, under their hygienic names (`definition._proof_1._@…`). -/
+hidden_def positive : { n : Nat // 0 < n } := ⟨3, by decide⟩
+
 end Fixture
+
+-- the same command in the namespace of a declaration: what it hides is named beneath
+-- `Fixture.Pair`, and is still `corner`'s
+namespace Fixture.Pair
+
+/-- A corner of the plane. -/
+hidden_def corner : Point := ⟨1, 2⟩
+
+end Fixture.Pair

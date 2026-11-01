@@ -697,14 +697,20 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
         continue
       let some ci := env.find? c | continue
       let u := (privateToUserName? c).getD c
+      -- a name a command made hygienic (`wrapped._@.M._hygCtx._hyg.3`, as Mathlib's
+      -- `irreducible_def` names the value and the opaque constant it writes beside `X`) is read
+      -- without its macro scopes: beneath them it says whether Lean generated the constant
+      -- (`wrapped._proof_1`) or the command wrote it, which 2b folds by its range into the
+      -- declaration the command writes
+      let w := u.eraseMacroScopes
       let ranged := (← findDeclarationRanges? c).isSome
       if isNotationConst ci && ranged then
         notations := notations.insert c; nodes := nodes.push c; continue
       let generated :=
         ci matches .ctorInfo _ || ci matches .recInfo _ || isAuxRecursor env c
         || isNoConfusion env c || isMatcherCore env c || (env.getProjectionFnInfo? c).isSome
-        || u.isInternalDetail || generatedSuffixes.contains u.getString!
-        || (u.getString! == "elim" && (env.find? c.getPrefix matches some (.ctorInfo _)))
+        || w.isInternalDetail || generatedSuffixes.contains w.getString!
+        || (w.getString! == "elim" && (env.find? c.getPrefix matches some (.ctorInfo _)))
       if generated || !(ranged || Meta.isInstanceCore env c) then auxs := auxs.push c
       else nodes := nodes.push c
   let written : Std.HashSet Name := nodes.foldl (·.insert ·) {}
@@ -732,8 +738,18 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
           | some (.ctorInfo v) => v.induct
           | _ => c.getPrefix
         | none => c.getPrefix
-    let mut p := (privateToUserName? start).getD start
     let mut found : Option Name := none
+    -- one a command made under a hygienic name belongs with the constant of the same macro scopes
+    -- it is named beneath (`wrapped._proof_1._@.M._hyg.3` with `wrapped._@.M._hyg.3`), not with a
+    -- declaration the namespace the command ran in names (`Point` for `Point.wrapped._proof_1._@…`)
+    let uc := (privateToUserName? c).getD c
+    if uc.hasMacroScopes then
+      let v := extractMacroScopes uc
+      let mut q := v.name.getPrefix
+      while !q.isAnonymous && found.isNone do
+        found := byUser[{ v with name := q }.review]?
+        q := q.getPrefix
+    let mut p := (privateToUserName? start).getD start
     while !p.isAnonymous && found.isNone do
       found := byUser[p]?
       p := p.getPrefix
@@ -750,9 +766,12 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
   -- command writes beside the declaration it names, the lemmas of `@[simps]`) has no name of its own in the text: its
   -- selection range is its whole range, where a written one's is its name. It belongs to the
   -- declaration that command writes, the smallest range of a written declaration of its module
-  -- that holds its own, and folds into it as a constructor folds into its type. One for which no
-  -- such declaration is found stays a node of its own, marked `gen`. What syntax extension
-  -- commands generate is left to 2c: such a command writes no declaration.
+  -- that holds its own, and folds into it as a constructor folds into its type. Where a theorem's
+  -- range is as small as another's, the other's: a command that writes `X` and the lemma `X_def`
+  -- under one name (Mathlib's `irreducible_def`) generates `X`'s value, which `X`'s TCB and
+  -- version must hold, and a theorem is no part of a TCB. One for which no such declaration is
+  -- found stays a node of its own, marked `gen`. What syntax extension commands generate is left
+  -- to 2c: such a command writes no declaration.
   let modName (c : Name) : String :=
     match env.getModuleIdxFor? c with
     | some i => modNames[i.toNat]!.toString
@@ -771,16 +790,17 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
   for h : i in [0:nodes.size] do
     let some r := rngs[i]! | continue
     if !generatedAt r || notations.contains nodes[i] then continue
-    let mut best : Option (Nat × Nat) := none
+    let mut best : Option (Nat × Nat × Bool) := none
     for j in ofModule.getD (modName nodes[i]) #[] do
       let some rj := rngs[j]! | continue
       if j == i || generatedAt rj || notations.contains nodes[j]! then continue
       if !(posLe rj.range.pos r.range.pos && posLe r.range.endPos rj.range.endPos) then continue
       let span := (rj.range.endPos.line - rj.range.pos.line) * 100000
         + (rj.range.endPos.column + 100000 - rj.range.pos.column)
-      if best.all (fun (_, s) => span < s) then best := some (j, span)
+      let thm := env.find? nodes[j]! matches some (.thmInfo _)
+      if best.all (fun (_, s, t) => span < s || (span == s && t && !thm)) then best := some (j, span, thm)
     match best with
-    | some (j, _) => genOwner := genOwner.insert nodes[i] nodes[j]!
+    | some (j, _, _) => genOwner := genOwner.insert nodes[i] nodes[j]!
     | none => genLost := genLost.insert nodes[i]
   -- 2c. notation units (decision 2): the constants one syntax extension command generates share
   -- its range, and make one unit of kind `notation`. It is named after the syntax kind it
@@ -1075,11 +1095,14 @@ def run (out : System.FilePath) (projectDir : String) (roots : Array Name)
     let name := nameOf.getD c u.toString
     -- a constant of the project is written by its unit's name, then, after a space, what it is of
     -- that unit (`Fixture.Point mk`; nothing for the unit itself), so that the server maps it
-    -- through a rename of the unit whatever the constant is; one from outside by its own name
+    -- through a rename of the unit whatever the constant is; one from outside by its own name. A
+    -- constant a command named hygienically is written without its macro scopes, which Lean makes
+    -- from the command's whole text: a rename of what the command mentions, or its doc comment
+    -- edited, would make them new and the unit a new version, its content unchanged
     let refName (r : Name) : String := match owner[r]? with
       | some o =>
         let uo := (userName o).toString
-        let ur := (userName r).toString
+        let ur := (userName r).eraseMacroScopes.toString
         let rest := if r == o then "" else if ur.startsWith uo then (ur.drop uo.length).toString else ur
         let own := nameOf.getD o uo
         if rest.isEmpty then own else s!"{own} {(rest.dropWhile (· == '.')).toString}"
