@@ -640,6 +640,32 @@ test("a name folded into a declaration is that declaration: what its command gen
   }
 });
 
+test("a name below a declaration of the outside world is folded into it only where Lean generates the name: else not in the graph, that declaration first among what was meant", async () => {
+  const W = world();
+  try {
+    // the graph knows of the outside world only what the project refers to: beneath `Ext.E` a
+    // lemma of its own, which nothing names, is not `Ext.E` (`Nat.succ_le_of_lt` is not `Nat`)
+    for (const [path, q] of [["declaration", { name: "Ext.E.foo_le_bar" }], ["source", { name: "Ext.E.foo_le_bar" }], ["declarations", { names: "Ext.E.foo_le_bar" }]] as const) {
+      const r = await W.ask("GET", `/api/agent/${path}`, q);
+      const one = path === "declarations" ? json(r).declarations[0] : json(r);
+      assert.equal(path === "declarations" ? one.status : r.status, 404, path);
+      assert.equal(one.foldedInto, undefined, path);
+      assert.equal(one.didYouMean[0], "Ext.E", `${path}: the declaration it is below first: a constructor or a field of it would be`);
+    }
+    const nope = json(await W.ask("GET", "/api/agent/declaration", { name: "Ext.E.foo_le_bar" }));
+    assert.match(nope.hint, /describe\?name=Ext\.E\.foo_le_bar/);
+    // what Lean generates beside a declaration is still that declaration, outside as inside
+    for (const name of ["Ext.E.rec", "Ext.E.mk", "Ext.E.eq_1", "Ext.E._proof_1"]) {
+      const r = await W.ask("GET", "/api/agent/declaration", { name });
+      assert.deepEqual([r.status, json(r).name, json(r).foldedInto], [200, "Ext.E", "Ext.E"], name);
+    }
+    // Lean is asked about it all the same, where the project imports what it is below
+    assert.equal(json(await W.ask("GET", "/api/agent/describe", { name: "Ext.E.foo_le_bar" })).module, "M");
+  } finally {
+    W.done();
+  }
+});
+
 test("the trusted part of a TCB, as a list: each member with what trusts it", async () => {
   const W = world();
   try {

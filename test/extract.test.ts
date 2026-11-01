@@ -139,9 +139,14 @@ test("axioms used only inside proofs are collected, through other proofs too", o
   assert.deepEqual(tcb("Fixture.succSize_val"), new Set(["Fixture.succSize_val", "Fixture.succSize", "Fixture.Point.size", "Fixture.Point"]));
 });
 
+/** What a unit is made of that a file can name: a constant a command named hygienically
+ *  (`definition._@.Fixture.Tagged.…`) cannot be, and what `#print axioms` says of the declaration
+ *  whose value reaches it covers it. */
+const nameable = (n: string) => !n.includes("._@.");
+
 test("every axiom set is the one #print axioms gives", opts, () => {
   const all = Array.from({ length: g.nodes.length + g.externals.length }, (_, i) => i);
-  const asked = all.flatMap((i) => [nameOf(i), ...(i < g.nodes.length ? g.nodes[i].also ?? [] : [])]);
+  const asked = all.flatMap((i) => [nameOf(i), ...(i < g.nodes.length ? g.nodes[i].also ?? [] : []).filter(nameable)]);
   writeFileSync(join(dir, "PrintAxioms.lean"), "import Fixture\n" + asked.map((n) => `#print axioms ${n}\n`).join(""));
   const out = execFileSync("lake", ["env", "lean", "PrintAxioms.lean"], { cwd: dir, encoding: "utf8" });
   const lean = new Map<string, string[]>();
@@ -150,7 +155,7 @@ test("every axiom set is the one #print axioms gives", opts, () => {
   for (const i of all) {
     const name = nameOf(i);
     // a unit's set is joined over it: the declaration and what Lean generated from its command
-    const unit = [name, ...(i < g.nodes.length ? g.nodes[i].also ?? [] : [])];
+    const unit = [name, ...(i < g.nodes.length ? g.nodes[i].also ?? [] : []).filter(nameable)];
     const sets = unit.map((n) => lean.get(n));
     assert.ok(sets.every(Boolean), `#print axioms said nothing about ${unit.find((n) => !lean.has(n))}`);
     const want = [...new Set(sets.flat() as string[])].sort();
@@ -170,7 +175,8 @@ test("a declaration Lean generated from a command folds into the one the command
   const pair = g.nodes[id("Fixture.Pair")];
   // the generated ones, sorted; not the constructors and recursors, which fold as always
   assert.deepEqual(pair.also, ["Fixture.Pair.Tag", "Fixture.Pair.Tag_ne", "Fixture.Pair.instDecidableEqTag"]);
-  assert.equal(g.stats.generated, 3);
+  // and the two constants each `hidden_def` writes under hygienic names, below
+  assert.equal(g.stats.generated, 7);
   assert.ok(g.nodes.every((n) => n.gen === undefined), "every generated declaration found its unit");
   // a reference to the generated type, by its constructor, is one to the unit
   assert.deepEqual(tcb("Fixture.firstTag"), new Set(["Fixture.firstTag", "Fixture.Pair"]));
@@ -203,6 +209,48 @@ test("a unit's hash covers what its command generated: a change there makes it a
     const hashOf = (x: RawGraph, n: string) => x.nodes.find((v) => v.name === n)?.hash;
     assert.notEqual(hashOf(h, "Fixture.Pair"), hashOf(g, "Fixture.Pair"));
     assert.equal(hashOf(h, "Fixture.firstTag"), hashOf(g, "Fixture.firstTag"), "what only uses it keeps its version");
+  } finally {
+    rmSync(other, { recursive: true, force: true });
+  }
+});
+
+test("what a command writes under hygienic names (Mathlib's `irreducible_def`) is the declaration's it names, never the lemma's beside it", opts, () => {
+  // nothing is left a declaration of its own under a hygienic name: not the value, the opaque
+  // constant that holds it, nor the proofs Lean abstracted out of them (`definition._proof_1._@…`)
+  assert.deepEqual(g.nodes.map((n) => n.name).filter((n) => n.includes("._@.")), []);
+  const hidden = (n: string) => (g.nodes[id(n)].also ?? []).map((a) => a.replace(/\._@\..*$/, ""));
+  // `positive` and `positive_def` have one range, the command's: the value is the definition's
+  assert.deepEqual(hidden("Fixture.positive"), ["Fixture.definition", "Fixture.wrapped"]);
+  assert.deepEqual(hidden("Fixture.positive_def"), []);
+  // in the namespace of a declaration, still the command's, not that declaration's
+  assert.deepEqual(hidden("Fixture.Pair.corner"), ["Fixture.Pair.definition", "Fixture.Pair.wrapped"]);
+  assert.deepEqual(g.nodes[id("Fixture.Pair")].also, ["Fixture.Pair.Tag", "Fixture.Pair.Tag_ne", "Fixture.Pair.instDecidableEqTag"]);
+  // so a TCB holds the definition with its value, never the lemma, and nothing of `Pair`
+  assert.deepEqual(tcb("Fixture.positive"), new Set(["Fixture.positive"]));
+  assert.deepEqual(tcb("Fixture.Pair.corner"), new Set(["Fixture.Pair.corner", "Fixture.Point"]));
+  assert.equal(g.edges.find(([s, d]) => s === id("Fixture.positive") && d === id("Fixture.positive_def")), undefined);
+  // the lemma's statement is about the definition
+  assert.ok(((g.edges.find(([s, d]) => s === id("Fixture.positive_def") && d === id("Fixture.positive"))?.[2] ?? 0) & SITE_STMT) !== 0);
+});
+
+test("a value a command keeps behind an opaque constant is in its declaration's version: a new value, a new version", opts, () => {
+  const other = mkdtempSync(join(tmpdir(), "vp-extract-hidden-"));
+  try {
+    cpSync(dir, other, { recursive: true });
+    const f = join(other, "Fixture/Tagged.lean");
+    const text = readFileSync(f, "utf8");
+    for (const v of ["⟨3, by decide⟩", "⟨1, 2⟩"]) assert.equal(text.split(v).length, 2, `once in Tagged.lean: ${v}`);
+    writeFileSync(f, text.replace("⟨3, by decide⟩", "⟨4, by decide⟩").replace("⟨1, 2⟩", "⟨2, 1⟩"));
+    execFileSync("lake", ["build"], { cwd: other, stdio: "ignore" });
+    execFileSync("lake", ["env", ...EXTRACT, join(other, "g.json"), join(other, ".lake/build/lib/lean"), "Fixture"], { cwd: other, stdio: "ignore" });
+    const h = JSON.parse(readFileSync(join(other, "g.json"), "utf8")) as RawGraph;
+    const was = versions(versionBase(g));
+    const now = versions(versionBase(h));
+    const at = (x: RawGraph, n: string) => x.nodes.findIndex((v) => v.name === n);
+    const changed = h.nodes.filter((v, i) => now[i] !== was[at(g, v.name)]).map((v) => v.name);
+    // the value is the definition's: its lemma's statement, `X = definition`, says no value
+    assert.deepEqual(changed.sort(), ["Fixture.Pair.corner", "Fixture.positive"]);
+    for (const n of ["Fixture.Pair.corner", "Fixture.positive"]) assert.notEqual(h.nodes[at(h, n)].hash, g.nodes[at(g, n)].hash, `${n}: the kernel's hash covers its value`);
   } finally {
     rmSync(other, { recursive: true, force: true });
   }

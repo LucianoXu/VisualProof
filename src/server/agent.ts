@@ -56,7 +56,7 @@ import { keyGraph } from "../shared/keys.ts";
 import { SETTINGS_HELP } from "../shared/doc/settings.ts";
 import type { KeyGraph } from "../shared/keys.ts";
 import { nonStandardAxiom } from "../shared/reviewqueue.ts";
-import { foldedAt, guessNames } from "../shared/declfind.ts";
+import { foldedAt, guessNames, outsideAbove } from "../shared/declfind.ts";
 import type { NewEvent, StoredEvent } from "../shared/timeline.ts";
 import type { PinAuthor } from "../shared/views.ts";
 import type { Invited } from "../shared/collab.ts";
@@ -383,7 +383,17 @@ export class AgentApi {
     const i = v.g.byName.get(name.trim()) ?? this.foldedAt(v, name.trim());
     if (i !== undefined) return i;
     const guesses = this.guess(v, name.trim());
-    return fail(404, `There is no declaration ${name} in the graph.`, guesses.length ? `Did you mean ${guesses[0]}? Names are full, as the search gives them.` : "Search for it: GET /api/agent/search?q=<words>.", { didYouMean: guesses });
+    // below a declaration of the outside world, of which the graph holds what the project refers to
+    const under = outsideAbove(v.g, name.trim());
+    const above = under === undefined ? null : v.g.nodes[under].name;
+    return fail(
+      404,
+      `There is no declaration ${name} in the graph.`,
+      above
+        ? `Of ${above}'s package the graph holds what the project refers to: a constructor or field of ${above} is ${above}; any other name the project never refers to. GET /api/agent/describe?name=${encodeURIComponent(name.trim())} asks Lean about it.`
+        : guesses.length ? `Did you mean ${guesses[0]}? Names are full, as the search gives them.` : "Search for it: GET /api/agent/search?q=<words>.",
+      { didYouMean: guesses },
+    );
   }
 
   /** The declaration a name the graph has no node for is folded into (shared/declfind.ts,

@@ -11,8 +11,9 @@ The terms the other topics use.
   lemmas, `also` names are not graph declarations; a reference to one is to its owner. Asked for,
   an `also` name or a name one component below a declaration or `also` name
   (`systemOfUnits.units`) is that declaration, unless a typo or two from a declaration beside it
-  (generated last parts like `mk`, `rec`, `eq_1` fold even then); the answer adds `asked`,
-  `foldedInto`, `foldedNote`. `describe` and `print` take the folded name.
+  (generated last parts like `mk`, `rec`, `eq_1` fold even then); below an outside declaration only
+  those fold (`Nat.succ_le_of_lt` is not `Nat`): else 404, that declaration first in `didYouMean`.
+  The answer adds `asked`, `foldedInto`, `foldedNote`. `describe` and `print` take the folded name.
 - **Notation** (`kind: notation`): a project syntax extension command (`syntax`, `notation`,
   `macro`, `macro_rules`, `elab`, `elab_rules`, `declare_syntax_cat`; `local`, `scoped` too) as one
   unit, its parser and `_aux_` macro or elaborator folded in. Statement: the command's text;
