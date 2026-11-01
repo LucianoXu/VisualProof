@@ -122,7 +122,10 @@ of invisible clusters" is the view's hidden levels (decision 24).
       link; Remove from this view; Add to view ▸; mark key (for the focus) or target; Approve…,
       Comment…; trust its namespace; the two note items. A visitor (decision 27) has Add to this
       view, no Remove.
-    - Cluster: fold; Hide this level; Copy link; Remove; Add to view ▸; trust; the note items. Empty
+    - Cluster: fold; Hide this level; Copy link; Remove; Add to view ▸; trust; the note items. A file
+      cluster, clustered by file: *Open the file* first, the whole file in a window of its own, for
+      every reader, not on a phone (the owner's decision of 2026-11-01; ReviewSpec, "The source
+      window", File mode). Empty
       canvas: Copy link to what I see, the note items, fit, Re-layout…. Note (decision 23): edit,
       collapse, Copy link, attach/detach, switch kind, for a project note Add to view ▸ and Remove
       (not on the Project), Delete….
@@ -157,6 +160,12 @@ of invisible clusters" is the view's hidden levels (decision 24).
     Re-layout keeps them. Hiding or showing moves nothing on the board. A hidden cluster cannot be
     folded; its fold is dropped. Hidden levels are not listed in the outline; ⚙ Board lists them with
     *show*. The exported document's sections follow the tree (ExportSpec decision 12).
+    - **A file's row opens the file** (the owner's decision of 2026-11-01): clustered by file, the
+      tree is *Files*, and the row of a file of the project has a button that opens the whole file in
+      a window of its own (ReviewSpec, "The source window", File mode), shown on the row under the
+      pointer or the keyboard's focus as hiding a level is; a press on the row's name still selects
+      the cluster. Rows have no menu of their own; the board's menu on the cluster has *Open the
+      file*. A phone pins no window, and has no such button (PhoneSpec decision 13).
 
 ## Titles
 

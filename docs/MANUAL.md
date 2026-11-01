@@ -532,7 +532,8 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   key, on what is selected): on a declaration, its source (or in a pinned window), its TCB, what it
   uses or what uses it selected, its full name copied, *Copy link*, *Remove from this view* or *Add to view ▸*,
   marking it key (where the review has a focus) or a target, approving or commenting, trusting its namespace;
-  on a cluster, fold, *Copy link*, remove, add to a view, trust; on the empty canvas, *Copy link to
+  on a cluster, fold, *Copy link*, remove, add to a view, trust — and on a file's cluster, *Open the
+  file* (the whole file, in a window of its own); on the empty canvas, *Copy link to
   what I see*, fit and Re-layout; on a note, *Copy link* among its items; and
   everywhere *Add a note here* and *Add a note for this view*. What you cannot do there is not
   offered. **Copy link** (ViewSpec decision 21) copies a link to it on this board, and *Copy link to
@@ -701,7 +702,8 @@ arranged on a larger screen ([PhoneSpec.md](../SPEC/PhoneSpec.md)). On it:
   ⋯ as one count, with an @ where you were mentioned. **☰** opens the targets and the board's
   namespaces or folders as a drawer.
 - **The panel** is a sheet from the bottom: a tap on its handle gives it the whole screen or half of
-  it, ✕ closes it. A declaration's source, Activity and the lost-and-found take the whole screen.
+  it, ✕ closes it. A declaration's source, Activity and the lost-and-found take the whole screen;
+  the source's *Declaration | File* switch shows the whole file there too.
 - No window is pinned, and the help (`?` in ⋯) holds the tips and lists the gestures instead of
   the keys. The tour is the phone's own, in the words of fingers.
 
@@ -965,6 +967,24 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   project's code, which would run in every reader's browser —: the pane says one is there, to be
   opened in an editor. There is no InfoView on a past build, in a snapshot of the page, or for a file
   changed since it was compiled: the pane says why. Agents ask the same (`GET /api/agent/goals`).
+- **The whole file** (the owner's decision, 2026-11-01): the switch *Declaration | File* in a source
+  window's title bar shows the whole file its declaration is in, scrolled to it, its lines
+  highlighted, its review box under them. Each declaration of the file has a mark beside its line
+  number for where its review stands, in the Status colours (approved, commented, stale, not yet
+  reviewed, trusted; a hollow ring where no target's review needs it). Names link and Lean's hovers
+  work across the whole file. Scrolling selects nothing: the bar over the code names the
+  declaration you are reading, with its mark, and a click on it selects it. **Fold proofs**, in that
+  bar, folds each proof to *⋯ proof* — a theorem's after its `:=`, and inside a definition those
+  the usage pass found — and a click on one shows it; the choice is yours, kept in this browser,
+  and those who follow you do not take it. The window keeps its mode as it follows the selection,
+  and those who follow you see your windows in theirs. To open a file without selecting anything,
+  cluster the board by file: in the side panel's *Files*, a file's row has a file button (it shows
+  on the row under the pointer), and the right click on a file's cluster has *Open the file*; either
+  opens the file from its top in a pinned window of its own, which stays on the file. A past build
+  shows that build's text, a file changed since it was compiled its present text, with a mark only
+  where a declaration's text is still the one compiled. Files of thousands of lines open at once:
+  their lines are drawn as you come to them. The InfoView works across the whole file: click in any
+  proof of it for its goals, and ↑ and ↓ step on through the file.
 - On the canvas, the Status colours say what reviewers said about the present version (bluish
   green approved, a calm cobalt blue commented, orange stale, mid grey nobody yet, very light green
   trusted without review — in the dark theme a dim green, the quietest); the rows of a TCB list carry a dot of the same meaning. A target carries

@@ -305,7 +305,7 @@ step; the rest each on its own once the place is reached.
 | focus | the reader's own focus and its review strip | `focus` | |
 | visitors | declarations gone to that the board does not hold | `visitors` | |
 | panel | what the right panel tells of | `sel` | `a`, `m`, `k` |
-| sources | source windows, following and pinned: open, collapsed, on what | `source`, `sourceCollapsed`, `pinned` | Space |
+| sources | source windows, following and pinned: open, collapsed, on what, in which mode — the declaration or the whole file (File mode) —, and the file windows, opened on a file (the owner's decision of 2026-11-01) | `source`, `sourceCollapsed`, `sourceMode`, `pinned` | Space |
 | paper | the reference window: open, collapsed, file, page, link | `paper` | |
 | caret | the InfoView's caret (ReviewSpec, "The InfoView"; the owner's decision of 2026-11-01): the source window it is in (the following one, or a pinned one), where in the file, the goals before or after the tactic there — one reader steps through a proof while their followers watch | `caret` (`decl`, `line`, `character`, `after`, `pinned`) | ↑, ↓ in a source window (no page's key: any key ends following) |
 | activity | Activity open or closed, its filters | `activity` (`open`, `kind`, `who`, `mine`) | |
@@ -323,7 +323,8 @@ part without a form does not typecheck.
 
 **Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order and
 what of it is kept to by one's own review; the review box's opinions folded or shown (ReviewSpec,
-"One review box"); the outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme;
+"One review box"); File mode's proofs folded, and a folded one opened (the owner's decision of
+2026-11-01); the outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme;
 the layout lock (`l`);
 zoom, find and the box tool of the reference window; Share and its switch; Help (`?`); the
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
@@ -343,7 +344,8 @@ selections and ripples (decision 4), which every press goes through.
 - **A press** counts in the innermost surface: on a control that changes a followed part, wherever
   it is, it ends following; in a surface of the reader's own, never; on a followed surface (side
   panel, panel, source and reference windows, Activity, lost-and-found, review strip, the Export
-  window), only on a control, not on text or a scrollbar; outside every surface (the canvas), always. A double-click
+  window), only on a control, not on text or a scrollbar — a source window's switch between the
+  declaration and the file included (the owner's decision of 2026-11-01); outside every surface (the canvas), always. A double-click
   on a source or reference window's title bar ends it; the wheel, on the canvas only; Back and
   Forward too.
 - The presence bar, a person's menu, the following strip, the conversation window, the name's menu

@@ -274,6 +274,18 @@ export const TIPS: Tip[] = [
     manual: "what-you-see",
   },
 
+  {
+    id: "whole-file",
+    group: "seeing",
+    title: "The whole file",
+    text: "<b>File</b>, in a source window's title bar, shows the whole file, each declaration marked by its review; <b>Fold proofs</b> folds each proof to a line. On a larger screen, a file's row in <b>Files</b> opens one.",
+    who: "all",
+    where: "both",
+    since: "0.9.0",
+    about: [".sw-win [data-sw-mode=file]", ".sw-win [data-sw-folds]", "#outline [data-o-file]"],
+    manual: "review",
+  },
+
   // ─────────────────────────────────────────────────────────────── reviewing
   {
     id: "what-changed",
