@@ -9,7 +9,7 @@ import { test } from "node:test";
 import { highlightLean, highlightLines } from "../src/web/src/highlight.ts";
 import type { Graph } from "../src/shared/viewgraph.ts";
 import { namespacesOf, resolver, scopeAt } from "../src/web/src/scope.ts";
-import { contextAt } from "../src/shared/scope.ts";
+import { contextAt, scopesAt } from "../src/shared/scope.ts";
 
 /** Just what scope.ts reads of a graph: the names. */
 function graphOf(names: string[]): Graph {
@@ -176,4 +176,19 @@ test("what a section holds ends with it; `… in` holds for the next command onl
   assert.deepEqual(last.opens.map((o) => o.text), ["open A.Prime", "open scoped Matrix"]);
   assert.deepEqual(last.options.map((o) => o.text), ["autoImplicit false"]);
   assert.deepEqual(last.local, []);
+});
+
+test("the scope at every declaration of a file, from one reading of it (File mode): as asked at each alone", () => {
+  const lines = file;
+  const plain = (s: ReturnType<typeof scopeAt>) => ({ ...s, aliases: [...s.aliases] });
+  // asked in any order, each said as scopeAt says it, the `… in` before a line included
+  const every = lines.map((_, k) => k).reverse();
+  assert.deepEqual(scopesAt(lines, every, has).map(plain), every.map((k) => plain(scopeAt(lines, k, has))));
+  // a line asked twice, and one past the end
+  const odd = [14, 14, lines.length + 3];
+  assert.deepEqual(scopesAt(lines, odd, has).map(plain), odd.map((k) => plain(scopeAt(lines, k, has))));
+  // `open C in` holds at the declaration after it, and is left behind by the reading going on
+  const later = lines.findIndex((l) => l.startsWith("def later"));
+  const [at, after] = scopesAt(lines, [later, lines.length], has);
+  assert.deepEqual([at.opens, after.opens], [["A.Prime", "C"], ["A.Prime"]]);
 });

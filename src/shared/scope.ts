@@ -148,16 +148,27 @@ function stripComments(line: string, depth: number): { text: string; depth: numb
   return { text: out, depth };
 }
 
-/** Read a file up to line `upto` (0-based, the line a declaration's text starts on): the frames in
- *  force there, and the commands written `… in` right before it. */
-function walk(lines: string[], upto: number, hasNamespace: (n: string) => boolean): { stack: Frame[]; pending: Frame | null } {
-  const stack: Frame[] = [frame("top", "", null, 0)];
+/** What is in force at a line of a file being read: the frames, and the commands written `… in`
+ *  right before it. */
+interface WalkState {
+  stack: Frame[];
   /** `open … in` and the like apply to the next command only */
-  let pending: Frame | null = null;
-  const current = () => stack.map((f) => f.ns).filter(Boolean).join(".");
+  pending: Frame | null;
+}
+
+const copyFrame = (f: Frame): Frame => ({ ...f, opens: [...f.opens], aliases: new Map(f.aliases), open: [...f.open], variables: [...f.variables], universes: [...f.universes], options: [...f.options], local: [...f.local] });
+
+/** A reading of a file from its start, line by line: `to(upto)` reads on up to line `upto`
+ *  (0-based, the line a declaration's text starts on, never before a line asked for already) and
+ *  says what is in force there, as reading the file from its start up to there says it. One reading
+ *  says it at every declaration of a file, as File mode needs (web/src/filemode.ts): asked anew at
+ *  each, a file of 3,000 lines was read 200 times over. */
+function walker(lines: string[], hasNamespace: (n: string) => boolean): { to(upto: number): WalkState } {
+  const live: WalkState = { stack: [frame("top", "", null, 0)], pending: null };
+  const current = (st: WalkState) => st.stack.map((f) => f.ns).filter(Boolean).join(".");
   /** What `open X` opens: X under the namespaces around it, innermost first, or X itself. */
-  const resolveNs = (x: string): string[] => {
-    const cur = current().split(".").filter(Boolean);
+  const resolveNs = (st: WalkState, x: string): string[] => {
+    const cur = current(st).split(".").filter(Boolean);
     const out: string[] = [];
     for (let k = cur.length; k >= 0; k--) {
       const n = [...cur.slice(0, k), x].join(".");
@@ -166,7 +177,7 @@ function walk(lines: string[], upto: number, hasNamespace: (n: string) => boolea
     return out;
   };
   /** `open …` (its arguments): what it opens, into a frame, and the command as written. */
-  const open = (args: string, cmd: Command, into: Frame) => {
+  const open = (st: WalkState, args: string, cmd: Command, into: Frame) => {
     const words = args.trim().split(/\s+/);
     const scoped = words[0] === "scoped";
     const spaces: string[] = [];
@@ -175,12 +186,12 @@ function walk(lines: string[], upto: number, hasNamespace: (n: string) => boolea
     const paren = /^([^\s(]+)\s*\(([^)]*)\)/.exec(rest.trim());
     const renaming = /^([^\s]+)\s+renaming\s+(.*)$/.exec(rest.trim());
     if (paren) {
-      for (const ns of resolveNs(paren[1])) {
+      for (const ns of resolveNs(st, paren[1])) {
         spaces.push(ns);
         if (!scoped) for (const x of paren[2].trim().split(/\s+/)) if (x) into.aliases.set(x, `${ns}.${x}`);
       }
     } else if (renaming) {
-      for (const ns of resolveNs(renaming[1])) {
+      for (const ns of resolveNs(st, renaming[1])) {
         spaces.push(ns);
         if (!scoped)
           for (const pair of renaming[2].split(",")) {
@@ -192,7 +203,7 @@ function walk(lines: string[], upto: number, hasNamespace: (n: string) => boolea
       const hiding = rest.indexOf(" hiding ");
       for (const w of (hiding >= 0 ? rest.slice(0, hiding) : rest).trim().split(/\s+/)) {
         if (!w) continue;
-        const ns = resolveNs(w);
+        const ns = resolveNs(st, w);
         spaces.push(...ns);
         // scoped opens bring notation and instances, no names
         if (!scoped) into.opens.push(...ns);
@@ -202,46 +213,47 @@ function walk(lines: string[], upto: number, hasNamespace: (n: string) => boolea
   };
 
   /** What a whole command does, once all its lines are read. */
-  const finish = (text: string, line: number) => {
+  const finish = (st: WalkState, text: string, line: number) => {
+    const stack = st.stack;
     let m: RegExpExecArray | null;
     if ((m = NAMESPACE.exec(text))) {
       stack.push(frame("namespace", m[1], m[1], line));
-      pending = null;
+      st.pending = null;
       return;
     }
     if ((m = SECTION.exec(text))) {
       const f = frame("section", "", m[1] ?? null, line);
       if (/\bnoncomputable\s+section\b/.test(text)) f.noncomputable = true;
       stack.push(f);
-      pending = null;
+      st.pending = null;
       return;
     }
     if (MUTUAL.test(text)) {
       stack.push(frame("mutual", "", null, line));
-      pending = null;
+      st.pending = null;
       return;
     }
     if ((m = END.exec(text))) {
       // `end A.B` closes as many namespaces as its name has parts, `namespace A.B` being one
       let parts = m[1] ? m[1].split(".").length : 1;
       while (parts > 0 && stack.length > 1) parts -= (stack.pop()!.name ?? "_").split(".").length;
-      pending = null;
+      st.pending = null;
       return;
     }
     if (ATTRIBUTES.test(text)) return;
     const head = IN_HEAD.test(text);
     // `open A in def x …` on one line holds for that command alone, which is not the one asked about
     if (head && !VARIABLE.test(text) && /\sin\s/.test(text)) {
-      pending = null;
+      st.pending = null;
       return;
     }
     const onlyNext = head && IN.test(text);
     const body = onlyNext ? text.replace(IN, "") : text;
     // a command that is not `… in` uses up what was pending: a declaration, or anything else
-    const into = onlyNext ? (pending ??= frame("top", "", null, line)) : stack[stack.length - 1];
-    if (!onlyNext) pending = null;
+    const into = onlyNext ? (st.pending ??= frame("top", "", null, line)) : stack[stack.length - 1];
+    if (!onlyNext) st.pending = null;
     const cmd = (t: string): Command => ({ line: line + 1, text: t, ...(onlyNext ? { in: true as const } : {}) });
-    if ((m = OPEN.exec(body))) open(m[1], cmd(body), into);
+    if ((m = OPEN.exec(body))) open(st, m[1], cmd(body), into);
     else if ((m = VARIABLE.exec(body))) into.variables.push(cmd(m[1]));
     else if ((m = UNIVERSE.exec(body))) into.universes.push(cmd(m[1]));
     else if ((m = OPTION.exec(body))) into.options.push(cmd(m[1]));
@@ -251,27 +263,39 @@ function walk(lines: string[], upto: number, hasNamespace: (n: string) => boolea
   let depth = 0;
   /** the command being read: its first line, and its text so far */
   let reading: { line: number; text: string } | null = null;
-  for (let l = 0; l < upto && l < lines.length; l++) {
-    const line = lines[l];
-    const inComment = depth > 0;
-    const s = stripComments(line, depth);
-    depth = s.depth;
-    const text = s.text.replace(/\s+/g, " ").trim();
-    if (!text) continue;
-    // a command starts at the line's first column, outside a comment; anything else continues it
-    if (!inComment && !/^\s/.test(line)) {
-      if (reading) finish(reading.text, reading.line);
-      reading = { line: l, text };
-    } else if (reading) reading.text += " " + text;
-  }
-  if (reading) finish(reading.text, reading.line);
-  return { stack, pending };
+  let l = 0;
+  return {
+    to(upto: number): WalkState {
+      for (; l < upto && l < lines.length; l++) {
+        const line = lines[l];
+        const inComment = depth > 0;
+        const s = stripComments(line, depth);
+        depth = s.depth;
+        const text = s.text.replace(/\s+/g, " ").trim();
+        if (!text) continue;
+        // a command starts at the line's first column, outside a comment; anything else continues it
+        if (!inComment && !/^\s/.test(line)) {
+          if (reading) finish(live, reading.text, reading.line);
+          reading = { line: l, text };
+        } else if (reading) reading.text += " " + text;
+      }
+      // the command read last ends where the reading stops: finished on a copy, the reading going
+      // on from here with it still open
+      const st: WalkState = { stack: live.stack.map(copyFrame), pending: live.pending && copyFrame(live.pending) };
+      if (reading) finish(st, reading.text, reading.line);
+      return st;
+    },
+  };
 }
 
-/** The scope at line `upto` of a file (the line a declaration's text starts on): what a short name
- *  written there can mean. */
-export function scopeAt(lines: string[], upto: number, hasNamespace: (n: string) => boolean): Scope {
-  const { stack, pending } = walk(lines, upto, hasNamespace);
+/** Read a file up to line `upto` (0-based, the line a declaration's text starts on): the frames in
+ *  force there, and the commands written `… in` right before it. */
+function walk(lines: string[], upto: number, hasNamespace: (n: string) => boolean): WalkState {
+  return walker(lines, hasNamespace).to(upto);
+}
+
+/** A Scope from what is in force at a line. */
+function scopeOf({ stack, pending }: WalkState): Scope {
   const frames = pending ? [...stack, pending] : stack;
   const cur = stack.map((f) => f.ns).filter(Boolean).join(".").split(".").filter(Boolean);
   const namespaces: string[] = [];
@@ -279,6 +303,22 @@ export function scopeAt(lines: string[], upto: number, hasNamespace: (n: string)
   const aliases = new Map<string, string>();
   for (const f of frames) for (const [k, v] of f.aliases) aliases.set(k, v);
   return { namespaces, opens: [...new Set(frames.flatMap((f) => f.opens))], aliases };
+}
+
+/** The scope at each of lines `uptos` of a file (in any order), as `scopeAt` says it at each, from
+ *  one reading of the file. */
+export function scopesAt(lines: string[], uptos: readonly number[], hasNamespace: (n: string) => boolean): Scope[] {
+  const w = walker(lines, hasNamespace);
+  const out: Scope[] = new Array(uptos.length);
+  const order = uptos.map((_, k) => k).sort((a, b) => uptos[a] - uptos[b]);
+  for (const k of order) out[k] = scopeOf(w.to(uptos[k]));
+  return out;
+}
+
+/** The scope at line `upto` of a file (the line a declaration's text starts on): what a short name
+ *  written there can mean. */
+export function scopeAt(lines: string[], upto: number, hasNamespace: (n: string) => boolean): Scope {
+  return scopeOf(walk(lines, upto, hasNamespace));
 }
 
 /** Everything in force at line `upto` of a file, as written: the context a declaration there is
