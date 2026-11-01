@@ -193,8 +193,8 @@ through a proof a line at a time.
  "after": ["p : ℕ\na b c : ℤ\n…\nhab : ↑a = ↑b\nh : ↑(-(c * 3)) = 0\n⊢ ↑p ∣ c"], "expected": null}
 ```
 
-`before`, `after`: `null` where Lean has no tactic state there (outside a `by` block), `[]` where
-the tactic closes the goal. `expected`: the expected type of the term at the column, or `null`.
+`before`, `after`: `null` where Lean has no tactic state there (outside a `by` block; `tactic` is
+`null` then too), `[]` where the tactic closes the goal. `expected`: the expected type of the term at the column, or `null`.
 `widgets`: a widget is there (its JavaScript is the project's code, never run: a person sees it in
 an editor). The build's text only: 409 for a file changed since it was compiled (or a package at
 another revision). 503 with `Retry-After: 5` while Lean elaborates the file (`elaborated: {line,

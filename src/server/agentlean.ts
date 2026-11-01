@@ -210,7 +210,8 @@ export async function goals(api: AgentApi, a: Ask): Promise<Answer> {
   const r = await api.lean.goals(file, f.lines.join("\n"), f.hash, fileLine, ch, clampInt(q.get("wait"), 20_000, 1000, MAX_WAIT));
   if (r.pending) return fail(503, `Lean is still elaborating ${f.rel}: line ${r.pending.line.toLocaleString("en")} of ${r.pending.of.toLocaleString("en")}.`, "Ask again in a few seconds (Retry-After); the first question about a file can take a minute.", { elaborated: r.pending, retryAfter: 5 }, { "retry-after": "5" });
   if (r.error) return fail(502, `Lean could not answer: ${r.error}`, "GET /api/agent/source gives the text; /api/agent/print what Lean elaborated.");
-  const t = r.tactic && r.tactic.to > r.tactic.from ? text.slice(r.tactic.from, r.tactic.to) : null;
+  // a tactic where Lean has a tactic state there: elsewhere the line is no tactic's
+  const t = r.tactic && r.tactic.to > r.tactic.from && (r.before || r.after) ? text.slice(r.tactic.from, r.tactic.to) : null;
   return ok({
     ...(name ? { name } : {}),
     module,

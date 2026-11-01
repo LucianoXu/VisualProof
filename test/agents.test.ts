@@ -216,6 +216,7 @@ function world(level: AgentLevel = "full") {
     goals: async (file: HoverFile, _text: string, _hash: string, line: number, character: number) => {
       asked.push({ what: "goals", module: String(file), name: `${line}:${character}` });
       if (line === 7) return { pending: { line: 3, of: 11 } };
+      if (line === 3) return { tactic: { line, from: 0, to: 16 }, before: null, after: null, term: { hyps: [], type: "Nat", range: [3, 15, 3, 16] as [number, number, number, number] }, interactive: true };
       return { tactic: { line, from: 2, to: 7 }, before: [{ hyps: [{ names: ["n"], type: "Nat" }], type: ["z + ", { k: 0, t: "1" }, " = 1"] }], after: [], term: null, interactive: true };
     },
   };
@@ -889,6 +890,10 @@ test("the goals at a line of a proof, as the InfoView shows them: of a declarati
     assert.deepEqual((p.body as Json).elaborated, { line: 3, of: 11 });
     assert.equal(p.headers?.["retry-after"], "5");
     assert.equal((await W.ask("GET", "/api/agent/goals", { module: "Nope", line: "1" })).status, 404);
+    // a line of no tactic block: no tactic named
+    const term = json(await W.ask("GET", "/api/agent/goals", { module: "M", line: "4" }));
+    assert.equal(term.tactic, null);
+    assert.equal(term.expected, "⊢ Nat");
     assert.equal((await W.ask("GET", "/api/agent/goals", { name: "N.nope", line: "1" })).status, 404);
     // a file changed since it was compiled: its goals would be another text's
     const n = W.asked.length;

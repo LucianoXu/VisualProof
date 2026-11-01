@@ -367,7 +367,9 @@ export class InfoView {
     if (!pre || !c || !k || !this.holds(k.line)) return;
     const ln = pre.querySelectorAll<HTMLElement>(".ln")[k.line - c.start];
     ln?.classList.add("ln-caret");
-    const t = this.answer?.tactic;
+    // the tactic, where Lean has a tactic state there: elsewhere the line is no tactic's
+    const a = this.answer;
+    const t = a && (a.before || a.after) ? a.tactic : null;
     if (!hl || !Hl || !ln) return;
     if (!t || t.line !== k.line || t.to <= t.from) return void hl.delete("vp-tactic");
     const r = rangeIn(ln, t.from, t.to);
