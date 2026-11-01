@@ -146,7 +146,19 @@ into the latest release only.
   of a name into a scratch file Lean's language server elaborates, in the cache directory. Only a
   name that passes `isDeclName` (a dotted Lean name) is ever written there: no Lean source from a
   page or an agent reaches Lean. A file outside the project is elaborated by the same server, started
-  in the same folder, which holds no lakefile: nothing is built.
+  in the same folder, which holds no lakefile: nothing is built. The InfoView (ReviewSpec, "The
+  InfoView"; the owner's decisions of 2026-11-01) and the agents' `goals` ask the same server the
+  goals at a place of a module's file: only the place (numbers) and a module of the graph, checked as
+  for hovers, reach Lean, and through Lean's RPC only references Lean itself gave — a page names a
+  subterm by its number in the server's answer, never by Lean's reference. Each file Lean keeps open
+  holds what its imports take (several GB on Mathlib): `--lean-files` bounds how many (2 by default),
+  whoever asks, read-only readers within the bounds above.
+- **Widgets are never drawn.** A project's own widgets (ProofWidgets, `#html`, panel widgets) are
+  JavaScript the project ships, which would run in every reader's browser with the page's rights.
+  The InfoView asks Lean only how many widgets are at a place (`Lean.Widget.getWidgets`, which, like
+  elaborating, runs the project's Lean code for them on the server); it never asks for their
+  JavaScript (`getWidgetSource`), never draws one, and says instead "A widget here: open it in your
+  editor". An agent is told one is there, nothing of it.
 - **The sources outside the project.** The source window and the agents' `source` show the source
   of a declaration from outside the project too — a package's of the project's lake-manifest, or
   Lean's core's, from the toolchain's `src/lean/` — to whoever may read the project's sources,

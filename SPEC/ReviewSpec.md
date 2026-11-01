@@ -217,14 +217,54 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
   project's folder of the cache (`lean-server/`) with the project's LEAN_PATH: with no lakefile
   there, it never runs `lake setup-file`, so it reads the owner's build and builds nothing. A file
   outside the project is opened by the same server in the same way. Until a
-  file is elaborated the hover says how far Lean is. At most two files open; it stops after ten idle
-  minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
+  file is elaborated the hover says how far Lean is. At most two files open (`--lean-files`, the
+  owner's decision of 2026-11-01); it stops after ten idle minutes. Over a Lean comment there is no card. A snapshot has no Lean: names show the graph's
   statement and doc.
 - **Hover cards nest**: a name in a card opens a card beside it; a card closes a moment after the
   pointer leaves it for anything but a card nested in it. A nested card is the name `#check`ed in
   `Describe.lean` in that folder, importing the module on show; the graph's statement shows until
   Lean answers. Only a name that passes `isDeclName` (a dotted Lean name, nothing else) is ever
   written there: anything else would run as Lean source.
+- **The InfoView** (the owner's decisions of 2026-11-01): what Lean's InfoView shows in an editor,
+  in a pane of the source window.
+  - **Live from Lean's language server**, the one that answers hovers, which elaborates the whole
+    file: `$/lean/plainGoal` and `$/lean/plainTermGoal`, and the interactive goals through Lean's
+    RPC (`$/lean/rpc/connect` and its keep-alive, `Lean.Widget.getInteractiveGoals`,
+    `Lean.Widget.getInteractiveTermGoal`), which the page draws from the tagged text. Nothing is
+    precomputed by the extractor: the usage pass elaborates without proofs.
+  - **Where**: right of the code, below it when the window is narrow and on a phone (PhoneSpec). It
+    shows while the caret — a click in the code, or the keyboard's caret — is in a proof, a `by`
+    block or a term with an expected type; elsewhere it is hidden, and a toggle hides it (the
+    reader's own, kept in the browser).
+  - **What**: the goals at the caret, before the tactic, with a toggle for after; at a term, its
+    expected type. Hypotheses and goals in Lean's highlighting, as the window draws code; names
+    link to the board and open hover cards, nesting as in the source; with interactive goals a
+    subterm shows its type on hover. ↑ and ↓, or the caret's own movement, step through the tactics,
+    the pane following.
+  - **The caret is followed** (CollabSpec, "Surfaces": `caret`), so that one reader steps through a
+    proof while those following them watch.
+  - **Waiting**: when the window opens, Lean opens the file at once; while Lean elaborates, the pane
+    says how far it has got ("Lean has elaborated line 120 of 800"); a place Lean has passed is
+    answered at once.
+  - **Limits**: the files Lean keeps open, for hovers and the InfoView, are a server option
+    (`--lean-files`).
+  - **Scope**: the latest build only — a past build, a snapshot and the exported document have no
+    InfoView, and the pane says why; a file changed since it was compiled has none either, with why.
+    Files outside the project as hovers. Read-only readers within the bounds hovers have: what Lean
+    already said of this build, else within per-address and overall bounds.
+  - **A project's own widgets are never drawn** (ProofWidgets, `#html`, panel widgets): their
+    JavaScript is the project's code and would run in every reader's browser. Where one is, the pane
+    says "A widget here: open it in your editor."
+  - **What reaches Lean**: positions (numbers) and module names, checked as for hovers; no Lean
+    source from a page or an agent. Agents ask the same (AgentSpec, "The API").
+  - *How it reads the tactic* (the details settled in building it): Lean shows the goals before a
+    tactic at its first character and those after it from there to its end, so the server reads
+    the tactic at the caret from its line — from the `by` or the separator before the caret (`;`,
+    `<;>`, a match arm's `|`, a case's `=>`, focusing dots left out) to the one after it, at the same
+    depth of brackets — and asks before at its first character, after at its end, the expected type
+    at the caret itself. Where the line is read wrong the answer is still Lean's own at that place.
+    The page has one caret: placed in a window, it leaves the others. A follower's click in the code
+    is reading; ↑, ↓, Before and After end following, as a change to a followed part does.
 - **What was compiled, and what is there now.** The graph describes the text each file was compiled
   from, whose hash its module carries. Where the file now differs, the source window shows the
   present text found by name (or that it is gone) under a warning, and no opinion can be given
