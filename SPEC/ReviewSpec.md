@@ -297,6 +297,12 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     link to the board and open hover cards, nesting as in the source; with interactive goals a
     subterm shows its type on hover. ↑ and ↓, or the caret's own movement, step through the tactics,
     the pane following.
+  - **After a tactic that holds a proof of its own** (`have h : P := by simp`; the owner's decision
+    of 2026-11-01): the state after the whole line, the goals at the start of the next line of code
+    of the same proof — the outer goal with `h` added, not Lean's "No goals" inside the nested
+    block, where the tactic ends. The pane says which line's goals they are ("As line 50 begins"),
+    and marks what the line added. Where the proof does not go on (the last tactic), what Lean says
+    at the end, as for any tactic. The agents' `goals` follows the same rule.
   - **The caret is followed** (CollabSpec, "Surfaces": `caret`), so that one reader steps through a
     proof while those following them watch.
   - **Waiting**: when the window opens, Lean opens the file at once; while Lean elaborates, the pane
@@ -317,7 +323,9 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     tactic at its first character and those after it from there to its end, so the server reads
     the tactic at the caret from its line — from the `by` or the separator before the caret (`;`,
     `<;>`, a match arm's `|`, a case's `=>`, focusing dots left out) to the one after it, at the same
-    depth of brackets — and asks before at its first character, after at its end, the expected type
+    depth of brackets — and asks before at its first character, after at its end (or, for a tactic
+    that holds a `by`, at the next line of code whose code starts no further right than the tactic:
+    a line further right is the nested block, or the tactic's own term going on), the expected type
     at the caret itself. Where the line is read wrong the answer is still Lean's own at that place.
     The page has one caret: placed in a window, it leaves the others. A follower's click in the code
     is reading; ↑, ↓, Before and After end following, as a change to a followed part does.

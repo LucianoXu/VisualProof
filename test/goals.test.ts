@@ -5,8 +5,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { codeLines, flatten, goalText, parsePlainGoal, stepLine, tacticSpan } from "../src/shared/goals.ts";
-import { readInfo, readInteractiveGoals, readInteractiveTermGoal, readPlainGoals, readPlainTermGoal, readWidgets, Reading, refsIn } from "../src/server/goals.ts";
+import { afterLine, codeLines, flatten, goalText, holdsBy, parsePlainGoal, stepLine, tacticSpan } from "../src/shared/goals.ts";
+import { afterTheLine, readInfo, readInteractiveGoals, readInteractiveTermGoal, readPlainGoals, readPlainTermGoal, readWidgets, Reading, refsIn } from "../src/server/goals.ts";
 import { INTERACTIVE, TERM } from "./leananswers.ts";
 
 /** The tactic at the place of `mark` (its first character) in `line`, as text. */
@@ -130,4 +130,56 @@ test("Lean's plain answers read: the goals as Lean writes them, the term's expec
   assert.equal(t.type, "p.x ≤ p.size");
   assert.deepEqual(t.range, [12, 46, 12, 66]);
   assert.equal(readPlainTermGoal({ goal: "⊢ Nat" }), null, "no range: not Lean's answer");
+});
+
+test("after a tactic that holds a proof of its own: the start of the next line of code of the same proof, past the nested block and the tactic's own term", () => {
+  const text = [
+    "theorem t : P := by", // 0
+    "  have h : Q := by simp", // 1
+    "  have g : R := by", // 2
+    "    simp", // 3
+    "    -- the nested block's end", // 4
+    "    ring", // 5
+    "", // 6
+    "  rw [show (3 : ZMod p) = 3 by simp,", // 7
+    "    foo] at h", // 8
+    "  · exact (by simp)", // 9
+    "    exact h", // 10
+    "end", // 11
+  ].join("\n");
+  const lines = text.split("\n");
+  const holds = (k: number, mark: string) => {
+    const s = tacticSpan(lines[k], lines[k].indexOf(mark))!;
+    return holdsBy(lines[k], s.from, s.to);
+  };
+  assert.equal(holds(1, "have"), true);
+  assert.equal(holds(1, "simp"), false, "the nested block's own tactic holds none");
+  assert.equal(holds(2, "have"), true, "a `by` that ends the line");
+  assert.equal(holds(7, "rw"), true, "a term's `by`");
+  assert.equal(holds(10, "exact"), false);
+  assert.deepEqual(afterLine(text, 1, 2), { line: 2, ch: 2 });
+  assert.deepEqual(afterLine(text, 2, 2), { line: 7, ch: 2 }, "past the nested block, its comment and the blank line");
+  assert.deepEqual(afterLine(text, 7, 2), { line: 9, ch: 2 }, "past the tactic's own term going on");
+  assert.deepEqual(afterLine(text, 9, 4), { line: 10, ch: 4 }, "in a focused block, from the tactic's column");
+  assert.deepEqual(afterLine(text, 10, 4), { line: 11, ch: 0 }, "out of the proof: Lean says there is no tactic state there");
+  assert.equal(afterLine(text, 11, 0), null);
+});
+
+test("the goals after the whole line: Lean's diff there, the next tactic's, taken off; what the line added marked", () => {
+  const before = [{ hyps: [{ names: ["n"], type: "Nat" }, { names: ["h"], type: "n = 1" }], type: "n + 0 = 1" }];
+  const at = [
+    {
+      hyps: [{ names: ["n"], type: "Nat" }, { names: ["h"], type: { k: 0, t: "n = 1", d: "willChange" as const } }, { names: ["h2"], type: ["n + 0 = ", { k: 1, t: "n" }], d: "removed" as const }],
+      type: { k: 2, t: [{ k: 3, t: "n + 0", d: "willChange" as const }, " = 1"] },
+      d: "removed" as const,
+      prefix: "⊢ ",
+    },
+  ];
+  assert.deepEqual(afterTheLine(before, at), [
+    { hyps: [{ names: ["n"], type: "Nat" }, { names: ["h"], type: { k: 0, t: "n = 1" } }, { names: ["h2"], type: ["n + 0 = ", { k: 1, t: "n" }], d: "inserted" }], type: { k: 2, t: [{ k: 3, t: "n + 0" }, " = 1"] }, prefix: "⊢ " },
+  ]);
+  // a hypothesis changed by the line is one it added, under the same name
+  assert.equal(afterTheLine(before, [{ hyps: [{ names: ["h"], type: "n = 2" }], type: "False" }])[0].hyps[0].d, "inserted");
+  // without the goals before, nothing is said to be added
+  assert.equal(afterTheLine(null, at)[0].hyps[2].d, undefined);
 });

@@ -193,3 +193,31 @@ function plainText(c: unknown): string {
   }
   return out;
 }
+
+/** The goals after a tactic that holds a block of its own, as Lean gives them at the start of the
+ *  next line (shared/goals.ts, afterLine): there Lean's diff is about the tactic that line begins,
+ *  not this one. It is taken off, and what this tactic added is marked instead: a hypothesis none of
+ *  the goals before had, by its name and its type. */
+export function afterTheLine(before: readonly Goal[] | null, after: Goal[]): Goal[] {
+  const had = new Set((before ?? []).flatMap((g) => g.hyps.flatMap((h) => h.names.map((n) => `${n} : ${plain(h.type)}`))));
+  return after.map((g) => ({
+    ...(g.case ? { case: g.case } : {}),
+    hyps: g.hyps.map((h) => ({
+      names: h.names,
+      type: undiff(h.type),
+      ...(h.val !== undefined ? { val: undiff(h.val) } : {}),
+      ...(h.names.some((n) => !had.has(`${n} : ${plain(h.type)}`)) && before ? { d: "inserted" as const } : {}),
+    })),
+    type: undiff(g.type),
+    ...(g.prefix ? { prefix: g.prefix } : {}),
+  }));
+}
+
+/** A tagged text without Lean's diff marks, its subterms numbered as they were. */
+function undiff(t: Tagged): Tagged {
+  if (typeof t === "string") return t;
+  if (Array.isArray(t)) return t.map(undiff);
+  return { k: t.k, t: undiff(t.t) };
+}
+
+const plain = (t: Tagged): string => (typeof t === "string" ? t : Array.isArray(t) ? t.map(plain).join("") : plain(t.t));

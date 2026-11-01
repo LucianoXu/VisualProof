@@ -41,6 +41,13 @@ theorem by_cases (n : Nat) : n + 0 = n := by
 
 theorem term_mode (p : Point) : p.x ≤ p.size := Nat.le_add_right _ _
 
+theorem nested (n : Nat) (h : n = 1) : n + 0 = 1 := by
+  have h2 : n + 0 = n := by simp
+  rw [h2, h]
+
+theorem last_nested (n : Nat) : n + 0 = n := by
+  exact (by simp)
+
 end Fixture
 `;
 
@@ -141,6 +148,26 @@ test("the goals at a place: before and after its tactic, tagged; a subterm's typ
     assert.equal(flatten(t.term!.type), "p.x ≤ p.size");
     assert.deepEqual(t.term!.hyps.map((h) => h.names), [["p"]]);
     assert.deepEqual(t.term!.range.slice(0, 2), [term, lines[term].indexOf("Nat.le_add_right")]);
+    // after a tactic that holds a proof of its own: the state after the whole line, where the proof
+    // goes on (the owner's decision of 2026-11-01): the outer goal with h2, which the line added
+    const have = lines.findIndex((l) => l.trim().startsWith("have h2"));
+    const nested = await ask(have, lines[have].indexOf("have"));
+    assert.equal(lines[have].slice(nested.tactic!.from, nested.tactic!.to), "have h2 : n + 0 = n := by simp");
+    assert.equal(nested.afterFrom, have + 1, "the next line's goals");
+    assert.equal(nested.after?.length, 1);
+    assert.match(goalText(nested.after![0]), /^n : Nat\nh : n = 1\nh2 : n \+ 0 = n\n⊢ n \+ 0 = 1$/, goalText(nested.after![0]));
+    assert.deepEqual(nested.after![0].hyps.map((x) => x.d ?? null), [null, null, "inserted"], "what the line added, by the line's own diff");
+    const tagsOf = (t: Tagged): unknown[] => (typeof t === "string" ? [] : Array.isArray(t) ? t.flatMap(tagsOf) : [t.d, ...tagsOf(t.t)]);
+    assert.ok(tagsOf(nested.after![0].type).every((d) => d === undefined), "no diff of the next tactic's");
+    // inside the nested block, its own tactic: Lean's answer at its end, the nested proof done
+    const own = await ask(have, lines[have].indexOf("simp"));
+    assert.equal(own.afterFrom, undefined);
+    assert.deepEqual(own.after, []);
+    // the last tactic, holding a proof of its own: the proof does not go on, Lean's answer at its end
+    const last = lines.findIndex((l) => l.trim() === "exact (by simp)");
+    const l = await ask(last, 3);
+    assert.equal(l.afterFrom, undefined);
+    assert.ok(Array.isArray(l.after), JSON.stringify(l.after));
     // a place asked again is answered from what was kept; past what is kept, what Lean holds for
     // the oldest is let go
     const released = () => said.filter((m) => m === "$/lean/rpc/release").length;
@@ -162,6 +189,11 @@ test("the goals at a place: before and after its tactic, tagged; a subterm's typ
     assert.equal(goalText(plain.before![0]), goalText(before));
     assert.equal(goalText(plain.after![0]), goalText(a.after![0]));
     assert.ok(typeof plain.before![0].type === "string");
+    // and after a line that holds a proof of its own, the same rule
+    const plainNested = await ask(have, lines[have].indexOf("have") + 1);
+    assert.equal(plainNested.afterFrom, have + 1);
+    assert.equal(goalText(plainNested.after![0]), goalText(nested.after![0]));
+    assert.deepEqual(plainNested.after![0].hyps.map((x) => x.d ?? null), [null, null, "inserted"]);
     hover.stop();
     // nothing under .lake was written or touched
     const afterwards = listing(join(dir, ".lake"));

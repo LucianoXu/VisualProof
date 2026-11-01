@@ -43,9 +43,9 @@ import { childEnv, DETACH, end, grouped } from "./children.ts";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { tacticSpan } from "../shared/goals.ts";
-import type { GoalsAnswer, SubtermInfo } from "../shared/goals.ts";
-import { readInfo, readInteractiveGoals, readInteractiveTermGoal, readPlainGoals, readPlainTermGoal, readWidgets, Reading, refsIn } from "./goals.ts";
+import { afterLine, holdsBy, tacticSpan } from "../shared/goals.ts";
+import type { Goal, GoalsAnswer, SubtermInfo } from "../shared/goals.ts";
+import { afterTheLine, readInfo, readInteractiveGoals, readInteractiveTermGoal, readPlainGoals, readPlainTermGoal, readWidgets, Reading, refsIn } from "./goals.ts";
 import type { RpcRef } from "./goals.ts";
 import type { Project } from "./project.ts";
 
@@ -705,13 +705,21 @@ export class LeanHover {
 
   /** Ask Lean the goals at a place: through its RPC, tagged, where it can (a session gone is made
    *  again once); else its plain answers. Before the tactic at its first character, after it at its
-   *  end, the term's expected type and the widgets where the place is. */
+   *  end — or, for a tactic that holds a block of its own, where the proof goes on —, the term's
+   *  expected type and the widgets where the place is. */
   private async askGoals(doc: Doc, line: number, character: number): Promise<GoalsEntry> {
-    const span = tacticSpan(doc.text.split("\n")[line] ?? "", character);
-    const at = {
+    const text = doc.text.split("\n")[line] ?? "";
+    const span = tacticSpan(text, character);
+    // a tactic that holds a block of its own ends inside it: the state after the whole line is
+    // where the proof goes on, its next line's start (the owner's decision of 2026-11-01); Lean's
+    // answer at the end where it does not go on there
+    const next = span && holdsBy(text, span.from, span.to) ? afterLine(doc.text, line, span.from) : null;
+    const end = { line, character: span ? span.to : character };
+    const at: Places = {
       before: { line, character: span ? span.from : character },
-      after: { line, character: span ? span.to : character },
+      after: next ? { line: next.line, character: next.ch } : end,
       here: { line, character },
+      ...(next ? { end } : {}),
     };
     const tactic = span ? { line, ...span } : null;
     for (let tries = 0; tries < 2; tries++) {
@@ -723,14 +731,16 @@ export class LeanHover {
       if (doc.rpc === sid) doc.rpc = null;
     }
     const q = (method: string, position: { line: number; character: number }) => this.request(method, { textDocument: { uri: doc.uri }, position });
-    const [b, a, t] = await Promise.all([q("$/lean/plainGoal", at.before), q("$/lean/plainGoal", at.after), q("$/lean/plainTermGoal", at.here)]);
+    const [b, a, t, e] = await Promise.all([q("$/lean/plainGoal", at.before), q("$/lean/plainGoal", at.after), q("$/lean/plainTermGoal", at.here), at.end ? q("$/lean/plainGoal", at.end) : null]);
     if (b.error && a.error && t.error) return { answer: { error: b.error.message }, refs: [], held: [], session: null };
-    return { answer: { tactic, before: b.error ? null : readPlainGoals(b.result), after: a.error ? null : readPlainGoals(a.result), term: t.error ? null : readPlainTermGoal(t.result), interactive: false }, refs: [], held: [], session: null };
+    const before = b.error ? null : readPlainGoals(b.result);
+    const after = afterOf(at, before, a.error ? null : readPlainGoals(a.result), () => (e && !e.error ? readPlainGoals(e.result) : null));
+    return { answer: { tactic, before, ...after, term: t.error ? null : readPlainTermGoal(t.result), interactive: false }, refs: [], held: [], session: null };
   }
 
   /** The goals at the three places through Lean's RPC, in session `sid`; "reconnect" where the
    *  session is gone, "plain" where Lean has no such methods. */
-  private async interactive(doc: Doc, sid: string, at: Record<"before" | "after" | "here", { line: number; character: number }>): Promise<GoalsEntry | "reconnect" | "plain"> {
+  private async interactive(doc: Doc, sid: string, at: Places): Promise<GoalsEntry | "reconnect" | "plain"> {
     const call = (method: string, params: unknown, position: { line: number; character: number }) =>
       this.request("$/lean/rpc/call", { textDocument: { uri: doc.uri }, position, sessionId: sid, method, params });
     const where = (position: { line: number; character: number }) => ({ textDocument: { uri: doc.uri }, position });
@@ -740,9 +750,10 @@ export class LeanHover {
       call("Lean.Widget.getInteractiveTermGoal", where(at.here), at.here),
       // counted, never fetched nor drawn: a widget's JavaScript is the project's code
       call("Lean.Widget.getWidgets", at.here, at.here),
+      ...(at.end ? [call("Lean.Widget.getInteractiveGoals", where(at.end), at.end)] : []),
     ]);
     const held = asked.flatMap((m) => refsIn(m.result));
-    const [b, a, t, w] = asked;
+    const [b, a, t, w, e] = asked;
     if (asked.some((m) => m.error?.code === RPC_RECONNECT)) {
       this.release(doc, sid, held);
       return "reconnect";
@@ -757,9 +768,10 @@ export class LeanHover {
     }
     const reading = new Reading();
     const widgets = w.error ? 0 : readWidgets(w.result);
+    const before = b.error ? null : readInteractiveGoals(b.result, reading);
     const answer: GoalsAnswer = {
-      before: b.error ? null : readInteractiveGoals(b.result, reading),
-      after: a.error ? null : readInteractiveGoals(a.result, reading),
+      before,
+      ...afterOf(at, before, a.error ? null : readInteractiveGoals(a.result, reading), () => (e && !e.error ? readInteractiveGoals(e.result, reading) : null)),
       term: t.error ? null : readInteractiveTermGoal(t.result, reading),
       ...(widgets ? { widgets } : {}),
       interactive: true,
@@ -918,6 +930,20 @@ export class LeanHover {
     this.env = null;
     this.failure = null;
   }
+}
+
+/** Where Lean is asked the goals at a place: before the tactic, after it, the term's expected type;
+ *  and where the tactic ends, when the goals after are asked where the proof goes on (`after` the
+ *  next line's start), in case it does not go on there. */
+type Places = Record<"before" | "after" | "here", { line: number; character: number }> & { end?: { line: number; character: number } };
+
+/** The goals after the tactic: where the proof goes on, as the state after the whole line (Lean's
+ *  diff there being the next tactic's, it is made this one's: afterTheLine), where Lean has a tactic
+ *  state there; else those at the tactic's end (`atEnd`, read only then). */
+function afterOf(at: Places, before: Goal[] | null, after: Goal[] | null, atEnd: () => Goal[] | null): Pick<GoalsAnswer, "after" | "afterFrom"> {
+  if (!at.end) return { after };
+  if (after) return { after: afterTheLine(before, after), afterFrom: at.after.line };
+  return { after: atEnd() };
 }
 
 /** Null after `ms`: what a question for Lean is raced against. */
