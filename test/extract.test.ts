@@ -13,6 +13,8 @@ import { History } from "../src/server/history.ts";
 import { copyFixture, extractor, fixtureToolchain } from "./fixturecopy.ts";
 import { OutsideSources } from "../src/server/outside.ts";
 import { findRenames } from "../src/server/renames.ts";
+import { isDeclName } from "../src/server/hover.ts";
+import { alsoList, generatedName } from "../src/web/src/panel.ts";
 
 /** the extractor, compiled as the server runs it (test/fixturecopy.ts) */
 const EXTRACT = await extractor();
@@ -231,6 +233,20 @@ test("what a command writes under hygienic names (Mathlib's `irreducible_def`) i
   assert.equal(g.edges.find(([s, d]) => s === id("Fixture.positive") && d === id("Fixture.positive_def")), undefined);
   // the lemma's statement is about the definition
   assert.ok(((g.edges.find(([s, d]) => s === id("Fixture.positive_def") && d === id("Fixture.positive"))?.[2] ?? 0) & SITE_STMT) !== 0);
+});
+
+test("the page says what `hidden_def` hides by what the macro wrote, and asks Lean nothing of it (test/hygiene.test.ts)", opts, () => {
+  for (const unit of ["Fixture.positive", "Fixture.Pair.corner"]) {
+    const also = g.nodes[id(unit)].also ?? [];
+    // the panel's "Also declares" read "2, 2" (the hygiene's numbers), the source window two "#print 2"
+    assert.equal(alsoList(unit, also).replace(/<[^>]+>/g, ""), "definition, wrapped", unit);
+    for (const a of also) {
+      assert.equal(generatedName(unit, a).hygienic, true, a);
+      assert.equal(isDeclName(a), false, `${a}: the server would refuse its #print`);
+    }
+  }
+  // what Lean generated otherwise keeps its #print
+  assert.ok((g.nodes[id("Fixture.Pair")].also ?? []).every((a) => !generatedName("Fixture.Pair", a).hygienic));
 });
 
 test("a value a command keeps behind an opaque constant is in its declaration's version: a new value, a new version", opts, () => {

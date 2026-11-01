@@ -79,7 +79,7 @@ import { cascadeRect, EDGE, FloatWindow } from "./floatwin.ts";
 import type { Rect, Size } from "./floatwin.ts";
 import { contextGutter, cutMarks, gutterDigits, rowMarks } from "./gutter.ts";
 import { escapeHtml, highlightLean, highlightLines, KEYWORDS, renderDoc, renderHover } from "./highlight.ts";
-import { genNote, interpretsHtml } from "./panel.ts";
+import { generatedName, genNote, interpretsHtml } from "./panel.ts";
 import type { PastGraph } from "./past.ts";
 import { pastNote, pastText } from "./pastsource.ts";
 import type { RefAnswer } from "./highlight.ts";
@@ -2026,11 +2026,15 @@ export class SourceWindow implements SourcePane {
    *  the latest build. */
   private generatedHtml(unit: string, also: readonly string[]): string {
     if (!also.length) return "";
-    const shortOf = (a: string) => (a.startsWith(unit + ".") ? a.slice(unit.length + 1) : a.split(".").pop()!);
+    const shortOf = (a: string) => generatedName(unit, a).short;
     if (this.still) return `<div class="sw-print"><div class="sw-print-h">What Lean generated from this command</div>${also.map((a) => `<div class="sw-gen-row"><code title="${escapeHtml(a)}">${escapeHtml(shortOf(a))}</code></div>`).join("")}</div>`;
     const rows = also
       .map((a) => {
         const short = shortOf(a);
+        // a name of the macro's hygiene (`irreducible_def`'s `definition`): said by what the macro
+        // wrote, with no #print, which cannot name it to Lean
+        if (generatedName(unit, a).hygienic)
+          return `<div class="sw-gen-row"><code class="sw-gen-hyg" title="${escapeHtml(`${a}: a name of the macro's hygiene, which Lean cannot be asked about`)}">${escapeHtml(short)}</code> <span class="sw-gen-cmd">· the macro's own name</span></div>`;
         const open = this.printOpen.has(a);
         return (
           `<div class="sw-gen-row"><button class="link sw-gen-name" data-sw-gen="${escapeHtml(a)}" title="What Lean made of ${escapeHtml(a)} (#print)">` +
