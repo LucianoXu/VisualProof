@@ -224,6 +224,14 @@ interface WholeFile {
   compiled: string[] | null;
 }
 
+/** What File mode says of a declaration it does not find in the text on show: it has no place
+ *  recorded, or it is not there (any more). */
+function notThere(v: Graph["nodes"][number], era: "now" | "then"): string {
+  return v.range
+    ? `<div class="banner bad">${escapeHtml(v.name)} is not in this text${era === "then" ? " at this build" : " any more under this name"}.</div>`
+    : `<div class="banner">No source position was recorded for ${escapeHtml(v.name)}.</div>`;
+}
+
 /** The piece of `chunks` holding line `line`, or -1. */
 function chunkAt(chunks: readonly Chunk[], line: number): number {
   let lo = 0, hi = chunks.length - 1;
@@ -1532,7 +1540,7 @@ export class SourceWindow implements SourcePane {
     const own = this.ownDecl();
     const ownAt = own ? chunkAt(chunks, own.start) : -1;
     const review = v ? `<div class="sw-review">${this.box.html(i)}</div>` : "";
-    if (v && !own) notes.push(`<div class="banner bad">${escapeHtml(v.name)} is not in this text${this.era === "then" ? " at this build" : " any more under this name"}.</div>`);
+    if (v && !own) notes.push(notThere(v, this.era));
     const body = chunks.map((_, k) => this.pieceHtml(k) + (k === ownAt ? review : "")).join("");
     this.paintFile(
       this.fileHead(this.fileWhere(place, edited), this.ownEditor(edited), remoteFor(...this.ownLines())),
@@ -1615,7 +1623,15 @@ export class SourceWindow implements SourcePane {
    *  or one not found. */
   private ownDecl(): FileDecl | null {
     const w = this.whole;
-    return w && this.current >= 0 ? (w.decls.find((d) => d.i === this.current) ?? null) : null;
+    if (!w || this.current < 0) return null;
+    const d = w.decls.find((x) => x.i === this.current);
+    if (d) return d;
+    // one Lean generated from a command, which is not the file's own: its command's lines, as
+    // Declaration mode shows them
+    const v = w.g.nodes[this.current];
+    if (v.gen === undefined || !v.range || v.module !== w.module) return null;
+    const at = excerptOf(w.lines, w.edited, v.name, v.range);
+    return at ? { i: this.current, start: at.start, end: at.end, head: at.start } : null;
   }
 
   /** The window stepped to another declaration of the text on show (the selection followed, the
@@ -1626,7 +1642,7 @@ export class SourceWindow implements SourcePane {
     const w = this.whole!;
     const v = this.current >= 0 ? this.g.nodes[this.current] : null;
     const own = this.ownDecl();
-    if (v && !own) notes.push(`<div class="banner bad">${escapeHtml(v.name)} is not in this text${this.era === "then" ? " at this build" : " any more under this name"}.</div>`);
+    if (v && !own) notes.push(notThere(v, this.era));
     const headEl = this.frameEl.querySelector(".sw-head");
     if (headEl) headEl.outerHTML = this.fileHead(this.fileWhere(place, edited), this.ownEditor(edited), remoteFor(...this.ownLines()));
     for (const b of this.frameEl.querySelectorAll(":scope > .banner")) b.remove();
@@ -1637,6 +1653,9 @@ export class SourceWindow implements SourcePane {
     const body = this.frameEl.querySelector<HTMLElement>(".sw-file");
     let r = this.frameEl.querySelector<HTMLElement>(".sw-review");
     if (!v) r?.remove();
+    // drawn again on the same declaration (the review changed, the selection followed to it again):
+    // its review box drawn again where it is, a comment being written keeping its place
+    else if (!fresh && r) this.redrawReview();
     else if (body) {
       if (!r) {
         r = document.createElement("div");

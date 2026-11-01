@@ -923,7 +923,7 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
    for the positions Lean is asked at, a mark in its place that shows it */
 .pf-mark { display: none; }
 .sw-folds .pf-mark:not(.pf-open) {
-  display: inline; margin: 0 1px; padding: 0 6px; border: 0; border-radius: 5px; background: var(--code-bg); color: var(--text-2);
+  display: inline; margin: 0 1px 0 0.5ch; padding: 0 6px; border: 0; border-radius: 5px; background: var(--code-bg); color: var(--text-2);
   font: 11.5px/1.4 var(--mono); text-indent: 0; cursor: pointer; vertical-align: baseline;
 }
 .sw-folds .pf-mark:not(.pf-open)::before { content: "⋯ proof"; }
