@@ -7,7 +7,7 @@
 // server, a session gone; files held to the agent's folder; credentials kept from every other program.
 
 import assert from "node:assert/strict";
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -178,7 +178,8 @@ test("an agent the server runs answers in its private channel and the public one
     assert.equal(env.CLAUDE_CODE_DISABLE_AUTO_MEMORY, "1");
     assert.equal(env.CLAUDE_CONFIG_DIR, join(dir, "claude"));
     assert.deepEqual(Object.keys(env).filter((k) => k.startsWith("VISUALPROOF_")), []);
-    assert.equal(first.cwd, join(dir, "work"));
+    // as the system resolves it (macOS's /var is /private/var)
+    assert.equal(realpathSync(first.cwd), realpathSync(join(dir, "work")));
     assert.match(first.stdin, /^VisualProof — A message from the page:/, "never a slash command");
     assert.match(first.stdin, /Alice wrote to you, in your private channel/);
     assert.match(first.stdin, /Hi, what is N\.b\?/);
