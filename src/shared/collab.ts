@@ -146,15 +146,15 @@ export type PinnedWindow = { decl: string; collapsed: boolean; mode?: "file" } |
 
 /** The InfoView's caret (ReviewSpec, "The InfoView"; followed, the owner's decision of 2026-11-01):
  *  the source window it is in — the one following the selection, or the reader's pinned window
- *  (`pinned`) on that declaration —, where in the file (a line from 0, a UTF-16 column, as Lean
- *  counts), and whether the goals after the tactic are on show rather than those before. */
-export interface CaretView {
-  decl: string;
+ *  (`pinned`) on that declaration, or their file window on a file (`file`, by its module: the owner's
+ *  decisions of 2026-11-08, 0.11, the InfoView in File mode) —, where in the file (a line from 0, a
+ *  UTF-16 column, as Lean counts), and whether the goals after the tactic are on show rather than
+ *  those before. */
+export type CaretView = ({ decl: string; pinned?: true } | { file: string }) & {
   line: number;
   character: number;
   after?: true;
-  pinned?: true;
-}
+};
 
 /** Where a reader is: what the others see of them, and what following them restores. */
 export interface PresenceView {
@@ -667,13 +667,20 @@ export function cleanView(v: unknown): PresenceView | null {
     av && typeof av.open === "boolean" && kind && who ? { open: av.open, kind, who, ...(typeof av.mine === "string" && validName(av.mine) ? { mine: av.mine } : {}) } : null;
   const lost = o.lostFound && typeof o.lostFound === "object" ? (o.lostFound as Record<string, unknown>).open : undefined;
   const scheme = one(BOARD_SCHEMES, o.scheme);
-  // the InfoView's caret: a declaration's name, a place within any file's bounds
+  // the InfoView's caret: a declaration's name or a file window's module, a place within any file's
+  // bounds
   const cv = o.caret && typeof o.caret === "object" ? (o.caret as Record<string, unknown>) : null;
   const place = (n: unknown, max: number) => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= max;
   const caretDecl = cv ? str(cv.decl) : null;
+  const caretFile = cv && !caretDecl ? str(cv.file, 300) : null;
   const caret: CaretView | null =
-    cv && caretDecl && place(cv.line, 10_000_000) && place(cv.character, 100_000)
-      ? { decl: caretDecl, line: cv.line as number, character: cv.character as number, ...(cv.after === true ? { after: true } : {}), ...(cv.pinned === true ? { pinned: true } : {}) }
+    cv && (caretDecl || caretFile) && place(cv.line, 10_000_000) && place(cv.character, 100_000)
+      ? {
+          ...(caretDecl ? { decl: caretDecl, ...(cv.pinned === true ? { pinned: true as const } : {}) } : { file: caretFile! }),
+          line: cv.line as number,
+          character: cv.character as number,
+          ...(cv.after === true ? { after: true as const } : {}),
+        }
       : null;
   const pinned = Array.isArray(o.pinned)
     ? o.pinned

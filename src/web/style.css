@@ -862,6 +862,12 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 }
 .iv-show span { color: var(--accent); font-weight: 700; }
 .iv-show:hover { color: var(--text); border-color: var(--accent); }
+/* in File mode, in the sticky header: in sight wherever in the file the reader is */
+.sw-sticky .iv-show { position: static; flex: none; box-shadow: none; }
+/* a line the caret steps or is followed to is scrolled clear of what stands over the code: the pane
+   below it (--iv-below, as tall as it is), File mode's sticky header */
+.sw-scroll { scroll-padding-bottom: var(--iv-below, 0px); }
+.sw-file-mode .sw-scroll { scroll-padding-top: 36px; }
 /* the caret's line in the code, and its tactic (the CSS Custom Highlight API, where the browser has it) */
 .sw-win .sw-body pre.src .ln.ln-caret { background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius: 4px; }
 ::highlight(vp-tactic) { background-color: color-mix(in srgb, var(--accent) 20%, transparent); }

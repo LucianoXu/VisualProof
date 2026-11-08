@@ -971,9 +971,10 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   the toolchain's tag), where it is on GitHub. Where the package is at another revision than when
   the graph was read, the window shows its present text, found by name, under a warning. A
   read-only reader reads these too.
-- **The InfoView** (the owner's decisions of 2026-11-01): click in the code of a source window — or
-  move the keyboard's caret there — and a pane beside the code (below it in a narrow window and on a
-  phone) shows what Lean's InfoView shows in an editor, live from the same language server: the
+- **The InfoView** (the owner's decisions of 2026-11-01): click in the code of a source window — in
+  either mode, the declaration or the whole file (below) — or move the keyboard's caret there — and
+  a pane beside the code (below it in a narrow window and on a phone) shows what Lean's InfoView
+  shows in an editor, live from the same language server: the
   goals before the tactic at the caret, **After** for the goals after it, and at a term its expected
   type. After a tactic that holds a proof of its own (`have h : P := by simp`) is after the whole
   line: the goals the proof goes on from at its next line ("As line 50 begins"), `h` marked as added,
@@ -1009,8 +1010,12 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   opens the file from its top in a pinned window of its own, which stays on the file. A past build
   shows that build's text, a file changed since it was compiled its present text, with a mark only
   where a declaration's text is still the one compiled. Files of thousands of lines open at once:
-  their lines are drawn as you come to them. The InfoView works across the whole file: click in any
-  proof of it for its goals, and ↑ and ↓ step on through the file.
+  their lines are drawn as you come to them. The InfoView works across the whole file, as in
+  Declaration mode, and in a file window too (the owner's decision, 2026-11-08): click in any
+  declaration's proof for its goals, and ↑ and ↓ step on through the file, from one declaration to
+  the next, a folded proof they step into shown; hidden, its ⊢ Lean tab is in the bar over the code.
+  Those who follow you watch your caret there too. Following the selection to a declaration of
+  another file, the window leaves the caret behind.
 - On the canvas, the Status colours say what reviewers said about the present version (bluish
   green approved, a calm cobalt blue commented, orange stale, mid grey nobody yet, very light green
   trusted without review — in the dark theme a dim green, the quietest); the rows of a TCB list carry a dot of the same meaning. A target carries
