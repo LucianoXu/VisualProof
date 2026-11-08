@@ -378,6 +378,17 @@ export const TIPS: Tip[] = [
     manual: "together",
   },
   {
+    id: "agent-here",
+    group: "together",
+    title: "An agent that stays",
+    text: "Where the server allows it, Share runs your agent <b>on this server</b>, on your Claude Code token: given once, it answers until revoked, with no prompt to paste.",
+    who: "full",
+    where: "both",
+    since: "0.10.0",
+    about: ["#share-pop [data-tab=agent]", "#convo"],
+    manual: "together",
+  },
+  {
     id: "copy-link",
     group: "together",
     title: "Copy link",

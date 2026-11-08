@@ -108,7 +108,7 @@ export interface Caller {
   name: string | null;
   kind: Kind;
   /** the token the request came with: its id, who made it, what it lets the agent change, until when */
-  token?: { id: string; by: string; level: AgentLevel; expires: string };
+  token?: { id: string; by: string; level: AgentLevel; expires: string; runs?: "server" };
   /** the name the request's header gave, where a token's name was taken instead (the index says so) */
   ignoredName?: string;
   /** the personal link a person came by (CollabSpec decision 9): its id, who they are */

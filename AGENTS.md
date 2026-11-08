@@ -30,7 +30,8 @@ The tool is in `src/`; paths of code in its comments and in `SPEC/` are relative
 ## Invariants
 
 - It never builds a workspace it shows (`serve <path>`), and writes nothing into it nor into this
-  repository. A branch of a git repository it follows (`serve <git URL>`, `SPEC/DeploySpec.md`) it
+  repository — but an agent it runs with `--claude-oauth` (AgentSpec decision 10), which may change
+  and build the project when asked (SPEC.md, the owner's decision of 2026-11-08). A branch of a git repository it follows (`serve <git URL>`, `SPEC/DeploySpec.md`) it
   builds itself, in a clone of its own in the cache, never anyone's workspace. What it writes goes in
   the site folder (`--site`: the review and what the site accumulates) and the cache (`--cache`, a
   followed branch's clone and builds among it).

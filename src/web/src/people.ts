@@ -689,7 +689,7 @@ export class People {
           const where = s.view ? this.hooks.describe(s.view) : "";
           const who = p.name ? this.nameOf(p) : "A reader without a name";
           // an agent with a token: its state, as the server infers it, in words and as a dot
-          const talk = s.talk ? ` · ${stateWords(s.talk)}` : "";
+          const talk = s.talk ? `${s.runs === "server" ? ` · on this server, ${s.by ?? "its maker"}'s Claude Code` : ""} · ${stateWords(s.talk)}` : "";
           // what they made of this reader's request to follow, for a little while after
           const ask = p.agent ? null : (this.hooks.asked?.(p) ?? null);
           const does = !this.hooks.menu ? "click to follow" : p.agent ? `click to follow${s.talk ? " or talk with it" : " it"}` : "click to follow, or to ask them to follow you";

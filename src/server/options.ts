@@ -36,6 +36,9 @@ export interface Options {
   /** what agents may change (AgentSpec decision 9): nothing, advice and notes, or everything a
    *  person can do through the page */
   agents: AgentLevel;
+  /** --claude-oauth: Share may run agents on this server, on a Claude Code OAuth token their maker
+   *  gives (AgentSpec decision 10, experimental; server/hosted.ts) */
+  claudeOAuth: boolean;
   /** the file of the key whose link alone lets anyone in (server/access.ts); null: open to all */
   accessKeyFile: string | null;
   /** how many usage-pass workers run at once (server/usage.ts); 0: no pass */
@@ -87,7 +90,7 @@ function usage(code = 2): never {
                                          [--mathlib-cache shared|own] [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
-                                         [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}] [--lean-files ${KEEP_OPEN}]
+                                         [--agents read|advise|full] [--claude-oauth] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}] [--lean-files ${KEEP_OPEN}]
                                          [--public-url https://host] [--allowed-host name]... [--library-limit GB]
                                          [--updates auto|notify|off]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
@@ -168,6 +171,17 @@ function usage(code = 2): never {
            pins), each recorded as the agent's. An agent's opinion is advice whatever the level:
            shown apart, never counted; agent tokens stay with people.
 
+  --claude-oauth  (experimental) Share may also run an agent on this server, on the Claude Code
+           of the person who shares: they give their Claude Code OAuth token once (claude
+           setup-token, from a page over HTTPS or on this machine, under a name that is theirs
+           alone), and their agents run here, answering what people write to them, until revoked.
+           Needs Claude Code (claude) on this machine. The token is kept in the site, readable by
+           the server's user alone, and every answer spends its holder's Claude usage, whoever
+           asked. Such an agent has Claude Code's own tools here (a shell, files, the web) and
+           changes and builds the project when asked: whoever can talk to it can have it do what
+           this server's user can. Anthropic's terms do not allow a tool to keep subscription tokens or to answer
+           others with them: use it for a small team that accepts this, never for a public site.
+
   --jobs  how many modules the usage pass elaborates at once (default ${DEFAULT_JOBS}; 0: no pass). The
            pass finds which notation each declaration is written in and the exact context it is
            written in (TCBSpec.md, decisions 2 and 4); its findings follow the extractor's graph
@@ -245,7 +259,7 @@ export function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", accessKeyFile: null, jobs: DEFAULT_JOBS, leanFiles: null, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", claudeOAuth: false, accessKeyFile: null, jobs: DEFAULT_JOBS, leanFiles: null, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -261,6 +275,7 @@ export function parseArgs(argv: string[]): Options {
     else if (a === "--editor") o.editor = val();
     else if (a === "--access-key-file") o.accessKeyFile = resolve(val());
     else if (a === "--public") o.publicRead = true;
+    else if (a === "--claude-oauth") o.claudeOAuth = true;
     else if (a === "--recipe" && cmd === "artwork") o.recipe = resolve(val());
     else if (a === "--png" && cmd === "artwork") o.png = true;
     else if (a === "--svg" && cmd === "artwork") o.svg = true;

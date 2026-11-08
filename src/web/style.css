@@ -1436,6 +1436,7 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 /* nothing said since the conversation began: the button stays, with its tooltip, and does nothing */
 .cv-head [data-cv-new][aria-disabled="true"] { opacity: 0.4; cursor: default; background: transparent; color: var(--text-2); }
 .cv-head [data-cv-new][hidden] { display: none; }
+.cv-head [data-cv-stop][hidden] { display: none; }
 .cv-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px 12px; }
 #convo:not(.collapsed) > .fl-rz { display: block; position: absolute; z-index: 2; touch-action: none; }
 .fl-rz-n, .fl-rz-s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
@@ -1634,6 +1635,8 @@ body.following::after {
 .sh-note { font-size: 11.5px; line-height: 1.45; }
 .sh-form { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 10px; align-items: center; }
 .sh-field { display: contents; font-size: 12.5px; }
+/* a note within the form (the Claude token's, AgentSpec decision 10) spans both columns */
+.sh-form > .sh-note { grid-column: 1 / -1; }
 .sh-field > span { color: var(--text-2); }
 .sh-field input, .sh-field select {
   font: 12.5px var(--font); color: var(--text); background: var(--surface-solid); border: 1px solid var(--line); border-radius: 7px; padding: 5px 7px;

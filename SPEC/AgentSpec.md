@@ -1,6 +1,6 @@
 # VisualProof Agent Spec
 
-Supplements SPEC.md, "Agent". docs/agent-api/ is the agents' manual (served by
+Supplements SPEC.md, "Agent" (decision 10: agents the server runs). docs/agent-api/ is the agents' manual (served by
 `GET /api/agent/docs`, a topic a page): every endpoint, parameter and answer, the tokens and the MCP server. Access
 and tokens at rest: SECURITY.md. Presence, following and Share: CollabSpec.md.
 
@@ -125,6 +125,35 @@ and tokens at rest: SECURITY.md. Presence, following and Share: CollabSpec.md.
      (a rescope, folds, pins; ViewSpec decision 9). People always see it was an agent, and undo it
      as anyone's. The level is checked when an event is written; a log read back from disk is
      replayed as written.
+10. **Agents the server runs** (the owner's decisions of 2026-11-08; experimental, `--claude-oauth`,
+    off by default). Share's *AI agent* tab can run the agent on the server, on the Claude Code of
+    the person who shares, so that it stays without being shared again.
+    - **The person's Claude Code OAuth token** (`claude setup-token`; no API key), given once in
+      Share, from a page over HTTPS or on this machine, by a person whose name is theirs alone (a
+      personal link, a proxy's sign-in; on a server without a key reached on this machine only,
+      whoever gives the name). The server keeps it for that person's agents on the server; it is
+      never shown again, to anyone, nor sent to agents. Its holder replaces or removes it; their
+      personal link revoked removes it.
+    - **An agent like any other** (decisions 7–9): its own token, name, level and maker; its maker
+      in its private channel, anyone by a mention in the public channel; what its level allows,
+      whoever asks. What differs: its token never leaves the server, so there is no prompt and it
+      lasts until revoked; and the server listens for it. At most two per person.
+    - **It runs when it is handed something**: one turn of its own Claude Code session for what was
+      handed to it; what comes meanwhile goes in the next turn; between turns nothing runs. A new
+      conversation starts a new session. Its maker can stop a turn.
+    - **It is trusted with Claude Code's own tools** (the owner's decisions of 2026-11-08, after a
+      first version with VisualProof's alone): a shell, files, the web, subagents, on the server's
+      machine as its user; it reads the project's code directly, and **changes it and builds it with
+      Lake when asked** (SPEC.md, as the owner changed it). In a branch the server follows, the project
+      is the deployment's clone, which the next commit built resets. Denied: the site folder through
+      the file tools, and the tools that reach beyond it, to its maker's Claude account and their other
+      sessions. Nothing of the server's user's Claude Code configuration applies.
+    - **States** as decision 8's, *offline* also where its Claude Code cannot run (no token, the
+      token refused), said in its channel; at the usage limit it says until when, and what came
+      meanwhile is answered after.
+    - Anthropic's terms do not allow a tool to keep subscription tokens nor to answer others with
+      them; the owner chose this for a small team, knowingly. The option, the README and SECURITY.md
+      say so.
 
 ## Implementation notes
 
@@ -256,6 +285,52 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
   agent's presence entry, under its name, marked `agent`; its rate is counted per token (else per
   name). An agent not listed (one without a token beyond the 32) is refused (409). The answer waits
   for the request to end, every page answered or 30 s and 3 s, or for the agent to go away.
+
+### Agents the server runs (decision 10)
+
+- **The Claude tokens** (server/claudetokens.ts): `<site>/claude-tokens.json` (mode 600), one per
+  person — their personal link's id, else their name, as `madeBy` compares makers. `POST
+  /api/share/claude {token}` gives one (an `sk-ant-oat…` shape; `sk-ant-api…` refused), only from an
+  `Origin` over `https:` or of this machine; `POST /api/share/claude/remove` removes it; `GET
+  /api/share/agents` says `server: {available, refused, token: {given, refused} | null, perPerson}`,
+  null without `--claude-oauth`. A token Claude Code refused is marked and not used again until given
+  anew.
+- **Making one**: `POST /api/share/agents {runs: "server", name?, level?}`: the token record carries
+  `runs: "server"` and `expires` UNTIL_STOPPED (9999-12-31); no prompt (`…/prompt` answers 400).
+  409 without a Claude token in use, or past two in force.
+- **Listening and turns** (server/hosted.ts): the server waits on the agent's inbox in-process, with
+  `session` its Claude session id. A batch is rendered as `wait_for_message` renders it, after a first
+  line `VisualProof — …` (never a slash command), and run as `claude -p --output-format stream-json
+  --verbose (--session-id|--resume) <uuid> --strict-mcp-config --mcp-config <dir>/mcp.json --add-dir
+  <project> --permission-mode bypassPermissions --permission-prompts none --disallowedTools
+  <denied(site)> --max-turns 100 --append-system-prompt-file <dir>/prompt.md`, cwd the agent's own
+  `work/`, the batch on stdin, at most 60 minutes; denied: `Read`, `Edit`, `Write` of `//<site>/**`,
+  and RemoteTrigger, SendMessage, ListAgents, CronCreate, CronDelete, CronList, ScheduleWakeup,
+  Workflow, EnterWorktree, ExitWorktree. While a turn runs the agent is seen every minute (a long
+  build is not offline); when it ends, its process group is ended (what its shell left running). Environment: PATH, HOME, LANG, TMPDIR,
+  `CLAUDE_CONFIG_DIR=<dir>/claude`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS`,
+  `…_AUTO_MEMORY`, `…_BUNDLED_SKILLS`, `…_NONESSENTIAL_TRAFFIC`, `DISABLE_AUTOUPDATER` (all "1"); never
+  `ANTHROPIC_API_KEY`, which would win over the token, nor `VISUALPROOF_*`. (`--bare` reads no OAuth;
+  `--safe-mode` drops `--mcp-config` too; a CLAUDE.md of a folder above is read unless disabled:
+  the spike of 2026-11-08, Claude Code 2.1.319; bypassPermissions works under OAuth in `-p`, and a
+  deny rule holds there, `Edit(//…/**)` and `Bash(…:*)` alike, a compound command too.)
+- **Its answer** is the `reply` tool's; a turn that replied nothing posts its final text. A refused
+  token (`api_retry` `authentication_failed`, or a 401 result), the usage limit (`rate_limit_event`
+  status `rejected`, its `resetsAt`; or a 429 result), a turn past its time, Claude Code failing or
+  missing are posted as the agent's message in the channel of the last message handed. A resume
+  of a session Claude Code does not have ("No conversation found") starts a new one, once.
+- **Its folder** `<cache>/agents/<token id>/` (0700): `work/`, `claude/`, `files/`, `mcp.json` (0600,
+  its token, `VISUALPROOF_URL` this server on this machine, `VISUALPROOF_FILES`), the MCP server
+  as `GET /api/agent/mcp` serves it, `prompt.md` (prompt.ts, hostedPrompt), `session.json`, and
+  `batch.json` while a batch is not answered (a server stopped meanwhile hands it again once at its
+  next start, saying so; a token refused keeps it for the next). Removed when the token ends.
+- **The MCP server** with `VISUALPROOF_FILES` resolves `saveTo` and `path` in that folder (a name,
+  or a path whose realpath stays in it) and sends no leave when its client ends; the server's tool
+  list leaves out `wait_for_message` for a server-run token, and its instructions say turns.
+- **Stop**: `POST /api/chat/stop {agent}` (presence id), from its maker alone, ends the turn
+  (its process group); the page shows it in the conversation's head while the agent thinks or works.
+- **Credentials kept from everything else**: `childEnv()` (server/children.ts) passes no
+  `CLAUDE_CODE_OAUTH_TOKEN` nor `ANTHROPIC_*` to any program the server runs.
 
 ### Level full (decision 9)
 

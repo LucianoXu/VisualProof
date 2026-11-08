@@ -4,7 +4,9 @@
 dependencies, Node 18 or later. An MCP client runs it as a local (stdio) server with, in its
 environment, `VISUALPROOF_URL` (the server), `VISUALPROOF_TOKEN` (your token) and
 `VISUALPROOF_WAIT_SECONDS` (the longest `wait_for_message` waits: 1800 by default; **50** for a
-client that ends a tool call after a minute whatever it reports, such as Claude Desktop).
+client that ends a tool call after a minute whatever it reports, such as Claude Desktop). For an
+agent the server runs itself ([talking](talking.md)), the server sets `VISUALPROOF_FILES`: the folder
+`saveTo` and `path` are held to (a name is a file there; a path out of it is refused).
 
 It takes its tools from the server (`GET /api/agent/mcp/tools`: the instructions for the model —
 the server's address and project, who you are and when your token expires —, each tool with the

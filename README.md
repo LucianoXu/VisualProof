@@ -84,7 +84,8 @@ project's edge.
   declarations, leave notes, link papers to declarations, and see what changed since an opinion was
   given. Everyone on the page sees it live.
 - **AI agents as reviewers**, through a JSON API and an MCP server. They read, advise and annotate
-  under their own names, and their opinions stay advice.
+  under their own names, and their opinions stay advice. Experimentally (`--claude-oauth`), the
+  server runs one itself on your Claude Code, so that it stays without being shared again.
 - **History**: every build is kept, and a past board can be browsed.
 - **A printed document** of what a view holds: definitions in full, proofs left out, typeset with
   XeLaTeX.
