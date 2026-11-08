@@ -75,7 +75,12 @@ is TCBSpec decision 3's.
     what it carried and its undo; and a lost name's suggestions, first.
 13. **Actions**: **Show in history** (the Time Machine at the last snapshot that had it, on it);
     **Attach to…** (a current declaration; appends a move); **Archive** (hidden, still kept, can be put
-    back).
+    back). **Unmark** (the owner's decision of 2026-11-08): a target the graph no longer has is taken
+    off — from its entry here, and from its row in the side panel's Targets, where it says "not in the
+    graph now" — after a second press ("Unmark it?"), since the page cannot mark it again while no
+    declaration of that name is there. It is the review's untarget, which the timeline records with
+    who did it; its entry leaves the list (nothing is lost any more), and the history keeps that it
+    was a target. Not on a read-only page nor in a snapshot.
 14. **Its entry point** is the build-status popover (decision 15).
 
 ### The Time Machine

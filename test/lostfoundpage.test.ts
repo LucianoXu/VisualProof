@@ -195,6 +195,49 @@ test("the drawer: Lost by name with the last build and the suggestions first, th
   assert.deepEqual(d.migrations().map((m) => m.key), ["move:m1", "move:m2"]);
 });
 
+test("a lost target's entry: Unmark, pressed twice, takes the target off; no other entry has it, nor a page that cannot change the review (HistorySpec decision 13)", async () => {
+  const api: LostApi = {
+    builds: async () => null,
+    list: async () => answer(),
+    archive: async () => ({ ok: true, changed: true }),
+    move: async () => ({ ok: true }),
+    unmove: async () => ({ ok: true }),
+  };
+  const unmarked: string[] = [];
+  const hooks = (unmark?: LostHooks["unmark"]): LostHooks => ({
+    has: () => false, go: () => {}, hasView: () => true, openView: () => {}, hasNote: () => true, showNote: () => {},
+    comment: (text) => text, pick: async () => null, timeMachine: () => {}, ensureName: async () => "Alice", nameLost: () => {}, toggled: () => {}, changed: () => {},
+    ...(unmark ? { unmark } : {}),
+  });
+  const el = drawerEl();
+  const d = new LostAndFound(el as unknown as HTMLElement, api, hooks(async (name) => (unmarked.push(name), null)));
+  d.toggle(true);
+  await new Promise((ok) => setTimeout(ok, 0));
+  // the target's entry has Unmark before Archive; the opinion's, the pin's, the note's, the key's none
+  assert.match(el.innerHTML, /data-lf-key="target:My\.gone">[^]*?<button class="lf-arch lf-unmark" data-lf-unmark title="Unmark target[^"]*">Unmark<\/button><button class="lf-arch" data-lf-archive/);
+  assert.equal(el.innerHTML.match(/data-lf-unmark/g)?.length, 1);
+  // the first press asks
+  el.click({ "data-lf-g": "0", "data-lf-e": "0", "data-lf-unmark": "" });
+  await new Promise((ok) => setTimeout(ok, 0));
+  assert.deepEqual(unmarked, []);
+  assert.match(el.innerHTML, /<button class="lf-arch lf-unmark armed" data-lf-unmark title="Press again[^"]*">Unmark it\?<\/button>/);
+  // the second takes it off, by the name it is under
+  el.click({ "data-lf-g": "0", "data-lf-e": "0", "data-lf-unmark": "" });
+  await new Promise((ok) => setTimeout(ok, 0));
+  assert.deepEqual(unmarked, ["My.gone"]);
+  // pressed on another kind of entry: nothing
+  el.click({ "data-lf-g": "0", "data-lf-e": "1", "data-lf-unmark": "" });
+  el.click({ "data-lf-g": "0", "data-lf-e": "1", "data-lf-unmark": "" });
+  await new Promise((ok) => setTimeout(ok, 0));
+  assert.deepEqual(unmarked, ["My.gone"]);
+  // a page that cannot change the review (no hook): no Unmark
+  const ro = drawerEl();
+  const r = new LostAndFound(ro as unknown as HTMLElement, api, hooks());
+  r.toggle(true);
+  await new Promise((ok) => setTimeout(ok, 0));
+  assert.doesNotMatch(ro.innerHTML, /data-lf-unmark/);
+});
+
 test("Activity: each migration an event of the review — who, from → to, the server's or by hand, undone or not — leading to its entry", () => {
   setPeople([{ id: "0123456789", name: "Caroline", was: ["Carol"], revoked: null } as never]);
   const el = () => ({ addEventListener: () => {}, classList: { toggle: () => {} } });

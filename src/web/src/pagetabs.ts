@@ -142,6 +142,9 @@ export function tabsPart(page: Page): TabsPart {
       return i === undefined ? null : page.flowNow.keyProgress(i);
     },
     open: (id, target) => openTarget(id, target),
+    // a target gone from the graph taken off from its row (HistorySpec decision 13), under the
+    // reader's name
+    unmark: async (target) => ((await page.people.ensure()) ? page.submit({ op: "target", name: target, on: false }) : "A target is unmarked under your name: give one first."),
     title: (id) => page.views.title(id),
     shut: page.shut,
     toggle: page.toggleSection,

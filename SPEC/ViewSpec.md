@@ -242,7 +242,8 @@ of invisible clusters" is the view's hidden levels (decision 24).
       but the Project and a past build's view, appends the target and keeps the view. The view it
       leaves keeps scope, arrangement and focus. A linked view always shows the latest build. A link
       set by someone is a timeline event and a board note; the server's and a click's are not.
-    - **Unmarking** unlinks that target alone; the view stays.
+    - **Unmarking** unlinks that target alone; the view stays. A target gone from the graph is
+      unmarked from its row in Targets or its lost-and-found entry (HistorySpec decision 13).
     - **A linked view is a view with a ★** (yellow, on its tab and in the Views menu, tooltip naming
       its targets); nothing else names it apart. Older `review:<T>` views are plain views.
     - **The Views menu** is one list: the Project, kept views (linked ones first, by first target, then

@@ -797,7 +797,8 @@ left is the board, the buttons at the bottom right are your eyes (zoom and fit; 
 lock, edges, the linear form, theme), the top holds your tabs and your mode.
 
 - **The side panel**: the **targets**, each with its progress, opening its view on the target (one
-  with no view is given a temporary view of its TCB, linked to it while it lasts); then the cluster tree, whose rows select their cluster. Over the tree, **⚙ Board** opens
+  with no view is given a temporary view of its TCB, linked to it while it lasts; one the graph no
+  longer has says "not in the graph now", and **Unmark** beside it, pressed twice, takes it off); then the cluster tree, whose rows select their cluster. Over the tree, **⚙ Board** opens
   the board's settings beside the panel — its **Filter** (folded at first), clustering, depth and
   Re-layout — and **Trusted** (with how many prefixes) what is trusted. The targets and the filter
   fold away (a click on their heading; kept in this browser).
@@ -1062,8 +1063,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   notes naming them — under the name each was said of, with who and when, the renames suggested for
   it first; every migration, with what it carried and its Undo; and what is archived. **Show in
   history** opens the Time Machine at the last build that had the name; **Attach to…** picks a
-  declaration with the search and moves what was said there; **Archive** hides an entry for
-  everyone, **Put back** returns it (`<site>/history/archive.jsonl`; `GET /api/history/lost`,
+  declaration with the search and moves what was said there; **Unmark** (a target's entry, pressed
+  twice) takes the target off — the timeline says who, the history keeps that it was one; **Archive**
+  hides an entry for everyone, **Put back** returns it (`<site>/history/archive.jsonl`; `GET /api/history/lost`,
   `/last?name=`, `/archive`, `POST /api/history/archive {key, on}`). Activity lists each migration,
   leading to it.
 - **The Time Machine** ([HistorySpec.md](../SPEC/HistorySpec.md), decisions 15–19): `t` shows the view on
