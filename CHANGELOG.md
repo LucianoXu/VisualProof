@@ -5,6 +5,12 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.10.0
+
+- Run an AI agent on the server itself (experimental, `--claude-oauth`, off by default): in Share's *AI agent* tab, *Runs: on this server* starts one on your Claude Code OAuth token (`claude setup-token`), given once and never shown again. It listens until revoked — no prompt to paste, nothing to share again — and answers you in private and anyone who mentions it in public, one turn of its own Claude Code session per batch of messages. It has Claude Code's own tools: it reads the project's code, and changes and builds it when asked. Stop an answer from the conversation's head. Only someone invited by a personal link, or signed in by the proxy, gives a token; Anthropic's terms do not allow a tool to keep subscription tokens or to answer others with them, so keep it to a small team ([SECURITY.md](SECURITY.md)).
+- Keep Claude's and Anthropic's credentials in the server's environment from the programs it runs: Lake, Lean, git and a followed branch's build no longer see them.
+- `visualproof doctor` says whether Claude Code is installed.
+
 ## 0.9.0
 
 - Read the whole file in the source window: *Declaration | File* in its title bar shows the file the declaration is in, every declaration marked as the Status colouring marks it, the one selected lit, the one you are reading named at the top; *Fold proofs* folds each proof to a line. Open a file from the Files tree or from the board's menu on a file. Agents read a file a few hundred lines at a time.
