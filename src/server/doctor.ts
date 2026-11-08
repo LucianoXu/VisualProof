@@ -224,13 +224,14 @@ export function doctor(o: DoctorOptions): Report {
   if (exec("git", ["--version"]) === null) {
     checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them; a branch cannot be followed (serve <git URL>)" });
   }
-  // the agents a server runs on their makers' Claude Code (--claude-oauth, AgentSpec decision 10)
+  // the server's own agent (--claude-oauth, AgentSpec decision 10): Claude Code, and how to give it
+  // its token
   const claude = findClaude();
   const claudeVersion = exec(o.run ? "claude" : (claude ?? "claude"), ["--version"]);
   checks.push(
     claudeVersion
-      ? { level: "ok", what: `Claude Code ${claudeVersion.trim().split(/\s/)[0]} (for --claude-oauth, agents the server runs)` }
-      : { level: "info", what: "Claude Code (claude) not found: needed only for --claude-oauth (agents the server runs)", fix: "npm install -g @anthropic-ai/claude-code" },
+      ? { level: "ok", what: `Claude Code ${claudeVersion.trim().split(/\s/)[0]} (for --claude-oauth, the server's own agent: claude setup-token prints its token; put it alone in a file, chmod 600, and give --claude-oauth <file>, or --claude-oauth env with CLAUDE_CODE_OAUTH_TOKEN set)` }
+      : { level: "info", what: "Claude Code (claude) not found: needed only for --claude-oauth (the server's own agent)", fix: "npm install -g @anthropic-ai/claude-code, then claude setup-token: its token alone in a file (chmod 600), and serve … --claude-oauth <file>" },
   );
 
   const film = filmLine(o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES);

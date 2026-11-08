@@ -3,6 +3,12 @@
 // person's mention of it in the public one — its replies, its conversation, the public channel, and
 // the line that says what it is doing; and what each of its requests shows it doing (doingOf), which
 // the people talking to it see. The channels are server/talk.ts's.
+//
+// The server's own agent (AgentSpec decision 10) has a conversation with each person and one in the
+// public channel, each a session of its own, several of whose turns may run at once
+// (server/hosted.ts): what its requests say of "its private channel" — where a reply goes by
+// default, the conversation, its line — is the one of the turn the request comes from
+// (X-VisualProof-Turn), never another person's. It has no inbox: the server hands it its turns.
 
 import type { Message } from "./talk.ts";
 import { MAX_AGENT, MAX_STATUS, MAX_WAIT_S, PUBLIC, THREAD } from "./talk.ts";
@@ -19,14 +25,28 @@ export function talker(api: AgentApi, a: Ask): string | Answer {
   return a.caller.token.id;
 }
 
+/** The server's own agent's turn a request comes from: its conversation's channel (PUBLIC, or the
+ *  person's) and kind; an answer where none runs (a request from outside a turn, or after it). */
+function turnOf(api: AgentApi, a: Ask): { channel: string; kind: "public" | "private" } | Answer {
+  return api.world.turns?.turnOf(a.turn) ?? fail(409, "No turn of yours is running: what you write answers the turn it is written in.", "Answer within your turn, with the reply tool; the server hands you the next messages as a new turn.");
+}
+
 /** The agent's conversation, the last messages (people's and its own), oldest first: since it last
- *  began (its last divider), or with `all` those before too. */
+ *  began (its last divider), or with `all` those before too. The server's own agent's is that of
+ *  the turn it asks from. */
 export function conversation(api: AgentApi, a: Ask): Answer {
   const t = talker(api, a);
   if (typeof t !== "string") return t;
+  let channel = t;
+  if (a.caller.token!.runs === "server") {
+    const turn = turnOf(api, a);
+    if ("status" in turn) return turn;
+    if (turn.kind === "public") return fail(400, "This turn answers the public channel, which has no conversation of its own.", "Read it with GET /api/agent/channel (the channel tool).");
+    channel = turn.channel;
+  }
   const limit = clampInt(a.query.get("limit"), 50, 1, THREAD);
   const all = flag(a.query.get("all"));
-  const c = api.world.talk!.conversation(t, limit, all);
+  const c = api.world.talk!.conversation(channel, limit, all);
   const divider = c.divider ? { id: c.divider.id, at: c.divider.at, from: c.divider.from } : null;
   return ok({
     ...api.world.talk!.talk(t),
@@ -42,6 +62,7 @@ export function conversation(api: AgentApi, a: Ask): Answer {
 export async function inbox(api: AgentApi, a: Ask): Promise<Answer> {
   const t = talker(api, a);
   if (typeof t !== "string") return t;
+  if (a.caller.token!.runs === "server") return fail(409, "The server hands you what people write as turns: you have no inbox to wait on.", "Answer with the reply tool, then end your turn: the next messages come by themselves.");
   const secs = (k: string, dflt: number): number | null => {
     const raw = a.query.get(k);
     if (raw === null || raw.trim() === "") return dflt;
@@ -75,6 +96,12 @@ export function status(api: AgentApi, a: Ask): Answer {
   if (raw !== undefined && raw !== null && typeof raw !== "string") return fail(400, "text is a string.", 'Send {"text": "reading the TCB…"}; an empty text clears your line.');
   const text = (raw ?? "").replace(/\s+/g, " ").trim();
   if (text.length > MAX_STATUS) return fail(400, `A status line is at most ${MAX_STATUS} characters.`, "Say it shorter: it is one line beside your state.");
+  if (a.caller.token!.runs === "server") {
+    const turn = turnOf(api, a);
+    if ("status" in turn) return turn;
+    const talk = api.world.turns!.setStatus(a.turn, text || null)!;
+    return ok({ ok: true, state: talk.state, status: talk.status });
+  }
   const talk = api.world.talk!.setStatus(t, text || null);
   return ok({ ok: true, state: talk.state, status: talk.status });
 }
@@ -89,12 +116,22 @@ export function reply(api: AgentApi, a: Ask): Answer {
   const text = typeof b.text === "string" ? (b.text as string).trim() : "";
   if (!text) return fail(400, "text is missing.", 'Send {"text": "your answer"}: plain text with simple Markdown, declarations by their full names.');
   if (text.length > MAX_AGENT) return fail(400, `A reply is at most ${MAX_AGENT.toLocaleString("en")} characters.`, "Say it shorter, or in two replies.");
-  const channel = b.channel === undefined || b.channel === null ? api.world.talk!.lastChannel(t) : b.channel;
+  // the server's own agent answers the conversation of the turn it replies in: a person's, or the
+  // public channel's (AgentSpec decision 10), whichever other turns run meanwhile
+  const hosted = a.caller.token!.runs === "server";
+  const turn = hosted ? turnOf(api, a) : null;
+  if (turn && "status" in turn) return turn;
+  const channel = b.channel === undefined || b.channel === null ? (turn ? turn.kind : api.world.talk!.lastChannel(t)) : b.channel;
   if (channel !== "public" && channel !== "private") return fail(400, "channel is public or private.", "Leave it out to answer where the last message came from.");
+  if (turn?.kind === "public" && channel === "private") return fail(400, "This turn answers the public channel: it has no private conversation.", "Leave channel out, or say public.");
   const wait = api.world.talk!.allow("agent", t);
   if (wait) return fail(429, "Too many replies at once.", `Wait ${wait} s.`, { retryAfter: wait }, { "retry-after": String(wait) });
   const mentions = api.world.mentionable ? mentioned(text, api.world.mentionable().names) : [];
-  const m = api.world.talk!.post(channel === "public" ? PUBLIC : t, { from: a.caller.name!, kind: "agent", text, ...(mentions.length ? { mentions } : {}) }, t);
+  const m = api.world.talk!.post(channel === "public" ? PUBLIC : (turn?.channel ?? t), { from: a.caller.name!, kind: "agent", text, ...(mentions.length ? { mentions } : {}) }, t);
+  if (turn) {
+    api.world.turns!.replied(a.turn);
+    return ok({ ok: true, channel, id: m.id, at: m.at, next: "End your turn: the next messages come by themselves." });
+  }
   return ok({ ok: true, channel, id: m.id, at: m.at, next: "Wait for the next message (GET /api/agent/inbox?wait=…, or wait_for_message)." });
 }
 

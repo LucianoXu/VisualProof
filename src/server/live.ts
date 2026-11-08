@@ -15,7 +15,7 @@
 
 import { randomBytes } from "node:crypto";
 import type { ServerResponse } from "node:http";
-import type { ChatEvent, ChatMessage, Invited, Peer, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
+import type { AgentTalk, ChatEvent, ChatMessage, ChatStateEvent, Invited, Peer, PresenceView, PrivateCount, StreamHello } from "../shared/collab.ts";
 import { cleanFollowing, madeBy, nameKey, personKey, sameName } from "../shared/collab.ts";
 import { cleanPointer, RELAY_PER_S, roomOf } from "../shared/pointer.ts";
 import type { PointerNews, RoomPage } from "../shared/pointer.ts";
@@ -38,7 +38,7 @@ import { AgentTokens } from "./tokens.ts";
 import type { TokenRecord } from "./tokens.ts";
 import { Invites } from "./invites.ts";
 import { ReadOnlyLinks } from "./readonly.ts";
-import { forPages, PUBLIC, Talk } from "./talk.ts";
+import { forPages, isPersonal, personalChannel, PUBLIC, Talk } from "./talk.ts";
 import { Asks } from "./askfollow.ts";
 import type { ReviewChange, ReviewStore } from "./review.ts";
 import type { ReviewData, ReviewRev } from "../shared/review.ts";
@@ -73,8 +73,7 @@ import { withoutReasons } from "../shared/timeline.ts";
 import type { StoredEvent } from "../shared/timeline.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
 import { OutsideSources } from "./outside.ts";
-import { ClaudeTokens } from "./claudetokens.ts";
-import type { Hosted } from "./hosted.ts";
+import type { Hosted, Turns } from "./hosted.ts";
 import type { OutsideFile } from "./outside.ts";
 
 const TICK = 1000;
@@ -258,10 +257,8 @@ export class Live {
   readonly readOnly: ReadOnlyLinks;
   /** the conversations with agents, their waits and their states (AgentSpec decision 8, server/talk.ts) */
   readonly talk: Talk;
-  /** the Claude Code tokens people gave in Share, for the agents the server runs (AgentSpec decision
-   *  10, server/claudetokens.ts) */
-  readonly claudeTokens: ClaudeTokens;
-  /** the agents the server runs (server/hosted.ts): null without --claude-oauth */
+  /** the server's own agent, running (AgentSpec decision 10, server/hosted.ts): null without
+   *  --claude-oauth (runAgent) */
   hosted: Hosted | null = null;
   /** the requests to follow going on (CollabSpec decision 10, server/askfollow.ts): relayed to the
    *  pages asked through their streams, and their answers to the page that asked */
@@ -317,18 +314,16 @@ export class Live {
     this.invites.onChanged = () => this.send("people", this.invites.people());
     this.invites.onEnded = (r, keep) => {
       for (const st of [...this.streams.values()]) if (st.person === r.id && (keep === undefined || st.token !== keep)) this.close(st);
-      // a link revoked (not made anew) takes its holder's Claude token with it (AgentSpec decision 10)
-      if (r.revoked) this.claudeTokens.dropPerson(r.id);
     };
     this.readOnly = new ReadOnlyLinks(dirs.site);
     this.readOnly.onEnded = (l) => {
       for (const st of [...this.streams.values()]) if (st.readOnly === l.id) this.close(st);
     };
     this.talk = new Talk(dirs.site);
-    this.claudeTokens = new ClaudeTokens(dirs.site);
-    // a Claude token given, replaced, refused or removed starts its holder's agents on the server, or
-    // stops them
-    this.claudeTokens.onChanged = (who) => this.hosted?.changed(who);
+    // the server's own agent hears what is written to it as it is written, and says its state itself
+    // (server/hosted.ts)
+    this.talk.onPosted = (channel, m) => this.hosted?.posted(channel, m);
+    this.talk.hostedTalk = (id) => (this.hosted && this.hosted.id === id ? this.hosted.talk() : null);
     // what changes a view may change the lost-and-found: a pin of a name that is gone, a note
     this.views = new Views(dirs.site, LAYOUT_VERSION, (event, data) => {
       this.send(event, data);
@@ -382,8 +377,8 @@ export class Live {
     // read as each agent is first known, before any request of this server's life updates it:
     // whether it was offline while the server was not running
     this.talk.lastUsed = (id) => this.tokens.get(id)?.lastUsed ?? null;
-    this.presence.setTokens(this.tokens.inForce(), talkOf);
-    this.tokens.onChanged = () => this.presence.setTokens(this.tokens.inForce(), talkOf);
+    this.presence.setTokens(this.listedTokens(), talkOf);
+    this.tokens.onChanged = () => this.presence.setTokens(this.listedTokens(), talkOf);
     this.tokens.onEnded = (r) => {
       this.talk.close(r.id, r.revoked ? "revoked" : "expired");
       this.hosted?.ended(r.id);
@@ -1430,7 +1425,7 @@ export class Live {
    *  version (`update`), or a stop (`bye`) — and its stream ended, so that it comes back to the
    *  server that answers next. */
   end(why: { update: { from: string; to: string } } | { stopped: true }): void {
-    // the agents the server runs stop with it; a turn cut short is answered at the next start
+    // the server's own agent stops with it; a turn cut short is answered at the next start
     this.hosted?.close();
     const text = "update" in why ? `event: update\ndata: ${JSON.stringify(why.update)}\n\n` : `event: bye\ndata: ${JSON.stringify({ why: "stopped" })}\n\n`;
     for (const st of [...this.streams.values()]) {
@@ -1540,14 +1535,44 @@ export class Live {
 
   /** A message of a channel, sent to the pages that read it (CollabSpec decision 13): a public one to
    *  every page with a name, private readers' too; a private one only to the pages of the person
-   *  who made its agent's token (shared/collab.ts, madeBy), named by the agent's entry in presence;
-   *  nothing to a read-only reader's page, nor to a page without a name. */
+   *  who made its agent's token (shared/collab.ts, madeBy) — or, the server's agent's, to the pages
+   *  of the person whose channel with it it is — named by the agent's entry in presence; nothing to
+   *  a read-only reader's page, nor to a page without a name. */
   private sendChat(channel: string, message: ChatMessage): void {
     if (!this.streams.size) return;
-    const t = channel === PUBLIC ? null : (this.tokens.get(channel) ?? null);
+    const t = channel === PUBLIC ? null : (this.tokens.get(isPersonal(channel) ? channel.slice(0, 10) : channel) ?? null);
     if (channel !== PUBLIC && !t) return;
     const text = `event: chat\ndata: ${JSON.stringify({ channel: t ? agentKey({ name: t.name, token: t.id }) : PUBLIC, message: forPages(message) } satisfies ChatEvent)}\n\n`;
-    for (const st of [...this.streams.values()]) if (mayRead(st, t)) this.push(st, text);
+    for (const st of [...this.streams.values()]) if (mayRead(st, t, channel)) this.push(st, text);
+  }
+
+  /** The state of a person's own conversation with the server's agent (AgentSpec decision 10), to
+   *  that person's pages alone: what it does there is theirs. */
+  sendChatState(channel: string, talk: AgentTalk): void {
+    const t = this.tokens.get(channel.slice(0, 10));
+    if (!this.streams.size || !t || !isPersonal(channel)) return;
+    const text = `event: chat-state\ndata: ${JSON.stringify({ channel: agentKey({ name: t.name, token: t.id }), talk } satisfies ChatStateEvent)}\n\n`;
+    for (const st of [...this.streams.values()]) if (mayRead(st, t, channel)) this.push(st, text);
+  }
+
+  /** The tokens whose agents are listed: those in force, but the server's own agent's while the
+   *  server does not run it (started without --claude-oauth): it is nowhere then. */
+  listedTokens(): TokenRecord[] {
+    return this.tokens.inForce().filter((r) => r.runs !== "server" || r.id === this.hosted?.id);
+  }
+
+  /** The server's own agent runs (main.ts, with --claude-oauth): it is listed, and its conversations'
+   *  states go to their people's pages. */
+  runAgent(h: Hosted): void {
+    this.hosted = h;
+    h.onSession = (channel, talk) => this.sendChatState(channel, talk);
+    this.presence.setTokens(this.listedTokens(), (id) => this.talk.talk(id));
+    h.restore();
+  }
+
+  /** The turns of the server's own agent, for the agents' API (server/agenttalk.ts). */
+  get turns(): Turns | undefined {
+    return this.hosted ?? undefined;
   }
 
   /** Who a message may mention (CollabSpec decision 13): the agents listed with a token in force, by
@@ -1556,7 +1581,7 @@ export class Live {
   mentionable(): { names: string[]; agents: Map<string, string> } {
     const agents = new Map<string, string>();
     const names: string[] = [];
-    for (const r of this.tokens.inForce()) {
+    for (const r of this.listedTokens()) {
       agents.set(nameKey(r.name), r.id);
       names.push(r.name);
     }
@@ -1638,10 +1663,11 @@ function viewsCarried(views: { ops: { op: string; id?: string }[]; scope?: unkno
 }
 
 /** Whether a page's stream is sent a channel's messages (CollabSpec decision 13): the public channel
- *  (`t` null) where it has a name, a private one where its reader made the agent's token; never a
- *  read-only reader's. */
-function mayRead(st: Pick<Stream, "readOnly" | "name" | "person">, t: TokenRecord | null): boolean {
+ *  (`t` null) where it has a name, a private one where its reader made the agent's token — or, a
+ *  person's channel with the server's agent, where it is its reader's; never a read-only reader's. */
+function mayRead(st: Pick<Stream, "readOnly" | "name" | "person">, t: TokenRecord | null, channel: string): boolean {
   if (st.readOnly !== null) return false;
   if (!t) return st.name !== null || st.person !== null;
+  if (isPersonal(channel)) return personalChannel(t.id, { name: st.name, person: st.person }) === channel;
   return madeBy(t, { name: st.name, person: st.person });
 }

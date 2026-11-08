@@ -65,7 +65,7 @@ interface TokenAgent {
   /** who made its token, and the personal link they made it by where they came by one */
   by: string;
   byPerson?: string;
-  /** an agent the server runs (AgentSpec decision 10) */
+  /** the server's own agent (AgentSpec decision 10) */
   runs?: "server";
   view: PresenceView | null;
   /** its state, what it does, when it was last seen (server/talk.ts) */

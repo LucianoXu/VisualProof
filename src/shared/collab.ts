@@ -499,7 +499,9 @@ export interface Peer {
   /** where an invited person made its token (CollabSpec decision 9): their personal link's id, which
    *  says who its maker is rather than the name (AgentSpec decision 7, `makerPerson`) */
   byPerson?: string;
-  /** "server": an agent the server runs on its maker's Claude Code (AgentSpec decision 10) */
+  /** "server": the server's own agent (AgentSpec decision 10), which everyone with a name has a
+   *  private channel with; its `talk` here is the agent's as a whole, each person's own conversation
+   *  with it told to them alone (`chat-state`) */
   runs?: "server";
 }
 
@@ -525,6 +527,9 @@ export interface AgentTalk {
   readPublic: number;
   /** its last request, or the end of its last wait; null before the first */
   lastSeen: string | null;
+  /** the server's agent, in a person's own conversation with it (AgentSpec decision 10): what they
+   *  wrote waits its turn, other conversations' turns taking all there is (shown *thinking*) */
+  queued?: true;
 }
 
 /** A token an agent was given by Share (AgentSpec decision 7, server/tokens.ts), as the page and the
@@ -542,23 +547,24 @@ export interface AgentTokenInfo {
    *  that person, whatever name they go by, rather than whoever gives the name (AgentSpec decision 7) */
   makerPerson?: string;
   created: string;
-  /** when it ends; UNTIL_STOPPED for an agent the server runs, whose token never leaves it */
+  /** when it ends; UNTIL_STOPPED for the server's own agent, whose token never leaves it */
   expires: string;
   revoked: string | null;
   revokedBy: string | null;
   lastUsed: string | null;
-  /** "server": an agent the server runs on its maker's Claude Code (AgentSpec decision 10): it has
-   *  no prompt, and lasts until revoked */
+  /** "server": the server's own agent (AgentSpec decision 10), made by the server: it has no prompt,
+   *  no expiry, and cannot be revoked from the page; it stops with the server */
   runs?: "server";
 }
 
-/** The expiry of a token that lasts until revoked: an agent the server runs (AgentSpec decision
- *  10). Far enough to never come, and still a date every reader of `expires` can parse. */
+/** The expiry of a token that never expires: the server's own agent's (AgentSpec decision 10). Far
+ *  enough to never come, and still a date every reader of `expires` can parse. */
 export const UNTIL_STOPPED = "9999-12-31T23:59:59.000Z";
 
 /** The two kinds of channel (CollabSpec decision 13): the public one, where everyone with a name and
  *  every agent with a token talk; an agent's private one, between it and the person who made its
- *  token. Pages name a private channel by its agent's id in presence. */
+ *  token — or, the server's own agent, between it and each person with a name, one each. Pages name
+ *  a private channel by its agent's id in presence, the server's agent's being the reader's own. */
 export type ChannelKind = "public" | "private";
 
 /** One message of a channel (CollabSpec decision 13, server/talk.ts), as pages and agents are told
@@ -584,6 +590,14 @@ export interface ChatMessage {
 export interface ChatEvent {
   channel: string;
   message: ChatMessage;
+}
+
+/** The state of the reader's own conversation with the server's agent (AgentSpec decision 10), as
+ *  the event stream sends it to that reader's pages alone (`chat-state`): the agent's id in presence,
+ *  and its state in that conversation. */
+export interface ChatStateEvent {
+  channel: string;
+  talk: AgentTalk;
 }
 
 /** Whether `who` made the token `t` (AgentSpec decision 7): the personal link that made it, where an

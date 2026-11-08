@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 // A stand-in for Claude Code's `claude -p` (test/hosted.test.ts), copied into a test's folder and run
-// by the server as it runs Claude Code for an agent of its own (server/hosted.ts). It writes what it
-// was given — its arguments, its environment, its stdin, its folder — to calls.jsonl beside itself,
-// and does what behave.json beside itself says, answering in stream-json as Claude Code does:
+// by the server as it runs Claude Code for its own agent (server/hosted.ts). It writes what it was
+// given — its arguments, its environment, its stdin, its folder, the turn its mcp.json names — to
+// calls.jsonl beside itself, and does what behave.json beside itself says, answering in stream-json
+// as Claude Code does. behave.json's `when` lists overrides, the first whose `match` (a regular
+// expression) its stdin matches taking the place of what it says, so that turns running at once can
+// each do their own:
 //
 //   reply     starts the MCP server of --mcp-config as Claude Code would, lists its tools (to
-//             tools.json), and answers with its reply tool
+//             tools.json), and answers with its reply tool (`channel` where behave.json gives one)
+//   hold      the same, once a file release-<gate> is beside it (it writes held-<gate> as it begins
+//             to wait): a turn kept running until the test lets it go
 //   text      answers with its last words only (no reply tool)
 //   send      asks the MCP server's library tool to send `path`, its answer to sent.json
 //   refuse    Claude Code refused the OAuth token
@@ -25,17 +30,18 @@ const opt = (k) => {
   const i = args.indexOf(k);
   return i >= 0 ? args[i + 1] : null;
 };
-const behave = existsSync(join(here, "behave.json")) ? JSON.parse(readFileSync(join(here, "behave.json"), "utf8")) : { mode: "reply" };
 let stdin = "";
 for await (const c of process.stdin) stdin += c;
+const all = existsSync(join(here, "behave.json")) ? JSON.parse(readFileSync(join(here, "behave.json"), "utf8")) : { mode: "reply" };
+const behave = { ...all, ...((all.when ?? []).find((w) => new RegExp(w.match).test(stdin)) ?? {}) };
 const session = opt("--session-id") ?? opt("--resume");
-appendFileSync(join(here, "calls.jsonl"), JSON.stringify({ args, env: process.env, stdin, cwd: process.cwd(), mode: behave.mode }) + "\n");
+const config = opt("--mcp-config") ? JSON.parse(readFileSync(opt("--mcp-config"), "utf8")).mcpServers.visualproof : null;
+appendFileSync(join(here, "calls.jsonl"), JSON.stringify({ args, env: process.env, stdin, cwd: process.cwd(), mode: behave.mode, turn: config?.env?.VISUALPROOF_TURN ?? null, at: Date.now() }) + "\n");
 const out = (e) => process.stdout.write(JSON.stringify(e) + "\n");
 const result = (text, more = {}) => out({ type: "result", subtype: "success", is_error: false, result: text, session_id: session, ...more });
 
 /** The MCP server of --mcp-config, run as Claude Code runs it, spoken to over stdio. */
 async function mcp(calls) {
-  const config = JSON.parse(readFileSync(opt("--mcp-config"), "utf8")).mcpServers.visualproof;
   const p = spawn(config.command, config.args, { env: { ...process.env, ...config.env }, stdio: ["pipe", "pipe", "inherit"] });
   const waiting = new Map();
   createInterface({ input: p.stdout }).on("line", (l) => {
@@ -59,14 +65,24 @@ async function mcp(calls) {
   return { tools, answers };
 }
 
+/** Answer with the reply tool, as Claude Code's model would. */
+async function reply() {
+  const text = behave.text ?? "Answered.";
+  const r = await mcp([["reply", { text, ...(behave.channel ? { channel: behave.channel } : {}) }]]);
+  writeFileSync(join(here, "tools.json"), JSON.stringify({ tools: r.tools.map((t) => t.name), answers: r.answers }));
+  out({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__visualproof__reply", input: { text } }] } });
+  result("Done.");
+}
+
 out({ type: "system", subtype: "init", session_id: session, tools: [] });
 switch (behave.mode) {
-  case "reply": {
-    const text = behave.text ?? "Answered.";
-    const r = await mcp([["reply", { text }]]);
-    writeFileSync(join(here, "tools.json"), JSON.stringify({ tools: r.tools.map((t) => t.name), answers: r.answers }));
-    out({ type: "assistant", message: { content: [{ type: "tool_use", name: "mcp__visualproof__reply", input: { text } }] } });
-    result("Done.");
+  case "reply":
+    await reply();
+    break;
+  case "hold": {
+    writeFileSync(join(here, `held-${behave.gate}`), String(process.pid));
+    for (const end = Date.now() + 30_000; !existsSync(join(here, `release-${behave.gate}`)) && Date.now() < end; ) await new Promise((ok) => setTimeout(ok, 20));
+    await reply();
     break;
   }
   case "text":
