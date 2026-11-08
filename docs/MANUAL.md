@@ -939,8 +939,10 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   follow them). They are not part of the text: copying, quoting lines into a comment and Lean's
   hovers see the source alone. Drag its title bar to move it, an edge
   or a corner to resize it, and its – button or a double-click on the title bar collapses it to a
-  pill with the declaration's name. Its **pin** keeps it on its declaration, a step aside: the
-  next source you open (Space, Source) opens in a new window in the middle, so up to six pinned
+  pill with the declaration's name. Its **pin** keeps it on its declaration, a step aside; pressed
+  again, it lets go, and the window follows the selection again where it is (a window that followed
+  the selection meanwhile closes: one follows at most). Pinned, the next source you open (Space,
+  Source) opens in a new window in the middle, so up to six pinned
   windows can be compared side by side; Approve and Comment in a pinned window, and `a`, `m`, `k`
   with the focus in it, are about its declaration, whatever is selected. Pinned windows are this
   page's (a reload starts without them; the reload into a new version, Updates below, keeps them). The window pressed last

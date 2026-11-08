@@ -187,6 +187,7 @@ class Pane implements SourcePane {
   pinAside(step: number) {
     this.aside = step;
   }
+  unpin() {}
   collapse(on: boolean) {
     this.collapsed = on;
   }

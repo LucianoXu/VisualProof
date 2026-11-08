@@ -15,6 +15,7 @@ import type { PageEl } from "../src/web/src/surfaces.ts";
 import { asideRect, FIT_W, MAX_PINNED, MIN, openBounds, openRect, PIN_CAP, routeKey, Sources } from "../src/web/src/sources.ts";
 import type { SourcePane } from "../src/web/src/sources.ts";
 import type { SourceMode } from "../src/web/src/filemode.ts";
+import { pinHtml } from "../src/web/src/sourcewin.ts";
 
 const VP = { w: 1440, h: 900 };
 /** where the following window is kept */
@@ -64,6 +65,11 @@ class Pane implements SourcePane {
     this.asideAt = step;
     this.at = { ...HOME, x: HOME.x + step * CASCADE, y: HOME.y + step * CASCADE };
   }
+  /** how many times it was unpinned */
+  unpinned = 0;
+  unpin() {
+    this.unpinned++;
+  }
   collapse(on: boolean) {
     this.collapsed = on;
   }
@@ -89,6 +95,8 @@ class Pane implements SourcePane {
 function page() {
   const made: Pane[] = [];
   const said: string[] = [];
+  /** what the reference window was told was opened or stepped to: the window and its declaration */
+  const paired: [Pane, number][] = [];
   let changes = 0;
   const s = new Sources<Pane>({
     make: () => {
@@ -99,8 +107,9 @@ function page() {
     say: (t) => said.push(t),
     changed: () => changes++,
     viewport: () => VP,
+    shown: (p, i) => paired.push([p, i]),
   });
-  return { s, made, said, changes: () => changes };
+  return { s, made, said, paired, changes: () => changes };
 }
 
 test("Space opens the following window on the selection and closes it; it follows the selection, and closes with nothing selected", () => {
@@ -196,6 +205,128 @@ test("a pinned window stays on its declaration, a step aside; the next one opene
   assert.deepEqual(s.pinned, [q]);
   assert.equal(s.following, r);
   assert.equal(changes(), before + 2, "the new following window opened, and the pinned one closed");
+});
+
+test("the pin is a toggle (the owner's decision of 2026-11-08): pressed again, the window follows the selection again where it stands, and Space closes it", () => {
+  const { s, made, paired, changes } = page();
+  const p = s.show(1);
+  s.pin(p);
+  const told = changes();
+  // unpinned at once: as it was before it was pinned, where pinning put it
+  assert.equal(s.unpin(p, 1), true);
+  assert.equal(s.following, p);
+  assert.deepEqual(s.pinned, []);
+  assert.equal(p.unpinned, 1);
+  assert.deepEqual(p.rect(), { ...HOME, x: HOME.x + CASCADE, y: HOME.y + CASCADE }, "it keeps its place");
+  assert.equal(changes(), told + 1, "the others are told");
+  assert.deepEqual(p.shown, [1], "on the selection already: not drawn again");
+  // it follows the selection, and the next opening is in it
+  s.follow(4);
+  assert.equal(p.decl, 4);
+  assert.equal(s.show(5), p);
+  assert.equal(made.length, 1);
+  // only a pinned window is unpinned
+  assert.equal(s.unpin(p, 5), false);
+  // Space closes it, as it closes the following window
+  s.toggle(5);
+  assert.equal(p.removed, true);
+  assert.equal(s.following, null);
+  // pinned, then the selection moved on: unpinned, it steps to the selection, the pairing told of
+  // the step as of any; Space then closes it
+  const q = s.show(2);
+  s.pin(q);
+  s.follow(7);
+  assert.equal(q.decl, 2, "pinned, it stays");
+  paired.length = 0;
+  s.unpin(q, 7);
+  assert.equal(q.decl, 7);
+  assert.deepEqual(paired, [[q, 7]]);
+  s.toggle(7);
+  assert.equal(q.removed, true);
+});
+
+test("the pin is one button, pressed while the window is pinned, its title saying what a click does; a file window's is a mark", () => {
+  const button = /^<button class="icon sw-pin" data-sw-pin aria-label="Pin" aria-pressed="(true|false)" title="([^"]*)">/;
+  const off = button.exec(pinHtml(false, false, "Foo.bar"))!;
+  assert.deepEqual([off[1], off[2]], ["false", "Pin: keep this window on Foo.bar; the next source you open (Space) opens in a new window beside it"]);
+  const on = button.exec(pinHtml(true, false, "Foo.bar"))!;
+  assert.deepEqual([on[1], on[2]], ["true", "Unpin: this window follows the selection again (pinned, it stays on Foo.bar, whatever is selected)"]);
+  // the name escaped
+  assert.ok(pinHtml(true, false, 'a<"b').includes("a&lt;&quot;b"));
+  // a file window has no declaration to follow the selection from: pinned, and nothing to press
+  const file = pinHtml(true, true, "the file A.B");
+  assert.ok(file.startsWith('<span class="sw-pinned" role="img" aria-label="Pinned"'));
+  assert.ok(!file.includes("data-sw-pin"));
+});
+
+test("unpinned beside the window that followed the selection meanwhile, it takes that one's place: one follows at most", () => {
+  const { s, made } = page();
+  const p = s.show(1);
+  s.pin(p);
+  // Space opened a following window on 3, beside the pinned one
+  s.toggle(3);
+  const f = s.following!;
+  assert.notEqual(f, p);
+  s.unpin(p, 3);
+  assert.equal(f.removed, true, "the one that followed closes");
+  assert.equal(s.following, p);
+  assert.equal(p.decl, 3);
+  assert.deepEqual(s.all, [p]);
+  // the pinned windows are one fewer: another may be pinned, Space then opening a new one beside it
+  assert.equal(s.pin(p), true);
+  s.toggle(3);
+  assert.equal(made.length, 3);
+});
+
+test("unpinned with no declaration selected, a window stays on its own until the selection changes; a file window stays pinned", () => {
+  const { s, made } = page();
+  const p = s.show(1);
+  s.pin(p);
+  s.follow(null);
+  s.unpin(p, null);
+  assert.equal(s.following, p);
+  assert.equal(p.decl, 1);
+  assert.equal(p.removed, false, "it does not close under the reader's hand");
+  s.follow(6);
+  assert.equal(p.decl, 6);
+  s.follow(null);
+  assert.equal(p.removed, true, "then it closes with nothing selected, as the following window does");
+  // a file window is pinned on its file by what it is: it has no declaration to follow from
+  const w = s.openFile("A.B")!;
+  assert.equal(s.unpin(w, 2), false);
+  assert.deepEqual(s.pinned, [w]);
+  assert.equal(w.unpinned, 0);
+  assert.equal(made.length, 2);
+});
+
+test("following someone who unpins a window: the one that stood for it follows the selection here too, rather than closing for a new one", () => {
+  const { s, made } = page();
+  // they pinned 1 and nothing follows their selection
+  s.mirror(theirs(1));
+  const f = s.following!;
+  s.mirror(theirs(null, 1));
+  assert.deepEqual(s.pinned, [f]);
+  // they unpin it, the selection on 1: it follows here, where it is
+  s.mirror(theirs(1));
+  assert.equal(s.following, f);
+  assert.equal(s.pinned.length, 0);
+  assert.equal(f.removed, false);
+  assert.equal(made.length, 1);
+  // pinned again, the selection moved on to 5 (no window follows it), unpinned: theirs steps to 5,
+  // and so does this one
+  s.mirror(theirs(null, 1));
+  s.mirror(theirs(5));
+  assert.equal(s.following, f);
+  assert.equal(f.decl, 5);
+  assert.equal(made.length, 1);
+  // unpinned beside a window following their selection, theirs takes its place there: here the
+  // one that stood for it closes, the following window here showing what theirs shows
+  s.mirror(theirs(6, 8));
+  const h = s.pinned[0];
+  s.mirror(theirs(6));
+  assert.equal(h.removed, true);
+  assert.equal(s.following, f);
+  assert.equal(f.decl, 6);
 });
 
 test(`at most ${MAX_PINNED} windows are pinned, and the reader is told why the next is not`, () => {

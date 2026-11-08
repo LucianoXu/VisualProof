@@ -7,7 +7,10 @@
 // Pinning turns the following window into a pinned one, moved a step aside from its place
 // (web/src/floatwin.ts, cascadeRect), so that the next declaration opened — Space, or Source in the
 // panel — opens in a new following window, in the middle again, beside the pinned one. At most
-// MAX_PINNED are pinned at once.
+// MAX_PINNED are pinned at once. The pin is a toggle (the owner's decision of 2026-11-08): pressed
+// again, it undoes what pinning did — the window follows the selection again, and is the one Space
+// closes — where it stands; a window that followed the selection meanwhile closes, since one follows
+// at most.
 //
 // A window shows its declaration, or the whole file it is in (File mode, the owner's decisions of
 // 2026-11-01); a file window is opened on a file (the Files tree, the board's menu), pinned as it
@@ -62,6 +65,8 @@ export interface SourcePane {
   /** it is pinned as it opens, fitted to its code `step` steps aside from the middle of the screen
    *  (asideRect), until the reader moves or resizes it: a followed reader's pinned window */
   pinAside(step: number): void;
+  /** it is pinned no longer: it follows the selection again, where it stands */
+  unpin(): void;
   /** collapsed to its pill, or opened again */
   collapse(on: boolean): void;
   front(): void;
@@ -186,8 +191,9 @@ export class Sources<P extends SourcePane> {
    *  page's own rules. The following window opens on their declaration, follows it and closes with
    *  theirs; a pinned window stands for each of theirs — one pinned here on the same declaration,
    *  else this page's following window pinned where they pinned theirs, else a new one a step aside
-   *  — and closes when theirs does; each is collapsed as theirs is. Windows this reader pinned
-   *  on other declarations stay, and at most MAX_PINNED are pinned. */
+   *  — and closes when theirs does, or follows the selection again as theirs does when they unpin
+   *  it; each is collapsed as theirs is. Windows this reader pinned on other declarations stay, and
+   *  at most MAX_PINNED are pinned. */
   mirror(s: Shared): void {
     // theirs matched to those here: first the windows that stood for them, then any on the same
     // declaration
@@ -204,6 +210,13 @@ export class Sources<P extends SourcePane> {
       left.delete(p);
       this.mirrored.add(p);
       states.push([p, e.collapsed, modeOf(e)]);
+    }
+    // they unpinned one, which follows their selection now where no window here does: the one that
+    // stood for it is unpinned as this reader would unpin it, and steps with theirs below
+    const unpinned = s.following && s.following.decl !== null && !this.following ? [...left].find((p) => this.mirrored.has(p) && p.file === null) : undefined;
+    if (unpinned) {
+      left.delete(unpinned);
+      this.unpin(unpinned, null);
     }
     // closed there, closed here
     for (const p of left) if (this.mirrored.has(p)) this.close(p);
@@ -275,6 +288,29 @@ export class Sources<P extends SourcePane> {
       return false;
     }
     this.pinAt(p);
+    return true;
+  }
+
+  /** Its pin pressed again (the owner's decision of 2026-11-08): a pinned window follows the
+   *  selection again, as it did before it was pinned — the next Space closes it, the next opening is
+   *  in it — and keeps its place. It shows the selected declaration `i`, stepped to it as the
+   *  following window steps (the pairing told of it) where it is on another; with no declaration
+   *  selected, it stays on its own until the selection changes, as it would not close under the
+   *  reader's hand. The window that followed the selection meanwhile closes: one follows at most. A
+   *  file window, pinned on its file by what it is, has no declaration to follow from: it stays. */
+  unpin(p: P, i: number | null): boolean {
+    const k = this.pinned.indexOf(p);
+    if (k < 0 || p.file !== null) return false;
+    this.pinned.splice(k, 1);
+    this.mirrored.delete(p);
+    this.following?.remove();
+    this.following = p;
+    p.unpin();
+    if (i !== null && p.decl !== i) {
+      p.show(i);
+      this.hooks.shown?.(p, i);
+    }
+    this.hooks.changed();
     return true;
   }
 

@@ -746,9 +746,11 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .sw-acts .icon:hover, .sw-pill .icon:hover { background: var(--code-bg); color: var(--text); }
 .sw-acts svg, .sw-pill svg { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 /* pinned: the pin filled in the accent, and a line of it over the title bar, so that a pinned window
-   reads apart from the one that follows the selection */
+   reads apart from the one that follows the selection. The pin is a toggle (the owner's decision of
+   2026-11-08), pressed while pinned; a file window's, and the pill's, a mark */
 .sw-pinned { display: inline-grid; place-items: center; flex: none; width: 26px; height: 26px; color: var(--accent); }
-.sw-pinned svg { fill: color-mix(in srgb, var(--accent) 35%, transparent); }
+.sw-pinned svg, .sw-acts .sw-pin[aria-pressed="true"] svg { fill: color-mix(in srgb, var(--accent) 35%, transparent); }
+.sw-acts .sw-pin[aria-pressed="true"], .sw-acts .sw-pin[aria-pressed="true"]:hover { color: var(--accent); }
 .sw-win.pinned .sw-head { box-shadow: inset 0 2px 0 var(--accent); }
 .sw-win:not(.collapsed) > .fl-rz { display: block; position: absolute; z-index: 2; touch-action: none; }
 .sw-box > .banner { margin: 8px 16px 0; }
@@ -3158,7 +3160,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
     max-width: none !important; max-height: none !important; min-width: 0 !important; min-height: 0 !important;
     border-radius: 0 !important; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); z-index: 48;
   }
-  .sw-win .fl-rz, .sw-ns, .sw-loc, .sw-acts [data-sw-collapse], .sw-pin { display: none !important; }
+  /* nothing is pinned on a phone (PhoneSpec decision 13): a window pinned for a followed reader's
+     shows its pin pressed, which unpins it */
+  .sw-win .fl-rz, .sw-ns, .sw-loc, .sw-acts [data-sw-collapse], .sw-pin:not([aria-pressed="true"]) { display: none !important; }
   /* its gutter narrower: smaller numbers, closer to the code */
   .sw-ctx, .sw-body pre.src { --gut-digit: 6px; --gut-pad: 9px; }
   .sw-win .sw-ctx .ln::before, .sw-win .sw-body pre.src .ln::before { font-size: 10px; }

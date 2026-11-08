@@ -83,7 +83,9 @@ there is decisions 3–5's.
     lost-and-found (the owner's choice of 2026-10-14), from the right, which close when the reader
     goes somewhere from them; the help.
 13. **No pinned windows** (the owner's choice of 2026-10-14): the menu has no "Open in a pinned
-    window" and the source window no pin. The menus show no keys beside their items.
+    window" and the source window no pin. A window pinned for a followed reader's shows its pin
+    pressed, which unpins it (the pin is a toggle: the owner's decisions of 2026-11-08 (0.11)).
+    The menus show no keys beside their items.
 14. **The Time Machine** keeps its clock, its ruler, the build's date and ✕ in its bar; keeping a
     build or saving it as a view arranges the board, and is left to a larger screen. The focus
     gives way to it.
