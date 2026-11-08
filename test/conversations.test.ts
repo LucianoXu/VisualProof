@@ -158,6 +158,12 @@ test("what the reader has not seen: the public messages counted, not their own; 
   threads.get("public")!.push(msg(4, "Alice's AI", "agent"), msg(5, "Bob's AI", "agent"));
   assert.deepEqual(unseen(threads, { public: 3, ag1: 2 }, "Alice", ["ag1"]), { count: 2, marked: true });
   assert.deepEqual(unseen(threads, { public: 4, ag1: 2 }, "Alice", ["ag1"]), { count: 1, marked: false });
+  // the server's own agent (AgentSpec decision 10): its answer in her conversation marks it, one in
+  // public, which it gives everyone, does not
+  threads.set("srv", [msg(1, "Alice", "person", { channel: "private" }), msg(2, "Claude", "agent", { channel: "private" })]);
+  threads.get("public")!.push(msg(6, "Claude", "agent"));
+  assert.deepEqual(unseen(threads, { public: 5, ag1: 2, srv: 2 }, "Alice", ["ag1", "srv"], ["srv"]), { count: 1, marked: false });
+  assert.deepEqual(unseen(threads, { public: 6, ag1: 2, srv: 1 }, "Alice", ["ag1", "srv"], ["srv"]), { count: 0, marked: true });
   // merged by id, each once, in order
   assert.deepEqual(merge([msg(3, "x", "person"), msg(1, "x", "person")], [msg(2, "x", "person"), msg(3, "y", "person")]).map((m) => [m.id, m.from]), [[1, "x"], [2, "x"], [3, "x"]]);
 });
@@ -169,10 +175,12 @@ test("the reader's own agents: those whose token they made, by their personal li
     { id: "b", name: "Bob's AI", view: null, idle: false, agent: true, talk, by: "Bob" },
     { id: "c", name: "Old", view: null, idle: false, agent: true, by: "Alice" },
     { id: "d", name: "Alice", view: null, idle: false },
+    // the server's own agent (AgentSpec decision 10): everyone's with a name, each in a conversation of their own
+    { id: "s", name: "Claude", view: null, idle: false, agent: true, talk, by: "VisualProof", runs: "server" },
   ];
-  assert.deepEqual(ownAgents(peers, { name: "Alicia", person: "p1" }).map((p) => p.id), ["a"]);
-  assert.deepEqual(ownAgents(peers, { name: "Alice", person: null }).map((p) => p.id), [], "not whoever gives her name");
-  assert.deepEqual(ownAgents(peers, { name: "bob", person: null }).map((p) => p.id), ["b"]);
+  assert.deepEqual(ownAgents(peers, { name: "Alicia", person: "p1" }).map((p) => p.id), ["a", "s"]);
+  assert.deepEqual(ownAgents(peers, { name: "Alice", person: null }).map((p) => p.id), ["s"], "not whoever gives her name");
+  assert.deepEqual(ownAgents(peers, { name: "bob", person: null }).map((p) => p.id), ["b", "s"]);
   assert.deepEqual(ownAgents(peers, { name: null, person: null }), []);
 });
 

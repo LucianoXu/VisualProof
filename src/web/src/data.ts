@@ -209,13 +209,8 @@ export interface DataSource {
   agentShares(): Promise<AgentShares | null>;
   /** a token for an agent and the prompt that carries it, or why not (`who`: a name is needed); no
    *  name gives the reader's AI ("Alice's AI") */
-  shareAgent(body: { name?: string; level: string; days: number; runs?: "server" }): Promise<{ prompt?: string; token: AgentTokenInfo; tokens: AgentTokenInfo[] } | { error: string; who?: boolean; claudeToken?: boolean }>;
-  /** give the reader's Claude Code OAuth token, for the agents they run on the server (AgentSpec
-   *  decision 10): what the server keeps of it (never the token), or why not */
-  giveClaude(token: string): Promise<{ token: ClaudeTokenShown } | { error: string; who?: boolean; insecure?: boolean }>;
-  /** remove the reader's Claude Code token */
-  removeClaude(): Promise<{ ok?: boolean; error?: string }>;
-  /** stop the turn an agent the server runs is taking (its maker's Stop) */
+  shareAgent(body: { name?: string; level: string; days: number }): Promise<{ prompt: string; token: AgentTokenInfo; tokens: AgentTokenInfo[] } | { error: string; who?: boolean }>;
+  /** stop the turn the server's own agent is taking in the reader's conversation with it */
   stopAgent(agent: string): Promise<{ stopped?: boolean; error?: string }>;
   /** the prompt of a token in force, shown again, or why not */
   agentPrompt(id: string): Promise<{ prompt: string; token: AgentTokenInfo } | { error: string; who?: boolean }>;
@@ -248,7 +243,7 @@ export interface DataSource {
   /** a channel of the conversations (CollabSpec decision 13): `public`, or an agent's private one by
    *  the agent's id in presence; its newest messages (before message `before`), oldest first; null
    *  where it cannot be read (no name, not the reader's, no server) */
-  chat(channel: string, before?: number): Promise<{ channel: string; agent?: { id: string; name: string | null; talk: AgentTalk }; messages: ChatMessage[] } | null>;
+  chat(channel: string, before?: number): Promise<{ channel: string; agent?: { id: string; name: string | null; talk: AgentTalk; runs?: "server" }; messages: ChatMessage[] } | null>;
   /** write in a channel, from where this page is; the message, or why not ("offline": an agent's
    *  private channel while it neither listens nor works) */
   sendChat(channel: string, text: string, place: PresenceView): Promise<{ message: ChatMessage } | { error: string; who?: boolean }>;
@@ -289,17 +284,10 @@ export interface AgentShares {
   days: number[];
   defaultDays: number;
   tokens: AgentTokenInfo[];
-  /** running agents on the server (AgentSpec decision 10): null where it runs none (no
-   *  --claude-oauth); else whether Claude Code is there, why the reader may not run one (null: they
-   *  may), the reader's Claude token as the server tells it, and how many each may run */
-  server?: { available: boolean; refused: string | null; token: ClaudeTokenShown | null; perPerson: number } | null;
-}
-
-/** What the server tells its holder of their Claude Code token: when they gave it, and whether
- *  Claude Code refused it since; never the token. */
-export interface ClaudeTokenShown {
-  given: string;
-  refused: string | null;
+  /** the server's own agent (AgentSpec decision 10): null where it runs none (no --claude-oauth);
+   *  else its id in presence, its token's id, its name and level, and why it is offline (null: it
+   *  can run) */
+  server?: { id: string; token: string; name: string; level: string; offline: string | null } | null;
 }
 
 export type { ChatMessage };
@@ -506,8 +494,6 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     shareAgent: async () => ({ error: "a snapshot has no server to share with an agent" }),
     agentPrompt: async () => ({ error: "a snapshot has no server" }),
     revokeAgent: async () => ({ error: "a snapshot has no server" }),
-    giveClaude: async () => ({ error: "a snapshot has no server" }),
-    removeClaude: async () => ({ error: "a snapshot has no server" }),
     stopAgent: async () => ({ error: "a snapshot has no server" }),
     setIdentity: async () => ({ error: "a snapshot has no server" }),
     invites: async () => null,
@@ -702,7 +688,6 @@ function serverSource(): DataSource {
       fetch("/tips/tour.json")
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-    // with the reader's name: whether they gave a Claude token is told under it
     agentShares: () =>
       fetch("/api/share/agents", { headers: headers() })
         .then((r) => (r.ok ? r.json() : null))
@@ -717,14 +702,6 @@ function serverSource(): DataSource {
         .catch(() => ({ error: "the server could not be reached" })),
     revokeAgent: (id) =>
       fetch("/api/share/agents/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
-        .then((r) => r.json())
-        .catch(() => ({ error: "the server could not be reached" })),
-    giveClaude: (token) =>
-      fetch("/api/share/claude", { method: "POST", headers: headers(), body: JSON.stringify({ token }) })
-        .then((r) => r.json())
-        .catch(() => ({ error: "the server could not be reached" })),
-    removeClaude: () =>
-      fetch("/api/share/claude/remove", { method: "POST", headers: headers(), body: "{}" })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
     stopAgent: (agent) =>

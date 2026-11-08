@@ -5,7 +5,7 @@
 // A part of the page: web/src/main.ts makes the parts in order, web/src/page.ts says what they share.
 
 import type { BuildDelta, BuildRev, BuildStatus } from "../../shared/build.ts";
-import type { ChatEvent, Invited, PrivateCount, StreamHello } from "../../shared/collab.ts";
+import type { ChatEvent, ChatStateEvent, Invited, PrivateCount, StreamHello } from "../../shared/collab.ts";
 import type { PointerNews } from "../../shared/pointer.ts";
 import type { ViewMeta } from "../../shared/graph.ts";
 import type { ReviewRev } from "../../shared/review.ts";
@@ -286,6 +286,11 @@ export function livePart(page: Page): LivePart {
     es.addEventListener("chat", (e) => {
       const d = JSON.parse((e as MessageEvent).data) as ChatEvent;
       page.talk.add(d.channel, d.message);
+    });
+    // the server's own agent's state in this reader's conversation with it (AgentSpec decision 10)
+    es.addEventListener("chat-state", (e) => {
+      const d = JSON.parse((e as MessageEvent).data) as ChatStateEvent;
+      page.talk.sessionState(d.channel, d.talk);
     });
     // a request to follow someone, its answers to this page's own, and one ended on the server
     // (CollabSpec decision 10)

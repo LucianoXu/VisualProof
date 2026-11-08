@@ -1655,6 +1655,14 @@ body.following::after {
 /* a personal link in force: nothing to show again, so no pointer */
 .sh-person .sh-tok-text { cursor: default; }
 .sh-person .sh-tok-text:hover b { color: inherit; }
+/* the server's own agent (AgentSpec decision 10): above the form, apart from the agents shared */
+.sh-here { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 7%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent); }
+.sh-here-head { font-size: 12.5px; }
+.sh-here-head .bot { margin-right: 4px; color: var(--text-2); }
+.sh-here .modal-actions { margin-top: 2px; justify-content: flex-start; }
+/* its token: nothing to show again, nothing to revoke */
+.sh-tok.sh-own .sh-tok-text { cursor: default; }
+.sh-tok.sh-own .sh-tok-text:hover b { color: inherit; }
 .act-badge {
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--bad); color: #fff;
   font: 600 10.5px/18px var(--font); text-align: center;

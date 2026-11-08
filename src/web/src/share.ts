@@ -31,12 +31,13 @@
 // token under the person's name and writes the prompt (server/prompt.ts). What they want done they
 // tell the agent themselves.
 //
-// It may also run the agent on the server, where the server allows it (--claude-oauth; AgentSpec
-// decision 10, experimental): "Runs: on this server", on the reader's Claude Code. The reader gives
-// their Claude Code OAuth token once (`claude setup-token`; a password field, never shown back), and
-// Start makes the agent, which listens at once, until revoked: no prompt to paste, nothing to share
-// again. Where the reader may not (a name that is not theirs alone, Claude Code not on the server), the
-// choice says why.
+// Where the server runs an agent of its own (--claude-oauth; AgentSpec decision 10, experimental, the
+// owner's decisions of 2026-11-08 for 0.11), the tab says so above the form: its name, that everyone
+// with a name talks with it — the reader in a tab of their own in the conversations, which nobody else
+// reads, anyone by @ and its name in Everyone — and that it stops with the server, with a button that
+// opens the reader's conversation with it. Share makes no agent to run on the server, and takes no
+// Claude token: the operator gives the server its own. Its token is listed below with the others,
+// "on this server", without Show prompt or Revoke.
 //
 // *Invite a person*: a personal link for one person, named by whoever invites them
 // (server/invites.ts). It lets them in and says who they are: their name carries a ✓, nobody else
@@ -68,7 +69,7 @@ export interface ShareHooks {
   /** the address the page's links are made with: the server's public one (`--public-url`) where it
    *  has one, else the page's own origin (web/src/chatlinks.ts, siteOrigins) */
   base(): string;
-  data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "giveClaude" | "removeClaude" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly">;
+  data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly">;
   /** the reader's name as the page knows it, for the agent's default name; null when there is none */
   me(): string | null;
   /** the personal link the reader came by (CollabSpec decision 9), or null: with the name, which
@@ -78,6 +79,8 @@ export interface ShareHooks {
   ensureName(): Promise<string | null>;
   /** what the reader sees, as a link's snapshot carries it after `snap=`; null where none is made */
   snapshot(): Promise<string | null>;
+  /** open the reader's own conversation with an agent, by its id in presence (the server's agent) */
+  talk?(agent: string): void;
   /** whether the links carry it: "Exactly what I see", on unless this browser turned it off */
   exact: { get(): boolean; set(on: boolean): void };
 }
@@ -95,11 +98,7 @@ const LEVEL_HINT: Record<string, string> = {
 
 /** What the agent tab shows: the form, or a token's prompt — just made (`made`), or shown again from
  *  the list. */
-type AgentState =
-  | { kind: "form"; error: string | null }
-  | { kind: "prompt"; id: string; prompt: string; name: string; made: boolean; copied: boolean }
-  // an agent just started on the server (AgentSpec decision 10): it has no prompt
-  | { kind: "started"; id: string; name: string };
+type AgentState = { kind: "form"; error: string | null } | { kind: "prompt"; id: string; prompt: string; name: string; made: boolean; copied: boolean };
 
 /** What the invite tab shows: the form, or the personal link just made, shown this once: as the server
  *  made it (`base`), and with the address after it (`link`), which the switch decides. */
@@ -136,9 +135,7 @@ export class Share {
   private people: PersonInvite[] | null = null;
   /** the form as the reader left it: kept while the page is open; the name is null while the reader
    *  has not written one, and the agent is then theirs ("Alice's AI") */
-  private form: { name: string | null; level: string; days: number; runs: "agent" | "server" | null; claude: string } = { name: null, level: "", days: 0, runs: null, claude: "" };
-  /** the reader asked to give their Claude token anew (Replace) */
-  private claudeEdit = false;
+  private form: { name: string | null; level: string; days: number } = { name: null, level: "", days: 0 };
   /** a Revoke pressed once, waiting for the second press */
   private arming: string | null = null;
   private busy = false;
@@ -173,12 +170,11 @@ export class Share {
       else if (t.closest("[data-again]")) {
         this.agent = { kind: "form", error: null };
         this.render();
-      } else if (t.closest("[data-claude-replace]")) {
-        this.claudeEdit = true;
-        this.render();
-        this.pop.querySelector<HTMLInputElement>("[data-f=claude]")?.focus();
-      } else if (t.closest("[data-claude-remove]")) void this.removeClaude();
-      else if (t.closest("[data-show]")) void this.showPrompt(t.closest<HTMLElement>("[data-show]")!.dataset.show!);
+      } else if (t.closest("[data-talk-server]")) {
+        const id = this.shares?.server?.id;
+        this.close();
+        if (id) this.hooks.talk?.(id);
+      } else if (t.closest("[data-show]")) void this.showPrompt(t.closest<HTMLElement>("[data-show]")!.dataset.show!);
       else if (t.closest("[data-revoke]")) void this.revoke(t.closest<HTMLElement>("[data-revoke]")!.dataset.revoke!);
       else if (t.closest("[data-close]")) this.close();
     });
@@ -189,12 +185,7 @@ export class Share {
       const f = t.dataset.f as keyof Share["form"] | undefined;
       if (!f) return;
       if (f === "days") this.form.days = Number(t.value);
-      else if (f === "runs") {
-        // where it runs changes the form: the lifetime, the Claude token
-        this.form.runs = t.value === "server" ? "server" : "agent";
-        this.render();
-        return void this.pop.querySelector<HTMLElement>("[data-f=runs]")?.focus();
-      } else this.form[f] = t.value;
+      else this.form[f] = t.value;
       // the name the agent will act under, said below the form, follows what is typed
       const as = this.pop.querySelector<HTMLElement>("[data-as]");
       if (f === "name" && as) as.textContent = this.actsAs(t.value);
@@ -541,14 +532,6 @@ export class Share {
 
   private agentBody(): string {
     const s = this.shares;
-    if (this.agent.kind === "started") {
-      const a = this.agent;
-      return (
-        `<div class="sh-title">${escapeHtml(a.name)} runs on this server</div>` +
-        `<div class="sh-note">It listens now, on your Claude Code: talk to it in its conversation (its name, above the board), or mention <b>@${escapeHtml(a.name)}</b> in the public channel. It runs until revoked, below.</div>` +
-        `<div class="modal-actions"><button class="rv-btn" data-again>Another agent</button><button class="rv-btn primary" data-close>Done</button></div>`
-      );
-    }
     if (this.agent.kind === "prompt") {
       const a = this.agent;
       const how = a.made
@@ -566,58 +549,39 @@ export class Share {
     const me = this.hooks.me();
     // the name as it will be: the reader's own, or their AI's, which follows their name until written over
     const name = f.name ?? (me ? defaultAgentName(me) : "");
-    const option = (v: string | number, label: string, on: boolean, off = "") => `<option value="${v}"${on ? " selected" : ""}${off ? ` disabled title="${escapeHtml(off)}"` : ""}>${escapeHtml(label)}</option>`;
-    const here = this.runsHere();
-    const sv = s.server;
+    const option = (v: string | number, label: string, on: boolean) => `<option value="${v}"${on ? " selected" : ""}>${escapeHtml(label)}</option>`;
     return (
+      this.serverAgent() +
       `<div class="sh-form">` +
       `<label class="sh-field"><span>Name</span><input data-f="name" maxlength="60" spellcheck="false" value="${escapeHtml(name)}" placeholder="Your name's AI"></label>` +
       `<label class="sh-field"><span>May</span><select data-f="level">${s.levels.map((l) => option(l, LEVEL_HINT[l] ?? l, l === f.level)).join("")}</select></label>` +
-      (sv
-        ? `<label class="sh-field"><span>Runs</span><select data-f="runs">${option("agent", "in your agent — a prompt to paste", !here)}${option("server", "on this server — your Claude Code", here, sv.available ? (sv.refused ?? "") : "Claude Code is not on this server's machine")}</select></label>`
-        : "") +
-      (here ? "" : `<label class="sh-field"><span>For</span><select data-f="days">${s.days.map((d) => option(d, d === 1 ? "1 day" : `${d} days`, d === f.days)).join("")}</select></label>`) +
-      (here ? this.claudeField() : "") +
+      `<label class="sh-field"><span>For</span><select data-f="days">${s.days.map((d) => option(d, d === 1 ? "1 day" : `${d} days`, d === f.days)).join("")}</select></label>` +
       `</div>` +
-      `<div class="sh-note muted">Its own token, under your name: it acts as <i data-as>${escapeHtml(this.actsAs(name))}</i>${here ? ", here until revoked" : ""}.${s.levels.length < 3 ? ` This server lets agents do at most ${escapeHtml(s.level)}.` : ""}</div>` +
-      (sv && f.runs === "server" && sv.refused ? `<div class="modal-err">${escapeHtml(sv.refused)}</div>` : "") +
+      `<div class="sh-note muted">Its own token, under your name: it acts as <i data-as>${escapeHtml(this.actsAs(name))}</i>.${s.levels.length < 3 ? ` This server lets agents do at most ${escapeHtml(s.level)}.` : ""}</div>` +
       (this.agent.error ? `<div class="modal-err">${escapeHtml(this.agent.error)}</div>` : "") +
-      `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-create${this.busy ? " disabled" : ""}>${here ? "Start" : "Create"}</button></div>`
+      `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-create${this.busy ? " disabled" : ""}>Create</button></div>`
     );
   }
 
-  /** Whether the agent is to run on this server (AgentSpec decision 10): as the reader chose; else
-   *  where they may and have given a Claude token in use, there; else a prompt. */
-  private runsHere(): boolean {
-    const sv = this.shares?.server;
-    if (!sv || !sv.available || sv.refused) return false;
-    if (this.form.runs) return this.form.runs === "server";
-    return !!sv.token && !sv.token.refused;
-  }
-
-  /** The reader's Claude Code token, for the agent on this server: given (Replace, Remove), refused,
-   *  or none yet — a password field, never filled back. */
-  private claudeField(): string {
-    const t = this.shares?.server?.token ?? null;
-    if (t && !t.refused && !this.claudeEdit)
-      return (
-        `<div class="sh-note">On your Claude Code token, given ${escapeHtml(ago(t.given))}. ` +
-        `<button class="rv-btn sh-act" data-claude-replace title="Give a new one: the agents you run here use it from their next answer">Replace</button> ` +
-        `<button class="rv-btn sh-act" data-claude-remove title="This server forgets it, and your agents here stop">Remove</button></div>`
-      );
+  /** The server's own agent, where it runs one (AgentSpec decision 10): who it is, that the reader
+   *  talks with it in a conversation of their own, and that it stops with the server; offline, why.
+   *  A read-only reader has no conversations: they are not told how to talk with it. */
+  private serverAgent(): string {
+    const a = this.shares?.server;
+    if (!a) return "";
+    const name = escapeHtml(a.name);
     return (
-      `<label class="sh-field"><span>Claude token</span><input type="password" data-f="claude" autocomplete="off" spellcheck="false" placeholder="sk-ant-oat01-…" value="${escapeHtml(this.form.claude)}"></label>` +
-      `<div class="sh-note muted">${t?.refused ? `<b>Claude Code refused your token</b> ${escapeHtml(ago(t.refused))}: give a new one. ` : ""}In a terminal: <code>claude setup-token</code>, then paste what it prints. Kept on this server for your agents only, never shown again. Every answer spends your Claude usage, whoever asks (experimental).</div>`
+      `<div class="sh-here">` +
+      `<div class="sh-here-head">${BOT}<b>${name}</b> <span class="sh-lvl">${escapeHtml(a.level)}</span> <span class="sh-lvl">on this server</span></div>` +
+      `<div class="sh-note">${
+        a.offline
+          ? `It is offline: ${escapeHtml(a.offline)}. The server's operator can fix it and restart the server.`
+          : `It runs on this server, on its operator's Claude Code, and everyone with a name talks with it: you in a conversation of your own, which nobody else reads, and anyone by <b>@${name}</b> in Everyone. It stops with the server.`
+      }</div>` +
+      (a.offline || !this.hooks.talk ? "" : `<div class="modal-actions"><button class="rv-btn" data-talk-server>Talk with ${name}</button></div>`) +
+      `</div>` +
+      `<div class="sh-sub">An agent of yours</div>`
     );
-  }
-
-  /** Remove the reader's Claude token: the server forgets it, and their agents here stop. */
-  private async removeClaude(): Promise<void> {
-    if (!(await this.hooks.ensureName())) return;
-    const r = await this.hooks.data.removeClaude();
-    if (r.error) this.agent = { kind: "form", error: r.error };
-    await this.refresh();
-    this.render();
   }
 
   /** The name an agent named `name` would act under: the reader's AI when the field is empty,
@@ -645,16 +609,15 @@ export class Share {
     const armed = this.arming === t.id;
     const shown = this.agent.kind === "prompt" && this.agent.id === t.id && this.tab === "agent";
     const id = escapeHtml(t.id);
-    const mine = madeBy(t, { name: this.hooks.me(), person: this.hooks.person?.() ?? null });
-    // an agent the server runs has no prompt: its token never leaves the server (AgentSpec decision 10)
+    // the server's own agent has no prompt, and stops with the server alone (AgentSpec decision 10)
     const here = t.runs === "server";
-    const prompt = mine && !here;
+    const mine = !here && madeBy(t, { name: this.hooks.me(), person: this.hooks.person?.() ?? null });
     return (
-      `<div class="sh-tok${shown ? " on" : ""}">` +
-      `<div class="sh-tok-text"${prompt ? ` data-show="${id}" title="Show its prompt again"` : here ? ` title="It runs on this server, on ${escapeHtml(t.by)}'s Claude Code"` : ` title="Its prompt is shown again to ${escapeHtml(t.by)} alone, who made it"`}><div>${BOT}<b>${escapeHtml(t.name)}</b> <span class="sh-lvl">${escapeHtml(t.level)}</span>${here ? ` <span class="sh-lvl">on this server</span>` : ""}</div>` +
-      `<div class="muted">by ${escapeHtml(t.by)}, ${escapeHtml(ago(t.created))} · ${here ? "until revoked" : `expires ${escapeHtml(until(t.expires))}`} · ${t.lastUsed ? `last used ${escapeHtml(ago(t.lastUsed))}` : "not used yet"}</div></div>` +
-      (prompt ? `<button class="rv-btn sh-act" data-show="${id}" aria-pressed="${shown}" title="Its prompt, with the token, to give the agent again">Show prompt</button>` : "") +
-      `<button class="rv-btn sh-act${armed ? " bad" : ""}" data-revoke="${id}" title="It lets the agent in no more, at once">${armed ? "Revoke it" : "Revoke"}</button>` +
+      `<div class="sh-tok${shown ? " on" : ""}${here ? " sh-own" : ""}">` +
+      `<div class="sh-tok-text"${mine ? ` data-show="${id}" title="Show its prompt again"` : here ? ` title="The server's own agent: it stops with the server"` : ` title="Its prompt is shown again to ${escapeHtml(t.by)} alone, who made it"`}><div>${BOT}<b>${escapeHtml(t.name)}</b> <span class="sh-lvl">${escapeHtml(t.level)}</span>${here ? ` <span class="sh-lvl">on this server</span>` : ""}</div>` +
+      `<div class="muted">${here ? "the server's own · until the server stops" : `by ${escapeHtml(t.by)}, ${escapeHtml(ago(t.created))} · expires ${escapeHtml(until(t.expires))}`} · ${t.lastUsed ? `last used ${escapeHtml(ago(t.lastUsed))}` : "not used yet"}</div></div>` +
+      (mine ? `<button class="rv-btn sh-act" data-show="${id}" aria-pressed="${shown}" title="Its prompt, with the token, to give the agent again">Show prompt</button>` : "") +
+      (here ? "" : `<button class="rv-btn sh-act${armed ? " bad" : ""}" data-revoke="${id}" title="It lets the agent in no more, at once">${armed ? "Revoke it" : "Revoke"}</button>`) +
       `</div>`
     );
   }
@@ -670,31 +633,14 @@ export class Share {
     this.busy = true;
     this.render();
     const f = this.form;
-    const here = this.runsHere();
-    // on this server: the Claude token typed is given first, then the agent started on it
-    if (here && f.claude.trim()) {
-      const g = await this.hooks.data.giveClaude(f.claude.trim());
-      if ("error" in g) {
-        this.busy = false;
-        this.agent = { kind: "form", error: g.error };
-        return this.render();
-      }
-      f.claude = "";
-      this.claudeEdit = false;
-      if (this.shares?.server) this.shares.server.token = g.token;
-    }
     // no name written: the server names it the reader's AI, under the name just given if need be
-    const r = await this.hooks.data.shareAgent({ name: f.name?.trim() || undefined, level: f.level, days: f.days, ...(here ? { runs: "server" as const } : {}) });
+    const r = await this.hooks.data.shareAgent({ name: f.name?.trim() || undefined, level: f.level, days: f.days });
     this.busy = false;
     if ("error" in r) {
       this.agent = { kind: "form", error: r.error };
       return this.render();
     }
     if (this.shares) this.shares.tokens = r.tokens;
-    if (r.prompt === undefined) {
-      this.agent = { kind: "started", id: r.token.id, name: r.token.name };
-      return this.render();
-    }
     const copied = await copy(r.prompt);
     this.agent = { kind: "prompt", id: r.token.id, prompt: r.prompt, name: r.token.name, made: true, copied };
     this.showArea();
