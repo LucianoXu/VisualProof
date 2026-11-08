@@ -188,11 +188,11 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     does. Pressed again, it undoes what pinning did: the window follows the selection again where it
     stands — stepping to the selected declaration, or staying on its own until the selection changes
     where none is selected —, the next Space closes it and the next opening is in it, and its back and
-    forward return; a window that followed the selection meanwhile closes, since one follows at most.
-    A file window is pinned on its file by what it is: its pin is a mark. At most one following and
-    six pinned; a seventh pin is refused, saying why. A pinned window has no back and forward, a
-    name in it goes to the page, and its review keys act on its own declaration. Pins do not survive
-    a reload.
+    forward return; a window that followed the selection meanwhile closes, since one follows at
+    most. A file window, pinned on its file by what it is, has no declaration to follow from: its
+    pin stays a mark. At most one following and six pinned; a seventh pin
+    is refused, saying why. A pinned window has no back and forward, a name in it goes to the page,
+    and its review keys act on its own declaration. Pins do not survive a reload.
   - **In front**: the window pressed or focused last; the conversation window above them all
     (CollabSpec decision 13, the owner's decision of 2026-10-19); hover cards above all windows; popovers, modal windows and transient messages above those.
   - **Keys**: Space opens and closes the following window, also from its pill. Focus in a window:
