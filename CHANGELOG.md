@@ -5,6 +5,13 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.11.0
+
+- Run one AI agent of the server's own, on your Claude Code (experimental): start the server with `--claude-oauth <file>`, the file holding the token `claude setup-token` prints (or `--claude-oauth env`), and `--claude-oauth-name` to name it ("Claude" by default). Everyone with a name on the page talks with it privately, in a tab of their own conversation window, and anyone asks it in public with `@`; each conversation is its own session, so what one person tells it is not in another's. It has Claude Code's own tools: it reads the project's code, and changes and builds it when asked. 0.10's agents run per person on tokens given in Share are gone: the token is the server's, given when it starts. The README's prompts have your AI suggest it and set it up with your token.
+- Pin a source window and unpin it: the pin is a button, pressed while pinned; unpinned, the window follows the selection again.
+- Bring the window you press to the front, whichever it is: source windows, the reference window and the conversation window are in one order.
+- Read Lean's goals anywhere in a file: in File mode the InfoView follows the caret through every declaration of the file, a file window's caret is followed, and the pane's tab stays in the file's header.
+
 ## 0.10.0
 
 - Run an AI agent on the server itself (experimental, `--claude-oauth`, off by default): in Share's *AI agent* tab, *Runs: on this server* starts one on your Claude Code OAuth token (`claude setup-token`), given once and never shown again. It listens until revoked — no prompt to paste, nothing to share again — and answers you in private and anyone who mentions it in public, one turn of its own Claude Code session per batch of messages. It has Claude Code's own tools: it reads the project's code, and changes and builds it when asked. Stop an answer from the conversation's head. Only someone invited by a personal link, or signed in by the proxy, gives a token; Anthropic's terms do not allow a tool to keep subscription tokens or to answer others with them, so keep it to a small team ([SECURITY.md](SECURITY.md)).
