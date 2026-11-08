@@ -36,6 +36,8 @@ export function sharePart(page: Page): SharePart {
     // what the reader sees (the owner's decision of 2026-10-12): every followed part as the registry
     // reads it, the camera as the region of the board it shows
     snapshot: () => writeSnapshot(followedOf(page.parts.read), page.canvas.screen),
+    // the reader's own conversation with the server's agent (AgentSpec decision 10)
+    talk: (agent) => page.talk.open(agent),
     exact: {
       get: () => S.shareExact !== false,
       set: (on) => {

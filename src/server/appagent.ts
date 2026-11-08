@@ -86,7 +86,13 @@ export async function agentRoute(app: App, req: IncomingMessage, res: ServerResp
   });
   // the session an MCP server says it is (since 0.4.0): a wait from another is a new session's
   const session = req.headers["x-visualproof-session"];
-  const a = await app.agents.handle({ method: req.method ?? "GET", path: url.pathname, query: url.searchParams, body, caller, base: app.publicUrl ?? `http://${hostOf(req)}`, signal: away.signal, ...(validSession(session) ? { session } : {}) });
+  // the turn of the server's own agent a request comes from (AgentSpec decision 10): its token's alone
+  const turn = token?.runs === "server" ? req.headers["x-visualproof-turn"] : undefined;
+  const a = await app.agents.handle({
+    method: req.method ?? "GET", path: url.pathname, query: url.searchParams, body, caller, base: app.publicUrl ?? `http://${hostOf(req)}`, signal: away.signal,
+    ...(validSession(session) ? { session } : {}),
+    ...(typeof turn === "string" && /^[0-9a-f-]{36}$/.test(turn) ? { turn } : {}),
+  });
   if (away.signal.aborted) return;
   if (a.text) return sendText(req, res, a.text.body, a.text.type, a.status);
   if (a.file) return sendDownload(res, a.file);

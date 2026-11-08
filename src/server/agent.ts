@@ -70,6 +70,7 @@ import type { ExportFile, Exporter } from "./export.ts";
 import type { HoverAnswer, HoverFile, PrintAnswer } from "./hover.ts";
 import type { GoalsAnswer } from "../shared/goals.ts";
 import type { Kind } from "./identity.ts";
+import type { Turns } from "./hosted.ts";
 import type { AgentWho } from "./presence.ts";
 import type { ReviewStore } from "./review.ts";
 import { ReviewApi } from "./reviewapi.ts";
@@ -146,6 +147,9 @@ export interface Ask {
   /** the session VisualProof's MCP server says it is (X-VisualProof-Session, since 0.4.0): a wait
    *  from another one than the last is a new session's */
   session?: string;
+  /** the turn of the server's own agent the request comes from (X-VisualProof-Turn, AgentSpec
+   *  decision 10): which of its conversations it answers */
+  turn?: string;
 }
 
 /** What the API reads and changes: the live server (server/live.ts) has all of it, a test builds
@@ -188,6 +192,9 @@ export interface World {
   talk?: Pick<Talk, "thread" | "since" | "conversation" | "post" | "allow" | "talk" | "wait" | "seen" | "setStatus" | "left" | "lastChannel">;
   /** who a message may mention (server/live.ts): the names, and the agents among them by token */
   mentionable?(): { names: string[]; agents: Map<string, string> };
+  /** the turns of the server's own agent (server/hosted.ts), while it runs: which conversation a
+   *  request's turn answers */
+  turns?: Turns;
   /** the snapshots of the graph (server/history.ts), the identities the renames in force give
    *  (server/versions.ts) and those renames, and the renames recorded between two snapshots */
   history?: History | null;
@@ -329,7 +336,11 @@ export class AgentApi {
     if (a.caller.kind === "agent" && a.caller.name && !leaving) this.world.presence.agentBeat(whoOf(a.caller));
     // what an agent with a token does is what people talking to it see it doing (AgentSpec
     // decision 8): its wait, its line and its reply say more, and say it themselves
-    if (a.caller.token && this.world.talk && !leaving && !TALKING.has(a.path)) this.world.talk.seen(a.caller.token.id, doingOf(a));
+    // the server's own agent is seen in the conversation its request's turn answers, its state being
+    // the server's to say (server/hosted.ts)
+    if (a.caller.token?.runs === "server") {
+      if (!TALKING.has(a.path)) this.world.turns?.seen(a.turn, doingOf(a));
+    } else if (a.caller.token && this.world.talk && !leaving && !TALKING.has(a.path)) this.world.talk.seen(a.caller.token.id, doingOf(a));
     const path = a.path.replace(/\/+$/, "") || "/api/agent";
     const here = this.endpoints.flatMap((e) => {
       const part = matchPath(e.path, path);

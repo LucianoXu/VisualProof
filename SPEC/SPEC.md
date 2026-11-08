@@ -21,7 +21,7 @@ VisualProof can export a nicely typeset PDF document for the formalization and a
 
 - The website reflects the changes reactively at realtime.
 - The website reflects the compilation status of the whole Lean codebase at file-level granularity.
-- The operation on VisualProof canvas will not change lean code state. So only the owner of codebase controls modification and compilation. No .lake conflict. The exception: an AI agent the server runs on its maker's Claude Code (Agent) may modify the project and compile it with Lake, when asked.
+- The operation on VisualProof canvas will not change lean code state. So only the owner of codebase controls modification and compilation. No .lake conflict. The exception: the server's own AI agent (Agent) may modify the project and compile it with Lake, when asked.
 - The data of website and lean build is preserved in the site directory and the cache directory, not in the codebase.
 
 
@@ -73,6 +73,7 @@ VisualProof can export a nicely typeset PDF document for the formalization and a
 ### Agent
 
 - Users can share the website to an AI agent and let them login. Users can talk to the AI agents. AI agents can help with the operation on the website (except approving formal terms).
+- A server may run one AI agent of its own, which everyone with a name can talk with, each person in a private conversation of their own.
 
 
 ### History

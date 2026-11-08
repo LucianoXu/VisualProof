@@ -62,7 +62,7 @@ export function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 
 /** Claude's and Anthropic's credentials, where the server's environment has them: no program the
  *  server runs is given them (Lake, Lean, git, a branch's build, which runs whatever its code says);
- *  the agents the server runs are given their maker's token alone (server/hosted.ts). */
+ *  the server's own agent is given the --claude-oauth token alone (server/hosted.ts). */
 const CREDENTIAL = (k: string) => k === "CLAUDE_CODE_OAUTH_TOKEN" || k.startsWith("ANTHROPIC_");
 
 /** How many tracked programs run now. */

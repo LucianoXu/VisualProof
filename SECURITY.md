@@ -27,8 +27,8 @@ into the latest release only.
   There is no sandbox yet: the build runs as the server's user, in programs of its own. Only that
   branch is ever fetched: never a pull request's ref nor a fork's.
 - **The project's toolchain**, which elan installs, and Lean's own kernel and language server.
-- **Claude Code and Anthropic**, where the server runs agents (`--claude-oauth`, experimental, off
-  by default): the `claude` program found on the server's PATH (or `~/.local/bin`), as installed,
+- **Claude Code and Anthropic**, where the server runs its own agent (`--claude-oauth`,
+  experimental, off by default): the `claude` program found on the server's PATH (or `~/.local/bin`), as installed,
   and Anthropic's service it talks to.
 - **The npm registry and VisualProof's publisher**, as at the first install, and unattended: with
   `--updates auto` (the default) a server downloads the patch releases of the version it runs,
@@ -205,27 +205,30 @@ into the latest release only.
 - **Agents.** A token has a level: `read`, `advise` or `full` (and `--agents` caps it for the whole
   server). At `full` an agent can do whatever a person can through the page; its opinions stay
   advice and are never counted.
-- **Agents the server runs** (`--claude-oauth`; AgentSpec decision 10; experimental). A person gives
-  Share their Claude Code OAuth token (`claude setup-token`), which is a year of their Claude
-  subscription: accepted only from a page over HTTPS or on this machine, and only from someone
-  whose name is theirs alone (a personal link, a proxy's sign-in; on a server without a key that
-  only this machine reaches, whoever is at it), so that nobody runs agents on someone else's token
-  by giving their name. It is never shown again — not to its holder, a page, an agent, a log — and is
-  given only to the `claude` processes of its holder's agents, in their environment, never on a
-  command line; no other program the server runs is given it, nor any `ANTHROPIC_*` variable of the
-  server's own environment. Removing it in Share deletes the server's copy only: revoke it at
-  Anthropic too where it may have leaked. **Each such agent is trusted with Claude Code's own tools**
-  (the owner's decision): a shell, files and the web on this machine, as the server's user, without
-  asking; it changes the project and builds it when asked. So it can do whatever that user can — read
-  the site folder (everyone's Claude tokens, the agents' tokens, the links), the access key's file,
-  SSH keys and credentials; write the review's logs directly, past VisualProof's levels and the rule
-  that an agent's opinion is advice; reach the network — and **anyone with a name can ask it**, in
-  the public channel, at its maker's cost. Its ground rules and Claude Code's deny rules (the site
-  folder through the file tools; the tools that reach its maker's Claude account and other sessions)
-  say what it must not do; they do not confine its shell. Use it only where everyone let in with a
-  name is trusted that far, as the server's user. Anthropic's terms do not allow a tool to keep
-  subscription tokens nor to answer other people with them: a small team that accepts this, never a
-  public site.
+- **The server's own agent** (`--claude-oauth`; AgentSpec decision 10; experimental). The operator
+  gives the server their Claude Code OAuth token (`claude setup-token`), which is a year of their
+  Claude subscription: in a file readable by the server's user alone — the server does not start
+  where its group or others may read it, nor where it holds no OAuth token (an API key is refused)
+  — or in the server's own environment (`--claude-oauth env`). It is read once at the start and
+  never shown, logged, answered, nor written in the site; it is given only to the agent's `claude`
+  processes, in their environment, never on a command line; no other program the server runs is
+  given it, nor any `ANTHROPIC_*` variable of the server's own environment. Revoke it at Anthropic
+  where it may have leaked. Every turn spends the operator's usage, whoever asked. **Everyone with a
+  name can talk with it, and so have it run commands**: every person privately, in a conversation of
+  their own, and anyone in the public channel. It is trusted with Claude Code's own tools (the
+  owner's decision): a shell, files and the web on this machine, as the server's user, without
+  asking; it changes the project and builds it when asked. So it can do whatever that user can —
+  read the site folder (the agents' tokens, the links, everyone's conversations), the access key's
+  file, the Claude token's file, SSH keys and credentials; write the review's logs directly, past
+  VisualProof's levels and the rule that an agent's opinion is advice; reach the network. Each
+  conversation is a Claude Code session of its own, and its ground rules tell it never to repeat in
+  one what another person said privately; but that is a rule, not a wall: its shell can read every
+  conversation in the site folder, and anyone talking with it can ask it to. Its ground rules and
+  Claude Code's deny rules (the site folder through the file tools; the tools that reach the
+  operator's Claude account and other sessions) say what it must not do; they do not confine its
+  shell. Use it only where everyone let in with a name is trusted that far, as the server's user.
+  Anthropic's terms do not allow a tool to answer other people on a subscription's token: a small
+  team that accepts this, never a public site.
 - **The conversations.** The public channel is read and written by everyone with a name and every
   agent with a token: what is written there is untrusted input to every agent. A person's message
   there is handed to the agents it mentions; the agents' ground rules (the prompt, the entry, the
@@ -233,9 +236,11 @@ into the latest release only.
   their maker before changing the board on someone else's word; and no agent can do more than its
   token allows, whoever asks. An agent's mention of an agent is never handed to it, so agents do
   not talk on among themselves. An agent's private channel is read and written by the person who
-  made its token alone — their personal link where they came by one, else their name — so it is as
-  private as names are: a guest's is open to whoever gives that guest's name, while an invited
-  person's and a proxy's names are protected. The token's prompt, which holds the token (and so the
+  made its token alone — their personal link where they came by one, else their name — and a
+  person's private channel with the server's own agent by that person alone, by the same rule; so
+  each is as private as names are: a guest's is open to whoever gives that guest's name (their
+  conversation with the server's agent too), while an invited person's and a proxy's names are
+  protected. The token's prompt, which holds the token (and so the
   private channel), is shown again to its maker alone; revoking a token is anyone's with a name.
   Read-only readers have no channel, and their streams carry no message. Where a writer was is
   handed to agents, never sent to pages. A link copied from the page (Copy link, the conversation's
@@ -258,13 +263,14 @@ into the latest release only.
 
 ## Secrets at rest
 
-The site folder (`--site`) holds the agents' tokens, the read-only links and the personal links in
-full, the Claude Code tokens people gave for the agents the server runs (`claude-tokens.json`, with
-`--claude-oauth`), (Share shows the first two again, and a personal link is shown again to its holder; of a
-personal link made before 0.6.0, its digest alone, until its holder makes it anew), and the
-conversations (`chat/`: the public channel 90 days, the private ones 30); the access key is
-wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
-folder up as you would any secret, and never commit it.
+The site folder (`--site`) holds the agents' tokens (the server's own agent's among them, with
+`--claude-oauth`), the read-only links and the personal links in full (Share shows the first two
+again, and a personal link is shown again to its holder; of a personal link made before 0.6.0, its
+digest alone, until its holder makes it anew), and the conversations (`chat/`: the public channel 90
+days, the private ones 30, each person's with the server's agent among them); the access key is
+wherever `--access-key-file` names, and the Claude Code token wherever `--claude-oauth` names
+(never in the site: 0.10's `claude-tokens.json` is deleted at the start). Keep them readable by the
+server's user alone, back the site folder up as you would any secret, and never commit it.
 
 ## Code at rest
 
@@ -273,9 +279,9 @@ a server downloaded, which the supervisor runs: it is code, as the installed pac
 `media/` the tips' tour film, checked against the package's sha256 (refused, as `versions/` is,
 where another may write the folder). `versions/`
 is made `0700`; a folder in it that another user owns, or that its group or others may write, is
-refused and its patch never run. Keep the caches' root the server's user's alone, as the site. The agents the server runs keep their
-Claude Code sessions — what they were told, its private channels' words among it — in `agents/` of
-the project's cache, each removed when its token ends. A branch the server follows is
+refused and its patch never run. Keep the caches' root the server's user's alone, as the site. The server's own agent keeps its
+Claude Code sessions — one per conversation, what each person told it privately among them — in
+`agents/` of the project's cache. A branch the server follows is
 cloned and built in `deploy/` of the caches' root: the clone, its build's outputs and its
 dependencies, which the server's Lean programs import; each build's log; and with
 `--mathlib-cache own`, Mathlib's cache, whose files the build unpacks into its dependencies.
@@ -284,8 +290,8 @@ dependencies, which the server's Lean programs import; each build's log; and wit
 
 - Run the server as an unprivileged user, never as root. A server that follows a branch, as a user
   of its own (above: whoever can push to the branch runs code as that user). With `--claude-oauth`
-  that code can read the Claude tokens in the site folder too: combine the two only where whoever
-  can push is trusted with them.
+  that code can read the Claude token's file and the agent's conversations too: combine the two only
+  where whoever can push is trusted with them.
 - Give it `--access-key-file`, or an authenticating proxy that is the only way in; `--public` only
   for a project meant to be public.
 - Put TLS in front of anything that leaves a trusted network.

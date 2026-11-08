@@ -37,10 +37,19 @@
 // was away. Its maker can start a new conversation in its private channel: a divider in the same
 // file, which the agent is handed as a notice to disregard what came before, and before which a later
 // session is told nothing. The public channel has no dividers.
+//
+// The server's own agent (AgentSpec decision 10; the owner's decisions of 2026-11-08 for 0.11) has a
+// private channel with every person with a name instead — `<token id>-<16 hex>.jsonl`, the hex a
+// digest of who they are, as madeBy tells makers (their personal link's id, else their name), so
+// that the file names nobody — and no inbox: the server listens for it in-process (server/hosted.ts,
+// told of each message as it is written, `onPosted`), and its state is the one hosted.ts gives
+// (`hostedTalk`), not inferred from waits it never makes.
 
+import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentState, AgentTalk, ChannelKind, ChatMessage } from "../shared/collab.ts";
+import { nameKey } from "../shared/collab.ts";
 import { utc } from "./mcptools.ts";
 
 /** how long a private channel's message is kept, and the public channel's (as the timeline) */
@@ -64,8 +73,22 @@ export const EARLIER_MESSAGES = 50;
 export const EARLIER_CHARS = 20_000;
 /** a sender's messages: a burst of BURST, then one every REFILL_MS (people), or faster (agents) */
 const RATE = { person: { burst: 5, refillMs: 6000 }, agent: { burst: 10, refillMs: 2000 } };
-/** the public channel's key, where a private channel's is its token's id (ten hex digits) */
+/** the public channel's key, where a private channel's is its token's id (ten hex digits), or a
+ *  person's with the server's agent `<token id>-<16 hex>` (personalChannel) */
 export const PUBLIC = "public";
+
+/** A person's private channel with the server's agent `token` (AgentSpec decision 10): who they are
+ *  as madeBy tells a maker — an invited person by their personal link's id, else their name as names
+ *  are compared — digested, so that the channel's file names nobody. */
+export function personalChannel(token: string, who: { name: string | null; person: string | null }): string | null {
+  const key = who.person ? `p:${who.person}` : who.name !== null ? `n:${nameKey(who.name)}` : null;
+  return key === null ? null : `${token}-${createHash("sha256").update(`visualproof channel\u0000${key}`).digest("hex").slice(0, 16)}`;
+}
+
+/** Whether `channel` is a person's with the server's agent: the agent's token, then theirs. */
+export function isPersonal(channel: string): boolean {
+  return /^[0-9a-f]{10}-[0-9a-f]{16}$/.test(channel);
+}
 
 /** What Talk is told about timing; the defaults are the server's, a test makes them short. */
 export interface TalkTiming {
@@ -191,6 +214,12 @@ export class Talk {
   /** when a token was last used, as the token file keeps it (server/tokens.ts), read when its agent
    *  is first known here: whether it was offline while the server was not running */
   lastUsed: (token: string) => string | null = () => null;
+  /** told of every message as it is written, with whom it is handed to: the server's agent hears
+   *  what is written to it so (server/hosted.ts) */
+  onPosted: (channel: string, m: Message & { to?: string[] }) => void = () => {};
+  /** the state of an agent the server runs itself, which it says rather than this infers it
+   *  (server/hosted.ts); null for any other */
+  hostedTalk: (token: string) => AgentTalk | null = () => null;
 
   constructor(siteDir: string, timing: Partial<TalkTiming> = {}) {
     this.dir = join(siteDir, "chat");
@@ -240,6 +269,8 @@ export class Talk {
 
   /** The agent's state now, as pages are told it. */
   talk(token: string, now = Date.now()): AgentTalk {
+    const hosted = this.hostedTalk(token);
+    if (hosted) return hosted;
     const a = this.agent(token);
     const state = stateOf(a, now, this.timing);
     const was = a.told;
@@ -266,6 +297,11 @@ export class Talk {
    *  that it was to answer, its private one before any. */
   lastChannel(token: string): ChannelKind {
     return this.agent(token).lastChannel;
+  }
+
+  /** The server's agent's state changed (server/hosted.ts): presence is told. */
+  refresh(token: string): void {
+    this.update(token);
   }
 
   /** Tell presence when what pages show of the agent changed (not when it was last seen alone). */
@@ -548,7 +584,9 @@ export class Talk {
     appendFileSync(this.file(channel), JSON.stringify(msg) + "\n");
     const out = outward(msg);
     this.onMessage(channel, out);
-    const writer = channel === PUBLIC ? by : channel;
+    this.onPosted(channel, msg);
+    // the server's agent writes in a person's channel as in the public one: `by`, its token
+    const writer = channel === PUBLIC || isPersonal(channel) ? by : channel;
     if (msg.kind === "agent") {
       if (writer) this.replied(writer, now);
     } else if (channel !== PUBLIC) this.wake(channel, now);
@@ -571,7 +609,7 @@ export class Talk {
   }
 
   private file(channel: string): string {
-    return join(this.dir, channel === PUBLIC ? "public.jsonl" : `${channel.replace(/[^0-9a-f]/g, "")}.jsonl`);
+    return join(this.dir, channel === PUBLIC ? "public.jsonl" : `${channel.replace(/[^0-9a-f-]/g, "")}.jsonl`);
   }
 
   /** A channel as it is kept, read once: what is older than it keeps is left out, and the file

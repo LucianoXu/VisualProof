@@ -114,8 +114,8 @@ export class AgentTokens {
    *  checked by the caller (server/appshare.ts); the name is used as given, numbered when an agent in
    *  force has it already; `by` is a person's name, and `person` their personal link's id where an
    *  invited person makes it (`makerPerson`: who its maker is, AgentSpec decision 7). `runs: "server"`
-   *  makes the token of an agent the server runs (AgentSpec decision 10), which lasts until revoked:
-   *  `days` is not read. */
+   *  makes the token of the server's own agent (AgentSpec decision 10; `by` the server,
+   *  server/serveragent.ts), which has no expiry: `days` is not read. */
   create(o: { name: string; by: string; person?: string | null; level: AgentLevel; days: number; runs?: "server"; now?: number }): { token: string; record: TokenRecord } {
     const now = o.now ?? Date.now();
     this.expire(now);
@@ -175,6 +175,16 @@ export class AgentTokens {
 
   get(id: string): TokenRecord | undefined {
     return this.records.find((r) => r.id === id);
+  }
+
+  /** The level of the server's agent's token, which follows the server's --agents from one start to
+   *  the next (server/serveragent.ts); no other token's level changes after it is made. */
+  setLevel(id: string, level: AgentLevel): void {
+    const r = this.records.find((x) => x.id === id);
+    if (!r || r.level === level) return;
+    r.level = level;
+    this.save();
+    this.onChanged();
   }
 
   /** Revoke a token in force: it lets nothing in from now on, and its agent's wait ends. False when

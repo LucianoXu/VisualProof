@@ -1,12 +1,13 @@
 // People on the page with one another (the routes of server/app.ts): where each one is, which the
 // others see (presence: CollabSpec decisions 4 and 8), asking others to follow (decision 10), and
 // the conversations (decision 13, AgentSpec decision 8) — the public channel, each agent's private
-// one with its maker, a new conversation there. Agents do all of it through their API.
+// one with its maker, each person's own with the server's agent (AgentSpec decision 10), a new
+// conversation there. Agents do all of it through their API.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { agentPlace, cleanFollowing, cleanView, madeBy, nameKey } from "../shared/collab.ts";
 import type { TokenRecord } from "./tokens.ts";
-import { forPages, MAX_PERSON, PUBLIC, THREAD } from "./talk.ts";
+import { forPages, MAX_PERSON, personalChannel, PUBLIC, THREAD } from "./talk.ts";
 import { mentioned } from "../shared/mentions.ts";
 import type { Answer } from "./agent.ts";
 import { sendJson } from "./send.ts";
@@ -50,7 +51,9 @@ export async function pointer(app: App, req: IncomingMessage, res: ServerRespons
 /** The conversations (CollabSpec decision 13, AgentSpec decision 8), for pages: a channel read
  *  (GET ?channel=public|<agent id>&before=<id>, the newest 200 first) and a message written in it
  *  (POST {channel, text, place}). Everyone with a name reads and writes the public channel; an
- *  agent's private channel is its maker's alone (shared/collab.ts, madeBy: 403 to anyone else).
+ *  agent's private channel is its maker's alone (shared/collab.ts, madeBy: 403 to anyone else); the
+ *  server's own agent's id names the reader's own channel with it, whoever they are (AgentSpec
+ *  decision 10: an invited person's by their personal link, anyone else's by their name).
  *  A read-only reader neither sees nor writes any (403), whatever the page sends; agents talk
  *  through their API. A private channel cannot be written to while its agent is offline (409); a
  *  mention of it in the public channel can, and is handed to it when it comes back. At most so
@@ -67,11 +70,11 @@ export async function chat(app: App, req: IncomingMessage, res: ServerResponse, 
    *  reader's — 404 where there is no such agent, 403 where it is someone else's */
   const channelOf = (raw: unknown): { key: string; agent: { id: string; record: TokenRecord } | null } | Answer => {
     if (raw === "public" || raw === undefined || raw === null || raw === "") return { key: PUBLIC, agent: null };
-    const tok = typeof raw === "string" ? live.presence.tokenOf(raw) : null;
-    const record = tok ? live.tokens.get(tok) : undefined;
-    if (!tok || !record) return { status: 404, body: { error: "There is no such channel: public, or the id of an agent with a token of its own." } };
+    const record = privateOf(app, raw);
+    if (!record) return { status: 404, body: { error: "There is no such channel: public, or the id of an agent with a token of its own." } };
+    if (record.runs === "server") return { key: personalChannel(record.id, who)!, agent: { id: raw as string, record } };
     if (!madeBy(record, who)) return { status: 403, body: { error: `${record.name}'s private channel is ${record.by}'s, who made its token: nobody else reads or writes it.`, private: true } };
-    return { key: tok, agent: { id: raw as string, record } };
+    return { key: record.id, agent: { id: raw as string, record } };
   };
   if (req.method === "GET") {
     const c = channelOf(url.searchParams.get("channel") ?? url.searchParams.get("agent"));
@@ -80,14 +83,16 @@ export async function chat(app: App, req: IncomingMessage, res: ServerResponse, 
     const before = raw && /^\d{1,9}$/.test(raw) ? Number(raw) : null;
     const messages = live.talk.thread(c.key, THREAD, before).map(forPages);
     if (!c.agent) return sendJson(res, { channel: PUBLIC, messages });
-    return sendJson(res, { channel: c.agent.id, agent: { id: c.agent.id, name: c.agent.record.name, talk: live.talk.talk(c.key) }, messages });
+    // the server's agent: its state in this reader's own conversation with it
+    const talk = c.agent.record.runs === "server" ? live.hosted!.sessionTalk(c.key) : live.talk.talk(c.key);
+    return sendJson(res, { channel: c.agent.id, agent: { id: c.agent.id, name: c.agent.record.name, talk, ...(c.agent.record.runs ? { runs: c.agent.record.runs } : {}) }, messages });
   }
   const r = await app.json(req, 1 << 16);
   if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
   const b = (r.body ?? {}) as { channel?: unknown; agent?: unknown; text?: unknown; place?: unknown };
   const c = channelOf(b.channel ?? b.agent);
   if ("status" in c) return sendJson(res, c.body, c.status);
-  if (c.agent && live.talk.state(c.key) === "offline") return sendJson(res, { error: "offline", message: `${c.agent.record.name} is offline: it can be written to once it listens again.` }, 409);
+  if (c.agent && live.talk.state(c.agent.record.id) === "offline") return sendJson(res, { error: "offline", message: `${c.agent.record.name} is offline: it can be written to once it listens again.` }, 409);
   const text = typeof b.text === "string" ? b.text.trim() : "";
   if (!text) return sendJson(res, { error: "The message is empty." }, 400);
   if (text.length > MAX_PERSON) return sendJson(res, { error: `A message is at most ${MAX_PERSON.toLocaleString("en")} characters.` }, 400);
@@ -110,7 +115,9 @@ export async function chat(app: App, req: IncomingMessage, res: ServerResponse, 
 /** A new conversation in an agent's private channel (AgentSpec decision 8, the owner's decisions
  *  of 2026-10-11 and 2026-10-19): a divider, from its maker alone, held to the rate of their
  *  messages; an offline agent's too, so that its next session starts clean. One right after
- *  another divides nothing: it is answered `unchanged`, and neither written nor counted. */
+ *  another divides nothing: it is answered `unchanged`, and neither written nor counted. With the
+ *  server's own agent, in the reader's own conversation with it: a new session of that one alone
+ *  (AgentSpec decision 10). */
 export async function chatNew(app: App, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const live = app.live;
   if (req.method !== "POST") return sendJson(res, { error: "/api/chat/new answers POST." }, 405);
@@ -121,21 +128,30 @@ export async function chatNew(app: App, req: IncomingMessage, res: ServerRespons
   const r = await app.json(req, 1 << 12);
   if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
   const b = (r.body ?? {}) as { agent?: unknown };
-  const tok = typeof b.agent === "string" ? live.presence.tokenOf(b.agent) : null;
-  const record = tok ? live.tokens.get(tok) : undefined;
-  if (!tok || !record) return sendJson(res, { error: "There is no such agent: only an agent with a token of its own has a private channel." }, 404);
+  const record = privateOf(app, b.agent);
+  if (!record) return sendJson(res, { error: "There is no such agent: only an agent with a token of its own has a private channel." }, 404);
   const person = app.ids.person(req)?.id ?? null;
-  if (!madeBy(record, { name: me, person })) return sendJson(res, { error: `Only ${record.by}, who made ${record.name}'s token, starts a new conversation with it.`, private: true }, 403);
-  if (live.talk.fresh(tok)) return sendJson(res, { ok: true, unchanged: true, divider: null, message: "Nothing was said since the conversation began: it is new already." });
+  if (record.runs !== "server" && !madeBy(record, { name: me, person })) return sendJson(res, { error: `Only ${record.by}, who made ${record.name}'s token, starts a new conversation with it.`, private: true }, 403);
+  const key = record.runs === "server" ? personalChannel(record.id, { name: me, person })! : record.id;
+  if (live.talk.fresh(key)) return sendJson(res, { ok: true, unchanged: true, divider: null, message: "Nothing was said since the conversation began: it is new already." });
   const wait = live.talk.allow("person", person ? `p:${person}` : `n:${nameKey(me)}`);
   if (wait) return sendJson(res, { error: `Too many at once: wait ${wait} s.`, retryAfter: wait }, 429, { "retry-after": String(wait) });
-  const divider = live.talk.restart(tok, me);
+  const divider = live.talk.restart(key, me);
   return sendJson(res, { ok: true, divider: divider && forPages(divider) });
 }
 
-/** Stop the turn an agent the server runs is taking (AgentSpec decision 10): POST /api/chat/stop
- *  {agent}, from its maker alone, as Esc in a terminal stops an agent someone runs there. What it
- *  was answering ends with it; the agent listens again. */
+/** The agent a page names by its id in presence, that has a private channel: one with a token in
+ *  force, listed — the server's own agent while the server runs it. */
+function privateOf(app: App, raw: unknown): TokenRecord | null {
+  const tok = typeof raw === "string" ? app.live.presence.tokenOf(raw) : null;
+  const record = tok ? app.live.tokens.get(tok) : undefined;
+  if (!record || (record.runs === "server" && app.live.hosted?.id !== record.id)) return null;
+  return record;
+}
+
+/** Stop the turn the server's own agent is taking in the reader's own conversation with it
+ *  (AgentSpec decision 10): POST /api/chat/stop {agent}, as Esc in a terminal stops an agent someone
+ *  runs there. What it was answering ends with it; nobody stops another's, nor the public one's. */
 export async function chatStop(app: App, req: IncomingMessage, res: ServerResponse): Promise<void> {
   const live = app.live;
   if (req.method !== "POST") return sendJson(res, { error: "/api/chat/stop answers POST." }, 405);
@@ -146,11 +162,9 @@ export async function chatStop(app: App, req: IncomingMessage, res: ServerRespon
   const r = await app.json(req, 1 << 12);
   if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
   const b = (r.body ?? {}) as { agent?: unknown };
-  const tok = typeof b.agent === "string" ? live.presence.tokenOf(b.agent) : null;
-  const record = tok ? live.tokens.get(tok) : undefined;
-  if (!tok || !record || record.runs !== "server") return sendJson(res, { error: "There is no such agent running on this server." }, 404);
-  if (!madeBy(record, { name: me, person: app.ids.person(req)?.id ?? null })) return sendJson(res, { error: `Only ${record.by}, who runs ${record.name}, stops its turn.` }, 403);
-  return sendJson(res, { ok: true, stopped: live.hosted?.stopTurn(tok) ?? false });
+  const record = privateOf(app, b.agent);
+  if (!record || record.runs !== "server") return sendJson(res, { error: "There is no such agent running on this server." }, 404);
+  return sendJson(res, { ok: true, stopped: live.hosted!.stopTurn(personalChannel(record.id, { name: me, person: app.ids.person(req)?.id ?? null })!) });
 }
 
 /** Asking others to follow (CollabSpec decision 10, the owner's decision of 2026-10-12), for pages:

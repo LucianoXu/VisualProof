@@ -15,6 +15,7 @@ import { DEFAULT_JOBS } from "./usage.ts";
 import { invalidTemplate } from "../shared/editor.ts";
 import { KEEP_OPEN, MAX_LEAN_FILES } from "./hover.ts";
 import { DEFAULT_LIBRARY_LIMIT, validSha } from "../shared/library.ts";
+import { MAX_NAME, validName } from "../shared/collab.ts";
 
 export interface Options {
   cmd: "serve" | "export" | "purge-file" | "doctor" | "artwork";
@@ -36,9 +37,12 @@ export interface Options {
   /** what agents may change (AgentSpec decision 9): nothing, advice and notes, or everything a
    *  person can do through the page */
   agents: AgentLevel;
-  /** --claude-oauth: Share may run agents on this server, on a Claude Code OAuth token their maker
-   *  gives (AgentSpec decision 10, experimental; server/hosted.ts) */
-  claudeOAuth: boolean;
+  /** --claude-oauth: the server runs an agent of its own, which everyone with a name talks with, on
+   *  the Claude Code OAuth token this file holds — or, `env`, the server's CLAUDE_CODE_OAUTH_TOKEN
+   *  (AgentSpec decision 10, experimental; server/serveragent.ts, server/hosted.ts); null: none */
+  claudeOAuth: string | null;
+  /** --claude-oauth-name: the name the server's agent goes by; null: "Claude" */
+  claudeOAuthName: string | null;
   /** the file of the key whose link alone lets anyone in (server/access.ts); null: open to all */
   accessKeyFile: string | null;
   /** how many usage-pass workers run at once (server/usage.ts); 0: no pass */
@@ -90,7 +94,8 @@ function usage(code = 2): never {
                                          [--mathlib-cache shared|own] [--root Name]... [--port 4173] [--host 127.0.0.1]
                                          [--site dir] [--cache dir] [--graph saved.json]
                                          [--identity-header X-Forwarded-User] [--editor URL-template]
-                                         [--agents read|advise|full] [--claude-oauth] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}] [--lean-files ${KEEP_OPEN}]
+                                         [--agents read|advise|full] [--access-key-file file] [--public] [--jobs ${DEFAULT_JOBS}] [--lean-files ${KEEP_OPEN}]
+                                         [--claude-oauth file|env] [--claude-oauth-name Claude]
                                          [--public-url https://host] [--allowed-host name]... [--library-limit GB]
                                          [--updates auto|notify|off]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
@@ -171,16 +176,19 @@ function usage(code = 2): never {
            pins), each recorded as the agent's. An agent's opinion is advice whatever the level:
            shown apart, never counted; agent tokens stay with people.
 
-  --claude-oauth  (experimental) Share may also run an agent on this server, on the Claude Code
-           of the person who shares: they give their Claude Code OAuth token once (claude
-           setup-token, from a page over HTTPS or on this machine, under a name that is theirs
-           alone), and their agents run here, answering what people write to them, until revoked.
-           Needs Claude Code (claude) on this machine. The token is kept in the site, readable by
-           the server's user alone, and every answer spends its holder's Claude usage, whoever
-           asked. Such an agent has Claude Code's own tools here (a shell, files, the web) and
-           changes and builds the project when asked: whoever can talk to it can have it do what
-           this server's user can. Anthropic's terms do not allow a tool to keep subscription tokens or to answer
-           others with them: use it for a small team that accepts this, never for a public site.
+  --claude-oauth file|env  (experimental) the server runs an AI agent of its own, which everyone
+           with a name talks with — each person in a private conversation of their own, which
+           nobody else reads, and anyone by @ and its name in the public channel — on the Claude
+           Code OAuth token the file holds (claude setup-token prints one, sk-ant-oat…; the file
+           readable by the server's user alone: chmod 600), or with env the server's own
+           CLAUDE_CODE_OAUTH_TOKEN. No API key. The token is read at the start, and never shown,
+           logged or kept in the site. Needs Claude Code (claude) on this machine. Every answer
+           spends that account's Claude usage, whoever asked. The agent has Claude Code's own
+           tools here (a shell, files, the web) and changes and builds the project when asked:
+           whoever can talk to it can have it do what this server's user can. Anthropic's terms
+           do not allow a tool to answer others on a subscription's token: use it for a small team
+           that accepts this, never for a public site.
+  --claude-oauth-name  the name that agent goes by (default Claude); its level is --agents.
 
   --jobs  how many modules the usage pass elaborates at once (default ${DEFAULT_JOBS}; 0: no pass). The
            pass finds which notation each declaration is written in and the exact context it is
@@ -259,7 +267,7 @@ export function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", claudeOAuth: false, accessKeyFile: null, jobs: DEFAULT_JOBS, leanFiles: null, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", claudeOAuth: null, claudeOAuthName: null, accessKeyFile: null, jobs: DEFAULT_JOBS, leanFiles: null, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -275,7 +283,23 @@ export function parseArgs(argv: string[]): Options {
     else if (a === "--editor") o.editor = val();
     else if (a === "--access-key-file") o.accessKeyFile = resolve(val());
     else if (a === "--public") o.publicRead = true;
-    else if (a === "--claude-oauth") o.claudeOAuth = true;
+    else if (a === "--claude-oauth" && cmd === "serve") {
+      // a file, or env: 0.10's flag took no value, and an option after it is not taken for a file
+      const v = rest[++i];
+      if (v === undefined || v.startsWith("-")) {
+        console.error("visualproof: --claude-oauth takes the file that holds the Claude Code OAuth token (claude setup-token prints one), or env for the server's own CLAUDE_CODE_OAUTH_TOKEN: --claude-oauth ~/.config/visualproof/claude-token");
+        process.exit(2);
+      }
+      o.claudeOAuth = v === "env" ? "env" : resolve(v);
+    }
+    else if (a === "--claude-oauth-name" && cmd === "serve") {
+      const v = val().trim();
+      if (!validName(v)) {
+        console.error(`visualproof: --claude-oauth-name: the agent's name is 1 to ${MAX_NAME} characters, without line breaks`);
+        process.exit(2);
+      }
+      o.claudeOAuthName = v;
+    }
     else if (a === "--recipe" && cmd === "artwork") o.recipe = resolve(val());
     else if (a === "--png" && cmd === "artwork") o.png = true;
     else if (a === "--svg" && cmd === "artwork") o.svg = true;
@@ -409,6 +433,10 @@ export function parseArgs(argv: string[]): Options {
   if (o.allowedHosts.length && o.accessKeyFile) console.warn("visualproof: --allowed-host changes nothing with --access-key-file: the key lets in whoever has it, by any name");
   if (cmd === "purge-file" && !validSha(o.sha)) {
     console.error("visualproof purge-file: give the file's SHA-256, 64 hex digits, as the page's library shows it.");
+    process.exit(2);
+  }
+  if (o.claudeOAuthName !== null && o.claudeOAuth === null) {
+    console.error("visualproof: --claude-oauth-name names the agent --claude-oauth runs: give --claude-oauth too");
     process.exit(2);
   }
   // a template that cannot make a link is said at the start, not found out by a reader's click

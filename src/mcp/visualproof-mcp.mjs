@@ -8,10 +8,13 @@
 //   VISUALPROOF_WAIT_SECONDS  the longest wait_for_message waits (default 1800, 30 minutes): 50 for
 //                             a client that ends a tool call after a minute whatever it reports
 //   VISUALPROOF_PROGRESS_SECONDS  how often a wait tells the client its progress (default 30)
-//   VISUALPROOF_FILES         set by the VisualProof server for an agent it runs itself (AgentSpec
-//                             decision 10): the folder `saveTo` and `path` are held to — a name is a
-//                             file there, and a path that leads out of it (`..`, a symbolic link) is
-//                             refused — and the client's going is no leave (the server listens for it)
+//   VISUALPROOF_FILES         set by the VisualProof server for its own agent (AgentSpec decision 10):
+//                             the folder `saveTo` and `path` are held to — a name is a file there, and
+//                             a path that leads out of it (`..`, a symbolic link) is refused — and the
+//                             client's going is no leave (the server listens for it)
+//   VISUALPROOF_TURN          set beside it: the turn this process serves, sent with each request
+//                             (X-VisualProof-Turn), so that a reply goes back to that turn's own
+//                             conversation however many turns run at once
 //
 // It offers VisualProof's agents' API as tools. The list comes from the server
 // (GET /api/agent/mcp/tools), each tool with the request it makes — or, for a tool of several
@@ -64,8 +67,10 @@ const URL_ = (process.env.VISUALPROOF_URL ?? "").trim().replace(/\/+$/, "");
 const TOKEN = (process.env.VISUALPROOF_TOKEN ?? "").trim();
 const WAIT_S = seconds(process.env.VISUALPROOF_WAIT_SECONDS, 1800, 1, 7 * 86_400);
 const PROGRESS_MS = seconds(process.env.VISUALPROOF_PROGRESS_SECONDS, 30, 0.2, 600) * 1000;
-/** the folder an agent the VisualProof server runs keeps its files in; null: any path of this machine */
+/** the folder the VisualProof server's own agent keeps its files in; null: any path of this machine */
 const FILES = (process.env.VISUALPROOF_FILES ?? "").trim() || null;
+/** the turn of the server's own agent this process serves: its requests say so */
+const TURN = /^[0-9a-f-]{36}$/.test((process.env.VISUALPROOF_TURN ?? "").trim()) ? process.env.VISUALPROOF_TURN.trim() : null;
 /** this process, as its waits name it: another one is a new session, which knows nothing yet */
 const SESSION = randomUUID();
 
@@ -77,7 +82,7 @@ function seconds(raw, dflt, lo, hi) {
 
 const log = (...a) => process.stderr.write(`visualproof-mcp: ${a.join(" ")}\n`);
 const send = (msg) => process.stdout.write(JSON.stringify(msg) + "\n");
-const auth = () => ({ authorization: `Bearer ${TOKEN}` });
+const auth = () => ({ authorization: `Bearer ${TOKEN}`, ...(TURN ? { "x-visualproof-turn": TURN } : {}) });
 const sleep = (ms, signal) =>
   new Promise((ok) => {
     const t = setTimeout(ok, ms);
@@ -506,7 +511,7 @@ async function leave() {
   if (leaving) return;
   leaving = true;
   for (const ctl of running.values()) ctl.abort();
-  // an agent the VisualProof server runs ends its client after each turn: the server listens for it
+  // the VisualProof server's own agent ends its client after each turn: the server listens for it
   if (URL_ && TOKEN && !stopped && !FILES)
     await fetch(`${URL_}/api/agent/view`, { method: "POST", headers: { ...auth(), "content-type": "application/json", "x-visualproof-session": SESSION }, body: '{"leave":true}', signal: AbortSignal.timeout(1500) }).catch(() => {});
   process.exit(0);

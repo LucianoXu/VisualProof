@@ -12,14 +12,15 @@ import { agentPrompt } from "./prompt.ts";
 import type { AgentLevel } from "./agent.ts";
 import { reachedAt, sendJson } from "./send.ts";
 import type { App } from "./app.ts";
-import { invalidClaudeToken } from "./claudetokens.ts";
-import { PER_PERSON } from "./hosted.ts";
+import { agentKey } from "./presence.ts";
 
 /** Sharing with an AI agent (AgentSpec decision 7), for people: the tokens in force (GET), a new
  *  one with its prompt (POST), a token's prompt shown again (POST …/prompt), and revoking one
  *  (POST …/revoke). All but the list need a name: a token is made under it, and its prompt holds
  *  the token. The prompt is asked for by POST, as making one is, so that the browser sends its
- *  Origin and the prompt names the server as the page reached it, the same both times. */
+ *  Origin and the prompt names the server as the page reached it, the same both times. The list
+ *  says which is the server's own agent, where it runs one (AgentSpec decision 10): it has no
+ *  prompt, and the page cannot revoke it. */
 export async function shareAgents(app: App, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   // agent tokens stay with people, at every level (the owner's decision, AgentSpec decision 9):
   // an agent that could make, show or revoke tokens could outlive its own revocation. A token
@@ -31,15 +32,17 @@ export async function shareAgents(app: App, req: IncomingMessage, res: ServerRes
   const me = app.ids.who(req);
   const path = url.pathname.replace(/\/+$/, "");
   if (path === "/api/share/agents" && req.method === "GET")
-    return sendJson(res, { level: top, levels: AGENT_LEVELS.slice(0, AGENT_LEVELS.indexOf(top) + 1), defaultLevel: lower("advise", top), days: TOKEN_DAYS, defaultDays: DEFAULT_DAYS, tokens: tokens.inForce().map(AgentTokens.info), server: onServer(app, req) });
+    return sendJson(res, { level: top, levels: AGENT_LEVELS.slice(0, AGENT_LEVELS.indexOf(top) + 1), defaultLevel: lower("advise", top), days: TOKEN_DAYS, defaultDays: DEFAULT_DAYS, tokens: app.live.listedTokens().map(AgentTokens.info), server: onServer(app) });
   if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);
   if (!me) return sendJson(res, { error: "Say who you are first: a token is made, shown or revoked under your name.", who: true }, 401);
   const r = await app.json(req, 1 << 16);
   if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
   const b = (r.body ?? {}) as Record<string, unknown>;
   if (path === "/api/share/agents/revoke") {
+    // the server's own agent stops with the server (AgentSpec decision 10): its token is the server's
+    if (typeof b.id === "string" && tokens.get(b.id)?.runs === "server") return sendJson(res, { error: `${tokens.get(b.id)!.name} runs on this server: it is the server's, and stops with it.`, runs: "server" }, 403);
     if (typeof b.id !== "string" || !tokens.revoke(b.id, me)) return sendJson(res, { error: "There is no such token in force." }, 404);
-    return sendJson(res, { ok: true, tokens: tokens.inForce().map(AgentTokens.info) });
+    return sendJson(res, { ok: true, tokens: app.live.listedTokens().map(AgentTokens.info) });
   }
   // the server as the prompt names it
   const address = app.publicUrl ?? reachedAt(req);
@@ -48,7 +51,7 @@ export async function shareAgents(app: App, req: IncomingMessage, res: ServerRes
     // owner's decision of 2026-10-19): whoever holds the token reads its private channel
     const t = typeof b.id === "string" ? tokens.token(b.id) : null;
     if (!t) return sendJson(res, { error: "There is no such token in force." }, 404);
-    // an agent the server runs has none: its token never leaves the server (AgentSpec decision 10)
+    // the server's own agent has none: its token never leaves the server (AgentSpec decision 10)
     if (t.record.runs === "server") return sendJson(res, { error: `${t.record.name} runs on this server: it has no prompt, and its token never leaves the server.`, runs: "server" }, 400);
     if (!madeBy(t.record, { name: me, person: app.ids.person(req)?.id ?? null })) return sendJson(res, { error: `Only ${t.record.by}, who made it, is shown this token's prompt again: whoever holds a token reads its agent's private channel.`, maker: false }, 403);
     return sendJson(res, { token: AgentTokens.info(t.record), prompt: agentPrompt({ url: address, token: t.token, record: t.record }) });
@@ -63,109 +66,22 @@ export async function shareAgents(app: App, req: IncomingMessage, res: ServerRes
   if (AGENT_LEVELS.indexOf(level) > AGENT_LEVELS.indexOf(top)) return sendJson(res, { error: `This server lets agents do at most ${top} (--agents ${top}): a token cannot give more.` }, 400);
   const days = b.days ?? DEFAULT_DAYS;
   if (!TOKEN_DAYS.includes(days as (typeof TOKEN_DAYS)[number])) return sendJson(res, { error: `days is one of ${TOKEN_DAYS.join(", ")}.` }, 400);
-  // an agent the server runs, on its maker's Claude Code (AgentSpec decision 10): no prompt, and its
-  // token lasts until revoked
-  if (b.runs === "server") {
-    const why = mayRunHere(app, req);
-    if (why) return sendJson(res, { error: why }, 403);
-    const person = app.ids.person(req)?.id ?? null;
-    if (!app.live.claudeTokens.forMaker({ by: me, ...(person ? { makerPerson: person } : {}) }))
-      return sendJson(res, { error: app.live.claudeTokens.info({ person, name: me })?.refused ? "Claude Code refused your token: give a new one first." : "Give your Claude Code OAuth token first: the agent runs on it.", claudeToken: true }, 409);
-    const mine = tokens.inForce().filter((t) => t.runs === "server" && madeBy(t, { name: me, person }));
-    if (mine.length >= PER_PERSON) return sendJson(res, { error: `You run ${PER_PERSON} agents on this server already: revoke one first.` }, 409);
-    const made = tokens.create({ name: (name as string).trim(), by: me, person, level, days: DEFAULT_DAYS, runs: "server" });
-    app.live.hosted!.start(made.record);
-    return sendJson(res, { token: AgentTokens.info(made.record), tokens: tokens.inForce().map(AgentTokens.info) });
-  }
-  if (b.runs !== undefined && b.runs !== null && b.runs !== "agent") return sendJson(res, { error: 'runs is "server", or left out for a prompt.' }, 400);
+  // one agent runs on the server, the server's own (AgentSpec decision 10, the owner's decisions of
+  // 2026-11-08 for 0.11): Share makes none to run there
+  if (b.runs !== undefined && b.runs !== null && b.runs !== "agent") return sendJson(res, { error: "Share makes a prompt for an agent of yours. The one agent this server runs is its own (--claude-oauth): talk with it in the conversations." }, 400);
   const made = tokens.create({ name: (name as string).trim(), by: me, person: app.ids.person(req)?.id ?? null, level, days: days as number });
   const prompt = agentPrompt({ url: address, token: made.token, record: made.record });
-  return sendJson(res, { token: AgentTokens.info(made.record), prompt, tokens: tokens.inForce().map(AgentTokens.info) });
+  return sendJson(res, { token: AgentTokens.info(made.record), prompt, tokens: app.live.listedTokens().map(AgentTokens.info) });
 }
 
-/** What Share's AI agent tab is told of running agents on this server (AgentSpec decision 10): null
- *  where it runs none (no --claude-oauth); else whether it can (Claude Code is here), whether the
- *  reader may (why not), and whether they gave a Claude token — when, and whether it was refused;
- *  never the token. */
-function onServer(app: App, req: IncomingMessage) {
-  const hosted = app.live.hosted;
-  if (!hosted) return null;
-  const me = app.ids.who(req);
-  const person = app.ids.person(req)?.id ?? null;
-  return {
-    available: hosted.available,
-    refused: mayRunHere(app, req),
-    token: me ? app.live.claudeTokens.info({ person, name: me }) : null,
-    perPerson: PER_PERSON,
-  };
-}
-
-/** Why the reader may not run an agent on this server, nor give a Claude token; null when they may:
- *  the server runs agents (--claude-oauth) and Claude Code is on its machine; the reader is a person
- *  whose name is theirs alone — their personal link's, the sign-in's in front of the server, or, on
- *  a server without a key reached on this machine only, whoever gives it — so that nobody runs agents
- *  on someone else's subscription by giving their name (the owner's decision of 2026-11-08). */
-export function mayRunHere(app: App, req: IncomingMessage): string | null {
-  const hosted = app.live.hosted;
-  if (!hosted) return "This server runs no agents of its own: it was started without --claude-oauth.";
-  if (!hosted.available) return "Claude Code (claude) is not on this server's machine: it runs no agents of its own.";
-  if (app.ids.kind(req) === "agent") return "Agents cannot run agents.";
-  if (app.readOnlyOf.has(req)) return "This page is read-only.";
-  const here = !app.access && !app.ids.header && loopbackHost(req.headers.host) && loopbackAddress(req.socket.remoteAddress);
-  if (!app.ids.person(req) && !app.ids.header && !here)
-    return "Only someone whose name is theirs alone runs agents on this server: come by your personal link (Share, Invite a person), so that nobody can run one on your Claude Code by giving your name.";
-  return null;
-}
-
-/** A Claude Code OAuth token given in Share (AgentSpec decision 10), for people: POST
- *  /api/share/claude {token} gives it, in place of the one before; POST …/remove removes it. Never
- *  answered back: what Share is told of it is GET /api/share/agents's `server.token`. Only from a page
- *  over HTTPS or on this machine: a year of a subscription does not cross a network in the clear. */
-export async function shareClaude(app: App, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
-  const path = url.pathname.replace(/\/+$/, "");
-  if (req.method !== "POST") return sendJson(res, { error: `${path} answers POST.` }, 405);
-  const why = mayRunHere(app, req);
-  if (why) return sendJson(res, { error: why }, app.live.hosted ? 403 : 404);
-  const me = app.ids.who(req);
-  if (!me) return sendJson(res, { error: "Say who you are first: a Claude token is kept under your name.", who: true }, 401);
-  const who = { person: app.ids.person(req)?.id ?? null, name: me };
-  const claude = app.live.claudeTokens;
-  if (path === "/api/share/claude/remove") {
-    if (!claude.remove(who)) return sendJson(res, { error: "You gave no Claude Code token." }, 404);
-    return sendJson(res, { ok: true, token: null });
-  }
-  if (path !== "/api/share/claude") return sendJson(res, { error: "not found" }, 404);
-  if (!securePage(req.headers.origin)) return sendJson(res, { error: "A Claude Code token is given from a page over HTTPS, or on this machine: over plain HTTP it would cross the network in the clear.", insecure: true }, 403);
-  const r = await app.json(req, 4096);
-  if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
-  const token = (r.body as { token?: unknown } | null)?.token;
-  const bad = invalidClaudeToken(token);
-  if (bad) return sendJson(res, { error: bad }, 400);
-  claude.give(who, (token as string).trim());
-  return sendJson(res, { ok: true, token: claude.info(who) });
-}
-
-/** Whether a page's Origin is over HTTPS, or on this machine. */
-function securePage(origin: string | undefined): boolean {
-  if (!origin) return false;
-  try {
-    const u = new URL(origin);
-    return u.protocol === "https:" || (u.protocol === "http:" && loopbackHost(u.host));
-  } catch {
-    return false;
-  }
-}
-
-/** Whether a Host names this machine: localhost (or a name under it), 127.x.y.z, [::1]. */
-function loopbackHost(host: string | undefined): boolean {
-  if (!host) return false;
-  const name = host.replace(/:\d+$/, "").replace(/^\[|\]$/g, "").toLowerCase();
-  return name === "localhost" || name.endsWith(".localhost") || /^127\.\d+\.\d+\.\d+$/.test(name) || name === "::1";
-}
-
-/** Whether a connection comes from this machine. */
-function loopbackAddress(a: string | undefined): boolean {
-  return !!a && (/^127\./.test(a) || a === "::1" || /^::ffff:127\./.test(a));
+/** What Share's AI agent tab is told of the server's own agent (AgentSpec decision 10): null where
+ *  it runs none (no --claude-oauth); else its id in presence, its name and level, and whether it can
+ *  run (why not, where it cannot: Claude Code missing, its Claude token refused). Never the token. */
+function onServer(app: App) {
+  const h = app.live.hosted;
+  const r = h ? app.live.tokens.get(h.id) : undefined;
+  if (!h || !r) return null;
+  return { id: agentKey({ name: r.name, token: r.id }), token: r.id, name: r.name, level: app.agents.levelOf({ name: r.name, kind: "agent", token: { id: r.id, by: r.by, level: r.level, expires: r.expires, runs: "server" } }), offline: h.offline };
 }
 
 /** Inviting a person (CollabSpec decision 9), for people: the personal links in force (GET), a new

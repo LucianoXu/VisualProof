@@ -38,6 +38,7 @@ import { parseArgs } from "./options.ts";
 import type { Options } from "./options.ts";
 import { App } from "./app.ts";
 import { findClaude, Hosted } from "./hosted.ts";
+import { DEFAULT_SERVER_AGENT_NAME, loadClaudeToken, retire010, serverAgentToken } from "./serveragent.ts";
 import { mcpServerText } from "./agententry.ts";
 
 /** What a stop signal does to a server: end it at once, until it can stop gracefully (serve). */
@@ -62,6 +63,17 @@ async function main(): Promise<void> {
   // a live server outlives any one failed task: log it and keep serving (a picture is no server:
   // whatever fails ends it, with status 1)
   if (o.cmd !== "artwork") process.on("unhandledRejection", (e) => console.error("unhandled:", e instanceof Error ? e.message : e));
+  // the server's own agent's Claude token (AgentSpec decision 10): read once, now, before anything
+  // long; a file others may read, or one that holds no OAuth token, and the server does not start
+  let claudeToken: string | null = null;
+  if (o.cmd === "serve" && o.claudeOAuth) {
+    const c = loadClaudeToken(o.claudeOAuth);
+    if ("error" in c) {
+      console.error(`visualproof: --claude-oauth ${o.claudeOAuth === "env" ? "" : "file "}${c.error}`);
+      return endNotTheCode(2);
+    }
+    claudeToken = c.token;
+  }
   // following a branch (DeploySpec): its clone in the cache, made at the first start, is the project
   const deploy = o.remote ? await openDeployment(o) : null;
   if (o.remote && !deploy) return;
@@ -134,6 +146,11 @@ async function main(): Promise<void> {
 
   const review = new ReviewStore(project.root, dirs.site);
   const live = new Live(project, dirs, o.graph, review, o.editor, o.jobs);
+  // 0.10's agents run per person, and the Claude tokens they ran on, go (AgentSpec decision 10);
+  // the server's own agent's token is kept from one start to the next, else made
+  const agentsRoot = join(dirs.cache, "agents");
+  retire010({ site: dirs.site, agents: agentsRoot, tokens: live.tokens, log: (l) => console.log(l) });
+  const ownAgent = claudeToken ? serverAgentToken({ tokens: live.tokens, name: o.claudeOAuthName ?? DEFAULT_SERVER_AGENT_NAME, level: o.agents, agents: agentsRoot, log: (l) => console.log(l) }) : null;
   live.library.limit = o.libraryLimit;
   // hovers and the InfoView: at most --lean-files files open at once (ReviewSpec, "The InfoView")
   const hover = new LeanHover(project, dirs.cache, o.leanFiles ?? KEEP_OPEN);
@@ -286,30 +303,34 @@ async function main(): Promise<void> {
       // where the project is on Mathlib, its cache: the user's, or the deployment's own (DeploySpec decision 2)
       console.log(`  Mathlib's cache: ${o.mathlibCache === "own" ? `${deployment.folder.mathlib}, the deployment's own` : `${sharedMathlibCache()}, the user's, shared by their builds`}`);
     }
-    // the agents the server runs on their makers' Claude Code (AgentSpec decision 10): their MCP
-    // server reaches this one on this machine
-    if (o.claudeOAuth) {
+    // the server's own agent (AgentSpec decision 10): its MCP servers reach this one on this machine
+    if (ownAgent && claudeToken) {
       const claude = findClaude();
       const at = server.address();
       const port = typeof at === "object" && at ? at.port : o.port;
       const host = typeof at === "object" && at && at.address !== "0.0.0.0" && at.address !== "::" ? (at.family === "IPv6" ? `[${at.address}]` : at.address) : "127.0.0.1";
-      live.hosted = new Hosted({
-        root: join(dirs.cache, "agents"),
-        claude,
-        talk: live.talk,
-        tokens: live.tokens,
-        claudeTokens: live.claudeTokens,
-        address: () => `http://${host}:${port}`,
-        mcpServer: mcpServerText,
-        projectRoot: () => project.root,
-        followed: () => (deployment ? deployment.status(false).branch : null),
-        site: dirs.site,
-        mentionable: () => live.mentionable().names,
-        project: () => project.name,
-        log: (l) => console.log(l),
-      });
-      live.hosted.restore();
-      console.log(`  agents on this server (--claude-oauth, experimental): ${claude ? `Claude Code at ${claude}` : "none — Claude Code (claude) is not on this machine"}`);
+      live.runAgent(
+        new Hosted({
+          root: agentsRoot,
+          claude,
+          claudeToken,
+          record: ownAgent,
+          talk: live.talk,
+          tokens: live.tokens,
+          address: () => `http://${host}:${port}`,
+          mcpServer: mcpServerText,
+          projectRoot: () => project.root,
+          followed: () => (deployment ? deployment.status(false).branch : null),
+          site: dirs.site,
+          mentionable: () => live.mentionable().names,
+          project: () => project.name,
+          log: (l) => console.log(l),
+        }),
+      );
+      console.log(
+        `  the server's agent (--claude-oauth, experimental): ${ownAgent.name}, at --agents ${o.agents}, on the Claude token ${o.claudeOAuth === "env" ? "of CLAUDE_CODE_OAUTH_TOKEN" : `in ${o.claudeOAuth}`}; ` +
+          (claude ? `Claude Code at ${claude}` : "offline — Claude Code (claude) is not on this machine"),
+      );
     }
     recordVersion(live, version, supervised);
     process.send?.({ vp: "listening", version });

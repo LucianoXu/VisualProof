@@ -240,7 +240,8 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       another window covers it, the conversation button brings it in front; where none does, the
       button closes it.
     - **Its channels**, at its head: *Everyone*, then each of the reader's own agents with its state
-      (AgentSpec decision 8). The button counts the public messages the reader has not seen, and is
+      (AgentSpec decision 8) — the server's own agent among them, where it runs one, in the state of
+      the reader's conversation with it (AgentSpec decision 10). The button counts the public messages the reader has not seen, and is
       marked where they are mentioned or one of their agents answered.
     - **The public channel, *Everyone***: everyone with a name writes in it, every agent with a
       token too; a private reader (decision 8) reads it, and what they write is under their name,
@@ -252,9 +253,13 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       handed to the agent; an agent's mention of an agent is shown, never handed (AgentSpec
       decision 8).
     - **Private channels are between a person and their own agent**: the agent whose token they made
-      (AgentSpec decision 7). There are none between people, and nobody sees another's. They are as
-      private as names are: a guest's name is anyone's to give (decision 3), so whoever gives the
-      maker's name sees what they said to their agent; an invited person's name (decision 9) and a
+      (AgentSpec decision 7); and between every person with a name and the server's own agent
+      (AgentSpec decision 10, the owner's decisions of 2026-11-08 for 0.11): each person one of their
+      own with it — a guest, an invited person, a proxy's name — never a read-only reader. There are
+      none between people, and nobody sees another's. They are as private as names are, by one rule
+      (AgentSpec decision 7, madeBy): an invited person's by their personal link, anyone else's by
+      their name. A guest's name is anyone's to give (decision 3), so whoever gives it sees what that
+      guest said to their agent, or to the server's; an invited person's name (decision 9) and a
       proxy's (`--identity-header`) are protected. SECURITY.md says so.
     - **Messages** are text, escaped, with bold, italics, code, fenced code, declarations' names as
       links, and links. The place each was written from is handed to agents, not shown on the page:

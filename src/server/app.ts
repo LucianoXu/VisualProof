@@ -31,7 +31,7 @@ import { serveFilm } from "./film.ts";
 import { readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 import { readBody, refused, sendFile, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
 import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
-import { shareAgents, shareClaude, sharePeople, shareReadOnly } from "./appshare.ts";
+import { shareAgents, sharePeople, shareReadOnly } from "./appshare.ts";
 import { ask, chat, chatNew, chatStop, pointer, presence } from "./apptalk.ts";
 import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsite.ts";
 import { agentRoute, exportRoute } from "./appagent.ts";
@@ -171,6 +171,8 @@ export class App {
             hint: "Ask the person who shared with you for a new one (Share, then AI agent, in the page).",
           }, 401);
         if (path !== "/api/agent" && !path.startsWith("/api/agent/")) return sendJson(res, { error: "not found" }, 404);
+        // the server's own agent is let in while the server runs it (AgentSpec decision 10)
+        if (t.ok.runs === "server" && live.hosted?.id !== t.ok.id) return sendJson(res, { error: "This agent runs only while its server runs it (--claude-oauth)." }, 401);
         return agentRoute(this, req, res, url, t.ok);
       }
       // a personal link (CollabSpec decision 9, server/invites.ts): it lets its holder in, as who
@@ -285,7 +287,6 @@ export class App {
       }
       if (path === "/api/share/readonly" || path.startsWith("/api/share/readonly/")) return shareReadOnly(this, req, res, url);
       if (path.startsWith("/api/share/agents")) return shareAgents(this, req, res, url);
-      if (path === "/api/share/claude" || path.startsWith("/api/share/claude/")) return shareClaude(this, req, res, url);
       if (path === "/api/share/people" || path.startsWith("/api/share/people/")) return sharePeople(this, req, res, url);
       if (path === "/api/chat") return chat(this, req, res, url);
       if (path === "/api/chat/new") return chatNew(this, req, res);

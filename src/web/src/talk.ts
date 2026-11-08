@@ -31,6 +31,14 @@
 // disregard what came before, and a later session of it is told only what comes after; but a session
 // running now keeps what it was told, which the page cannot take from it (only /clear in its own
 // terminal does): the button's tooltip says so.
+//
+// The server's own agent (AgentSpec decision 10; the owner's decisions of 2026-11-08 for 0.11) is
+// every reader's with a name: its tab is their own conversation with it, which nobody else reads,
+// each a session of its own on the server. The tab shows the agent's state in that conversation alone
+// — thinking, working, *waiting its turn* while other conversations' turns take all there is, or
+// listening — as the server tells it to this reader's pages (`chat-state`); presence shows the
+// agent's as a whole. A new conversation there is a new session of that conversation alone, and ■
+// stops the reader's own turn.
 
 import { colorOf, madeBy, sameName } from "../../shared/collab.ts";
 import type { AgentTalk, ChatMessage, Peer, PresenceView } from "../../shared/collab.ts";
@@ -106,6 +114,9 @@ export class Talk {
   private restarting = false;
   /** the conversations before the last divider are shown, not folded into one line */
   private unfolded = false;
+  /** the server's own agent's state in the reader's conversation with it, by its id: what its tab
+   *  shows in place of the state presence lists */
+  private sessions = new Map<string, AgentTalk>();
   /** the page may read the conversations: a name given, and not a read-only reader's */
   private named = false;
   /** counts the seconds of a thinking agent */
@@ -188,9 +199,10 @@ export class Talk {
 
   // ---------------------------------------------------------------- the channels
 
-  /** The reader's own agents, as presence lists them: those whose token they made. */
+  /** The reader's own agents, as presence lists them: those whose token they made, and the server's
+   *  own agent, in its state in the reader's conversation with it. */
   private own(): Peer[] {
-    return ownAgents(this.hooks.peers(), this.hooks.me());
+    return ownAgents(this.hooks.peers(), this.hooks.me()).map((p) => (p.runs === "server" && this.sessions.has(p.id) ? { ...p, talk: this.sessions.get(p.id)! } : p));
   }
 
   /** The channels the reader has: Everyone, then each of their own agents. */
@@ -237,6 +249,7 @@ export class Talk {
    *  (what came while it was away), and what the reader may read is known again. */
   connected(): void {
     this.read.clear();
+    this.sessions.clear();
     this.identity();
   }
 
@@ -247,6 +260,7 @@ export class Talk {
     if (!named) this.threads.clear();
     this.named = named;
     this.read.clear();
+    this.sessions.clear();
     this.render();
     this.count();
     if (!named) return;
@@ -261,7 +275,8 @@ export class Talk {
     this.renderTabs();
     this.renderState();
     this.renderForm(false);
-    const read = this.hooks.peers().flatMap((p) => (p.agent && p.talk ? [`${p.id}:${p.talk.read}:${p.talk.readPublic}`] : [])).join(" ");
+    // what each agent was handed, and the server agent's in this reader's conversation with it
+    const read = [...this.hooks.peers().flatMap((p) => (p.agent && p.talk ? [`${p.id}:${p.talk.read}:${p.talk.readPublic}`] : [])), ...[...this.sessions].map(([id, t]) => `${id}:s${t.read}`)].join(" ");
     if (read !== this.readSig) {
       this.readSig = read;
       const el = this.thread();
@@ -276,8 +291,15 @@ export class Talk {
     this.count();
   }
 
-  /** Stop the answer an agent the server runs is giving (AgentSpec decision 10): its maker's, as
-   *  Esc in a terminal is for an agent run there. */
+  /** The server's own agent's state in the reader's conversation with it changed (the event stream's
+   *  `chat-state`, to this reader's pages alone). */
+  sessionState(channel: string, talk: AgentTalk): void {
+    this.sessions.set(channel, talk);
+    this.peersChanged();
+  }
+
+  /** Stop the answer the server's own agent is giving in the reader's conversation with it (AgentSpec
+   *  decision 10), as Esc in a terminal is for an agent run there. */
   private async stopTurn(): Promise<void> {
     const a = this.agentOf(this.channel);
     if (!a || a.runs !== "server") return;
@@ -297,6 +319,11 @@ export class Talk {
     } else {
       this.read.add(channel);
       this.threads.set(channel, merge(r.messages, this.threads.get(channel) ?? []));
+      // the server's own agent: its state in this reader's conversation
+      if (r.agent && r.agent.runs === "server") {
+        this.sessions.set(channel, r.agent.talk);
+        this.renderState();
+      }
     }
     if (channel === this.channel) {
       this.renderThread();
@@ -360,7 +387,8 @@ export class Talk {
   /** The button's count and mark, from what is unseen. */
   private count(): void {
     if (!this.named) return this.hooks.counted(0, false);
-    const u = unseen(this.threads, this.hooks.store.data.chatSeen ?? {}, this.hooks.me().name, this.own().map((p) => p.id));
+    const own = this.own();
+    const u = unseen(this.threads, this.hooks.store.data.chatSeen ?? {}, this.hooks.me().name, own.map((p) => p.id), own.filter((p) => p.runs === "server").map((p) => p.id));
     this.hooks.counted(u.count, u.marked);
   }
 
@@ -495,7 +523,8 @@ export class Talk {
     for (const a of this.own()) {
       const t = a.talk;
       const news = (this.threads.get(a.id) ?? []).some((m) => m.kind === "agent" && m.id > (seen[a.id] ?? 0));
-      html += tab(a.id, `<span class="st-dot${t ? ` st-${t.state}` : ""}"></span>${BOT}<span class="cv-tn">${escapeHtml(a.name ?? "")}</span>${news && a.id !== this.channel ? '<span class="cv-dot" aria-label="new"></span>' : ""}`, `Your agent ${a.name ?? ""}: ${t ? stateWords(t) : ""} — between the two of you alone`);
+      const who = a.runs === "server" ? `${a.name ?? ""}, this server's agent` : `Your agent ${a.name ?? ""}`;
+      html += tab(a.id, `<span class="st-dot${t ? ` st-${t.state}` : ""}"></span>${BOT}<span class="cv-tn">${escapeHtml(a.name ?? "")}</span>${news && a.id !== this.channel ? '<span class="cv-dot" aria-label="new"></span>' : ""}`, `${who}: ${t ? stateWords(t) : ""} — between the two of you alone`);
     }
     if (box.innerHTML !== html) box.innerHTML = html;
   }
@@ -515,7 +544,9 @@ export class Talk {
         this.loading.has(this.channel)
           ? "Reading the conversation…"
           : a
-            ? `No messages yet. What you write here goes to ${escapeHtml(a.name ?? "your agent")}, and nobody else sees it.`
+            ? a.runs === "server"
+              ? `No messages yet. What you write here goes to ${escapeHtml(a.name ?? "the agent")}, and nobody else sees it: it runs on this server, and everyone has a conversation of their own with it.`
+              : `No messages yet. What you write here goes to ${escapeHtml(a.name ?? "your agent")}, and nobody else sees it.`
             : "No messages yet. What you write here everyone with a name on this page sees, and every agent can read; @ and a name hands it to an agent."
       }</div>`;
       return;
@@ -609,7 +640,9 @@ export class Talk {
           ? `${who} is offline${t?.lastSeen ? ` — last seen ${ago(t.lastSeen)}` : ""}`
           : t!.state === "listening"
             ? `Write to ${who}`
-            : `Write to ${who} · it reads this when it next listens`;
+            : a!.runs === "server"
+              ? `Write to ${who} · it reads this in its next turn`
+              : `Write to ${who} · it reads this when it next listens`;
     const box = this.input.el;
     const was = box.dataset.channel;
     this.input.enable(!off, placeholder);
@@ -629,9 +662,9 @@ export class Talk {
   private renderRestart(): void {
     const b = this.el.querySelector<HTMLButtonElement>("[data-cv-new]");
     const a = this.named ? this.agentOf(this.channel) : null;
-    // an agent the server runs, answering: its maker may stop it
+    // the server's own agent, answering in the reader's conversation: they may stop it
     const stop = this.el.querySelector<HTMLButtonElement>("[data-cv-stop]");
-    if (stop) stop.hidden = !(a && a.runs === "server" && (a.talk?.state === "thinking" || a.talk?.state === "working"));
+    if (stop) stop.hidden = !(a && a.runs === "server" && !a.talk?.queued && (a.talk?.state === "thinking" || a.talk?.state === "working"));
     if (!b) return;
     b.hidden = !a;
     if (!a) return;
@@ -641,7 +674,7 @@ export class Talk {
     b.title = fresh(t)
       ? "A new conversation already: nothing was said since it began"
       : a.runs === "server"
-        ? `New conversation: what was said so far folds away, and ${a.name ?? "the agent"} starts a new session without it (it runs on this server).`
+        ? `New conversation: what was said so far folds away, and ${a.name ?? "the agent"} starts a new session of your conversation without it (it runs on this server; nobody else's changes).`
         : `New conversation: what was said so far folds away, and the next session of ${a.name ?? "the agent"} starts without it. A session running now is told to disregard it, but keeps what it was told: only /clear in its own terminal erases that.`;
   }
 
@@ -652,7 +685,7 @@ export class Talk {
     const a = this.agentOf(this.channel);
     const t = a?.talk;
     const last = (this.threads.get(this.channel) ?? []).findLast((m) => m.kind !== "divider");
-    const state = !t ? "" : t.state === "thinking" ? `thinking · ${elapsed(t.since)}` : t.state;
+    const state = !t ? "" : t.queued ? "waiting its turn" : t.state === "thinking" ? `thinking · ${elapsed(t.since)}` : t.state;
     el.innerHTML =
       (a ? `<span class="st-dot${t ? ` st-${t.state}` : ""}"></span>${BOT}<b>${escapeHtml(a.name ?? "")}</b><span class="fl-pill-state">${escapeHtml(state)}</span>` : `<b>Everyone</b>`) +
       (last ? `<span class="fl-pill-msg">${escapeHtml(`${last.from}: ${excerpt(last.text)}`)}</span>` : "");
@@ -674,20 +707,22 @@ export function chipInner(c: Chip): string {
   return `${LINK}<span class="cv-cl">${words}${name}${c.more ? ` +${c.more}` : ""}</span>`;
 }
 
-/** The reader's own agents among `peers`: the agents with a token whose token they made. */
+/** The reader's own agents among `peers`: the agents with a token whose token they made, and the
+ *  server's own agent, which everyone with a name has a conversation of their own with. */
 export function ownAgents(peers: readonly Peer[], me: { name: string | null; person: string | null }): Peer[] {
-  return peers.filter((p) => p.agent && p.talk && p.by !== undefined && madeBy({ by: p.by, makerPerson: p.byPerson }, me));
+  return peers.filter((p) => p.agent && p.talk && (p.runs === "server" ? me.name !== null || me.person !== null : p.by !== undefined && madeBy({ by: p.by, makerPerson: p.byPerson }, me)));
 }
 
 /** What the reader has not seen (`seen`: each channel's last id seen): how many public messages, not
  *  their own; and whether one mentions them, or one of their agents (`agents`) said something — in
- *  its private channel, or in public. */
-export function unseen(threads: ReadonlyMap<string, readonly ChatMessage[]>, seen: Readonly<Record<string, number>>, me: string | null, agents: readonly string[]): { count: number; marked: boolean } {
+ *  its private channel, or in public, but for those everyone shares (`shared`: the server's own
+ *  agent, which answers everyone there). */
+export function unseen(threads: ReadonlyMap<string, readonly ChatMessage[]>, seen: Readonly<Record<string, number>>, me: string | null, agents: readonly string[], shared: readonly string[] = []): { count: number; marked: boolean } {
   let count = 0;
   let marked = false;
   const mine = (m: ChatMessage) => m.kind !== "agent" && me !== null && sameName(m.from, me);
   const ownNames = new Set<string>();
-  for (const id of agents) for (const m of threads.get(id) ?? []) if (m.kind === "agent") ownNames.add(m.from);
+  for (const id of agents) if (!shared.includes(id)) for (const m of threads.get(id) ?? []) if (m.kind === "agent") ownNames.add(m.from);
   for (const m of threads.get(PUBLIC) ?? []) {
     if (m.id <= (seen[PUBLIC] ?? 0) || m.kind === "divider" || mine(m)) continue;
     count++;
@@ -765,7 +800,7 @@ export function elapsed(iso: string, now = Date.now()): string {
 /** An agent's state line as HTML: its state, how long it has been thinking, and what it does — its
  *  own line where it set one, else what its requests show — with names as links. */
 export function stateLine(t: AgentTalk, resolve: (name: string) => string | null, now = Date.now()): string {
-  const parts: string[] = [t.state];
+  const parts: string[] = [t.queued ? "waiting its turn" : t.state];
   if (t.state === "thinking") parts.push(elapsed(t.since, now));
   const what = t.status ?? t.doing;
   const busy = t.state === "thinking" || t.state === "working";
@@ -782,6 +817,7 @@ export function stateWords(t: AgentTalk, now = Date.now()): string {
     case "listening":
       return "listening: what you write reaches it at once";
     case "thinking":
+      if (t.queued) return `waiting its turn for ${elapsed(t.since, now)}: other conversations' answers take all there is for now`;
       return `thinking for ${elapsed(t.since, now)}${what ? `: ${what}` : ""}`;
     case "working":
       return `working${what ? `: ${what}` : ""}; what you write waits for its next wait`;
