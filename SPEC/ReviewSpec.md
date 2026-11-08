@@ -183,9 +183,16 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     reopens as it was, stays inside the screen and snaps to its edges.
   - **Pinning** keeps a window on its declaration, a step aside (down-right, else up-left, a step
     further per pinned window there); the next opening makes a new following window, a step aside
-    where it would cover a pinned one exactly. At most one following and six pinned; a seventh pin
-    is refused, saying why. A pinned window has no back and forward, a name in it goes to the page,
-    and its review keys act on its own declaration. Pins do not survive a reload.
+    where it would cover a pinned one exactly. **The pin is a toggle** (the owner's decisions of
+    2026-11-08 (0.11)): one button, pressed while the window is pinned, its title saying what a click
+    does. Pressed again, it undoes what pinning did: the window follows the selection again where it
+    stands — stepping to the selected declaration, or staying on its own until the selection changes
+    where none is selected —, the next Space closes it and the next opening is in it, and its back and
+    forward return; a window that followed the selection meanwhile closes, since one follows at most.
+    A file window is pinned on its file by what it is: its pin is a mark. At most one following and
+    six pinned; a seventh pin is refused, saying why. A pinned window has no back and forward, a
+    name in it goes to the page, and its review keys act on its own declaration. Pins do not survive
+    a reload.
   - **In front**: the window pressed or focused last; the conversation window above them all
     (CollabSpec decision 13, the owner's decision of 2026-10-19); hover cards above all windows; popovers, modal windows and transient messages above those.
   - **Keys**: Space opens and closes the following window, also from its pill. Focus in a window:
@@ -194,7 +201,9 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     a popover, the views menu, the following window, Activity, then clears the selection.
   - **Following** (CollabSpec decision 4): for a window the reader pinned, the follower's following
     window is pinned where the reader pinned theirs, else a new one opens a step aside; a pinned
-    window of the follower's own on the same declaration stands for it. Pinning, collapsing,
+    window of the follower's own on the same declaration stands for it. One the reader unpins
+    follows the selection on the follower's side too, where no window follows it there, rather than
+    closing for a new one. Pinning, unpinning, collapsing,
     opening a pill or closing a window ends following; nothing on the screen changes as it ends.
   - **Names** link at once by reading the file as Lean would (enclosing namespaces, then the
     `open`s in force), then by Lean's answer, which wins (dot notation: `o.elim` to `Option.elim`).

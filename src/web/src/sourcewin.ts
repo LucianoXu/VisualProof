@@ -5,8 +5,9 @@
 // moves or resizes it; from then on it keeps their place and size until it closes. The code wraps
 // to the window's width, each line's continuations hanging under its own indentation, so that the
 // reader only ever scrolls down. The page keeps one that follows the selection and those the reader
-// pinned (web/src/sources.ts): the pin in the title bar keeps a window on its declaration. The
-// following window has the page's back and forward at its top left; a pinned one stays on one
+// pinned (web/src/sources.ts): the pin in the title bar keeps a window on its declaration, and
+// pressed again lets it follow the selection again (a toggle, the owner's decision of 2026-11-08).
+// The following window has the page's back and forward at its top left; a pinned one stays on one
 // declaration, so it has none. Each collapses to a pill with its declaration's name.
 //
 // It appears at the size its code gives it, once (AttachmentSpec decision 8, the owner's of
@@ -109,9 +110,11 @@ export interface SourceHooks {
   fileOf(module: string): FileStatus | undefined;
   /** the Lake hash of the text a module was compiled from, as the graph has it */
   compiledOf(module: string): string | null | undefined;
-  /** the reader closed the window (its ✕), or pinned it (its pin) */
+  /** the reader closed the window (its ✕), pinned it (its pin), or unpinned it (its pin pressed
+   *  again) */
   close(w: SourceWindow): void;
   pin(w: SourceWindow): void;
+  unpin(w: SourceWindow): void;
   /** the window was collapsed to its pill or opened again: what the others are told changed */
   collapsed(w: SourceWindow): void;
   /** a step back or forward in the page's history (the bar's ← and →), and whether there is one */
@@ -179,6 +182,18 @@ const BACK = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"
 const FORWARD = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5"/></svg>`;
 /** a push pin: outlined on the following window (pin it), filled on a pinned one */
 const PIN = `<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M6 2.5h4l-.6 4 2.1 2.2v.8H4.5v-.8L6.6 6.5 6 2.5zM8 9.5v4"/></svg>`;
+
+/** The pin in the title bar of a window on `what`: a toggle (the owner's decision of 2026-11-08),
+ *  pressed while the window is pinned, its title saying what a click does. A file window is pinned on
+ *  its file by what it is, with no declaration to follow the selection from: its pin is a mark. */
+export function pinHtml(pinned: boolean, fileWindow: boolean, what: string): string {
+  const w = escapeHtml(what);
+  if (fileWindow) return `<span class="sw-pinned" role="img" aria-label="Pinned" title="Pinned: a file window stays on ${w}, whatever is selected">${PIN}</span>`;
+  const title = pinned
+    ? `Unpin: this window follows the selection again (pinned, it stays on ${w}, whatever is selected)`
+    : `Pin: keep this window on ${w}; the next source you open (Space) opens in a new window beside it`;
+  return `<button class="icon sw-pin" data-sw-pin aria-label="Pin" aria-pressed="${pinned}" title="${title}">${PIN}</button>`;
+}
 const COLLAPSE = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 8.5h8"/></svg>`;
 /** how long a declaration's code is waited for before the window shows that it reads: past it, a
  *  new window appears with "Reading the source…", one that showed another declaration says so over
@@ -279,8 +294,10 @@ export class SourceWindow implements SourcePane {
   /** pinned: it stays on its declaration, and its place is its own */
   pinned = false;
   /** pinned as it opened, for a followed reader's window: how many steps aside from the middle of
-   *  the screen it stands while it is fitted to its code (asideRect); 0 for any other */
+   *  the screen it stands while it is fitted to its code (asideRect), unpinned too; 0 for any other */
   private aside = 0;
+  /** its pin was pressed from the keyboard's focus: the toggle has it again once drawn again */
+  private pinFocus = false;
   /** bumped on every render, so a slow fetch for an earlier one is dropped */
   private turn = 0;
   /** the code on show: its module, its first line in the file, the hash of the text */
@@ -422,7 +439,16 @@ export class SourceWindow implements SourcePane {
       const t = e.target as HTMLElement;
       if (t.closest("[data-sw-quote]")) return this.quotePicked();
       if (t.closest("[data-sw-close]")) return this.hooks.close(this);
-      if (t.closest("[data-sw-pin]")) return this.hooks.pin(this);
+      const pin = t.closest("[data-sw-pin]");
+      if (pin) {
+        // the window is drawn again, pinned or not: the keyboard stays on the toggle
+        const was = this.pinned;
+        this.pinFocus = document.activeElement === pin;
+        if (was) this.hooks.unpin(this);
+        else this.hooks.pin(this);
+        if (this.pinned === was) this.pinFocus = false;
+        return;
+      }
       if (t.closest("[data-sw-back]")) return this.hooks.back();
       if (t.closest("[data-sw-fwd]")) return this.hooks.forward();
       if (t.closest(".sw-pill, [data-sw-collapse]")) return;
@@ -684,6 +710,15 @@ export class SourceWindow implements SourcePane {
     void this.render(false);
   }
 
+  /** Pinned no longer (its pin pressed again, the owner's decision of 2026-11-08): it follows the
+   *  selection again, with the page's back and forward, where it stands — a place the reader or the
+   *  page gave it stays its own, one fitted to its code stays fitted there. */
+  unpin(): void {
+    this.pinned = false;
+    this.el.classList.remove("pinned");
+    void this.render(false);
+  }
+
   collapse(on: boolean): void {
     this.win.collapse(on);
     if (on) this.unpick();
@@ -744,6 +779,8 @@ export class SourceWindow implements SourcePane {
     this.el.classList.remove("opening", "slow");
     this.el.removeAttribute("aria-busy");
     this.frameEl.inert = false;
+    if (this.pinFocus) this.frameEl.querySelector<HTMLElement>("[data-sw-pin]")?.focus();
+    this.pinFocus = false;
     for (const ok of this.waiting.splice(0)) ok();
   }
 
@@ -1179,14 +1216,12 @@ export class SourceWindow implements SourcePane {
     const short = escapeHtml(v.display ?? parts[parts.length - 1]);
     const pinned = this.pinned;
     // the page's history, read when drawn, not now: it moves on while the source is fetched. A
-    // pinned window stays on one declaration: it has no history, and its pin is a mark, not a button
+    // pinned window stays on one declaration: it has no history, and its pin is pressed
     const steps = () => this.hooks.steps();
     const nav = () =>
       `<span class="nav"><button data-sw-back title="Back (Alt ←)" aria-label="Back"${steps().back ? "" : " disabled"}>${BACK}</button>` +
       `<button data-sw-fwd title="Forward (Alt →)" aria-label="Forward"${steps().forward ? "" : " disabled"}>${FORWARD}</button></span>`;
-    const pin = pinned
-      ? `<span class="sw-pinned" role="img" aria-label="Pinned" title="Pinned: it stays on ${escapeHtml(v.name)}, whatever is selected">${PIN}</span>`
-      : `<button class="icon sw-pin" data-sw-pin aria-label="Pin" title="Pin: keep this window on ${escapeHtml(v.name)}; the next source you open (Space) opens in a new window beside it">${PIN}</button>`;
+    const pin = pinHtml(pinned, false, v.name);
     // the editor opens the file as it is now: at the compiled place, unless the window found the
     // declaration somewhere else in a file that changed since; GitHub, the build's own text at its
     // commit, where the text shown is that commit's
@@ -1417,9 +1452,7 @@ export class SourceWindow implements SourcePane {
       `<span class="nav"><button data-sw-back title="Back (Alt ←)" aria-label="Back"${this.hooks.steps().back ? "" : " disabled"}>${BACK}</button>` +
       `<button data-sw-fwd title="Forward (Alt →)" aria-label="Forward"${this.hooks.steps().forward ? "" : " disabled"}>${FORWARD}</button></span>`;
     const what = this.file !== null ? `the file ${this.file}` : this.g.nodes[this.current].name;
-    const pin = pinned
-      ? `<span class="sw-pinned" role="img" aria-label="Pinned" title="Pinned: it stays on ${escapeHtml(what)}, whatever is selected">${PIN}</span>`
-      : `<button class="icon sw-pin" data-sw-pin aria-label="Pin" title="Pin: keep this window on ${escapeHtml(what)}; the next source you open (Space) opens in a new window beside it">${PIN}</button>`;
+    const pin = pinHtml(pinned, this.file !== null, what);
     let title: string;
     if (this.file !== null) {
       const parts = this.file.split(".");

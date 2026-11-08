@@ -240,6 +240,8 @@ export function panelsPart(page: Page): PanelsPart {
     compiledOf: (m) => page.compiled.get(m),
     close: (w) => sources.close(w),
     pin: (w) => void sources.pin(w),
+    // unpinned, it follows the selection again: the panel's declaration
+    unpin: (w) => void sources.unpin(w, selected()),
     // a source window collapsed or opened again leaves or takes its side of the reference window
     // paired with it, the two kept apart as the pairing shows them (AttachmentSpec decision 8)
     collapsed: () => {

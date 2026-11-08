@@ -50,6 +50,9 @@ class Pane implements SourcePane {
   pinAside() {
     this.pinned = true;
   }
+  unpin() {
+    this.pinned = false;
+  }
   collapse(on: boolean) {
     this.collapsed = on;
   }
