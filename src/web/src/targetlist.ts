@@ -4,6 +4,12 @@
 // owner's decision of 2026-10-12, and a view deleted leaves its targets with none) says so, and a click opens a view nobody keeps of its TCB, linked to it while it lasts (the owner's
 // decision of 2026-10-11). The review is the same on every board, so the list is too. It folds away,
 // as the filter does; which of them are folded is the reader's own (web/src/store.ts).
+//
+// A target no longer in the graph (deleted, or renamed with no confident rename: HistorySpec decision
+// 12) says so, and has **Unmark** beside it (the owner's decision of 2026-11-08): pressed once it asks
+// ("Unmark it?"), pressed again it takes the target off — the review's untarget, which the timeline
+// records with who did it; the history keeps that it was a target. It cannot be marked again from
+// the page while the graph has no such declaration, hence the second press.
 
 import type { KeyCounts } from "../../shared/keys.ts";
 import type { Progress } from "../../shared/review.ts";
@@ -28,8 +34,10 @@ export interface TargetListHooks {
   /** a view's title */
   title?(id: string): string;
   /** whether targets cannot be marked from this page (a snapshot, a read-only page): the empty list
-   *  then says no more than that it is empty */
+   *  then says no more than that it is empty, and a target gone from the graph has no Unmark */
   readOnly?(): boolean;
+  /** take a target off — one no longer in the graph, from its row: null when done, else why not */
+  unmark?(target: string): Promise<string | null>;
   /** whether a section of the side panel is folded, and folding or opening it */
   shut(section: string): boolean;
   toggle(section: string): void;
@@ -65,16 +73,45 @@ export function sectionHead(id: string, shut: boolean, title: string, aside = ""
 export class TargetList {
   private el: HTMLElement;
   private hooks: TargetListHooks;
+  /** the gone target whose Unmark was pressed once, waiting for the second press */
+  private arming: string | null = null;
+  /** an Unmark under way, and why the last one was refused */
+  private busy: string | null = null;
+  private refused: { target: string; why: string } | null = null;
 
   constructor(el: HTMLElement, hooks: TargetListHooks) {
     this.el = el;
     this.hooks = hooks;
     el.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
+      const unmark = t.closest<HTMLElement>("[data-unmark]");
+      if (unmark) return void this.unmark(unmark.dataset.unmark!);
+      // anything else pressed lets an armed Unmark go
+      if (this.arming !== null) {
+        this.arming = null;
+        this.render();
+      }
       if (t.closest("[data-sec]")) return this.hooks.toggle("targets");
       const row = t.closest<HTMLElement>("[data-target]");
       if (row) this.hooks.open(row.dataset.open ?? null, row.dataset.target!);
     });
+  }
+
+  /** Unmark pressed on a gone target's row: the first press arms it, the second takes it off. */
+  private async unmark(target: string): Promise<void> {
+    if (!this.hooks.unmark || this.busy !== null) return;
+    if (this.arming !== target) {
+      this.arming = target;
+      this.refused = null;
+      return this.render();
+    }
+    this.arming = null;
+    this.busy = target;
+    this.render();
+    const why = await this.hooks.unmark(target);
+    this.busy = null;
+    this.refused = why ? { target, why } : null;
+    this.render();
   }
 
   render(): void {
@@ -89,10 +126,17 @@ export class TargetList {
             .map(({ target, view: v }) => {
               const p = this.hooks.progress(target);
               const k = this.hooks.keyProgress(target);
+              // gone from the graph: Unmark beside the row, where targets may be changed here
+              const gone = p === null && !!this.hooks.unmark && !this.hooks.readOnly?.();
+              const armed = this.arming === target;
+              const unmark = gone
+                ? `<button class="tg-unmark${armed ? " armed" : ""}" data-unmark="${escapeHtml(target)}"${this.busy === target ? " disabled" : ""} title="${escapeHtml(armed ? `Press again to unmark ${target}: it is no target any more; the history keeps that it was` : `Unmark ${target}: it is not in the graph now, and is no target any more; the history keeps that it was`)}">${armed ? "Unmark it?" : "Unmark"}</button>`
+                : "";
+              const why = this.refused?.target === target ? `<div class="act-warn tg-why">${escapeHtml(this.refused.why)}</div>` : "";
               const pct = (x: number) => (p && p.total ? ((100 * x) / p.total).toFixed(1) : "0");
               // a target with no view says so, and a click gives it a view nobody keeps of its TCB
               const tip = v ? `${target} — open its view, on it: ${this.hooks.title?.(v.id) ?? v.id}` : `${target} — it has no view: open a temporary view of its TCB, linked to it until it goes (pin, fold or name it to keep it)`;
-              return (
+              const row =
                 `<button class="tg-row${v && v.id === active ? " on" : ""}${v ? "" : " tg-viewless"}"${v ? ` data-open="${escapeHtml(v.id)}"` : ""} data-target="${escapeHtml(target)}" title="${escapeHtml(tip)}">` +
                 `<span class="tg-name"><span class="star">★</span>${escapeHtml(target.split(".").pop()!)}</span>` +
                 (p
@@ -101,8 +145,8 @@ export class TargetList {
                     (k ? `<span class="tg-key" title="${escapeHtml(`Key declarations that need review: ${k.approved} of ${k.total} approved, the target among them${k.trusted ? `; ${k.trusted} more trusted, in need of no review` : ""}`)}"><span class="key-mark">◆</span>${k.approved}/${k.total}</span>` : "") +
                     `<span class="tg-n" title="${escapeHtml(`All it rests on: ${p.approved} of ${p.total} approved`)}">${p.approved}/${p.total}</span>`
                   : `<span class="muted tg-gone">not in the graph now${v ? "" : ", no view"}</span>`) +
-                `</button>`
-              );
+                `</button>`;
+              return unmark ? `<div class="tg-line">${row}${unmark}</div>${why}` : row;
             })
             .join("") +
           `</div>`

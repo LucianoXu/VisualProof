@@ -162,6 +162,9 @@ export function timelinePart(page: Page): TimelinePart {
     timeMachine: (at) => page.timeMachine(at),
     ensureName: () => page.people.ensure(),
     nameLost: () => page.people.lost(),
+    // a lost target taken off from its entry (HistorySpec decision 13); the drawer asked for a name.
+    // Not where the review cannot be changed: a snapshot, a read-only page
+    ...(data.snapshot || reader ? {} : { unmark: (name: string) => page.submit({ op: "target", name, on: false }) }),
     toggled: (open) => {
       if (open && activity.open) activity.toggle(false);
       page.syncInsets();

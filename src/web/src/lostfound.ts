@@ -7,7 +7,8 @@
 // - **Lost**: by name, the newest build that had it (Show in history opens the Time Machine there,
 //   on it), the renames of medium confidence suggested for it first, each with Attach, then Attach
 //   to… (a declaration picked with the page's search, confirmed here) and the entries, each of which
-//   can be archived. Attaching is a move (HistorySpec decision 9): the entries leave the list once
+//   can be archived; a target's can also be unmarked (the owner's decision of 2026-11-08): the target
+//   taken off, pressed twice, the entry then leaving the list as nothing is lost any more. Attaching is a move (HistorySpec decision 9): the entries leave the list once
 //   the review and the views carry them, and the migration it makes is listed with its Undo.
 // - **Migrations**: from → to, why (the server's rename) or who (by hand), when, what it carried,
 //   Undo; an undone one says by whom, and stays.
@@ -38,6 +39,8 @@ export interface LostHooks {
   comment(text: string, name: string): string;
   /** a declaration picked with the page's search, for Attach to…; null when the reader gave up */
   pick(prompt: string): Promise<string | null>;
+  /** take a target off (one no longer in the graph, from its entry): null when done, else why not */
+  unmark?(name: string): Promise<string | null>;
   /** the Time Machine, at a build, on a declaration (web/src/pageviews.ts, `timeMachine`) */
   timeMachine(at?: { snapshot?: number; name?: string }): void;
   /** the reader's name, asked for where there is none: null where they declined */
@@ -82,6 +85,8 @@ export class LostAndFound {
   private flash: string | null = null;
   /** the Archived section opened by the reader */
   private archivedOpen = false;
+  /** the target entry whose Unmark was pressed once, by its key, waiting for the second press */
+  private unmarking: string | null = null;
 
   constructor(el: HTMLElement, api: LostApi | null, hooks: LostHooks) {
     this.el = el;
@@ -222,6 +227,23 @@ export class LostAndFound {
       return;
     }
     const ek = at("data-lf-e");
+    if (ek !== null && t.closest("[data-lf-unmark]")) {
+      const entry = group()?.entries[Number(ek)];
+      if (!entry || entry.kind !== "target" || !this.hooks.unmark) return;
+      // the first press asks; the second takes the target off
+      if (this.unmarking !== entry.key) {
+        this.unmarking = entry.key;
+        return this.render();
+      }
+      this.unmarking = null;
+      const unmark = this.hooks.unmark;
+      void this.act(entry.key, async () => {
+        const why = await unmark(entry.name);
+        return why ? { error: why } : { ok: true };
+      });
+      return;
+    }
+    if (this.unmarking !== null) this.unmarking = null;
     if (ek !== null && t.closest("[data-lf-archive]")) {
       const g = group();
       const entry = g?.entries[Number(ek)];
@@ -414,6 +436,11 @@ export class LostAndFound {
       html +=
         `<div class="lf-entry" data-lf-e="${ei}" data-lf-key="${escapeHtml(e.key)}"><span class="lf-kind lf-${e.kind}">${e.kind}</span>` +
         `<div class="lf-entry-t">${this.entryHtml(e)}</div>` +
+        (e.kind === "target" && this.hooks.unmark
+          ? this.unmarking === e.key
+            ? `<button class="lf-arch lf-unmark armed" data-lf-unmark${ewait} title="Press again to unmark it: it is no target any more; the history keeps that it was">Unmark it?</button>`
+            : `<button class="lf-arch lf-unmark" data-lf-unmark${ewait} title="Unmark target: it is no target any more, and leaves this list; the history keeps that it was">Unmark</button>`
+          : "") +
         `<button class="lf-arch" data-lf-archive${ewait} title="Archive: hide it from the list; it is kept, under Archived">Archive</button>` +
         (eerr ? `<div class="act-warn">${escapeHtml(eerr)}</div>` : "") +
         `</div>`;

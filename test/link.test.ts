@@ -531,6 +531,54 @@ test("the targets list: every target, a view of several on each one's row, one w
   assert.deepEqual(opened, [[null, "A.t"], ["vb", "C.w"]]);
 });
 
+test("a target the graph no longer has: Unmark beside its row, pressed twice; none where targets cannot be changed (HistorySpec decision 13)", async () => {
+  const views = listed();
+  const unmarked: string[] = [];
+  let refuse: string | null = null;
+  let readOnly = false;
+  const el = drawn();
+  const list = new TargetList(el as unknown as HTMLElement, {
+    list: () => views,
+    targets: () => ["A.t", "Gone.t"],
+    active: () => PROJECT,
+    progress: (t) => (t === "Gone.t" ? null : { total: 4, approved: 1, commented: 0, stale: 0 }),
+    keyProgress: () => null,
+    open: () => {},
+    shut: () => false,
+    toggle: () => {},
+    readOnly: () => readOnly,
+    unmark: async (t) => (unmarked.push(t), refuse),
+  });
+  list.render();
+  // the gone row says so, with Unmark beside it; the row in the graph has none
+  assert.match(el.innerHTML, /<div class="tg-line"><button class="tg-row tg-viewless" data-target="Gone\.t"[^]*not in the graph now, no view<\/span><\/button><button class="tg-unmark" data-unmark="Gone\.t" title="Unmark Gone\.t: it is not in the graph now[^"]*">Unmark<\/button><\/div>/);
+  assert.equal(el.innerHTML.match(/data-unmark=/g)?.length, 1, "only the gone target");
+  // the first press asks, and takes nothing off
+  clickIn(el, { unmark: "Gone.t" });
+  await new Promise((ok) => setTimeout(ok, 0));
+  assert.deepEqual(unmarked, []);
+  assert.match(el.innerHTML, /<button class="tg-unmark armed" data-unmark="Gone\.t" title="Press again to unmark Gone\.t[^"]*">Unmark it\?<\/button>/);
+  // anything else pressed lets it go
+  clickIn(el, { sec: "targets" });
+  assert.doesNotMatch(el.innerHTML, /armed/);
+  // pressed twice: taken off
+  clickIn(el, { unmark: "Gone.t" });
+  clickIn(el, { unmark: "Gone.t" });
+  await new Promise((ok) => setTimeout(ok, 0));
+  assert.deepEqual(unmarked, ["Gone.t"]);
+  // refused: why, under the row
+  refuse = "A target is unmarked under your name: give one first.";
+  clickIn(el, { unmark: "Gone.t" });
+  clickIn(el, { unmark: "Gone.t" });
+  await new Promise((ok) => setTimeout(ok, 0));
+  assert.match(el.innerHTML, /<div class="act-warn tg-why">A target is unmarked under your name: give one first\.<\/div>/);
+  // a read-only page: the row, no Unmark
+  readOnly = true;
+  list.render();
+  assert.match(el.innerHTML, /not in the graph now/);
+  assert.doesNotMatch(el.innerHTML, /data-unmark/);
+});
+
 test("the Views menu: one list of views — the Project, the kept ones, those nobody keeps in italics — with no Targets and no Kept, a linked view starred and its targets named", () => {
   const views = listed();
   const was = (globalThis as { window?: unknown }).window;
