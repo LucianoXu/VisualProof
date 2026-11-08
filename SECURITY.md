@@ -27,6 +27,9 @@ into the latest release only.
   There is no sandbox yet: the build runs as the server's user, in programs of its own. Only that
   branch is ever fetched: never a pull request's ref nor a fork's.
 - **The project's toolchain**, which elan installs, and Lean's own kernel and language server.
+- **Claude Code and Anthropic**, where the server runs agents (`--claude-oauth`, experimental, off
+  by default): the `claude` program found on the server's PATH (or `~/.local/bin`), as installed,
+  and Anthropic's service it talks to.
 - **The npm registry and VisualProof's publisher**, as at the first install, and unattended: with
   `--updates auto` (the default) a server downloads the patch releases of the version it runs,
   through npm, and restarts into them by itself, nobody looking (SPEC/UpdateSpec.md). What it
@@ -202,6 +205,22 @@ into the latest release only.
 - **Agents.** A token has a level: `read`, `advise` or `full` (and `--agents` caps it for the whole
   server). At `full` an agent can do whatever a person can through the page; its opinions stay
   advice and are never counted.
+- **Agents the server runs** (`--claude-oauth`; AgentSpec decision 10; experimental). A person gives
+  Share their Claude Code OAuth token (`claude setup-token`), which is a year of their Claude
+  subscription: accepted only from a page over HTTPS or on this machine, and only from someone
+  whose name is theirs alone (a personal link, a proxy's sign-in; on a server without a key that
+  only this machine reaches, whoever is at it), so that nobody runs agents on someone else's token
+  by giving their name. It is never shown again — not to its holder, a page, an agent, a log — and is
+  given only to the `claude` processes of its holder's agents, in their environment, never on a
+  command line; no other program the server runs is given it, nor any `ANTHROPIC_*` variable of the
+  server's own environment. Removing it in Share deletes the server's copy only: revoke it at
+  Anthropic too where it may have leaked. Each such agent is run with no tool of Claude Code's own
+  (no shell, no files, no web, no subagents), VisualProof's MCP server alone, a configuration folder
+  of its own (nothing of the server user's settings, hooks, plugins, CLAUDE.md or memory), its
+  files held to its own folder: what it can do is what its VisualProof token allows, whoever asks —
+  and anyone with a name can ask it, in the public channel, at its maker's cost. Anthropic's terms
+  do not allow a tool to keep subscription tokens nor to answer other people with them: use it for
+  a small team that accepts this, never on a public site.
 - **The conversations.** The public channel is read and written by everyone with a name and every
   agent with a token: what is written there is untrusted input to every agent. A person's message
   there is handed to the agents it mentions; the agents' ground rules (the prompt, the entry, the
@@ -235,7 +254,8 @@ into the latest release only.
 ## Secrets at rest
 
 The site folder (`--site`) holds the agents' tokens, the read-only links and the personal links in
-full (Share shows the first two again, and a personal link is shown again to its holder; of a
+full, the Claude Code tokens people gave for the agents the server runs (`claude-tokens.json`, with
+`--claude-oauth`), (Share shows the first two again, and a personal link is shown again to its holder; of a
 personal link made before 0.6.0, its digest alone, until its holder makes it anew), and the
 conversations (`chat/`: the public channel 90 days, the private ones 30); the access key is
 wherever `--access-key-file` names. Keep both readable by the server's user alone, back the site
@@ -248,7 +268,9 @@ a server downloaded, which the supervisor runs: it is code, as the installed pac
 `media/` the tips' tour film, checked against the package's sha256 (refused, as `versions/` is,
 where another may write the folder). `versions/`
 is made `0700`; a folder in it that another user owns, or that its group or others may write, is
-refused and its patch never run. Keep the caches' root the server's user's alone, as the site. A branch the server follows is
+refused and its patch never run. Keep the caches' root the server's user's alone, as the site. The agents the server runs keep their
+Claude Code sessions — what they were told, its private channels' words among it — in `agents/` of
+the project's cache, each removed when its token ends. A branch the server follows is
 cloned and built in `deploy/` of the caches' root: the clone, its build's outputs and its
 dependencies, which the server's Lean programs import; each build's log; and with
 `--mathlib-cache own`, Mathlib's cache, whose files the build unpacks into its dependencies.
@@ -256,7 +278,9 @@ dependencies, which the server's Lean programs import; each build's log; and wit
 ## Deploying
 
 - Run the server as an unprivileged user, never as root. A server that follows a branch, as a user
-  of its own (above: whoever can push to the branch runs code as that user).
+  of its own (above: whoever can push to the branch runs code as that user). With `--claude-oauth`
+  that code can read the Claude tokens in the site folder too: combine the two only where whoever
+  can push is trusted with them.
 - Give it `--access-key-file`, or an authenticating proxy that is the only way in; `--public` only
   for a project meant to be public.
 - Put TLS in front of anything that leaves a trusted network.

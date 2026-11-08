@@ -216,6 +216,13 @@ The README says how to install the `visualproof` command. A checkout also runs a
   still let in only by the key or a token of their own. Without it, no address shows the project
   to someone not given a link, so no reader can make a private project public. Not with
   `--identity-header`, where the sign-in decides who comes in.
+- `--claude-oauth` (experimental; AgentSpec decision 10): Share may also run an agent **on this
+  server**, on the Claude Code of the person who shares (see Together). Needs Claude Code
+  (`claude`) on the server's machine (`visualproof doctor` says whether it is there). People give
+  their own Claude Code OAuth token, which the server keeps in the site, and every answer spends
+  their Claude usage, whoever asked; Anthropic's terms do not allow a tool to keep such tokens nor
+  to answer others with them, so keep it to a small team that accepts this
+  ([SECURITY.md](../SECURITY.md)).
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): every link Share makes (the guest link, read-only and
   personal links) and Copy link are made with it, and the prompt Share makes for an agent tells it
@@ -1374,7 +1381,14 @@ what each one looks at stays their own.
   and for how long (1, 7 or 30 days); **Create** makes a token of its own, under your name, and a
   prompt that carries it, copied at once: paste it into any agent that can make HTTP requests, and
   tell it what you want done. The agent acts under the name given (`Alice's AI 2` while another
-  agent in force has it) and reaches the agents' API only. Below the tabs, the read-only links in
+  agent in force has it) and reaches the agents' API only. Where the server runs agents
+  (`--claude-oauth`, experimental), **Runs: on this server** runs it there instead, on your Claude
+  Code: give your Claude Code OAuth token once (in a terminal, `claude setup-token`, then paste what
+  it prints; never shown again, **Replace** or **Remove** it later), then **Start**. It listens at
+  once and answers until revoked — no prompt, nothing to share again; each answer is one turn of its
+  own Claude Code session, which **New conversation** starts anew, and **■** in the conversation's
+  head stops while it answers. Only someone invited by a personal link (or signed in by the proxy)
+  may, so that nobody runs one on your token by giving your name; at most two each. Below the tabs, the read-only links in
   force — who made each and when, when it was last used, **Show link** (or a click on it), and
   **Revoke** (pressed twice, under your name), which closes every page it opened at once — then the
   personal links in force — for whom, who made each and when, when it was last used, **Revoke**

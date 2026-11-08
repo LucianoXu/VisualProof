@@ -14,6 +14,7 @@ import { test } from "node:test";
 import { mcpServerText } from "../src/server/agententry.ts";
 import { childEnv } from "../src/server/children.ts";
 import { Hosted, PER_PERSON } from "../src/server/hosted.ts";
+import { mcpInstructions } from "../src/server/mcptools.ts";
 import { UNTIL_STOPPED } from "../src/shared/collab.ts";
 import { site } from "./site.ts";
 import type { Json } from "./site.ts";
@@ -365,5 +366,14 @@ test("no program the server runs is given Claude's or Anthropic's credentials", 
   } finally {
     for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
     Object.assign(process.env, saved);
+  }
+});
+
+test("the instructions of an agent the server runs say turns, not waits, within the 2,048 characters Claude Code keeps", () => {
+  for (const level of ["read", "advise", "full"]) {
+    const text = mcpInstructions({ name: "N".repeat(60), by: "B".repeat(60), level, expires: UNTIL_STOPPED, address: "http://127.0.0.1:4173", project: "flt_regular", hosted: true });
+    assert.ok(text.length <= 2048, `${level}: ${text.length}`);
+    assert.match(text, /end your turn/);
+    assert.doesNotMatch(text, /wait_for_message|expires/);
   }
 });
