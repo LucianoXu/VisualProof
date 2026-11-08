@@ -6,6 +6,10 @@
 // while the caret is in a proof, a `by` block or a term with an expected type; elsewhere it is
 // hidden, and the reader may hide it (kept in the browser, the reader's own). A click in the code, or
 // the keyboard's caret, puts the caret there; ↑ and ↓ step from tactic to tactic, the pane following.
+// In File mode, a file window's too, it is about the whole file (the owner's decisions of
+// 2026-11-01, and of 2026-11-08 for 0.11): a caret anywhere in it is a place of the file, ↑ and ↓
+// step on through it, and a caret goes as the window turns to another file, of which it would be a
+// place nobody clicked.
 //
 // The goals are drawn as the window draws code: Lean's highlighting, the names linked to the board,
 // a card for each (web/src/hovercards.ts, nesting as in the source). Lean's interactive goals tag
@@ -68,6 +72,9 @@ export interface InfoHooks {
   fitted(): boolean;
   /** the file is not the text on show any more: the window reads it again */
   stale(): void;
+  /** the caret stepped or followed to (line, ch) of the file: the window shows that place before it
+   *  is scrolled to (in File mode, a folded proof holding it opened) */
+  reveal?(line: number, ch: number): void;
 }
 
 /** how long Lean is waited for before the pane says it asks, and how often a place Lean has not
@@ -91,6 +98,15 @@ export function caretOf(text: string, offset: number): { line: number; ch: numbe
   const before = text.slice(0, Math.max(0, Math.min(offset, text.length)));
   const nl = before.lastIndexOf("\n");
   return { line: before.split("\n").length - 1, ch: before.length - (nl + 1) };
+}
+
+/** A place of a block of the code on show — an offset in its text, the block starting at line
+ *  `start` of the file — as the file's line and column, where Lean is asked: the block is the
+ *  declaration's lines in Declaration mode, one of the file's pieces in File mode, so that a caret
+ *  anywhere in the file is a place of the file (the owner's decisions of 2026-11-08, 0.11). */
+export function placeIn(start: number, text: string, offset: number): { line: number; ch: number } {
+  const at = caretOf(text, offset);
+  return { line: start + at.line, ch: at.ch };
 }
 
 /** The tagged text of a goal drawn: each piece highlighted as code, its names linked where
@@ -218,10 +234,29 @@ export class InfoView {
     }
     const same = !!was && !!code && was.module === code.module && was.hash === code.hash;
     if (!same) this.answer = null;
-    if (this.caret && !this.holds(this.caret.line)) this.caret = null;
+    // a caret is a place of one file: in another file's code it would be another place, never clicked
+    if (this.caret && ((was && code && was.module !== code.module) || !this.holds(this.caret.line))) this.caret = null;
     this.watchSize();
     if (this.caret && !same) this.ask();
     else this.draw();
+  }
+
+  /** The window turns to the file of `module` (another declaration's, another file in File mode),
+   *  whose code it reads: a caret in the file on show goes with it — a place of one file is another
+   *  place of the next, which nobody clicked —, and nothing is asked until the window tells the new
+   *  code (`attach`). A followed reader's caret told meanwhile waits for that code. Nobody is told: the
+   *  reader did not move it. */
+  leave(module: string): void {
+    const c = this.code;
+    if (!c || c.module === module) return;
+    this.code = null;
+    this.answer = null;
+    this.turn++;
+    this.stopWaits();
+    if (this.caret) {
+      this.caret = null;
+      this.draw();
+    }
   }
 
   /** The element of line `line` of the file in the code on show, or null. */
@@ -257,7 +292,7 @@ export class InfoView {
     this.caret = { line: c.start + to.line, ch: to.ch, after: k.after };
     this.ask();
     this.hooks.moved();
-    this.lineEl(c.start + to.line)?.scrollIntoView({ block: "nearest" });
+    this.show(this.caret);
     return true;
   }
 
@@ -272,8 +307,16 @@ export class InfoView {
     if (!this.holds(c.line)) return;
     if (moved) {
       this.ask();
-      this.lineEl(c.line)?.scrollIntoView({ block: "nearest" });
+      this.show(c);
     } else this.draw();
+  }
+
+  /** The caret's place shown, stepped or followed to: what the window hides of it shown (a folded
+   *  proof), its line scrolled into sight — clear of what stands over the code's edges, File mode's
+   *  sticky header and the pane below the code (`scroll-padding`, web/style.css). */
+  private show(c: { line: number; ch: number }): void {
+    this.hooks.reveal?.(c.line, c.ch);
+    this.lineEl(c.line)?.scrollIntoView({ block: "nearest" });
   }
 
   /** No caret here any more: another window holds the page's. */
@@ -345,9 +388,13 @@ export class InfoView {
     const focused = document.activeElement;
     pane.hidden = !v.show || hidden;
     split?.classList.toggle("iv-on", v.show && !hidden);
-    // hidden by the reader: a tab at the code's top right shows it again
-    let tab = split?.querySelector<HTMLButtonElement>(":scope > .iv-show") ?? null;
-    if (v.show && hidden && split) {
+    // hidden by the reader: a tab at the code's top right shows it again — in File mode in the sticky
+    // header over the code, in sight wherever in the file the reader is (the owner's decisions of
+    // 2026-11-08, 0.11), the top of the whole file being mostly far above
+    const bar = split?.parentElement?.querySelector<HTMLElement>(":scope > .sw-sticky") ?? null;
+    const home = bar ?? split;
+    let tab = home?.querySelector<HTMLButtonElement>(":scope > .iv-show") ?? null;
+    if (v.show && hidden && home) {
       if (!tab) {
         tab = document.createElement("button");
         tab.type = "button";
@@ -355,7 +402,9 @@ export class InfoView {
         tab.dataset.ivShow = "";
         tab.title = "Show the InfoView: what Lean says at the caret (kept in this browser)";
         tab.innerHTML = `<span aria-hidden="true">⊢</span> Lean`;
-        split.prepend(tab);
+        tab.addEventListener("click", () => this.hooks.hide(false));
+        if (bar) bar.append(tab);
+        else home.prepend(tab);
       }
     } else tab?.remove();
     // the focus stays where it was: on Before or After, else in the window, whose keys step the caret
@@ -363,11 +412,22 @@ export class InfoView {
     const when = had?.closest<HTMLElement>("[data-iv-when]")?.dataset.ivWhen;
     if (!v.show || hidden || !k) {
       if (had) this.hooks.win().focus({ preventScroll: true });
-      return;
+      return this.below();
     }
     pane.innerHTML = headHtml(k, v.sides, !!this.answer?.interactive) + `<div class="iv-body">${v.html}</div>`;
     pane.setAttribute("aria-label", "What Lean says at the caret");
     if (had && !had.isConnected) (pane.querySelector<HTMLElement>(`[data-iv-when="${when}"]`) ?? this.hooks.win()).focus({ preventScroll: true });
+    this.below();
+  }
+
+  /** How much of the code's view the pane below the code stands over, so that a line the caret
+   *  steps to is scrolled clear of it (`--iv-below`, web/style.css); none beside the code. */
+  private below(): void {
+    const pane = this.pane;
+    const split = pane?.parentElement;
+    const scroll = split?.closest<HTMLElement>(".sw-scroll");
+    if (!pane || !split || !scroll) return;
+    scroll.style.setProperty("--iv-below", `${!pane.hidden && !split.classList.contains("iv-side") ? pane.offsetHeight : 0}px`);
   }
 
   /** The caret's line marked in the code, and its tactic, where the browser can (the CSS Custom
@@ -392,12 +452,9 @@ export class InfoView {
   /** The pane's own controls and hover: before or after, hide and show, a subterm's card. */
   private listen(pane: HTMLElement): void {
     const split = pane.parentElement;
+    // (the tab that shows it again, hidden, has its own: it may stand outside, in File mode's header)
     split?.addEventListener("click", (e) => {
       const t = e.target as HTMLElement;
-      if (t.closest("[data-iv-show]")) {
-        this.hooks.hide(false);
-        return;
-      }
       if (!pane.contains(t)) return;
       if (t.closest("[data-iv-hide]")) return this.hooks.hide(true);
       const when = t.closest<HTMLElement>("[data-iv-when]")?.dataset.ivWhen;
@@ -476,6 +533,7 @@ export class InfoView {
     const side = paneSide(this.hooks.win().offsetWidth, this.hooks.fitted(), document.documentElement.clientWidth || innerWidth);
     split.classList.toggle("iv-side", side);
     scroll.style.setProperty("--sw-view", `${scroll.clientHeight}px`);
+    this.below();
   }
 }
 

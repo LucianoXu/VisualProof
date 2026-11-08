@@ -283,10 +283,25 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
       its project files as it does now.
     - **The phone**: the window as on the phone now (PhoneSpec decision 12), with the switch; no
       file window, nothing being pinned there (PhoneSpec decision 13).
-    - **The InfoView** ("The InfoView" below) is about the whole file in File mode: its caret
-      anywhere in the file, the pane beside it under the sticky header, ↑ and ↓ stepping through the
-      file; by the same rules as in Declaration mode (none on a past build, in a snapshot, for a file
-      changed since it was compiled).
+    - **The InfoView** ("The InfoView" below) is about the whole file in File mode, a file window's
+      too (the owner's decisions of 2026-11-08, 0.11: "in File mode too, not only in Declaration
+      mode"): the same pane, controls and bounds as in Declaration mode.
+      - Its caret anywhere in the file — any declaration's proof, or between declarations, where
+        Lean has nothing and the pane hides — is a place of the file, each piece counting from its own
+        first line; ↑ and ↓ step on through the file, from one declaration to the next.
+      - The pane beside the code under the sticky header, below it in a narrow window and on the
+        phone; hidden by the reader, the tab that shows it again stands in the sticky header, in
+        sight wherever in the file the reader is. A line stepped or followed to is scrolled clear of
+        the sticky header and of the pane below the code; a folded proof it is in is shown, as a
+        click on its mark shows it.
+      - A caret is a place of one file: the window turning to another file (the selection followed
+        to a declaration of another file) leaves it behind, nobody told. It is followed as in
+        Declaration mode, a file window's by its file (CollabSpec, "Surfaces": `caret`).
+      - Lean starts on the file as the window opens it, and the pane says how far Lean is; by the same
+        rules as in Declaration mode (none on a past build, in a snapshot, for a file changed since
+        it was compiled), within the same bounds (`--lean-files`, read-only readers' limits). The
+        page's route answers any place of a module's file already: only numbers and a module of the
+        graph reach Lean.
     - **Large files stay quick**: the file is drawn in pieces — each declaration one, the lines
       between a few dozen at a time — filled, and asked Lean about, as they come near the screen.
     - **Agents** read a file too: `GET /api/agent/module` with `lines`, a few hundred lines at a

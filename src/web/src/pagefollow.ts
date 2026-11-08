@@ -61,11 +61,14 @@ export function followPart(page: Page): FollowPart {
       // the reference window (AttachmentSpec decision 11)
       paper: () => (page.papers.state() ? { paper: page.papers.state()! } : {}),
       // the InfoView's caret (ReviewSpec, "The InfoView"; the owner's decision of 2026-11-01): the
-      // page's one, in the window the reader put it in
+      // page's one, in the window the reader put it in — a file window's by its file (the owner's
+      // decisions of 2026-11-08, 0.11: the InfoView in File mode)
       caret: () => {
         const w = page.sources.all.find((p) => p.caret);
         const c = w?.caret;
-        return w && c ? { caret: { decl: w.name, line: c.line, character: c.ch, ...(c.after ? { after: true as const } : {}), ...(w !== page.sources.following ? { pinned: true as const } : {}) } } : {};
+        if (!w || !c) return {};
+        const where = w.file !== null ? { file: w.file } : { decl: w.name, ...(w !== page.sources.following ? { pinned: true as const } : {}) };
+        return { caret: { ...where, line: c.line, character: c.ch, ...(c.after ? { after: true as const } : {}) } };
       },
       activity: () => ({ activity: page.activity.state() }),
       lostFound: () => ({ lostFound: { open: page.lostDrawer.open } }),
@@ -161,7 +164,15 @@ export function followPart(page: Page): FollowPart {
       // none there, none here
       const c = v.caret;
       const f = page.sources.following;
-      const at = c ? (c.pinned ? page.sources.pinned.find((p) => p.name === c.decl) : f && f.name === c.decl ? f : undefined) : undefined;
+      const at = !c
+        ? undefined
+        : "file" in c
+          ? page.sources.pinned.find((p) => p.file === c.file)
+          : c.pinned
+            ? page.sources.pinned.find((p) => p.file === null && p.name === c.decl)
+            : f && f.name === c.decl
+              ? f
+              : undefined;
       for (const p of page.sources.all) p.followCaret(p === at && c ? { line: c.line, ch: c.character, after: c.after === true } : null);
     }
     if (once) {

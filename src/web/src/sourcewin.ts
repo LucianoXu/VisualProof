@@ -85,7 +85,7 @@ import type { PastGraph } from "./past.ts";
 import { pastNote, pastText } from "./pastsource.ts";
 import type { RefAnswer } from "./highlight.ts";
 import { afterClick, HoverCards } from "./hovercards.ts";
-import { caretOf, InfoView } from "./infoview.ts";
+import { InfoView, placeIn } from "./infoview.ts";
 import type { Caret, InfoCode } from "./infoview.ts";
 import { FLASH_MS } from "./reviewbox.ts";
 import type { ReviewBox } from "./reviewbox.ts";
@@ -527,6 +527,7 @@ export class SourceWindow implements SourcePane {
       win: () => this.el,
       fitted: () => this.win.fitted,
       stale: () => void this.render(false),
+      reveal: (line, ch) => this.unfoldAt(line, ch),
     });
     // ↑ and ↓ step the InfoView's caret from tactic to tactic, where it is in this window
     el.addEventListener("keydown", (e) => {
@@ -899,8 +900,8 @@ export class SourceWindow implements SourcePane {
     if (!this.shown || !this.code || this.collapsed || this.hooks.following?.()) return;
     // counted in the block's own text from the line it starts at in the file (`data-line`): the
     // declaration's first line, or a piece's of the whole file
-    const at = caretOf(pre.textContent ?? "", offsetIn(pre, node, off));
-    this.info.place(Number(pre.dataset.line ?? this.shown.start) + at.line, at.ch);
+    const at = placeIn(Number(pre.dataset.line ?? this.shown.start), pre.textContent ?? "", offsetIn(pre, node, off));
+    this.info.place(at.line, at.ch);
   }
 
   /** The InfoView's caret: where it is in the file, and whether the goals after the tactic are on
@@ -1194,6 +1195,8 @@ export class SourceWindow implements SourcePane {
     this.unpick();
     const g = this.g;
     const v = g.nodes[i];
+    // a caret in another file goes as the window turns to this one (web/src/infoview.ts, leave)
+    this.info.leave(v.module);
     const parts = v.name.split(".");
     const ext = g.isExt(i);
     const kind = ext ? "external" : v.kind;
@@ -1504,6 +1507,7 @@ export class SourceWindow implements SourcePane {
     const v = i >= 0 ? g.nodes[i] : null;
     const module = this.file ?? v?.module;
     if (!module) return;
+    this.info.leave(module);
     const turn = ++this.turn;
     this.hideTip();
     this.unpick();
@@ -1869,6 +1873,17 @@ export class SourceWindow implements SourcePane {
     const b = this.el.querySelector<HTMLElement>("[data-sw-folds]");
     if (b) b.outerHTML = this.foldsButton();
     this.updateSticky();
+  }
+
+  /** The folded proof that holds (line, ch) of the file shown, as a click on its mark shows it: the
+   *  InfoView's caret stepped or followed into it (the owner's decisions of 2026-11-08, 0.11). */
+  private unfoldAt(line: number, ch: number): void {
+    const w = this.whole;
+    if (this.mode !== "file" || !w || !this.hooks.foldProofs()) return;
+    const upTo = (p: readonly [number, number]) => p[0] < line || (p[0] === line && p[1] <= ch);
+    const f = w.folds.find((x) => upTo(x.from) && !upTo(x.to));
+    const id = f ? `${f.from[0]}:${f.from[1]}` : null;
+    if (id && !this.openFolds.has(id)) this.openFold(id);
   }
 
   /** A folded proof opened: that one alone, its place staying. */

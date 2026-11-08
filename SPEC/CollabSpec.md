@@ -311,7 +311,7 @@ step; the rest each on its own once the place is reached.
 | panel | what the right panel tells of | `sel` | `a`, `m`, `k` |
 | sources | source windows, following and pinned: open, collapsed, on what, in which mode — the declaration or the whole file (File mode) —, and the file windows, opened on a file (the owner's decision of 2026-11-01) | `source`, `sourceCollapsed`, `sourceMode`, `pinned` | Space |
 | paper | the reference window: open, collapsed, file, page, link | `paper` | |
-| caret | the InfoView's caret (ReviewSpec, "The InfoView"; the owner's decision of 2026-11-01): the source window it is in (the following one, or a pinned one), where in the file, the goals before or after the tactic there — one reader steps through a proof while their followers watch | `caret` (`decl`, `line`, `character`, `after`, `pinned`) | ↑, ↓ in a source window (no page's key: any key ends following) |
+| caret | the InfoView's caret (ReviewSpec, "The InfoView"; the owner's decision of 2026-11-01): the source window it is in (the following one, or a pinned one, or a file window by its file: the owner's decisions of 2026-11-08, 0.11, the InfoView in File mode), where in the file, the goals before or after the tactic there — one reader steps through a proof while their followers watch, in either mode | `caret` (`decl` or `file`, `line`, `character`, `after`, `pinned`) | ↑, ↓ in a source window (no page's key: any key ends following) |
 | activity | Activity open or closed, its filters | `activity` (`open`, `kind`, `who`, `mine`) | |
 | lostFound | the lost-and-found open or closed | `lostFound` (`open`) | |
 | colouring | the legend's Kind, Status or Mine (the followed reader's own opinions: CanvasSpec, "Colour schemes") | `scheme` | `c` |
