@@ -11,16 +11,25 @@
 // turns nothing runs. A new conversation (a divider) starts a new session: what came before is gone
 // from it, as it cannot be from a session someone runs in a terminal.
 //
-// It reaches VisualProof alone. Claude Code is run with no tool of its own (`--tools ""`: no shell,
-// no files, no web, no subagents) and VisualProof's MCP server alone (`--strict-mcp-config`), allowed
-// without asking; with a configuration folder of its own (CLAUDE_CONFIG_DIR: nothing of the server
-// user's settings, hooks, plugins or memory), no CLAUDE.md read (CLAUDE_CODE_DISABLE_CLAUDE_MDS: one
-// in a folder above would be), no auto-memory, no bundled skills, no auto-update. The MCP server is
-// the very file agents download (mcp/visualproof-mcp.mjs), with the agent's token, at this server's
-// address on this machine, its files confined to the agent's folder (VISUALPROOF_FILES): one message
-// in the public channel could otherwise have it send any file of this machine into the library.
-// Nothing secret is on a command line: the agent's token is in its mcp.json (0600), the Claude token
-// in the environment, the messages on stdin.
+// It is trusted with Claude Code's own tools (the owner's decisions of 2026-11-08, after the first
+// version, which had VisualProof's alone): a shell, files, the web, subagents, without asking
+// (`--permission-mode bypassPermissions`), on this machine as the server's user, the project's
+// folder added (`--add-dir`): it reads the code directly, changes it and builds it with Lake when
+// asked (SPEC.md, as the owner changed it that day). In a branch the server follows, the project is
+// the deployment's clone, which the next commit built resets: its ground rules say so. What it is
+// denied by Claude Code's rules (`denied`): the site folder through the file tools (the tokens, the
+// links); and the tools that reach beyond this agent, to its maker's Claude account and their other
+// sessions (remote triggers, messages to other sessions, crons, workflows, worktrees). The shell is
+// not confined by these rules: it is trusted. A turn may build at length: while it runs the agent
+// counts as seen every minute (not offline), and what its shell leaves running goes with the turn
+// (its process group). VisualProof's
+// MCP server alone is its MCP server (`--strict-mcp-config`); a configuration folder of its own
+// (CLAUDE_CONFIG_DIR: nothing of the server user's settings, hooks, plugins or memory), no CLAUDE.md
+// read (CLAUDE_CODE_DISABLE_CLAUDE_MDS: one in a folder above would be), no auto-memory, no bundled
+// skills, no auto-update. The MCP server is the very file agents download (mcp/visualproof-mcp.mjs),
+// with the agent's token, at this server's address on this machine, its files in the agent's folder
+// (VISUALPROOF_FILES). Nothing secret is on a command line: the agent's token is in its mcp.json
+// (0600), the Claude token in the environment, the messages on stdin.
 //
 // Each agent's folder, `<cache>/agents/<token id>/` (0700): `work/` (the empty folder it runs in),
 // `claude/` (its Claude Code configuration and sessions), `files/`, `mcp.json`, `prompt.md` (its
@@ -50,15 +59,26 @@ import { madeBy } from "../shared/collab.ts";
 import type { ChannelKind } from "../shared/collab.ts";
 
 /** how long a turn may take before it is stopped */
-export const TURN_MS = 20 * 60_000;
+export const TURN_MS = 60 * 60_000;
 /** how many model turns (tool calls and answers) one batch may take */
-export const MAX_TURNS = 40;
+export const MAX_TURNS = 100;
 /** how many agents in force each person may run on the server */
 export const PER_PERSON = 2;
 /** how long one in-process wait lasts: the longest an agent may wait (server/talk.ts, MAX_WAIT_S) */
 const LISTEN_MS = 1800_000;
 /** a usage limit whose reset Claude Code did not say is tried again after this */
 const LIMIT_RETRY_MS = 15 * 60_000;
+/** What an agent the server runs is denied, by Claude Code's permission rules: the site folder
+ *  through the file tools, and the tools that reach its maker's Claude account or their other
+ *  sessions. A rule's absolute path starts with `//`. */
+export function denied(site: string): string[] {
+  const under = (dir: string) => `/${dir.replace(/\/+$/, "")}/**`;
+  return [
+    ...["Read", "Edit", "Write"].map((t) => `${t}(${under(site)})`),
+    "RemoteTrigger", "SendMessage", "ListAgents", "CronCreate", "CronDelete", "CronList", "ScheduleWakeup", "Workflow", "EnterWorktree", "ExitWorktree",
+  ];
+}
+
 /** the environment Claude Code is run with, beside PATH, HOME, LANG, its folder and the token */
 const QUIET = {
   CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
@@ -99,6 +119,12 @@ export interface HostedOptions {
   address: () => string | null;
   /** the MCP server's file, as GET /api/agent/mcp serves it */
   mcpServer: () => string;
+  /** the project's folder: the code the agent reads, and changes and builds when asked */
+  projectRoot: () => string;
+  /** the branch the server follows, where it follows one: the project is then its clone */
+  followed?: () => string | null;
+  /** the site's folder: its secrets, which the agent's file tools are denied */
+  site: string;
   /** the names a message may mention (server/live.ts) */
   mentionable: () => string[];
   /** the project shown, for the agent's ground rules */
@@ -353,7 +379,7 @@ export class Hosted {
       },
     };
     writeFileSync(join(r.dir, "mcp.json"), JSON.stringify(config), { mode: 0o600 });
-    writeFileSync(join(r.dir, "prompt.md"), hostedPrompt({ record: rec, project: this.o.project() }), { mode: 0o600 });
+    writeFileSync(join(r.dir, "prompt.md"), hostedPrompt({ record: rec, project: this.o.project(), root: this.o.projectRoot(), files: join(r.dir, "files"), site: this.o.site, followed: this.o.followed?.() ?? null }), { mode: 0o600 });
   }
 
   /** One `claude -p` of the agent's session, `text` on stdin, read as stream-json. */
@@ -362,10 +388,10 @@ export class Hosted {
     const args = [
       "-p", "--output-format", "stream-json", "--verbose",
       ...(r.started ? ["--resume", r.session] : ["--session-id", r.session]),
-      "--tools", "", "--disallowedTools", "Agent",
       "--strict-mcp-config", "--mcp-config", join(r.dir, "mcp.json"),
-      "--allowedTools", "mcp__visualproof",
-      "--permission-mode", "dontAsk", "--permission-prompts", "none",
+      "--add-dir", this.o.projectRoot(),
+      "--permission-mode", "bypassPermissions", "--permission-prompts", "none",
+      "--disallowedTools", ...denied(this.o.site),
       "--max-turns", String(this.o.maxTurns ?? MAX_TURNS),
       "--append-system-prompt-file", join(r.dir, "prompt.md"),
     ];
@@ -387,6 +413,9 @@ export class Hosted {
         return done(out);
       }
       r.turn = { child, why: null };
+      // a build may run long without a request of VisualProof's: the agent is seen, not offline
+      const beat = setInterval(() => this.o.talk.seen(r.id, null), 60_000);
+      beat.unref?.();
       const timer = setTimeout(() => {
         if (r.turn) r.turn.why = "time";
         end(child);
@@ -413,6 +442,14 @@ export class Hosted {
       child.stdin!.end(text);
       child.on("close", (code) => {
         clearTimeout(timer);
+        clearInterval(beat);
+        // what its shell left running goes with the turn
+        if (DETACH && child.pid)
+          try {
+            process.kill(-child.pid, "SIGTERM");
+          } catch {
+            // nothing left
+          }
         if (buf.trim()) read(buf, out);
         out.exit = code;
         // a resume of a session it does not have says so, before any turn

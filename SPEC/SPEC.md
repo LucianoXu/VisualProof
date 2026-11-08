@@ -21,7 +21,7 @@ VisualProof can export a nicely typeset PDF document for the formalization and a
 
 - The website reflects the changes reactively at realtime.
 - The website reflects the compilation status of the whole Lean codebase at file-level granularity.
-- The operation on VisualProof canvas will not change lean code state. So only the owner of codebase controls modification and compilation. No .lake conflict.
+- The operation on VisualProof canvas will not change lean code state. So only the owner of codebase controls modification and compilation. No .lake conflict. The exception: an AI agent the server runs on its maker's Claude Code (Agent) may modify the project and compile it with Lake, when asked.
 - The data of website and lean build is preserved in the site directory and the cache directory, not in the codebase.
 
 

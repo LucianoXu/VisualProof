@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { mcpServerText } from "../src/server/agententry.ts";
 import { childEnv } from "../src/server/children.ts";
-import { Hosted, PER_PERSON } from "../src/server/hosted.ts";
+import { denied, Hosted, PER_PERSON } from "../src/server/hosted.ts";
 import { mcpInstructions } from "../src/server/mcptools.ts";
 import { UNTIL_STOPPED } from "../src/shared/collab.ts";
 import { site } from "./site.ts";
@@ -41,6 +41,8 @@ async function hostedSite(opts: Parameters<typeof site>[0] & { turnMs?: number }
       claudeTokens: S.live.claudeTokens,
       address: () => S.base,
       mcpServer: mcpServerText,
+      projectRoot: () => S.dir,
+      site: join(S.dir, "state"),
       mentionable: () => S.live.mentionable().names,
       project: () => "M",
       log: () => {},
@@ -162,11 +164,14 @@ test("an agent the server runs answers in its private channel and the public one
     const [first] = S.calls();
     const args = first.args as string[];
     const at = (k: string) => args[args.indexOf(k) + 1];
-    assert.equal(at("--tools"), "", "no tool of Claude Code's own");
+    assert.ok(!args.includes("--tools"), "Claude Code's own tools, trusted (the owner's decision of 2026-11-08)");
     assert.ok(args.includes("--strict-mcp-config") && args.includes("-p"));
-    assert.equal(at("--allowedTools"), "mcp__visualproof");
-    assert.equal(at("--permission-mode"), "dontAsk");
-    assert.equal(at("--disallowedTools"), "Agent");
+    assert.equal(at("--permission-mode"), "bypassPermissions");
+    assert.equal(at("--add-dir"), S.dir, "the project, to read, change and build");
+    const deny = args.slice(args.indexOf("--disallowedTools") + 1, args.indexOf("--max-turns"));
+    assert.deepEqual(deny, denied(join(S.dir, "state")));
+    assert.ok(deny.includes(`Read(/${join(S.dir, "state")}/**)`) && deny.includes("RemoteTrigger") && deny.includes("SendMessage"), deny.join(" "));
+    assert.ok(!deny.some((d) => d.includes("lake") || d.startsWith(`Edit(/${S.dir}/**`)), "the project may be changed and built");
     const session = at("--session-id");
     assert.match(session, /^[0-9a-f-]{36}$/);
     const vpa = S.live.tokens.token(a.id)!.token;
@@ -187,7 +192,10 @@ test("an agent the server runs answers in its private channel and the public one
     const tools = JSON.parse(readFileSync(join(S.bin, "tools.json"), "utf8")).tools as string[];
     assert.ok(tools.includes("reply") && !tools.includes("wait_for_message"), "the server listens for it");
     assert.equal(statSync(join(dir, "mcp.json")).mode & 0o777, 0o600);
-    assert.match(readFileSync(join(dir, "prompt.md"), "utf8"), /run on the VisualProof server itself, on Alice's Claude Code/);
+    const rules = readFileSync(join(dir, "prompt.md"), "utf8");
+    assert.match(rules, /run on the VisualProof server itself, on Alice's Claude Code/);
+    assert.match(rules, /change it and build it \(lake build\) when you are asked to/);
+    assert.match(rules, /Never read or reveal what is secret on this machine/);
     await until(() => S.live.talk.state(a.id) === "listening", "listening again");
 
     // its next turn resumes the session
@@ -325,6 +333,30 @@ test("a stop of the server: the turn it cut short is answered at the next start,
     S.live.hosted.restore();
     await until(() => said(S, a.agent, /^After the restart\.$/), "answered");
     assert.match(S.calls().at(-1)!.stdin, /VisualProof stopped while you were answering[\s\S]*Before the restart/);
+  } finally {
+    await S.close();
+  }
+});
+
+test("what a turn's shell leaves running goes with the turn", async () => {
+  const S = await hostedSite();
+  try {
+    await give(S);
+    const a = await runHere(S);
+    await until(() => S.live.talk.state(a.id) === "listening", "listening");
+    S.behave({ mode: "linger" });
+    await S.ask("POST", "/api/chat", { channel: a.agent, text: "start something" }, ALICE);
+    await until(() => said(S, a.agent, /^Left something running\.$/), "the answer");
+    const pid = Number(readFileSync(join(S.bin, "linger.pid"), "utf8"));
+    const alive = () => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    await until(() => !alive(), "what it left, ended");
   } finally {
     await S.close();
   }

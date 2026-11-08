@@ -141,8 +141,13 @@ and tokens at rest: SECURITY.md. Presence, following and Share: CollabSpec.md.
     - **It runs when it is handed something**: one turn of its own Claude Code session for what was
       handed to it; what comes meanwhile goes in the next turn; between turns nothing runs. A new
       conversation starts a new session. Its maker can stop a turn.
-    - **It reaches VisualProof alone**: VisualProof's MCP server, files in a folder of its own; no
-      other tool of Claude Code's, nothing of the server's user's configuration.
+    - **It is trusted with Claude Code's own tools** (the owner's decisions of 2026-11-08, after a
+      first version with VisualProof's alone): a shell, files, the web, subagents, on the server's
+      machine as its user; it reads the project's code directly, and **changes it and builds it with
+      Lake when asked** (SPEC.md, as the owner changed it). In a branch the server follows, the project
+      is the deployment's clone, which the next commit built resets. Denied: the site folder through
+      the file tools, and the tools that reach beyond it, to its maker's Claude account and their other
+      sessions. Nothing of the server's user's Claude Code configuration applies.
     - **States** as decision 8's, *offline* also where its Claude Code cannot run (no token, the
       token refused), said in its channel; at the usage limit it says until when, and what came
       meanwhile is answered after.
@@ -296,15 +301,19 @@ token's rules, the inbox, the MCP server's environment and tools) is not repeate
 - **Listening and turns** (server/hosted.ts): the server waits on the agent's inbox in-process, with
   `session` its Claude session id. A batch is rendered as `wait_for_message` renders it, after a first
   line `VisualProof — …` (never a slash command), and run as `claude -p --output-format stream-json
-  --verbose (--session-id|--resume) <uuid> --tools "" --disallowedTools Agent --strict-mcp-config
-  --mcp-config <dir>/mcp.json --allowedTools mcp__visualproof --permission-mode dontAsk
-  --permission-prompts none --max-turns 40 --append-system-prompt-file <dir>/prompt.md`, cwd an empty
-  folder, the batch on stdin, at most 20 minutes. Environment: PATH, HOME, LANG, TMPDIR,
+  --verbose (--session-id|--resume) <uuid> --strict-mcp-config --mcp-config <dir>/mcp.json --add-dir
+  <project> --permission-mode bypassPermissions --permission-prompts none --disallowedTools
+  <denied(site)> --max-turns 100 --append-system-prompt-file <dir>/prompt.md`, cwd the agent's own
+  `work/`, the batch on stdin, at most 60 minutes; denied: `Read`, `Edit`, `Write` of `//<site>/**`,
+  and RemoteTrigger, SendMessage, ListAgents, CronCreate, CronDelete, CronList, ScheduleWakeup,
+  Workflow, EnterWorktree, ExitWorktree. While a turn runs the agent is seen every minute (a long
+  build is not offline); when it ends, its process group is ended (what its shell left running). Environment: PATH, HOME, LANG, TMPDIR,
   `CLAUDE_CONFIG_DIR=<dir>/claude`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_DISABLE_CLAUDE_MDS`,
   `…_AUTO_MEMORY`, `…_BUNDLED_SKILLS`, `…_NONESSENTIAL_TRAFFIC`, `DISABLE_AUTOUPDATER` (all "1"); never
   `ANTHROPIC_API_KEY`, which would win over the token, nor `VISUALPROOF_*`. (`--bare` reads no OAuth;
   `--safe-mode` drops `--mcp-config` too; a CLAUDE.md of a folder above is read unless disabled:
-  the spike of 2026-11-08, Claude Code 2.1.319.)
+  the spike of 2026-11-08, Claude Code 2.1.319; bypassPermissions works under OAuth in `-p`, and a
+  deny rule holds there, `Edit(//…/**)` and `Bash(…:*)` alike, a compound command too.)
 - **Its answer** is the `reply` tool's; a turn that replied nothing posts its final text. A refused
   token (`api_retry` `authentication_failed`, or a 401 result), the usage limit (`rate_limit_event`
   status `rejected`, its `resetsAt`; or a 429 result), a turn past its time, Claude Code failing or

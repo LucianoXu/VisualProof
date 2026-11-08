@@ -12,6 +12,7 @@
 //   limit     the usage limit, which resets at `resetsAt` (seconds)
 //   slow      takes a minute
 //   nosession has no session to resume (a --resume fails as Claude Code's does), then answers
+//   linger    leaves a program running behind it (as a shell's `cmd &` would), its pid in linger.pid
 
 import { spawn } from "node:child_process";
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -91,6 +92,13 @@ switch (behave.mode) {
     await new Promise((ok) => setTimeout(ok, 60_000));
     result("too late");
     break;
+  case "linger": {
+    const left = spawn("sleep", ["60"], { stdio: "ignore" });
+    left.unref();
+    writeFileSync(join(here, "linger.pid"), String(left.pid));
+    result("Left something running.");
+    break;
+  }
   case "nosession":
     if (opt("--resume")) {
       process.stderr.write(`No conversation found with session ID: ${session}\n`);

@@ -214,13 +214,18 @@ into the latest release only.
   given only to the `claude` processes of its holder's agents, in their environment, never on a
   command line; no other program the server runs is given it, nor any `ANTHROPIC_*` variable of the
   server's own environment. Removing it in Share deletes the server's copy only: revoke it at
-  Anthropic too where it may have leaked. Each such agent is run with no tool of Claude Code's own
-  (no shell, no files, no web, no subagents), VisualProof's MCP server alone, a configuration folder
-  of its own (nothing of the server user's settings, hooks, plugins, CLAUDE.md or memory), its
-  files held to its own folder: what it can do is what its VisualProof token allows, whoever asks —
-  and anyone with a name can ask it, in the public channel, at its maker's cost. Anthropic's terms
-  do not allow a tool to keep subscription tokens nor to answer other people with them: use it for
-  a small team that accepts this, never on a public site.
+  Anthropic too where it may have leaked. **Each such agent is trusted with Claude Code's own tools**
+  (the owner's decision): a shell, files and the web on this machine, as the server's user, without
+  asking; it changes the project and builds it when asked. So it can do whatever that user can — read
+  the site folder (everyone's Claude tokens, the agents' tokens, the links), the access key's file,
+  SSH keys and credentials; write the review's logs directly, past VisualProof's levels and the rule
+  that an agent's opinion is advice; reach the network — and **anyone with a name can ask it**, in
+  the public channel, at its maker's cost. Its ground rules and Claude Code's deny rules (the site
+  folder through the file tools; the tools that reach its maker's Claude account and other sessions)
+  say what it must not do; they do not confine its shell. Use it only where everyone let in with a
+  name is trusted that far, as the server's user. Anthropic's terms do not allow a tool to keep
+  subscription tokens nor to answer other people with them: a small team that accepts this, never a
+  public site.
 - **The conversations.** The public channel is read and written by everyone with a name and every
   agent with a token: what is written there is untrusted input to every agent. A person's message
   there is handed to the agents it mentions; the agents' ground rules (the prompt, the entry, the

@@ -177,7 +177,9 @@ function usage(code = 2): never {
            alone), and their agents run here, answering what people write to them, until revoked.
            Needs Claude Code (claude) on this machine. The token is kept in the site, readable by
            the server's user alone, and every answer spends its holder's Claude usage, whoever
-           asked. Anthropic's terms do not allow a tool to keep subscription tokens or to answer
+           asked. Such an agent has Claude Code's own tools here (a shell, files, the web) and
+           changes and builds the project when asked: whoever can talk to it can have it do what
+           this server's user can. Anthropic's terms do not allow a tool to keep subscription tokens or to answer
            others with them: use it for a small team that accepts this, never for a public site.
 
   --jobs  how many modules the usage pass elaborates at once (default ${DEFAULT_JOBS}; 0: no pass). The

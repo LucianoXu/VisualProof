@@ -220,9 +220,11 @@ The README says how to install the `visualproof` command. A checkout also runs a
   server**, on the Claude Code of the person who shares (see Together). Needs Claude Code
   (`claude`) on the server's machine (`visualproof doctor` says whether it is there). People give
   their own Claude Code OAuth token, which the server keeps in the site, and every answer spends
-  their Claude usage, whoever asked; Anthropic's terms do not allow a tool to keep such tokens nor
-  to answer others with them, so keep it to a small team that accepts this
-  ([SECURITY.md](../SECURITY.md)).
+  their Claude usage, whoever asked. Such an agent has Claude Code's own tools on the server's
+  machine — a shell, files, the web — and changes and builds the project when asked: anyone with a
+  name can ask it anything the server's user can do. Anthropic's terms do not allow a tool to keep
+  such tokens nor to answer others with them, so keep it to a small team that trusts each other that
+  far ([SECURITY.md](../SECURITY.md)).
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): every link Share makes (the guest link, read-only and
   personal links) and Copy link are made with it, and the prompt Share makes for an agent tells it
@@ -1385,7 +1387,9 @@ what each one looks at stays their own.
   (`--claude-oauth`, experimental), **Runs: on this server** runs it there instead, on your Claude
   Code: give your Claude Code OAuth token once (in a terminal, `claude setup-token`, then paste what
   it prints; never shown again, **Replace** or **Remove** it later), then **Start**. It listens at
-  once and answers until revoked — no prompt, nothing to share again; each answer is one turn of its
+  once and answers until revoked — no prompt, nothing to share again. It reads the project's code
+  directly, and changes it and runs `lake build` when asked (in a branch the server follows, the
+  clone it changes is reset by the next commit built). Each answer is one turn of its
   own Claude Code session, which **New conversation** starts anew, and **■** in the conversation's
   head stops while it answers. Only someone invited by a personal link (or signed in by the proxy)
   may, so that nobody runs one on your token by giving your name; at most two each. Below the tabs, the read-only links in
