@@ -5,6 +5,10 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.11.1
+
+- Unmark a target the graph no longer has — from its row in Targets, which says "not in the graph now", or from its entry in the lost-and-found — pressed twice; the history keeps that it was a target. Its row shows its name again beside that note.
+
 ## 0.11.0
 
 - Run one AI agent of the server's own, on your Claude Code (experimental): start the server with `--claude-oauth <file>`, the file holding the token `claude setup-token` prints (or `--claude-oauth env`), and `--claude-oauth-name` to name it ("Claude" by default). Everyone with a name on the page talks with it privately, in a tab of their own conversation window, and anyone asks it in public with `@`; each conversation is its own session, so what one person tells it is not in another's. It has Claude Code's own tools: it reads the project's code, and changes and builds it when asked. 0.10's agents run per person on tokens given in Share are gone: the token is the server's, given when it starts. The README's prompts have your AI suggest it and set it up with your token.
