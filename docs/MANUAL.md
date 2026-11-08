@@ -216,15 +216,35 @@ The README says how to install the `visualproof` command. A checkout also runs a
   still let in only by the key or a token of their own. Without it, no address shows the project
   to someone not given a link, so no reader can make a private project public. Not with
   `--identity-header`, where the sign-in decides who comes in.
-- `--claude-oauth` (experimental; AgentSpec decision 10): Share may also run an agent **on this
-  server**, on the Claude Code of the person who shares (see Together). Needs Claude Code
-  (`claude`) on the server's machine (`visualproof doctor` says whether it is there). People give
-  their own Claude Code OAuth token, which the server keeps in the site, and every answer spends
-  their Claude usage, whoever asked. Such an agent has Claude Code's own tools on the server's
-  machine — a shell, files, the web — and changes and builds the project when asked: anyone with a
-  name can ask it anything the server's user can do. Anthropic's terms do not allow a tool to keep
-  such tokens nor to answer others with them, so keep it to a small team that trusts each other that
-  far ([SECURITY.md](../SECURITY.md)).
+- `--claude-oauth <file>` or `--claude-oauth env` (experimental; AgentSpec decision 10): the server
+  runs **an AI agent of its own**, on your Claude Code, which everyone with a name talks with (see
+  Together) — each person in a private conversation of their own, which nobody else reads, and
+  anyone by `@Claude` in Everyone; each conversation is a Claude Code session of its own, at most
+  three answering at once. It needs Claude Code (`claude`) on the server's machine (`npm install -g
+  @anthropic-ai/claude-code`; `visualproof doctor` says whether it is there) and a Claude Code OAuth
+  token, alone in a file only the server's user can read:
+
+  ```bash
+  claude setup-token                       # signs you in, prints a token: sk-ant-oat01-…
+  mkdir -p ~/.config/visualproof
+  (umask 077; cat > ~/.config/visualproof/claude-token)   # paste the token, Enter, then Ctrl-D
+  visualproof serve <project> --claude-oauth ~/.config/visualproof/claude-token
+  ```
+
+  An AI agent setting VisualProof up for someone asks them for the token (`claude setup-token`, in
+  their own terminal, on any machine signed in to their Claude account) and writes it into that file
+  itself, never into a command line or a log. Or `--claude-oauth env`, with the token in the
+  server's own `CLAUDE_CODE_OAUTH_TOKEN` (a systemd unit's `EnvironmentFile=`, itself `chmod 600`).
+  The server does not start where the file may be read by others (`chmod 600` it), or holds
+  anything but an OAuth token (an API key is refused); it never shows, logs or keeps the token in
+  the site, and says as it starts which agent runs and where its token came from (the file, or
+  `env`). `--claude-oauth-name <name>` names it (default `Claude`); its level is `--agents`. Every
+  answer spends your Claude usage, whoever asked. The agent has Claude Code's own tools on the
+  server's machine — a shell, files, the web — and changes and builds the project when asked: anyone
+  with a name can ask it anything the server's user can do. Anthropic's terms do not allow a tool to
+  answer others on a subscription's token, so keep it to a small team that trusts each other that
+  far ([SECURITY.md](../SECURITY.md)). A token Claude Code refuses later (expired, revoked) takes
+  the agent offline: write a new one in the file and restart.
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): every link Share makes (the guest link, read-only and
   personal links) and Copy link are made with it, and the prompt Share makes for an agent tells it
@@ -358,6 +378,8 @@ to a team. It needs git, besides elan.
   commit's; the popover links the branch and each commit. A declaration from outside the project is
   linked in its package's repository at the revision the lake-manifest pins, whether a branch is
   followed or not (Review, Source).
+- **The server's own agent** goes with a branch as with a folder: add `--claude-oauth <file>` (above,
+  Run). In a branch it changes and builds the clone, which the next commit built resets.
 - **Safety** ([SECURITY.md](../SECURITY.md)): **whoever can push to that branch runs code on this
   machine** — the lakefile, and what elaboration runs — as the server's user. Run it as a user of
   its own, give that user a deploy key that only reads the repository, and protect the branch.
@@ -1383,16 +1405,11 @@ what each one looks at stays their own.
   and for how long (1, 7 or 30 days); **Create** makes a token of its own, under your name, and a
   prompt that carries it, copied at once: paste it into any agent that can make HTTP requests, and
   tell it what you want done. The agent acts under the name given (`Alice's AI 2` while another
-  agent in force has it) and reaches the agents' API only. Where the server runs agents
-  (`--claude-oauth`, experimental), **Runs: on this server** runs it there instead, on your Claude
-  Code: give your Claude Code OAuth token once (in a terminal, `claude setup-token`, then paste what
-  it prints; never shown again, **Replace** or **Remove** it later), then **Start**. It listens at
-  once and answers until revoked — no prompt, nothing to share again. It reads the project's code
-  directly, and changes it and runs `lake build` when asked (in a branch the server follows, the
-  clone it changes is reset by the next commit built). Each answer is one turn of its
-  own Claude Code session, which **New conversation** starts anew, and **■** in the conversation's
-  head stops while it answers. Only someone invited by a personal link (or signed in by the proxy)
-  may, so that nobody runs one on your token by giving your name; at most two each. Below the tabs, the read-only links in
+  agent in force has it) and reaches the agents' API only. Where the server runs **an agent of its
+  own** (`--claude-oauth`, experimental; AgentSpec decision 10), the tab says so above the form: its
+  name, that it runs on this server and stops with it, and **Talk with** it, which opens your own
+  conversation with it. Share makes no agent to run on the server, and asks for no Claude token: the
+  operator gave the server its own. Below the tabs, the read-only links in
   force — who made each and when, when it was last used, **Show link** (or a click on it), and
   **Revoke** (pressed twice, under your name), which closes every page it opened at once — then the
   personal links in force — for whom, who made each and when, when it was last used, **Revoke**
@@ -1400,7 +1417,8 @@ what each one looks at stays their own.
   site, naming nobody; a browser that has the guest link too stays, as a guest) — then the agents' tokens in force: who made each and when, when it expires,
   when it was last used, **Show prompt** (or a click on it), which shows its prompt again to copy —
   to whoever made the token alone, as whoever holds the token reads its agent's private channel —,
-  and **Revoke** (pressed twice), which anyone with a name may, to stop an agent at once.
+  and **Revoke** (pressed twice), which anyone with a name may, to stop an agent at once (the server's
+  own agent's is listed *on this server*, with neither).
 - **Your name**, at the top right: opinions, pins and re-layouts are recorded under it. A click
   opens its menu (the arrows, Enter and Esc work in it too): **Change name**, at any time — but not
   to the name of someone invited by a personal link, which the window says; behind a sign-in proxy
@@ -1493,7 +1511,8 @@ what each one looks at stays their own.
   its channels: **Everyone**, the public channel — everyone with a name on the page writes there,
   and every agent with a token (a private reader too, under their name, which tells that they are
   there), kept 90 days — then each of **your agents**, those whose token you made in Share, with
-  its state: a private channel between you and it, which nobody else sees, kept 30 days. A
+  its state: a private channel between you and it, which nobody else sees, kept 30 days; and the
+  **server's own agent**, where it runs one, whose tab is your own conversation with it. A
   read-only reader has no window. Write in the box: Enter sends, Shift+Enter makes a new line (the
   Enter that commits an input method's composition, Chinese pinyin say, only commits it); `@` and
   the start of a name offers the people online and the agents listed. A person's message mentioning
@@ -1516,6 +1535,17 @@ what each one looks at stays their own.
   it: nothing in it ends following but a link followed from it (a declaration's name, a chip) and
   Esc (in its box, Esc first leaves the box). Following an agent shows what it looks at, never its
   conversations.
+- **The server's own agent** (`--claude-oauth`, experimental; AgentSpec decision 10): everyone with a
+  name has a private conversation with it, which nobody else reads — a guest's by their name, an
+  invited person's by their personal link — and anyone mentions it in Everyone, where it answers.
+  Each conversation is a Claude Code session of its own on the server, which knows nothing of the
+  others': what you tell it privately is not in anyone else's, nor in the public one. Its tab shows
+  its state in your conversation: **thinking** (or **working**, once it answered) while it answers
+  you, **waiting its turn** while three others' answers run, **listening** otherwise; presence
+  shows it thinking while it answers anyone. What you write while it answers goes in its next turn.
+  **■** in the head stops its answer to you; **New conversation** starts a new session of your
+  conversation alone. It is offline for everyone where Claude Code refused the server's token;
+  at the usage limit it says until when, and answers what waited after.
 - **Talking with your agent** (AgentSpec decision 8): an agent given a token by Share is listed beside
   the others while the token is in force, with a dot for its state, which the server infers from
   what it does: **listening** (it waits for messages: one reaches it at once), **thinking** (it was

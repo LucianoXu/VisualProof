@@ -31,6 +31,10 @@ Environment=PATH=%h/.elan/bin:<directory of node>:/usr/local/bin:/usr/bin:/bin
 # server restarts, so systemd sees one service throughout; --updates off for a machine kept offline.
 # The patches go in the caches' root (versions/): code the server runs, so keep that folder the
 # server's user's alone.
+# --claude-oauth <file> (experimental): the server's own AI agent, which everyone with a name talks
+# with, on the Claude Code OAuth token the file holds alone (claude setup-token prints it; the file
+# owned by this user, chmod 600: the server refuses it otherwise). Add it to the line below, e.g.
+# --claude-oauth /var/lib/visualproof/claude-token; every answer spends that account's usage.
 ExecStart=<directory of node>/visualproof serve <path to the Lean project> --port 4173 --host 0.0.0.0 --access-key-file <key file> --site /var/lib/visualproof/<name> --jobs 8 --public-url https://<host>
 Restart=on-failure
 RestartSec=10

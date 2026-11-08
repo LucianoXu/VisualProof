@@ -45,6 +45,10 @@ WorkingDirectory=/var/lib/visualproof-<name>
 # --public-url) when the server is reached over the internet. --updates auto (the
 # default): the server takes VisualProof's patches by itself at a quiet moment — never during a
 # build — and a build cut short anyway is done again.
+# --claude-oauth <file> (experimental): the server's own AI agent, which everyone with a name talks
+# with, on the Claude Code OAuth token the file holds alone (claude setup-token prints it; the file
+# owned by this user, chmod 600: the server refuses it otherwise). Add it to the line below, e.g.
+# --claude-oauth /var/lib/visualproof-<name>/claude-token; every answer spends that account's usage.
 ExecStart=<directory of node>/visualproof serve git@github.com:<owner>/<repo>.git --branch <branch> --poll 2 --build-timeout 6 --port 4173 --host 0.0.0.0 --access-key-file /var/lib/visualproof-<name>/key --jobs 8 --public-url https://<host>
 Restart=on-failure
 RestartSec=30
