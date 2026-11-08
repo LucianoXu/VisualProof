@@ -77,12 +77,14 @@ export function talkPart(page: Page): TalkPart {
     mentioned: (channel, m) => mentionNotice(channel, m),
   });
   if (kept) talk.restoreDrafts(kept.talk);
-  /** The conversation button: the window opened, expanded; open and expanded, closed. A read-only
+  /** The conversation button: the window opened, expanded, in front; open, expanded and in front,
+   *  closed. Covered by another window, it comes in front rather than closing (the owner's decisions
+   *  of 2026-11-08: the windows are in one order, the conversation window among them). A read-only
    *  reader has none (CollabSpec decision 11), nor has a snapshot. */
   const talkBtn = $("#talk-btn");
   talkBtn.hidden = !!reader || !!data.snapshot;
   talkBtn.addEventListener("click", () => {
-    if (page.chatWin.open && !page.chatWin.collapsed) page.chatWin.close();
+    if (page.chatWin.open && !page.chatWin.collapsed && !page.chatWin.covered) page.chatWin.close();
     else page.chatWin.show(true);
   });
   /** A mention of the reader where they do not read: a notice under the button, which opens the

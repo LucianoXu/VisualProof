@@ -1402,14 +1402,13 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
 .st-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--state); flex: none; }
 .peer-dot.st-thinking, .tk-state.st-thinking .st-dot, .st-dot.st-thinking { animation: pulse 1.6s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .peer-dot.st-thinking, .tk-state.st-thinking .st-dot, .st-dot.st-thinking { animation: none; } }
-/* the conversation window (CollabSpec decision 13, web/src/chatwin.ts, which sets its place and
-   size): in front of the source and reference windows always, a layer of its own above their order
-   (ReviewSpec, "In front"); hover cards, popovers and modal windows above #windows, so above it.
-   Its head the channels, dragged to move it; the thread filling it; at its foot the state line and
-   the box; every edge and corner resizes it */
-#windows > #convo { z-index: 1000; }
-/* the following strip, whom and its ✕, stays in sight over it */
+/* the following strip, whom and its ✕, stays in sight over every window */
 #windows > #following { z-index: 1001; }
+/* the conversation window (CollabSpec decision 13, web/src/chatwin.ts, which sets its place and
+   size): one of the floating windows, in their order (floatwin.ts; ReviewSpec, "In front", the
+   owner's decisions of 2026-11-08); hover cards, popovers and modal windows above #windows, so above
+   it. Its head the channels, dragged to move it; the thread filling it; at its foot the state line
+   and the box; every edge and corner resizes it */
 #convo {
   position: fixed; display: flex; flex-direction: column; padding: 0; border-radius: 14px;
   box-shadow: 0 0 0 1px var(--line), var(--shadow-lg); font-size: 12.5px; color: var(--text); --c: var(--accent);
@@ -3181,6 +3180,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
   .sw-head { align-items: center; }
   .sw-name { flex: 1 1 auto; white-space: normal; overflow-wrap: anywhere; }
   .pw-win:not(.collapsed) { left: 4px !important; right: 4px !important; width: auto !important; }
+  /* the conversation window, and its pill, stay over the source window, which takes the whole screen
+     (PhoneSpec decision 12): a tap in it, to read or scroll, would otherwise bury them, and ⋯ with them */
+  #windows > #convo { z-index: 1000 !important; }
   /* Activity and the lost-and-found: the whole screen, from the right */
   #activity, #lostfound {
     top: 0; left: 0; right: 0; bottom: 0; width: auto; border-radius: 0; z-index: 48;

@@ -233,8 +233,12 @@ decision 1. Agents: AgentSpec.md. Access and secrets: SECURITY.md. For users: do
       else does: following never opens, closes or changes it, and nothing in it ends following but
       a link followed from it (a tool of the reader's own changing followed parts, decision 4) and
       Esc (in its box, Esc first leaves the box). It moves, resizes and collapses to a pill; its
-      place, size, whether it is collapsed and the channel on show are kept per browser. **It is in
-      front of the source and reference windows**, always (ReviewSpec, "In front").
+      place, size, whether it is collapsed and the channel on show are kept per browser. **It is one
+      of the floating windows** (the owner's decisions of 2026-11-08 (0.11), which replace "in front
+      of the source and reference windows, always" of 2026-10-19): pressed or opened, it comes in
+      front of them, and one pressed after it comes in front of it (ReviewSpec, "In front"). Where
+      another window covers it, the conversation button brings it in front; where none does, the
+      button closes it.
     - **Its channels**, at its head: *Everyone*, then each of the reader's own agents with its state
       (AgentSpec decision 8). The button counts the public messages the reader has not seen, and is
       marked where they are mentioned or one of their agents answered.
@@ -321,7 +325,8 @@ Presence also carries `tabs` (the views a page has open, which the server then k
 them. A share link carries every followed part in a form of its own (shared/sharesnap.ts); a
 part without a form does not typecheck.
 
-**Yours**: window places and sizes; scroll positions; folded sections; the TCB list's order and
+**Yours**: window places and sizes, and which window is in front (the owner's decisions of
+2026-11-08 (0.11)); scroll positions; folded sections; the TCB list's order and
 what of it is kept to by one's own review; the review box's opinions folded or shown (ReviewSpec,
 "One review box"); File mode's proofs folded, and a folded one opened (the owner's decision of
 2026-11-01); the outline's levels; "What changed"; the legend folded; the eyes' ⋯; the theme;
@@ -579,9 +584,9 @@ the tour, the welcome and the tips are, in full: GuideSpec.md.
   to its maker's pages; nothing to a read-only page. A page's name is its personal link's or the
   proxy's, else the one its heartbeats give (an event stream carries no header of the page's), so
   the page reads its channels again once a heartbeat named its stream. What the reader has seen of
-  each channel (its last id) is kept per browser, the furthest of its tabs'. The window's layer is
-  above the source and reference windows' order (web/src/floatwin.ts, `onTop`; style.css), the
-  following strip over it.
+  each channel (its last id) is kept per browser, the furthest of its tabs'. The window is in the
+  floating windows' one order (web/src/floatwin.ts), the following strip over them all; on a phone
+  the style keeps it over the source window, which takes the whole screen there (style.css).
 - **Copied links** (decision 13, web/src/chatlinks.ts): the site's address and the page's path, the
   key's `/k/<key>`, a personal link's and a read-only link's left out, then `#` and the state's
   address (web/src/state.ts), with `snap=` for what the reader sees; a note's, the board's address
