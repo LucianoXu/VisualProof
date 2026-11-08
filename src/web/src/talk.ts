@@ -54,7 +54,7 @@ const OUT = `<svg class="tk-out" viewBox="0 0 16 16" width="11" height="11" aria
 const LINK = `<svg class="tk-ln" viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2M9 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 
 export interface TalkHooks {
-  data: Pick<DataSource, "chat" | "sendChat" | "newChat">;
+  data: Pick<DataSource, "chat" | "sendChat" | "newChat" | "stopAgent">;
   store: Store;
   /** the window the conversations are in */
   win: ChatWindow;
@@ -151,6 +151,7 @@ export class Talk {
       if (t.closest("[data-fold]")) return this.toggleFold();
       if (t.closest("[data-cv-older]")) return void this.older();
       if (t.closest("[data-cv-new]")) return void this.restart();
+      if (t.closest("[data-cv-stop]")) return void this.stopTurn();
       if (t.closest("[data-cv-link]")) return void this.insertSeen();
       if (t.closest("[data-cv-name]")) return void this.hooks.ensureName();
       const site = t.closest<HTMLElement>("[data-site]");
@@ -270,8 +271,19 @@ export class Talk {
       else el.scrollTop = top;
     }
     this.renderPill();
+    this.renderRestart();
     if (this.named) for (const c of this.channels()) if (!this.read.has(c)) void this.load(c);
     this.count();
+  }
+
+  /** Stop the answer an agent the server runs is giving (AgentSpec decision 10): its maker's, as
+   *  Esc in a terminal is for an agent run there. */
+  private async stopTurn(): Promise<void> {
+    const a = this.agentOf(this.channel);
+    if (!a || a.runs !== "server") return;
+    const r = await this.hooks.data.stopAgent(a.id);
+    this.error = r.error ?? null;
+    this.renderForm(false);
   }
 
   /** Read a channel, once per connection: what it holds now, with what came meanwhile. */
@@ -617,6 +629,9 @@ export class Talk {
   private renderRestart(): void {
     const b = this.el.querySelector<HTMLButtonElement>("[data-cv-new]");
     const a = this.named ? this.agentOf(this.channel) : null;
+    // an agent the server runs, answering: its maker may stop it
+    const stop = this.el.querySelector<HTMLButtonElement>("[data-cv-stop]");
+    if (stop) stop.hidden = !(a && a.runs === "server" && (a.talk?.state === "thinking" || a.talk?.state === "working"));
     if (!b) return;
     b.hidden = !a;
     if (!a) return;
@@ -625,7 +640,9 @@ export class Talk {
     b.setAttribute("aria-disabled", String(off));
     b.title = fresh(t)
       ? "A new conversation already: nothing was said since it began"
-      : `New conversation: what was said so far folds away, and the next session of ${a.name ?? "the agent"} starts without it. A session running now is told to disregard it, but keeps what it was told: only /clear in its own terminal erases that.`;
+      : a.runs === "server"
+        ? `New conversation: what was said so far folds away, and ${a.name ?? "the agent"} starts a new session without it (it runs on this server).`
+        : `New conversation: what was said so far folds away, and the next session of ${a.name ?? "the agent"} starts without it. A session running now is told to disregard it, but keeps what it was told: only /clear in its own terminal erases that.`;
   }
 
   /** The pill the window collapses to: the channel on show and the start of its last message. */

@@ -499,6 +499,8 @@ export interface Peer {
   /** where an invited person made its token (CollabSpec decision 9): their personal link's id, which
    *  says who its maker is rather than the name (AgentSpec decision 7, `makerPerson`) */
   byPerson?: string;
+  /** "server": an agent the server runs on its maker's Claude Code (AgentSpec decision 10) */
+  runs?: "server";
 }
 
 /** What an agent with a token of its own is doing, as the server infers it from its requests
