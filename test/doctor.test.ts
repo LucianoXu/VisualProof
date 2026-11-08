@@ -105,6 +105,7 @@ const full = machine({
   pdftoppm: "pdftoppm version 24.02.0",
   xelatex: "XeTeX 3.141592653-2.6-0.999995 (TeX Live 2023/Debian)",
   git: "git version 2.43.0",
+  claude: "2.1.319 (Claude Code)",
 });
 
 function project(name: string, toolchain: string, built: boolean): string {
@@ -118,7 +119,7 @@ function project(name: string, toolchain: string, built: boolean): string {
 
 test("the machine: what is missing fails, warns or is only said, each with what to do", () => {
   const ok = doctor({ path: null, roots: [], site: null, cache: null, run: full, node: "24.15.0", platform: "linux" });
-  assert.deepEqual(ok.checks.map((c) => c.level), ["ok", "ok", "ok", "ok"]);
+  assert.deepEqual(ok.checks.map((c) => c.level), ["ok", "ok", "ok", "ok", "ok"]);
   assert.equal(ok.ready, null);
   assert.match(printReport(ok, null), /To check a project too: visualproof doctor <lean-project>/);
 
@@ -131,6 +132,7 @@ test("the machine: what is missing fails, warns or is only said, each with what 
   assert.equal(by(/^Poppler/).fix, "brew install poppler");
   assert.equal(by(/^XeLaTeX/).level, "info");
   assert.equal(by(/^git/).level, "info");
+  assert.equal(by(/^Claude Code/).level, "info", "needed only for --claude-oauth");
   const text = printReport(bare, null);
   assert.match(text, /✗ Node 23\.11\.1: VisualProof needs \^22\.18\.0 or >=24\.2\.0/);
   assert.doesNotMatch(text, /To check a project too/, "the machine first");

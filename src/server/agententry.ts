@@ -102,14 +102,19 @@ export function endpointList(api: AgentApi, a: Ask): Answer {
   return ok({ endpoints: all.map((e) => ({ method: e.method, path: e.path, about: e.about, params: e.params, returns: e.returns, ...(e.needs ? { needs: `--agents ${e.needs === "advise" ? "advise or full" : "full"}` } : {}) })) });
 }
 
+/** VisualProof's MCP server as it is served, carrying the version of the server it came from
+ *  (UpdateSpec decision 11); the agents the server runs run it too (server/hosted.ts). Throws where
+ *  the file is not beside the server. */
+export function mcpServerText(): string {
+  return readFileSync(MCP_FILE, "utf8").replace(/^const VERSION = "[^"\n]*";$/m, `const VERSION = ${JSON.stringify(packageVersion())};`);
+}
+
 /** VisualProof's MCP server, one file (mcp/visualproof-mcp.mjs). */
 export function mcpFile(api: AgentApi, a: Ask): Answer {
   const t = talker(api, a);
   if (typeof t !== "string") return t;
   try {
-    // the file carries the version of the server it came from (UpdateSpec decision 11)
-    const body = readFileSync(MCP_FILE, "utf8").replace(/^const VERSION = "[^"\n]*";$/m, `const VERSION = ${JSON.stringify(packageVersion())};`);
-    return { status: 200, body: null, text: { type: "text/javascript; charset=utf-8", body } };
+    return { status: 200, body: null, text: { type: "text/javascript; charset=utf-8", body: mcpServerText() } };
   } catch {
     return fail(404, "The MCP server is not beside this server.", "Use the HTTP API (GET /api/agent).");
   }
@@ -129,12 +134,15 @@ export function mcpInstallGet(api: AgentApi, a: Ask): Answer {
 export function mcpTools(api: AgentApi, a: Ask): Answer {
   const t = talker(api, a);
   if (typeof t !== "string") return t;
-  const tools = TOOLS.map((d) => offered(d, (r) => mayCall(api, a.caller, r))).filter((x) => x !== null);
   const me = a.caller;
-  const you = { name: me.name!, level: api.levelOf(me), by: me.token!.by, expires: me.token!.expires };
+  // an agent the server runs is handed its messages as turns (AgentSpec decision 10): it has nothing
+  // to wait on
+  const hosted = me.token!.runs === "server";
+  const tools = TOOLS.filter((d) => !(hosted && d.name === "wait_for_message")).map((d) => offered(d, (r) => mayCall(api, a.caller, r))).filter((x) => x !== null);
+  const you = { name: me.name!, level: api.levelOf(me), by: me.token!.by, expires: me.token!.expires, ...(hosted ? { runs: "server" as const } : {}) };
   const v = api.world.graph ? api.graph() : null;
   const project = v instanceof View ? v.meta.project.name : null;
-  return ok({ you, instructions: mcpInstructions({ ...you, address: a.base ?? "http://127.0.0.1:4173", project }), tools, docs: DOC_TOPICS });
+  return ok({ you, instructions: mcpInstructions({ ...you, address: a.base ?? "http://127.0.0.1:4173", project, hosted }), tools, docs: DOC_TOPICS });
 }
 
 /** Whether `caller` may make a tool's request: what its endpoint needs. A request no endpoint

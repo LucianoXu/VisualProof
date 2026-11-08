@@ -133,6 +133,26 @@ export async function chatNew(app: App, req: IncomingMessage, res: ServerRespons
   return sendJson(res, { ok: true, divider: divider && forPages(divider) });
 }
 
+/** Stop the turn an agent the server runs is taking (AgentSpec decision 10): POST /api/chat/stop
+ *  {agent}, from its maker alone, as Esc in a terminal stops an agent someone runs there. What it
+ *  was answering ends with it; the agent listens again. */
+export async function chatStop(app: App, req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const live = app.live;
+  if (req.method !== "POST") return sendJson(res, { error: "/api/chat/stop answers POST." }, 405);
+  if (app.readOnlyOf.has(req)) return sendJson(res, { error: "This page is read-only.", readOnly: true }, 403);
+  if (app.ids.kind(req) === "agent") return sendJson(res, { error: "An agent's turn is stopped by people." }, 403);
+  const me = app.ids.who(req);
+  if (!me) return sendJson(res, { error: "Say who you are first.", who: true }, 401);
+  const r = await app.json(req, 1 << 12);
+  if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
+  const b = (r.body ?? {}) as { agent?: unknown };
+  const tok = typeof b.agent === "string" ? live.presence.tokenOf(b.agent) : null;
+  const record = tok ? live.tokens.get(tok) : undefined;
+  if (!tok || !record || record.runs !== "server") return sendJson(res, { error: "There is no such agent running on this server." }, 404);
+  if (!madeBy(record, { name: me, person: app.ids.person(req)?.id ?? null })) return sendJson(res, { error: `Only ${record.by}, who runs ${record.name}, stops its turn.` }, 403);
+  return sendJson(res, { ok: true, stopped: live.hosted?.stopTurn(tok) ?? false });
+}
+
 /** Asking others to follow (CollabSpec decision 10, the owner's decision of 2026-10-12), for pages:
  *  POST /api/ask {token, to?} — the page whose event stream holds `token` asks everyone on the
  *  server, or the person whose page is listed as `to`, to follow its reader, who has a name and is

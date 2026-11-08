@@ -6,6 +6,7 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
 import { filmPin } from "./film.ts";
+import { findClaude } from "./hosted.ts";
 import { freemem, tmpdir, totalmem } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { cacheHome, projectDirs, siteHolder } from "./dirs.ts";
@@ -223,6 +224,14 @@ export function doctor(o: DoctorOptions): Report {
   if (exec("git", ["--version"]) === null) {
     checks.push({ level: "info", what: "git not found: builds are kept without their commit, and past sources only as the builds kept them; a branch cannot be followed (serve <git URL>)" });
   }
+  // the agents a server runs on their makers' Claude Code (--claude-oauth, AgentSpec decision 10)
+  const claude = findClaude();
+  const claudeVersion = exec(o.run ? "claude" : (claude ?? "claude"), ["--version"]);
+  checks.push(
+    claudeVersion
+      ? { level: "ok", what: `Claude Code ${claudeVersion.trim().split(/\s/)[0]} (for --claude-oauth, agents the server runs)` }
+      : { level: "info", what: "Claude Code (claude) not found: needed only for --claude-oauth (agents the server runs)", fix: "npm install -g @anthropic-ai/claude-code" },
+  );
 
   const film = filmLine(o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES);
   const updates = updatesLine(exec, node, o.fromPackage ?? FROM_PACKAGE, o.cache ? resolve(o.cache) : cacheHome(), o.updates ?? process.env.VISUALPROOF_UPDATES, o.path === null ? null : projectDirs(resolve(o.path), o.site, o.cache).site);

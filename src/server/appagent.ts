@@ -65,7 +65,7 @@ export async function exportRoute(app: App, req: IncomingMessage, res: ServerRes
 export async function agentRoute(app: App, req: IncomingMessage, res: ServerResponse, url: URL, token: TokenRecord | null = null): Promise<void> {
   const said = app.ids.who(req);
   const caller: Caller = token
-    ? { name: token.name, kind: "agent", token: { id: token.id, by: token.by, level: token.level, expires: token.expires }, ...(said && said !== token.name ? { ignoredName: said } : {}) }
+    ? { name: token.name, kind: "agent", token: { id: token.id, by: token.by, level: token.level, expires: token.expires, ...(token.runs ? { runs: token.runs } : {}) }, ...(said && said !== token.name ? { ignoredName: said } : {}) }
     : { name: said, kind: app.ids.kind(req) };
   let body: unknown = null;
   if (req.method === "POST" && url.pathname.replace(/\/+$/, "") === UPLOAD_PATH) {

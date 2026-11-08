@@ -28,7 +28,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { MAX_NAME, uniqueName, validName } from "../shared/collab.ts";
+import { MAX_NAME, UNTIL_STOPPED, uniqueName, validName } from "../shared/collab.ts";
 import type { AgentTokenInfo } from "../shared/collab.ts";
 import type { AgentLevel } from "./agent.ts";
 
@@ -113,8 +113,10 @@ export class AgentTokens {
   /** Make a token for an agent: the token (for its prompt) and its record. The name and level are
    *  checked by the caller (server/appshare.ts); the name is used as given, numbered when an agent in
    *  force has it already; `by` is a person's name, and `person` their personal link's id where an
-   *  invited person makes it (`makerPerson`: who its maker is, AgentSpec decision 7). */
-  create(o: { name: string; by: string; person?: string | null; level: AgentLevel; days: number; now?: number }): { token: string; record: TokenRecord } {
+   *  invited person makes it (`makerPerson`: who its maker is, AgentSpec decision 7). `runs: "server"`
+   *  makes the token of an agent the server runs (AgentSpec decision 10), which lasts until revoked:
+   *  `days` is not read. */
+  create(o: { name: string; by: string; person?: string | null; level: AgentLevel; days: number; runs?: "server"; now?: number }): { token: string; record: TokenRecord } {
     const now = o.now ?? Date.now();
     this.expire(now);
     let id: string;
@@ -128,10 +130,11 @@ export class AgentTokens {
       by: o.by,
       ...(o.person ? { makerPerson: o.person } : {}),
       created: new Date(now).toISOString(),
-      expires: new Date(now + o.days * 24 * 3600 * 1000).toISOString(),
+      expires: o.runs === "server" ? UNTIL_STOPPED : new Date(now + o.days * 24 * 3600 * 1000).toISOString(),
       revoked: null,
       revokedBy: null,
       lastUsed: null,
+      ...(o.runs === "server" ? { runs: "server" as const } : {}),
     };
     this.records.push(record);
     this.save();
@@ -248,5 +251,5 @@ function isRecord(x: unknown): x is TokenRecord {
   const r = x as TokenRecord;
   return !!r && typeof r === "object" && typeof r.id === "string" && ID.test(r.id) && typeof r.secret === "string" && SECRET.test(r.secret) &&
     typeof r.name === "string" && typeof r.by === "string" && typeof r.expires === "string" && ["read", "advise", "full"].includes(r.level) &&
-    (r.makerPerson === undefined || typeof r.makerPerson === "string");
+    (r.makerPerson === undefined || typeof r.makerPerson === "string") && (r.runs === undefined || r.runs === "server");
 }

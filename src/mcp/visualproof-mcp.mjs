@@ -8,6 +8,10 @@
 //   VISUALPROOF_WAIT_SECONDS  the longest wait_for_message waits (default 1800, 30 minutes): 50 for
 //                             a client that ends a tool call after a minute whatever it reports
 //   VISUALPROOF_PROGRESS_SECONDS  how often a wait tells the client its progress (default 30)
+//   VISUALPROOF_FILES         set by the VisualProof server for an agent it runs itself (AgentSpec
+//                             decision 10): the folder `saveTo` and `path` are held to — a name is a
+//                             file there, and a path that leads out of it (`..`, a symbolic link) is
+//                             refused — and the client's going is no leave (the server listens for it)
 //
 // It offers VisualProof's agents' API as tools. The list comes from the server
 // (GET /api/agent/mcp/tools), each tool with the request it makes — or, for a tool of several
@@ -38,8 +42,8 @@
 // at once rather than after its longest wait.
 
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
-import { basename, isAbsolute } from "node:path";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, sep } from "node:path";
 import { createInterface } from "node:readline";
 
 // the version of the VisualProof server it came from: the server writes its own here as it serves
@@ -60,6 +64,8 @@ const URL_ = (process.env.VISUALPROOF_URL ?? "").trim().replace(/\/+$/, "");
 const TOKEN = (process.env.VISUALPROOF_TOKEN ?? "").trim();
 const WAIT_S = seconds(process.env.VISUALPROOF_WAIT_SECONDS, 1800, 1, 7 * 86_400);
 const PROGRESS_MS = seconds(process.env.VISUALPROOF_PROGRESS_SECONDS, 30, 0.2, 600) * 1000;
+/** the folder an agent the VisualProof server runs keeps its files in; null: any path of this machine */
+const FILES = (process.env.VISUALPROOF_FILES ?? "").trim() || null;
 /** this process, as its waits name it: another one is a new session, which knows nothing yet */
 const SESSION = randomUUID();
 
@@ -241,7 +247,9 @@ function query(args) {
  *  written to the new file `saveTo` names — an absolute path, never one that exists — and what was
  *  saved said; a refusal said as the server put it. */
 async function save(path, args, cancel) {
-  const { saveTo, ...rest } = args ?? {};
+  const { saveTo: asked, ...rest } = args ?? {};
+  const saveTo = FILES && typeof asked === "string" ? confined(asked, false) : asked;
+  if (FILES && !saveTo) return text(`saveTo is the name of a new file in your folder (${FILES}).`, true);
   if (typeof saveTo !== "string" || !isAbsolute(saveTo)) return text("saveTo is the absolute path of a new file to save it as.", true);
   const q = query(rest);
   const t = within(cancel, CALL_MS);
@@ -263,7 +271,9 @@ async function save(path, args, cancel) {
 /** A request that uploads a file (to the library): the file `path` names on this machine read and
  *  sent as the body, its other arguments in the query (its name the file's own unless given). */
 async function upload(path, args, cancel) {
-  const { path: file, ...rest } = args ?? {};
+  const { path: asked, ...rest } = args ?? {};
+  const file = FILES && typeof asked === "string" ? confined(asked, true) : asked;
+  if (FILES && !file) return text(`path is the name of a file in your folder (${FILES}).`, true);
   if (typeof file !== "string" || !isAbsolute(file)) return text("path is the absolute path of the file to send.", true);
   let bytes;
   try {
@@ -283,6 +293,20 @@ async function upload(path, args, cancel) {
     return text(`The request to ${URL_}${path} failed: ${e?.message ?? e}`, true);
   } finally {
     t.done();
+  }
+}
+
+/** A path a tool names, held to FILES: a name is a file there, a path must be in it, with its
+ *  symbolic links resolved (a file to send, `existing`; a new file to save, its folder); null where
+ *  it leads out, or cannot be resolved. */
+function confined(p, existing) {
+  try {
+    const root = realpathSync(FILES);
+    const abs = isAbsolute(p) ? p : join(root, p);
+    const real = existing ? realpathSync(abs) : join(realpathSync(dirname(abs)), basename(abs));
+    return real.startsWith(root + sep) && real !== root ? real : null;
+  } catch {
+    return null;
   }
 }
 
@@ -482,7 +506,8 @@ async function leave() {
   if (leaving) return;
   leaving = true;
   for (const ctl of running.values()) ctl.abort();
-  if (URL_ && TOKEN && !stopped)
+  // an agent the VisualProof server runs ends its client after each turn: the server listens for it
+  if (URL_ && TOKEN && !stopped && !FILES)
     await fetch(`${URL_}/api/agent/view`, { method: "POST", headers: { ...auth(), "content-type": "application/json", "x-visualproof-session": SESSION }, body: '{"leave":true}', signal: AbortSignal.timeout(1500) }).catch(() => {});
   process.exit(0);
 }

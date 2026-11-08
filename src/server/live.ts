@@ -73,6 +73,8 @@ import { withoutReasons } from "../shared/timeline.ts";
 import type { StoredEvent } from "../shared/timeline.ts";
 import type { DeployStatus } from "../shared/deploy.ts";
 import { OutsideSources } from "./outside.ts";
+import { ClaudeTokens } from "./claudetokens.ts";
+import type { Hosted } from "./hosted.ts";
 import type { OutsideFile } from "./outside.ts";
 
 const TICK = 1000;
@@ -256,6 +258,11 @@ export class Live {
   readonly readOnly: ReadOnlyLinks;
   /** the conversations with agents, their waits and their states (AgentSpec decision 8, server/talk.ts) */
   readonly talk: Talk;
+  /** the Claude Code tokens people gave in Share, for the agents the server runs (AgentSpec decision
+   *  10, server/claudetokens.ts) */
+  readonly claudeTokens: ClaudeTokens;
+  /** the agents the server runs (server/hosted.ts): null without --claude-oauth */
+  hosted: Hosted | null = null;
   /** the requests to follow going on (CollabSpec decision 10, server/askfollow.ts): relayed to the
    *  pages asked through their streams, and their answers to the page that asked */
   readonly asks: Asks;
@@ -310,12 +317,18 @@ export class Live {
     this.invites.onChanged = () => this.send("people", this.invites.people());
     this.invites.onEnded = (r, keep) => {
       for (const st of [...this.streams.values()]) if (st.person === r.id && (keep === undefined || st.token !== keep)) this.close(st);
+      // a link revoked (not made anew) takes its holder's Claude token with it (AgentSpec decision 10)
+      if (r.revoked) this.claudeTokens.dropPerson(r.id);
     };
     this.readOnly = new ReadOnlyLinks(dirs.site);
     this.readOnly.onEnded = (l) => {
       for (const st of [...this.streams.values()]) if (st.readOnly === l.id) this.close(st);
     };
     this.talk = new Talk(dirs.site);
+    this.claudeTokens = new ClaudeTokens(dirs.site);
+    // a Claude token given, replaced, refused or removed starts its holder's agents on the server, or
+    // stops them
+    this.claudeTokens.onChanged = (who) => this.hosted?.changed(who);
     // what changes a view may change the lost-and-found: a pin of a name that is gone, a note
     this.views = new Views(dirs.site, LAYOUT_VERSION, (event, data) => {
       this.send(event, data);
@@ -371,7 +384,10 @@ export class Live {
     this.talk.lastUsed = (id) => this.tokens.get(id)?.lastUsed ?? null;
     this.presence.setTokens(this.tokens.inForce(), talkOf);
     this.tokens.onChanged = () => this.presence.setTokens(this.tokens.inForce(), talkOf);
-    this.tokens.onEnded = (r) => this.talk.close(r.id, r.revoked ? "revoked" : "expired");
+    this.tokens.onEnded = (r) => {
+      this.talk.close(r.id, r.revoked ? "revoked" : "expired");
+      this.hosted?.ended(r.id);
+    };
     this.talk.inForce = (id) => this.tokens.inForce().some((r) => r.id === id);
     this.talk.onState = (id, talk) => this.presence.setTalk(id, talk);
     // a new message goes to the pages that may read its channel (CollabSpec decision 13)
@@ -1340,7 +1356,7 @@ export class Live {
   /** Whether the server is working on the build (an extraction, a re-layout, the usage pass):
    *  no moment to restart in (UpdateSpec decision 6). */
   get busy(): boolean {
-    return this.extracting || this.usage.status.state === "running" || !!this.deploy?.busy;
+    return this.extracting || this.usage.status.state === "running" || !!this.deploy?.busy || !!this.hosted?.busy;
   }
 
   /** Whether the tree is being read: an extraction, a re-layout, a graph made ready to serve. A
@@ -1414,6 +1430,8 @@ export class Live {
    *  version (`update`), or a stop (`bye`) — and its stream ended, so that it comes back to the
    *  server that answers next. */
   end(why: { update: { from: string; to: string } } | { stopped: true }): void {
+    // the agents the server runs stop with it; a turn cut short is answered at the next start
+    this.hosted?.close();
     const text = "update" in why ? `event: update\ndata: ${JSON.stringify(why.update)}\n\n` : `event: bye\ndata: ${JSON.stringify({ why: "stopped" })}\n\n`;
     for (const st of [...this.streams.values()]) {
       this.streams.delete(st.res);

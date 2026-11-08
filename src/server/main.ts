@@ -37,6 +37,8 @@ import { shortCommit } from "../shared/deploy.ts";
 import { parseArgs } from "./options.ts";
 import type { Options } from "./options.ts";
 import { App } from "./app.ts";
+import { findClaude, Hosted } from "./hosted.ts";
+import { mcpServerText } from "./agententry.ts";
 
 /** What a stop signal does to a server: end it at once, until it can stop gracefully (serve). */
 let stopNow: () => void = () => process.exit(0);
@@ -283,6 +285,28 @@ async function main(): Promise<void> {
       console.log(`  builds: ${d.built ? `the tree holds the build of ${shortCommit(d.built)}${deployment.holds() ? ", cut short: it is done again" : ""}` : none}; their logs in ${deployment.folder.logs}`);
       // where the project is on Mathlib, its cache: the user's, or the deployment's own (DeploySpec decision 2)
       console.log(`  Mathlib's cache: ${o.mathlibCache === "own" ? `${deployment.folder.mathlib}, the deployment's own` : `${sharedMathlibCache()}, the user's, shared by their builds`}`);
+    }
+    // the agents the server runs on their makers' Claude Code (AgentSpec decision 10): their MCP
+    // server reaches this one on this machine
+    if (o.claudeOAuth) {
+      const claude = findClaude();
+      const at = server.address();
+      const port = typeof at === "object" && at ? at.port : o.port;
+      const host = typeof at === "object" && at && at.address !== "0.0.0.0" && at.address !== "::" ? (at.family === "IPv6" ? `[${at.address}]` : at.address) : "127.0.0.1";
+      live.hosted = new Hosted({
+        root: join(dirs.cache, "agents"),
+        claude,
+        talk: live.talk,
+        tokens: live.tokens,
+        claudeTokens: live.claudeTokens,
+        address: () => `http://${host}:${port}`,
+        mcpServer: mcpServerText,
+        mentionable: () => live.mentionable().names,
+        project: () => project.name,
+        log: (l) => console.log(l),
+      });
+      live.hosted.restore();
+      console.log(`  agents on this server (--claude-oauth, experimental): ${claude ? `Claude Code at ${claude}` : "none — Claude Code (claude) is not on this machine"}`);
     }
     recordVersion(live, version, supervised);
     process.send?.({ vp: "listening", version });

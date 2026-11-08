@@ -31,8 +31,8 @@ import { serveFilm } from "./film.ts";
 import { readOnlyAllows, ReadOnlyBounds } from "./readonlygate.ts";
 import { readBody, refused, sendFile, sendJson, sendRevision, sendText, TooLarge, tooLarge } from "./send.ts";
 import { endedWords, enter, enterReadOnly, identity, identityGet, refuseHost, revokedWords } from "./appaccess.ts";
-import { shareAgents, sharePeople, shareReadOnly } from "./appshare.ts";
-import { ask, chat, chatNew, pointer, presence } from "./apptalk.ts";
+import { shareAgents, shareClaude, sharePeople, shareReadOnly } from "./appshare.ts";
+import { ask, chat, chatNew, chatStop, pointer, presence } from "./apptalk.ts";
 import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsite.ts";
 import { agentRoute, exportRoute } from "./appagent.ts";
 import { git, graphParts, hover, source, status } from "./appgraph.ts";
@@ -285,9 +285,11 @@ export class App {
       }
       if (path === "/api/share/readonly" || path.startsWith("/api/share/readonly/")) return shareReadOnly(this, req, res, url);
       if (path.startsWith("/api/share/agents")) return shareAgents(this, req, res, url);
+      if (path === "/api/share/claude" || path.startsWith("/api/share/claude/")) return shareClaude(this, req, res, url);
       if (path === "/api/share/people" || path.startsWith("/api/share/people/")) return sharePeople(this, req, res, url);
       if (path === "/api/chat") return chat(this, req, res, url);
       if (path === "/api/chat/new") return chatNew(this, req, res);
+      if (path === "/api/chat/stop") return chatStop(this, req, res);
       if (path === "/api/ask" || path === "/api/ask/answer") return ask(this, req, res, url);
       if (path === "/api/agent" || path.startsWith("/api/agent/")) return agentRoute(this, req, res, url);
       // the views, each a shared board (ViewSpec.md)

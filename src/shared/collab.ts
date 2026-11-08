@@ -540,11 +540,19 @@ export interface AgentTokenInfo {
    *  that person, whatever name they go by, rather than whoever gives the name (AgentSpec decision 7) */
   makerPerson?: string;
   created: string;
+  /** when it ends; UNTIL_STOPPED for an agent the server runs, whose token never leaves it */
   expires: string;
   revoked: string | null;
   revokedBy: string | null;
   lastUsed: string | null;
+  /** "server": an agent the server runs on its maker's Claude Code (AgentSpec decision 10): it has
+   *  no prompt, and lasts until revoked */
+  runs?: "server";
 }
+
+/** The expiry of a token that lasts until revoked: an agent the server runs (AgentSpec decision
+ *  10). Far enough to never come, and still a date every reader of `expires` can parse. */
+export const UNTIL_STOPPED = "9999-12-31T23:59:59.000Z";
 
 /** The two kinds of channel (CollabSpec decision 13): the public one, where everyone with a name and
  *  every agent with a token talk; an agent's private one, between it and the person who made its
