@@ -79,7 +79,10 @@ there is decisions 3–5's.
 11. **Under the view bar**, across the screen: the review strip (or the note of a view kept at a
     past build), then the selection bar.
 12. **What takes the whole screen**: a declaration's source, its title bar its name (over as many
-    lines as it needs) and ✕, without its namespace, place or collapse; Activity and the
+    lines as it needs) and ✕, without its namespace, place or collapse — the conversation window, or
+    its pill, staying over it: a tap in the source, to read or scroll it, brings it over the
+    reference window but never buries the conversation window and ⋯ under it (the owner's decisions
+    of 2026-11-08 (0.11) put the windows in one order elsewhere: ReviewSpec, "In front"); Activity and the
     lost-and-found (the owner's choice of 2026-10-14), from the right, which close when the reader
     goes somewhere from them; the help.
 13. **No pinned windows** (the owner's choice of 2026-10-14): the menu has no "Open in a pinned

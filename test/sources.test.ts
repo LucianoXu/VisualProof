@@ -421,6 +421,8 @@ test("following someone: a pinned window here for each of theirs, collapsed and 
   assert.deepEqual([h.decl, h.asideAt, h.collapsed], [7, 2, false]);
   assert.deepEqual([k.decl, k.asideAt, k.collapsed], [8, 3, true]);
   assert.equal(made.length, 5);
+  // each opened comes in front, as a window opened anew does (the owner's decisions of 2026-11-08)
+  assert.deepEqual([h.fronted, k.fronted], [1, 1]);
   // the same again changes nothing
   s.mirror(theirs(3, 2, 7, "8-"));
   assert.equal(made.length, 5);

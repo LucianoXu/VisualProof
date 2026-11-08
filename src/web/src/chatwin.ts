@@ -7,10 +7,13 @@
 // on show and the start of its last message. A message that comes while it is collapsed lights the
 // pill a moment and leaves a mark on it; a click on the pill opens the window again.
 //
-// It is in front of the source and reference windows, always (ReviewSpec, "In front"): a layer of its
-// own above theirs (style.css), never in their order; hover cards, popovers, modal windows and
-// transient messages lie above it. So opening a source window, or following someone whose windows
-// open, never hides it, and nothing there needs closing to find it.
+// It is one of the floating windows, in their one order (ReviewSpec, "In front"; the owner's
+// decisions of 2026-11-08, which replace "in front of the source and reference windows, always" of
+// 2026-10-19): pressed anywhere, or opened, it comes in front of them, and one pressed after it comes
+// in front of it. Where another covers it, the conversation button brings it in front rather than
+// closing it (`covered`). On a phone it stays over the source window, which takes the whole screen
+// there (style.css; PhoneSpec decision 12). Hover cards, popovers, modal windows and transient
+// messages lie above the windows.
 //
 // It starts at the bottom left of the canvas, beside the side panel (the canvas's insets), level
 // with the panel's foot; below 900 px, collapsed. Where the reader puts it, its size, whether it is
@@ -132,8 +135,6 @@ export class ChatWindow {
         },
       },
       keepsCollapsed: true,
-      // its own layer, above the source and reference windows' order (ReviewSpec, "In front")
-      onTop: true,
       start: (vp) => defaultRect(vp, this.hooks.insets()),
       live: () => this.shown,
       collapsed: (on) => {
@@ -164,8 +165,8 @@ export class ChatWindow {
     return this.shown && !this.win.collapsed && !document.hidden;
   }
 
-  /** Open it, as kept (collapsed or not, where the reader put it); `expand`: expanded whatever was
-   *  kept, as asked for from a menu or a notice. */
+  /** Open it, as kept (collapsed or not, where the reader put it), in front of the other windows;
+   *  `expand`: expanded whatever was kept, as asked for from a menu or a notice. */
   show(expand = false): void {
     if (!this.shown) {
       this.shown = true;
@@ -176,7 +177,15 @@ export class ChatWindow {
     }
     if (expand && this.win.collapsed) this.win.collapse(false);
     this.win.layout();
+    // opened, or asked for again: in front of the other windows
+    this.win.front();
     if (!this.win.collapsed) this.hooks.expanded();
+  }
+
+  /** Whether another window lies over it where they meet: the conversation button then brings it in
+   *  front, rather than closing it. */
+  get covered(): boolean {
+    return this.shown && this.win.covered;
   }
 
   /** The reader closed it: its ✕, or the conversation button again. */

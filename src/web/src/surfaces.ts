@@ -230,7 +230,7 @@ export const FOLLOWED = [
 
 /** The surfaces of the reader's own. */
 export const YOURS = [
-  { id: "windowPlaces", what: "where windows sit and how big they are (a drag on a title bar presses no control; the edges resize)", where: ".fl-rz" },
+  { id: "windowPlaces", what: "where windows sit, how big they are and which is in front (a drag on a title bar presses no control; the edges resize; a press in a window brings it in front)", where: ".fl-rz" },
   { id: "scroll", what: "scroll positions: the wheel off the canvas, a scrollbar" },
   { id: "sections", what: "folded sections of the side panel, the panel and the lost-and-found", where: "[data-sec], #lostfound .lf-archived > summary" },
   { id: "tcbOrder", what: "the TCB list's order, and what of it is kept to by the reader's own review", where: "[data-tcb-order], [data-q-own]" },

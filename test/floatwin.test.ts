@@ -5,12 +5,13 @@
 // the one these were first written for. And a window driven in a page made of just enough
 // (test/fakedom.ts): a source window opening in the middle of the screen, fitted to its code, fitted
 // again while the reader has not touched it, keeping their place once they have, and nothing of it
-// kept for the next; the conversation's window, kept where the reader put it.
+// kept for the next; the conversation's window, kept where the reader put it; and one order for all
+// of them, the window pressed anywhere in front (the owner's decisions of 2026-11-08).
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { CASCADE, cascadeRect, clampRect, EDGE, FloatWindow, insideRect, moveRect, onTop, placeOf, raise, readKept, readPlace, rectOf, resizeRect, snapRect, underRect } from "../src/web/src/floatwin.ts";
+import { CASCADE, cascadeRect, clampRect, coveredBy, EDGE, FloatWindow, insideRect, meets, moveRect, onTop, placeOf, raise, readKept, readPlace, rectOf, resizeRect, snapRect, underRect } from "../src/web/src/floatwin.ts";
 import type { FloatOptions, Kept, Rect } from "../src/web/src/floatwin.ts";
 import { MIN } from "../src/web/src/chatwin.ts";
 import { MIN as SRC_MIN, openBounds, openRect } from "../src/web/src/sources.ts";
@@ -286,28 +287,80 @@ test("the conversation's window is kept where the reader put it, from one openin
   assert.deepEqual(make().win.rect, { x: 588, y: 264, w: 440, h: 380 });
 });
 
-test("the conversation window is in front of the others always (ReviewSpec, \"In front\"): never in their order, whichever was pressed last", () => {
+test("one order for every window, the conversation window among them (the owner's decisions of 2026-11-08): a press anywhere in one, or the focus moving into it, brings it in front", () => {
   const conv = new FakeEl("div", "convo");
-  conv.append(new FakeEl("div", "cv-head"));
-  const top = new FloatWindow(conv as unknown as HTMLElement, { min: MIN, handle: ".cv-head", collapser: "[data-collapse]", opener: ".fl-pill-open", keeper: null, onTop: true, start: () => ({ x: 288, y: 464, w: 440, h: 380 }), live: () => true });
-  top.layout();
+  const cvHead = new FakeEl("div", "cv-head");
+  const thread = new FakeEl("div", "cv-thread");
+  const box = new FakeEl("div", "cv-input");
+  conv.append(cvHead, thread, box);
+  const talk = new FloatWindow(conv as unknown as HTMLElement, { min: MIN, handle: ".cv-head", collapser: "[data-collapse]", opener: ".fl-pill-open", keeper: null, start: () => ({ x: 288, y: 464, w: 440, h: 380 }), live: () => true });
+  talk.layout();
   const a = sourceWindow({ w: 600, h: 400 });
   const b = sourceWindow({ w: 500, h: 300 });
-  // pressed, a source window comes in front of the other, and gets a place in their order
+  const code = new FakeEl("pre", "src");
+  const comment = new FakeEl("textarea", "rv-text");
+  a.el.append(code, comment);
+  const wins = [a.el, b.el, conv];
+  const z = (el: FakeEl) => Number(el.style.zIndex);
+  /** whether `el` is in front of every other window, by the z-index the order gives it */
+  const inFront = (el: FakeEl) => wins.every((o) => o === el || z(o) < z(el));
+  const press = (at: FakeEl) => at.dispatch({ type: "pointerdown", pointerId: 1, clientX: 400, clientY: 300 });
+  // the conversation window opened: in front (chatwin.ts, show)
   b.win.front();
   a.win.front();
-  assert.ok(Number(a.el.style.zIndex) > Number(b.el.style.zIndex));
-  // the conversation window pressed: it takes no place in their order (its layer is style.css's,
-  // above theirs), and theirs stays as it was
-  const order = [a.el.style.zIndex, b.el.style.zIndex];
-  top.front();
-  conv.dispatch({ type: "pointerdown" });
-  assert.equal(conv.style.zIndex ?? "", "", "no z-index of the order's");
-  assert.deepEqual([a.el.style.zIndex, b.el.style.zIndex], order);
-  // and the stylesheet puts its layer above every place in that order
+  talk.front();
+  assert.ok(inFront(conv));
+  // a source window pressed on its code, in a field, on its title bar: in front of the conversation
+  // window too, which no longer stands above them all
+  press(code);
+  assert.ok(inFront(a.el));
+  press(conv);
+  press(comment);
+  assert.ok(inFront(a.el), "a press in a field");
+  press(b.head);
+  assert.ok(inFront(b.el), "a press on the title bar");
+  // a press on a window's own scrollbar is a press on the window itself
+  press(a.el);
+  assert.ok(inFront(a.el), "a press on the scrollbar");
+  // the conversation window pressed on its thread, its box, its head
+  for (const at of [thread, box, cvHead]) {
+    press(b.el);
+    press(at);
+    assert.ok(inFront(conv), "a press on its " + at.className);
+  }
+  // the focus moving into a window: the keyboard's Tab
+  a.el.dispatch({ type: "focusin" });
+  assert.ok(inFront(a.el));
+  // the others keep their order behind the one in front
+  assert.ok(z(conv) > z(b.el), "the conversation window was in front of the other source window, and stays so");
+  // the stylesheet gives it no layer of its own above the others, but on a phone, where a source
+  // window takes the whole screen (PhoneSpec decision 12)
   const css = readFileSync(new URL("../src/web/style.css", import.meta.url), "utf8");
-  assert.match(css, /#windows > #convo \{ z-index: 1000; \}/);
+  const rules = [...css.matchAll(/^(\s*)#windows > #convo \{ z-index: ([^;]+); \}/gm)];
+  assert.deepEqual(
+    rules.map((m) => [m[1].length > 0, m[2]]),
+    [[true, "1000 !important"]],
+  );
+  const phone = css.lastIndexOf("@media (max-width: 640px) {", rules[0].index);
+  assert.ok(phone >= 0 && !css.slice(phone, rules[0].index).includes("\n}\n"), "the rule is in the phone's block");
   a.win.dispose();
   b.win.dispose();
-  top.dispose();
+  talk.dispose();
+});
+
+test("a window is covered where one in front of it meets it: the conversation button then brings it in front, rather than closing it", () => {
+  const me = { z: 2, at: { x: 100, y: 100, w: 400, h: 300 } };
+  assert.equal(coveredBy(me, []), false);
+  // in front of it, over a corner of it
+  assert.equal(coveredBy(me, [{ z: 3, at: { x: 450, y: 350, w: 300, h: 300 } }]), true);
+  // behind it, or beside it, or touching its edge: not covering it
+  assert.equal(coveredBy(me, [{ z: 1, at: { x: 150, y: 150, w: 100, h: 100 } }]), false);
+  assert.equal(coveredBy(me, [{ z: 3, at: { x: 600, y: 100, w: 100, h: 100 } }]), false);
+  assert.equal(coveredBy(me, [{ z: 3, at: { x: 500, y: 100, w: 100, h: 100 } }]), false);
+  // a window not drawn (hidden: no box) covers nothing
+  assert.equal(coveredBy(me, [{ z: 3, at: { x: 0, y: 0, w: 0, h: 0 } }]), false);
+  // on a phone the style keeps the conversation window over the others: never covered there
+  assert.equal(coveredBy({ ...me, z: 1000 }, [{ z: 4, at: me.at }]), false);
+  assert.ok(meets(me.at, { x: 499, y: 399, w: 10, h: 10 }));
+  assert.ok(!meets(me.at, { x: 500, y: 399, w: 10, h: 10 }));
 });

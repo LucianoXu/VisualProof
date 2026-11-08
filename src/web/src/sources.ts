@@ -238,6 +238,8 @@ export class Sources<P extends SourcePane> {
           p.show(e.decl);
         }
         this.pinned.push(p);
+        // a window opened comes in front, as the reader's own do
+        p.front();
         this.hooks.changed();
       }
       this.mirrored.add(p);

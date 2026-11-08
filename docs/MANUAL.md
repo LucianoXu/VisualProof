@@ -945,8 +945,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   Source) opens in a new window in the middle, so up to six pinned
   windows can be compared side by side; Approve and Comment in a pinned window, and `a`, `m`, `k`
   with the focus in it, are about its declaration, whatever is selected. Pinned windows are this
-  page's (a reload starts without them; the reload into a new version, Updates below, keeps them). The window pressed last
-  comes to the front; the conversation window stays in front of them all. Space closes the following
+  page's (a reload starts without them; the reload into a new version, Updates below, keeps them). The window you
+  press — anywhere in it — or open comes to the front: source windows, the reference window and the
+  conversation window alike (on a phone the conversation window stays over the source window). Space closes the following
   window; Esc closes the window the focus is in, and from the page closes the following one. Above
   the code, muted, is the context it is written in, as Lean: the namespaces and
   sections around it, the `open`s, `variable`s, universes, options and local notation in force
@@ -1443,7 +1444,7 @@ what each one looks at stays their own.
   Esc. Ended by something you did (not Esc or the strip's ✕), the strip stays, "Stopped following
   Alice · **Follow again**": it takes you back to them, until you close it, follow someone or they
   leave. Nothing of yours ends it:
-  where windows sit, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
+  where windows sit and which is in front, scrolling, folded sections, the TCB list's order, the theme, the lock, Share,
   Help, the Library, ⚙ Board, Trusted, the Views menu, the search box; nor does reading —
   selecting text, copying it, downloading the document the Export window offers. When it ends, what you were shown stays, yours: the Export window too,
   with the settings it showed. On the canvas their
@@ -1514,8 +1515,9 @@ what each one looks at stays their own.
   resize it; its – button, or a double-click on the head, collapses it to a pill (the channel and
   the start of its last message), which lights up when something comes; ✕ closes it. Where you put
   it, its size, whether it is collapsed or open and the channel on show are kept in your browser. It
-  stays in front of the source and reference windows, and following never opens, closes or changes
-  it: nothing in it ends following but a link followed from it (a declaration's name, a chip) and
+  comes to the front when you press it or open it, as the source and reference windows do; when
+  another window covers it, the conversation button brings it to the front, and when none does, the
+  button closes it. Following never opens, closes or changes it: nothing in it ends following but a link followed from it (a declaration's name, a chip) and
   Esc (in its box, Esc first leaves the box). Following an agent shows what it looks at, never its
   conversations.
 - **Talking with your agent** (AgentSpec decision 8): an agent given a token by Share is listed beside

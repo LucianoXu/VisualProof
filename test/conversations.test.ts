@@ -2,8 +2,8 @@
 // of this site never shows as its address — read into a chip naming what it leads to, in a message
 // and in the box —, any other link opens elsewhere with its host; copied links carry no key; every
 // message escaped first; what the box says, read back as text; what the reader has not seen, counted
-// and marked; the reader's own agents; mentions marked; the window in front of the source windows,
-// and nothing in it ends following.
+// and marked; the reader's own agents; mentions marked; and nothing in the window ends following (its
+// place among the other windows: test/floatwin.test.ts).
 
 import assert from "node:assert/strict";
 import { test } from "node:test";

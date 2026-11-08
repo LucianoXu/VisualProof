@@ -1,6 +1,6 @@
 // Floating windows: the conversation window (web/src/chatwin.ts, decided 2026-10-08; the reader's own
-// since the owner's decisions of 2026-10-19) and the source windows (web/src/sourcewin.ts, decided
-// 2026-10-09). The reader moves one by its title bar,
+// since the owner's decisions of 2026-10-19), the source windows (web/src/sourcewin.ts, decided
+// 2026-10-09) and the reference window (web/src/paperwin.ts). The reader moves one by its title bar,
 // resizes it from any edge or corner, and collapses it — its button, or a double-click on the title
 // bar — to a one-line pill; a click on the pill opens it again. Mouse, pen and touch alike: the
 // pointer is captured until it is let go.
@@ -12,10 +12,15 @@
 // moves or resizes it, it is as large as its content needs, within bounds, and placed by a rule of
 // its kind; from then on its place and size are the reader's until it goes.
 //
-// The windows lie in one layer over the page (#windows), the one last pressed or focused in front;
-// the conversation window above them all (`onTop`, ReviewSpec "In front"); hover cards and the
-// page's modal windows lie above that layer. The geometry is pure functions,
-// tested without a browser (test/floatwin.test.ts).
+// The windows lie in one layer over the page (#windows), in one order (ReviewSpec, "In front"; the
+// owner's decisions of 2026-11-08): a window comes in front of all the others when it is pressed
+// anywhere — its title bar, its body, a field, a scrollbar, a button —, when the focus moves into
+// it, and when it opens or shows anew. The conversation window is one of them: it no longer stands
+// above the others always (CollabSpec decision 13, as decided 2026-10-19). Coming in front changes
+// the windows' z-index alone, never their place in the page's tree, so that a press, a drag
+// selecting text and the focus go on as they started. The order is the reader's own: it is not
+// followed. Hover cards and the page's modal windows lie above that layer. The geometry is pure
+// functions, tested without a browser (test/floatwin.test.ts).
 
 import { isMonitor, sheeted } from "./phone.ts";
 
@@ -214,6 +219,17 @@ export function raise<T>(order: readonly T[], x: T): T[] {
   return [...order.filter((y) => y !== x), x];
 }
 
+/** Whether two windows' boxes share some of the screen. */
+export function meets(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/** Whether window `me` is covered: one of `others` lies over it where they meet, in front of it by
+ *  the z-index the page gives each (the order's, or the style's where it has its own). */
+export function coveredBy(me: { z: number; at: Rect }, others: readonly { z: number; at: Rect }[]): boolean {
+  return others.some((o) => o.z > me.z && o.at.w > 0 && o.at.h > 0 && meets(o.at, me.at));
+}
+
 /** Where a window kind keeps its place in this browser: what is kept, and a change to keep. */
 export interface Keeper {
   read(): unknown;
@@ -240,9 +256,6 @@ export interface FloatOptions {
   keeper: Keeper | null;
   /** whether collapsing it is kept with its place */
   keepsCollapsed?: boolean;
-  /** in front of every other window always, in a layer of its own (the conversation window, the
-   *  owner's decision of 2026-10-19): never in their order, so that none comes in front of it */
-  onTop?: boolean;
   /** where it starts, the reader not having put it anywhere; or fitted to its content (`fit`),
    *  which a window with a kept place never is */
   start?(vp: Size): Rect;
@@ -301,7 +314,8 @@ export class FloatWindow {
       h.setAttribute("aria-hidden", "true");
       el.append(h);
     }
-    // the window pressed or focused comes to the front
+    // the window pressed anywhere, or focused, comes to the front: before anything inside it hears of
+    // the press, and whatever that does with it (a drag, a selection, the focus) goes on unchanged
     el.addEventListener("pointerdown", () => this.front(), true);
     el.addEventListener("focusin", () => this.front());
     el.addEventListener("pointerdown", (e) => this.press(e));
@@ -330,11 +344,23 @@ export class FloatWindow {
     return this.fitting;
   }
 
-  /** Bring the window to the front of the others; one on top is there already. */
+  /** Bring the window to the front of the others. */
   front(): void {
-    if (this.o.onTop || stack[stack.length - 1] === this.el) return;
+    if (stack[stack.length - 1] === this.el) return;
     stack = raise(stack, this.el);
     restack();
+  }
+
+  /** Whether another window lies over this one where they meet (coveredBy): what the conversation
+   *  button asks before it closes the window rather than bringing it in front. */
+  get covered(): boolean {
+    const at = (el: HTMLElement): Rect => {
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    };
+    const z = (el: HTMLElement) => Number(getComputedStyle(el).zIndex) || 0;
+    const others = stack.filter((el) => el !== this.el && el.isConnected && !el.hidden);
+    return coveredBy({ z: z(this.el), at: at(this.el) }, others.map((el) => ({ z: z(el), at: at(el) })));
   }
 
   /** The window goes for good: it is no longer kept in step with the viewport. */
