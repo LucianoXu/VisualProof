@@ -12,7 +12,7 @@ import type { GoalsAnswer } from "../src/shared/goals.ts";
 import { readSnapshot, writeSnapshot } from "../src/shared/sharesnap.ts";
 import { readInteractiveGoals, readInteractiveTermGoal, Reading } from "../src/server/goals.ts";
 import { INTERACTIVE, TERM } from "./leananswers.ts";
-import { caretOf, goalHtml, InfoView, paneSide, paneView, placeIn, subtermHtml, taggedHtml } from "../src/web/src/infoview.ts";
+import { caretOf, CODE_MIN, goalHtml, InfoView, PANE_MIN, PANE_W, paneSide, paneView, paneWidth, placeIn, subtermHtml, taggedHtml } from "../src/web/src/infoview.ts";
 import type { InfoCode, InfoHooks } from "../src/web/src/infoview.ts";
 import { chunksOf } from "../src/web/src/filemode.ts";
 import { tacticSpan } from "../src/shared/goals.ts";
@@ -70,6 +70,19 @@ test("the pane stands beside the code in a wide window, a window fitted to its c
   assert.equal(paneSide(390, false, 390), false, "a phone");
   assert.equal(paneSide(800, true, 820), true, "a tablet, wide enough");
   assert.equal(paneSide(560, true, 820), false);
+});
+
+test("beside the code, the pane is as wide as the reader made it: its own width where they did not, never under its least, and leaving the code its room", () => {
+  assert.equal(paneWidth(null, 1200), PANE_W);
+  assert.equal(paneWidth(520, 1200), 520);
+  assert.equal(paneWidth(431.6, 1200), 432, "whole pixels");
+  assert.equal(paneWidth(100, 1200), PANE_MIN);
+  // a window that leaves the code too little: the reader's width gives way, down to the least
+  assert.equal(paneWidth(700, 900), 900 - CODE_MIN);
+  assert.equal(paneWidth(700, 400), PANE_MIN);
+  // what an older page or another hand kept is read with care
+  assert.equal(paneWidth(Number.NaN, 1200), PANE_W);
+  assert.equal(paneWidth(Infinity, 1200), PANE_W);
 });
 
 test("a place of the code on show is a line and a UTF-16 column, as Lean counts", () => {
@@ -157,6 +170,8 @@ function infoView() {
     card: () => ({ html: "" }),
     hidden: () => false,
     hide: () => {},
+    width: () => null,
+    setWidth: () => {},
     moved: () => void moved++,
     win: () => ({ querySelectorAll: () => [] }) as unknown as HTMLElement,
     fitted: () => true,

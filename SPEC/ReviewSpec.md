@@ -333,6 +333,11 @@ How the review SPEC.md asks for is recorded, stored and shown. Units and TCBs ar
     shows while the caret — a click in the code, or the keyboard's caret — is in a proof, a `by`
     block or a term with an expected type; elsewhere it is hidden, and a toggle hides it (the
     reader's own, kept in the browser).
+  - **Its width beside the code is the reader's** (the owner's decision of 2026-11-10): its left
+    edge dragged widens or narrows it, in every source window, kept in the browser; a double-click
+    on the edge gives it its own width again (360 px). Never narrower than 240 px; the code keeps
+    300 px beside it, a narrower window giving way. A window fitted to its code grows with it. Its
+    head stays as its body scrolls, so that the edge is always in sight.
   - **What**: the goals at the caret, before the tactic, with a toggle for after; at a term, its
     expected type. Hypotheses and goals in Lean's highlighting, as the window draws code; names
     link to the board and open hover cards, nesting as in the source; with interactive goals a

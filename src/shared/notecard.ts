@@ -24,7 +24,8 @@
 // The notes layer stacks, bottom to top (NOTE_Z): the leaders, the icons and dots with the folded
 // clusters' markers, the cards — the one pressed or opened last in front —, what would hold a dragged
 // note, and the icon being dragged. An expanded note's card covers the icons under it; its own it
-// never covers, since a card hangs clear of its icon.
+// never covers, since a card hangs clear of its icon. Another card it covers only where no place
+// near enough is free (the owner's decision of 2026-11-10, spreadCards).
 
 import type { FitBox } from "./ring.ts";
 import { AUTO_COLLAPSE_PX, CARD_REACH, DECL_AT, DECL_REACH, keptDecl, noteLook, ZONE_MAX_PX, ZONE_MIN_PX } from "./sticky.ts";
@@ -303,6 +304,74 @@ export function hangCard(icon: [number, number], off: NoteCard, w: number, h: nu
     if (!out && !covers) break;
   }
   return { box: best!.box, flip: best!.flip };
+}
+
+/** the room kept between two cards set apart (spreadCards), in pixels of the screen */
+export const CARD_APART = 6;
+
+/** An open card as the cards are set apart (spreadCards): its icon on the screen, the box it hangs
+ *  at by itself (hangCard), the room it stays in and the name it keeps off where it hangs as by
+ *  default (hangCard's `room` and `avoid`), and whether it stays where it is whatever the others do:
+ *  a card the reader put by hand, its offset theirs, or one being dragged. */
+export interface OpenCard {
+  icon: [number, number];
+  box: Box;
+  room: Box;
+  avoid: Box | null;
+  fixed: boolean;
+}
+
+/** The cards' boxes set apart so that, as far as they can be, no card covers another (the owner's
+ *  decision of 2026-11-10): one placed by hand, or dragged, stays where it is; every other, from the
+ *  top of the screen down, keeps where it hangs by itself where nothing taken is there, and else
+ *  moves the least it can to where nothing is — another way round its icon (FLIPS), or from one of
+ *  them along an edge of a card in the way to just past it, CARD_APART clear —, clear of its own
+ *  icon, within CARD_REACH of it, no further out of the room nor over the name it keeps off than it
+ *  was. Where no such place is, it stays where it hangs, over the others. */
+export function spreadCards(cards: readonly OpenCard[]): Box[] {
+  const out = cards.map((c) => c.box);
+  const taken: Box[] = cards.filter((c) => c.fixed).map((c) => c.box);
+  const free = cards
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => !c.fixed)
+    .sort((a, b) => a.c.box.y0 - b.c.box.y0 || a.c.box.x0 - b.c.box.x0 || a.i - b.i);
+  for (const { c, i } of free) {
+    const b = c.box;
+    const meets = (x: Box) => taken.some((t) => area(x, t) > 0);
+    if (!meets(b)) {
+      taken.push(b);
+      continue;
+    }
+    const w = b.x1 - b.x0, h = b.y1 - b.y0;
+    const outside = (x: Box) => Math.max(0, w * h - area(x, c.room));
+    const was = { out: outside(b), covers: !!c.avoid && area(b, c.avoid) > 0 };
+    const [ix, iy] = c.icon;
+    const off: NoteCard = [(b.x0 + b.x1) / 2 - ix, (b.y0 + b.y1) / 2 - iy];
+    const fits = (x: Box): boolean => {
+      const dx = (x.x0 + x.x1) / 2 - ix, dy = (x.y0 + x.y1) / 2 - iy;
+      if (Math.abs(dx) > CARD_REACH || Math.abs(dy) > CARD_REACH) return false;
+      if (Math.abs(dx) < w / 2 + ICON_CLEAR && Math.abs(dy) < h / 2 + ICON_CLEAR) return false;
+      if (outside(x) > was.out + 0.5) return false;
+      if (!was.covers && c.avoid && area(x, c.avoid) > 0) return false;
+      return !meets(x);
+    };
+    const by = (x: Box, dx: number, dy: number): Box => ({ x0: x.x0 + dx, y0: x.y0 + dy, x1: x.x1 + dx, y1: x.y1 + dy });
+    const ways: Box[] = [];
+    for (const [fx, fy] of FLIPS) {
+      const f = cardBox(ix, iy, [off[0] * fx, off[1] * fy], w, h);
+      ways.push(f);
+      for (const t of taken)
+        ways.push(by(f, 0, t.y0 - CARD_APART - f.y1), by(f, 0, t.y1 + CARD_APART - f.y0), by(f, t.x0 - CARD_APART - f.x1, 0), by(f, t.x1 + CARD_APART - f.x0, 0));
+    }
+    // the nearest to where it hangs by itself, the first of those as near: tried nearest first
+    const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+    const far = ways.map((x, k) => ({ x, k, d: Math.hypot((x.x0 + x.x1) / 2 - cx, (x.y0 + x.y1) / 2 - cy) }));
+    far.sort((p, q) => p.d - q.d || p.k - q.k);
+    const best = far.find((p) => fits(p.x))?.x ?? b;
+    out[i] = best;
+    taken.push(best);
+  }
+  return out;
 }
 
 /** The leader between an icon at (x, y) and its card's box: from the icon's edge to the point of the

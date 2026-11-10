@@ -273,6 +273,16 @@ export function panelsPart(page: Page): PanelsPart {
       store.save();
       for (const w of sources.all) w.infoChanged();
     },
+    // its width beside the code, the reader's too (the owner's decision of 2026-11-10)
+    infoWidth: () => {
+      const w = store.data.infoWidth;
+      return typeof w === "number" && Number.isFinite(w) ? w : null;
+    },
+    setInfoWidth: (w) => {
+      store.data.infoWidth = w ?? undefined;
+      store.save();
+      for (const s of sources.all) s.infoResized();
+    },
     caretMoved: (w) => {
       for (const o of sources.all) if (o !== w) o.followCaret(null);
       page.people.report();
