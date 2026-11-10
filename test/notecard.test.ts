@@ -14,8 +14,8 @@ import type { Ask } from "../src/server/agent.ts";
 import { Views } from "../src/server/views.ts";
 import type { Layout, ViewNode } from "../src/shared/graph.ts";
 import { LAYOUT_VERSION } from "../src/shared/graph.ts";
-import { CARD_GAP, cardBox, carryCount, clearOfIcon, defaultCard, dropTarget, hangCard, ICON_R, iconKind, keptCard, leaderLine, noteBoxes, noteShows, ringCard } from "../src/shared/notecard.ts";
-import type { Box, IconFile } from "../src/shared/notecard.ts";
+import { CARD_APART, CARD_GAP, cardBox, carryCount, clearOfIcon, defaultCard, dropTarget, hangCard, ICON_R, iconKind, keptCard, leaderLine, noteBoxes, noteShows, ringCard, spreadCards } from "../src/shared/notecard.ts";
+import type { Box, IconFile, OpenCard } from "../src/shared/notecard.ts";
 import { noteBoard, placeIn } from "../src/shared/noteplace.ts";
 import { applyProjectNoteOp, asProjectNote, asViewNote, cleanProjectNotes, invalidProjectNoteOps } from "../src/shared/projectnotes.ts";
 import type { ProjectNote } from "../src/shared/projectnotes.ts";
@@ -94,6 +94,62 @@ test("a card hangs up and to the right by default, flipped to stay on the screen
   assert.ok(right.x0 > ICON_R && Math.abs((right.y0 + right.y1) / 2) < 1e-9);
   const top = cardBox(0, 0, ringCard(-Math.PI / 2, w, h), w, h);
   assert.ok(top.y1 < -ICON_R && Math.abs((top.x0 + top.x1) / 2) < 1e-9);
+});
+
+test("open cards are set apart: none covers another where a place near enough is free, one placed by hand stays put", () => {
+  const [w, h] = [200, 80];
+  const meet = (a: Box, b: Box) => Math.min(a.x1, b.x1) > Math.max(a.x0, b.x0) && Math.min(a.y1, b.y1) > Math.max(a.y0, b.y0);
+  const open = (icon: [number, number], fixed = false, avoid: Box | null = null): OpenCard => ({
+    icon,
+    box: hangCard(icon, defaultCard(w, h), w, h, ROOM, avoid).box,
+    room: ROOM,
+    avoid,
+    fixed,
+  });
+  // apart already: each where it hangs by itself
+  const far = [open([200, 400]), open([600, 400])];
+  assert.deepEqual(spreadCards(far), far.map((c) => c.box));
+  // two notes close together, one above the other: their cards met; the upper keeps its place, the
+  // lower moves the least it takes, here down beside its icon, CARD_APART below the other
+  const close = [open([400, 300]), open([410, 340])];
+  assert.ok(meet(close[0].box, close[1].box), "they met");
+  const [a, b] = spreadCards(close);
+  assert.deepEqual(a, close[0].box);
+  assert.ok(!meet(a, b));
+  assert.equal(b.y0, a.y1 + CARD_APART);
+  assert.equal(b.x0, close[1].box.x0, "it moved down only");
+  // never over its own icon
+  const clear = (c: OpenCard, x: Box) => !(x.x0 < c.icon[0] + ICON_R && x.x1 > c.icon[0] - ICON_R && x.y0 < c.icon[1] + ICON_R && x.y1 > c.icon[1] - ICON_R);
+  assert.ok(clear(close[1], b));
+  // which keeps its place is where it is on the screen, not the order they come in
+  const [b2, a2] = spreadCards([close[1], close[0]]);
+  assert.deepEqual([a2, b2], [a, b]);
+  // five on one spot: all apart, each clear of its icon
+  const pile = [0, 1, 2, 3, 4].map((k) => open([500, 350 + k * 4]));
+  const set = spreadCards(pile);
+  for (let i = 0; i < set.length; i++) {
+    assert.ok(clear(pile[i], set[i]), `card ${i} clear of its icon`);
+    for (let j = i + 1; j < set.length; j++) assert.ok(!meet(set[i], set[j]), `cards ${i} and ${j} apart`);
+  }
+  // a card placed by hand stays put, over the card it was put on: that one moves away
+  const hand = { ...open([410, 340]), box: close[0].box, fixed: true };
+  const [h1, h2] = spreadCards([close[0], hand]);
+  assert.deepEqual(h2, close[0].box);
+  assert.ok(!meet(h1, h2));
+  // two placed by hand stay as they were put, over each other
+  const both = [{ ...close[0], fixed: true }, { ...close[1], fixed: true }];
+  assert.deepEqual(spreadCards(both), both.map((c) => c.box));
+  // it stays on the screen: at the screen's top, the lower card does not go up out of it
+  const top = [open([400, 120]), open([410, 160])];
+  const [t1, t2] = spreadCards(top);
+  assert.ok(!meet(t1, t2));
+  assert.ok(t1.y0 >= ROOM.y0 && t2.y0 >= ROOM.y0);
+  // nowhere free near enough (a screen too small for two): it stays where it hangs, over the other
+  const tiny: Box = { x0: 0, y0: 0, x1: 260, y1: 120 };
+  const cramped = [{ ...open([20, 110]), room: tiny }, { ...open([24, 112]), room: tiny }];
+  cramped[0].box = hangCard([20, 110], defaultCard(w, h), w, h, tiny).box;
+  cramped[1].box = hangCard([24, 112], defaultCard(w, h), w, h, tiny).box;
+  assert.deepEqual(spreadCards(cramped)[1], cramped[1].box);
 });
 
 test("a card dragged keeps its offset from the icon, in whole pixels of the screen, clear of the icon and within reach", () => {

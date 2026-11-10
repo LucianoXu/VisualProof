@@ -5,6 +5,11 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.11.2
+
+- Widen or narrow the InfoView: drag its left edge beside the code, or double-click it for its own width; every source window takes it, kept in this browser.
+- Keep open note cards apart: where two would hang over each other, one moves aside as little as it takes; a card you hung by hand stays where you put it.
+
 ## 0.11.1
 
 - Unmark a target the graph no longer has — from its row in Targets, which says "not in the graph now", or from its entry in the lost-and-found — pressed twice; the history keeps that it was a target. Its row shows its name again beside that note.

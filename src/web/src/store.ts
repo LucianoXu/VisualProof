@@ -77,6 +77,10 @@ export interface Saved {
   opinionsFolded?: true;
   /** the InfoView hidden, in every source window (ReviewSpec, "The InfoView"); shown where absent */
   infoHidden?: true;
+  /** the InfoView's width beside the code, in pixels, in every source window, as the reader dragged
+   *  it (the owner's decision of 2026-11-10; web/src/infoview.ts, paneWidth); its own where absent.
+   *  Read back with care: whatever is kept here may be from an older page */
+  infoWidth?: number;
   /** File mode's proofs folded, each to a one-line mark (ReviewSpec, "The source window", the owner's
    *  decision of 2026-11-01): the reader's own; shown where absent */
   proofsFolded?: true;

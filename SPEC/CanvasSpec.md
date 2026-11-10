@@ -184,6 +184,13 @@ A note is an **icon at its place**, its content on a card hanging from it.
   over its own icon, and **covers other notes' icons and dots**. By default up and right of the icon,
   flipped to stay in the room the bars and panels leave and off its cluster's label; on the ring,
   outward. A drag on the card moves the card alone (its offset), never the note.
+- **Open cards keep clear of one another** (the owner's decision of 2026-11-10). Each frame, from the
+  top of the screen down, a card where another already is moves the least it can to where none is:
+  another way round its icon, or along the edge of a card in the way to just past it (6 px apart);
+  clear of its own icon, within the reach of a card's offset, no further off the room or over its
+  cluster's label than it was. A card hung by hand (its own offset), or dragged, stays where it is,
+  and the others keep clear of it; two hung by hand over each other stay so. Where no place is free,
+  a card hangs where it would, over the others.
 - **Long text** scrolls in the card past 260 px: wheel, two fingers, scrollbar, finger or pen; it
   never falls through to the canvas, even at the ends. A mouse drag off the scrollbar pans or moves
   the card; elsewhere, or with Ctrl, the wheel zooms. Scrolling never ends following; a press does.

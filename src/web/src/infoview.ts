@@ -4,7 +4,9 @@
 // term there — live from Lean's language server (server/hover.ts, `goals`), which elaborates the
 // whole file. It stands right of the code, and below it in a narrow window and on a phone, and shows
 // while the caret is in a proof, a `by` block or a term with an expected type; elsewhere it is
-// hidden, and the reader may hide it (kept in the browser, the reader's own). A click in the code, or
+// hidden, and the reader may hide it (kept in the browser, the reader's own). Beside the code, its
+// width is the reader's too (the owner's decision of 2026-11-10): its left edge dragged, kept in the
+// browser for every window, a double-click on it giving it its own width again. A click in the code, or
 // the keyboard's caret, puts the caret there; ↑ and ↓ step from tactic to tactic, the pane following.
 // In File mode, a file window's too, it is about the whole file (the owner's decisions of
 // 2026-11-01, and of 2026-11-08 for 0.11): a caret anywhere in it is a place of the file, ↑ and ↓
@@ -64,6 +66,10 @@ export interface InfoHooks {
   /** the pane hidden by the reader, in every window (kept in the browser), and hiding it */
   hidden(): boolean;
   hide(on: boolean): void;
+  /** the pane's width beside the code as the reader set it, in every window (kept in the browser),
+   *  and setting it (null: its own, PANE_W) */
+  width(): number | null;
+  setWidth(w: number | null): void;
   /** the reader moved the caret or turned to the goals before or after: those following see it */
   moved(): void;
   /** the window holding the pane, and whether it is fitted to its content (it grows with the pane
@@ -86,6 +92,20 @@ const AGAIN_MS = 900;
 export const SIDE_MIN = 700;
 const FITTED_MIN = 540;
 const SCREEN_MIN = 1000;
+
+/** the pane's own width beside the code, in pixels, and the least the reader may make it; and the
+ *  least the code keeps beside it, which the reader's width gives way to in a narrower window */
+export const PANE_W = 360;
+export const PANE_MIN = 240;
+export const CODE_MIN = 300;
+
+/** The pane's width beside the code: the reader's (`want`; null, its own), at least PANE_MIN, and
+ *  leaving the code CODE_MIN of the `room` the two may share — the window's width, or for a window
+ *  fitted to its code the most it may grow to — where that leaves the pane PANE_MIN; whole pixels. */
+export function paneWidth(want: number | null, room: number): number {
+  const w = want !== null && Number.isFinite(want) ? want : PANE_W;
+  return Math.round(Math.max(PANE_MIN, Math.min(w, room - CODE_MIN)));
+}
 
 /** Whether the pane stands beside the code rather than below it. */
 export function paneSide(winWidth: number, fitted: boolean, screenWidth: number): boolean {
@@ -197,6 +217,9 @@ function headHtml(caret: Caret, sides: boolean, interactive: boolean): string {
 }
 
 const HIDE = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg>`;
+/** the pane's left edge beside the code, which a drag widens or narrows (web/style.css: shown only
+ *  there); the pointer's alone, as the page's other splitters are (web/src/monitor.ts) */
+const GRIP = `<div class="iv-grip" aria-hidden="true" title="Drag to widen or narrow the InfoView; double-click for its own width"></div>`;
 
 export class InfoView {
   private hooks: InfoHooks;
@@ -216,6 +239,8 @@ export class InfoView {
   private hoverWait: ReturnType<typeof setTimeout> | null = null;
   private hoverTurn = 0;
   private sizer: ResizeObserver | null = null;
+  /** the last press in the pane was on its grip, beside the code */
+  private onGrip = false;
 
   constructor(hooks: InfoHooks) {
     this.hooks = hooks;
@@ -414,7 +439,7 @@ export class InfoView {
       if (had) this.hooks.win().focus({ preventScroll: true });
       return this.below();
     }
-    pane.innerHTML = headHtml(k, v.sides, !!this.answer?.interactive) + `<div class="iv-body">${v.html}</div>`;
+    pane.innerHTML = GRIP + headHtml(k, v.sides, !!this.answer?.interactive) + `<div class="iv-body">${v.html}</div>`;
     pane.setAttribute("aria-label", "What Lean says at the caret");
     if (had && !had.isConnected) (pane.querySelector<HTMLElement>(`[data-iv-when="${when}"]`) ?? this.hooks.win()).focus({ preventScroll: true });
     this.below();
@@ -463,6 +488,14 @@ export class InfoView {
         this.draw();
         this.hooks.moved();
       }
+    });
+    pane.addEventListener("pointerdown", (e) => {
+      this.onGrip = !!split?.classList.contains("iv-side") && !!(e.target as HTMLElement).closest(".iv-grip");
+      if (this.onGrip) this.drag(e);
+    });
+    // (the grip holds the pointer while pressed: the double-click is the pane's, pressed on the grip)
+    pane.addEventListener("dblclick", () => {
+      if (this.onGrip) this.hooks.setWidth(null);
     });
     pane.addEventListener("mousemove", (e) => {
       if (e.buttons) return;
@@ -517,8 +550,55 @@ export class InfoView {
     this.hooks.cards.show(subtermHtml(r, (w) => this.hooks.resolve(w)), box);
   }
 
-  /** Keep the pane beside the code where the window is wide enough, else below it; and tell the
-   *  pane how tall the window's scrolled view is, which it stays within. */
+  /** A press on the pane's edge beside the code: dragged, the pane as wide as the pointer makes it,
+   *  in this window as it moves and, let go, kept for every window (hooks.setWidth). Dragged left it
+   *  widens, the code giving way, or the window growing where it is fitted to its code. */
+  private drag(e: PointerEvent): void {
+    const pane = this.pane;
+    const split = pane?.parentElement;
+    if (!pane || !split || !e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+    // no text selected, no caret put down: the window still comes to the front (web/src/floatwin.ts)
+    e.preventDefault();
+    const x0 = e.clientX, w0 = pane.offsetWidth;
+    let w = w0;
+    pane.setPointerCapture(e.pointerId);
+    split.classList.add("iv-sizing");
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      w = paneWidth(w0 + x0 - ev.clientX, this.room());
+      pane.style.width = `${w}px`;
+    };
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      pane.removeEventListener("pointermove", move);
+      pane.removeEventListener("pointerup", end);
+      pane.removeEventListener("pointercancel", end);
+      split.classList.remove("iv-sizing");
+      if (w !== w0) this.hooks.setWidth(w);
+    };
+    pane.addEventListener("pointermove", move);
+    pane.addEventListener("pointerup", end);
+    pane.addEventListener("pointercancel", end);
+  }
+
+  /** The width the code and the pane beside it may share (paneWidth's `room`): the window's, or the
+   *  most it may grow to where it is fitted to its code. */
+  private room(): number {
+    const split = this.pane?.parentElement;
+    if (!split) return 0;
+    const win = this.hooks.win();
+    const max = this.hooks.fitted() ? parseFloat(getComputedStyle(win).maxWidth) : NaN;
+    return split.clientWidth + (Number.isFinite(max) ? Math.max(0, max - win.offsetWidth) : 0);
+  }
+
+  /** The reader's width for the pane changed, in another window or this one: it takes it. */
+  resized(): void {
+    this.size();
+  }
+
+  /** Keep the pane beside the code where the window is wide enough, else below it, as wide there as
+   *  the reader made it (paneWidth); and tell the pane how tall the window's scrolled view is, which
+   *  it stays within. */
   private watchSize(): void {
     if (this.sizer || typeof ResizeObserver === "undefined") return this.size();
     this.sizer = new ResizeObserver(() => this.size());
@@ -532,6 +612,13 @@ export class InfoView {
     if (!split || !scroll) return;
     const side = paneSide(this.hooks.win().offsetWidth, this.hooks.fitted(), document.documentElement.clientWidth || innerWidth);
     split.classList.toggle("iv-side", side);
+    // below the code it takes no width of its own (web/style.css); while dragged, the drag's
+    const pane = this.pane!;
+    if (!side) pane.style.width = "";
+    else if (!split.classList.contains("iv-sizing")) {
+      const w = `${paneWidth(this.hooks.width(), this.room())}px`;
+      if (pane.style.width !== w) pane.style.width = w;
+    }
     scroll.style.setProperty("--sw-view", `${scroll.clientHeight}px`);
     this.below();
   }

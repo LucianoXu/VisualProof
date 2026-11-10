@@ -30,7 +30,9 @@
 // text (a little Markdown, and full names in backticks as links that go there), what it carries
 // (AttachmentSpec decision 12) and who wrote it — hangs from the icon on a thin leader line, at the
 // note's own offset, kept in pixels of the screen and shared, or by default up and to the right
-// (outward on the ring), flipped to stay on the screen and, by default, off its cluster's name.
+// (outward on the ring), flipped to stay on the screen and, by default, off its cluster's name; and,
+// unless the reader put it by hand, clear of the other open cards where it can be, moved the least
+// it takes (the owner's decision of 2026-11-10; shared/notecard.ts, spreadCards).
 // Collapsed, the icon alone. A click on the icon toggles which, for everyone. Icons scale with what
 // they belong to (the owner's decisions of 2026-10-12): a note in a cluster, or attached to a
 // declaration, is its icon only while its cluster — the one that holds its declaration, for an
@@ -61,8 +63,8 @@
 import type { ClusterMode, Layout, ViewNode } from "../../shared/graph.ts";
 import { parseSubject } from "../../shared/library.ts";
 import type { FileRecord } from "../../shared/library.ts";
-import { cardZ, carryCount, clearOfIcon, declDrop, declLeader, declsPointable, declSpot, defaultCard, dropTarget, hangCard, ICON_PX, ICON_R, iconKind, iconShare, keptCard, leaderLine, levelOf, markClick, markLook, markR, noteBoxes, pointPx, raiseCard, ringCard, zonePx } from "../../shared/notecard.ts";
-import type { Box, DropTarget, FitNote, IconKind, NoteLevel } from "../../shared/notecard.ts";
+import { cardZ, carryCount, clearOfIcon, declDrop, declLeader, declsPointable, declSpot, defaultCard, dropTarget, hangCard, ICON_PX, ICON_R, iconKind, iconShare, keptCard, leaderLine, levelOf, markClick, markLook, markR, noteBoxes, pointPx, raiseCard, ringCard, spreadCards, zonePx } from "../../shared/notecard.ts";
+import type { Box, DropTarget, FitNote, IconKind, NoteLevel, OpenCard } from "../../shared/notecard.ts";
 import { aboutMembers, besidePlace, declPlace, existsIn, itemSpot, itemWhy, linkedOn, linksByFile, noteBoard, otherMode, placeIn, spacedPlaces, spotIn, thenNames, viewSpot } from "../../shared/noteplace.ts";
 import type { About, ItemWhy, NoteBoard, NoteSpot } from "../../shared/noteplace.ts";
 import type { ViewItems } from "../../shared/items.ts";
@@ -389,6 +391,8 @@ export class Stickies {
   private nbOf: { L: Layout | null; nodes: ViewNode[] | null; mode: ClusterMode | null } = { L: null, nodes: null, mode: null };
   /** the ring around the board, as drawn in the last frame */
   ring: Ring | null = null;
+  /** the cards open this frame, as each hangs by itself: set apart once all are placed (hangCards) */
+  private opened: { d: Drawn; card: OpenCard }[] = [];
   /** what would hold the note whose icon is dragged, were it let go now */
   private target: DropTarget = null;
   /** the circle round its declaration, while the icon of a note attached to one is dragged */
@@ -720,6 +724,7 @@ export class Stickies {
     const S = C.scene;
     const W = innerWidth, H = innerHeight;
     this.topRing = undefined;
+    this.opened = [];
     const onRing: Drawn[] = [];
     const inCluster: number[] = [];
     for (const d of this.drawn.values()) {
@@ -736,6 +741,7 @@ export class Stickies {
       else this.place(d, s.x, s.y, look, t, s.point);
     }
     this.frameRing(onRing);
+    this.hangCards();
     // what would hold the note whose icon is dragged, were it let go now, and the circle round the
     // declaration it is attached to
     const p = this.dragging();
@@ -852,9 +858,10 @@ export class Stickies {
   /** Note `d` drawn at (wx, wy) of the board's world — its place, or, attached to a declaration whose
    *  point is at `point`, its spot at its offset from it —, in `look`, `t` of its icon showing (1 its
    *  icon, 0 its dot, between a blend: shared/notecard.ts, iconShare): its mark, and where it is open
-   *  its card, hanging as its offset says and flipped to stay on the screen, joined to the icon by its
-   *  leader; attached, the dashed leader to the declaration's point. Hidden where its mark is off the
-   *  screen. What is dragged follows the pointer instead: the icon with its card, or the card alone. */
+   *  its card, hanging as its offset says and flipped to stay on the screen, then set apart from the
+   *  other open cards and joined to the icon by its leader (hangCards); attached, the dashed leader to
+   *  the declaration's point. Hidden where its mark is off the screen. What is dragged follows the
+   *  pointer instead: the icon with its card, or the card alone. */
   private place(d: Drawn, wx: number, wy: number, look: "open" | "shut", t = 1, point: [number, number] | null = null): void {
     const C = this.canvas;
     const k = C.cam.k;
@@ -890,12 +897,33 @@ export class Stickies {
       return;
     }
     const [w, h] = this.cardSizeOf(d);
-    let box: Box;
+    const room = this.room();
+    let box: Box, avoid: Box | null = null;
     if (p?.part === "card" && p.now) box = { x0: p.now[0], y0: p.now[1], x1: p.now[0] + w, y1: p.now[1] + h };
     else {
-      const { off, avoid } = this.hangOf(d, w, h);
-      box = hangCard([sx, sy], off, w, h, this.room(), avoid).box;
+      const hang = this.hangOf(d, w, h);
+      avoid = hang.avoid;
+      box = hangCard([sx, sy], hang.off, w, h, room, avoid).box;
     }
+    d.box = box;
+    // hung once every open card is placed, apart from the others where it can be (hangCards); one
+    // the reader put by hand, or drags, stays where it is
+    this.opened.push({ d, card: { icon: [sx, sy], box, room, avoid, fixed: !!p || !!d.note.card } });
+  }
+
+  /** The open cards set apart from one another, as far as they can be (the owner's decision of
+   *  2026-11-10; shared/notecard.ts, spreadCards), and each hung there, joined to its icon by its
+   *  leader. */
+  private hangCards(): void {
+    const opened = this.opened;
+    this.opened = [];
+    const boxes = spreadCards(opened.map((o) => o.card));
+    opened.forEach(({ d, card }, k) => this.hang(d, card.icon, boxes[k]));
+  }
+
+  /** Note `d`'s card hung at `box`, its leader from its icon at `icon`. */
+  private hang(d: Drawn, icon: [number, number], box: Box): void {
+    const [sx, sy] = icon;
     d.box = box;
     d.card.style.transform = `translate(${Math.round(box.x0)}px, ${Math.round(box.y0)}px)`;
     const line = leaderLine(sx, sy, box);

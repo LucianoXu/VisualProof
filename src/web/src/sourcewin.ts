@@ -146,6 +146,10 @@ export interface SourceHooks {
   /** the InfoView hidden by the reader, in every window (kept in the browser), and hiding it */
   infoHidden?(): boolean;
   hideInfo?(on: boolean): void;
+  /** the InfoView's width beside the code as the reader set it, in every window (kept in the
+   *  browser), and setting it (null: its own) */
+  infoWidth?(): number | null;
+  setInfoWidth?(w: number | null): void;
   /** the reader put the InfoView's caret in window `w`, or turned it to before or after: the page's
    *  one caret is there now, and those following are told */
   caretMoved?(w: SourceWindow): void;
@@ -523,6 +527,8 @@ export class SourceWindow implements SourcePane {
       card: (name) => ({ html: this.fromGraph(name), more: this.describe(name) }),
       hidden: () => this.hooks.infoHidden?.() ?? false,
       hide: (on) => this.hooks.hideInfo?.(on),
+      width: () => this.hooks.infoWidth?.() ?? null,
+      setWidth: (w) => this.hooks.setInfoWidth?.(w),
       moved: () => this.hooks.caretMoved?.(this),
       win: () => this.el,
       fitted: () => this.win.fitted,
@@ -918,6 +924,11 @@ export class SourceWindow implements SourcePane {
   /** The InfoView hidden or shown again by the reader, in every window. */
   infoChanged(): void {
     this.info.draw();
+  }
+
+  /** The InfoView's width beside the code set by the reader, in every window. */
+  infoResized(): void {
+    this.info.resized();
   }
 
   /** Nothing picked: the quote button goes. */

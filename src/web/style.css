@@ -812,7 +812,21 @@ button.o-trust:hover { color: var(--accent); background: var(--code-bg); }
   contain: inline-size; position: sticky; bottom: 0; max-height: max(140px, calc(var(--sw-view, 60vh) * 0.45));
   border-top: 1px solid var(--line); box-shadow: 0 -10px 18px -16px rgba(0, 0, 0, 0.35);
 }
-.sw-split.iv-side > .sw-info { flex: none; width: 360px; position: sticky; top: 0; max-height: var(--sw-view, 70vh); border-left: 1px solid var(--line); }
+/* beside the code, as wide as the reader made it (web/src/infoview.ts, paneWidth: its own 360 px); its
+   head stays and its body scrolls, so that the grip on its left edge stays in sight */
+.sw-split.iv-side > .sw-info {
+  flex: none; width: 360px; position: sticky; top: 0; max-height: var(--sw-view, 70vh); border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; overflow: visible;
+}
+.sw-split.iv-side > .sw-info > .iv-head { flex: none; }
+.sw-split.iv-side > .sw-info > .iv-body { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+/* the grip: the pane's left edge, dragged to widen or narrow it, double-clicked for its own width; the
+   line lights under the pointer and while dragged */
+.iv-grip { display: none; }
+.sw-split.iv-side > .sw-info > .iv-grip { display: block; position: absolute; z-index: 2; top: 0; bottom: 0; left: -5px; width: 9px; cursor: ew-resize; touch-action: none; }
+.iv-grip::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 1px; background: transparent; transition: background 0.15s, box-shadow 0.15s; }
+.iv-grip:hover::after, .iv-sizing .iv-grip::after { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sw-split.iv-sizing, .sw-split.iv-sizing * { cursor: ew-resize !important; user-select: none; -webkit-user-select: none; }
 .iv-head {
   position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 12px;
   background: var(--surface-solid); border-bottom: 1px solid var(--line); font: 12px var(--font);

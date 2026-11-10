@@ -593,7 +593,9 @@ selection that one pick. A click on empty space, or `Esc`, clears it.
   note here* (`Ctrl Enter` saves, `⌘ Enter` on a Mac): plain text with **bold**, *italics*, `code`,
   and full names in backticks as links. It is a small round icon at its place — a note, an image, a
   paper, or a note with a clip, by what it carries — and, expanded, its card hangs from the icon on a
-  thin line, up and to the right unless the screen has no room there. It sits in the cluster where it
+  thin line, up and to the right unless the screen has no room there. Open cards keep clear of one
+  another: where two would meet, one moves aside — a little up or down, or to the icon's other side —
+  as little as it takes; a card you hung by hand stays where you put it. It sits in the cluster where it
   was put, at the same spot of the circle on every board whatever its size, and moves with it; a view
   that does not hold that cluster shows it only where it was added or a link brings it, on the ring,
   toward what it is linked to. Each clustering has its own place for it: under the other one it is on a ring around the
@@ -1015,7 +1017,9 @@ What reviewers think of the declarations a theorem rests on ([ReviewSpec.md](../
   120 of 800"); a place it has passed is answered at once, and opening a window starts Lean on the
   file. The pane shows only where there is something to show — a proof, a `by` block, a term with
   an expected type — and its › hides it in every window (a ⊢ Lean tab brings it back; kept in this
-  browser). A widget (ProofWidgets, `#html`, a panel widget) is never drawn — its JavaScript is the
+  browser). Beside the code, drag its left edge to widen or narrow it (double-click the edge for its
+  own width): every window takes that width, kept in this browser, the code keeping room of its own
+  in a narrow window. A widget (ProofWidgets, `#html`, a panel widget) is never drawn — its JavaScript is the
   project's code, which would run in every reader's browser —: the pane says one is there, to be
   opened in an editor. There is no InfoView on a past build, in a snapshot of the page, or for a file
   changed since it was compiled: the pane says why. Agents ask the same (`GET /api/agent/goals`).
