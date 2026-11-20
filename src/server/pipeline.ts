@@ -164,7 +164,7 @@ export async function ensureBundle(): Promise<void> {
   // package.json too: the page is bundled with its version (UpdateSpec decision 8), which a page
   // compares with its server's — a bundle of another version would have every new tab reload
   for (const f of [...readdirRec(join(WEB, "src")), ...readdirRec(join(SRC, "shared")), join(REPO, "package.json")]) newest = Math.max(newest, statSync(f).mtimeMs);
-  const beside = ["layout.js", "edges.js", "pdfworker.js"].every((f) => existsSync(join(dist, f)));
+  const beside = ["layout.js", "edges.js", "pdfworker.js", "call.js"].every((f) => existsSync(join(dist, f)));
   if (existsSync(out) && beside && statSync(out).mtimeMs >= newest) return;
   mkdirSync(dirname(dist), { recursive: true });
   const tmp = mkdtempSync(`${dist}.tmp-`);
@@ -180,7 +180,8 @@ export async function ensureBundle(): Promise<void> {
 /** The page's bundle, from `web/src/` of a checkout, into `outdir`: by `ensureBundle` at start, and
  *  by scripts/build.mjs into the package. Beside the page, the workers that lay out the Time
  *  Machine's past graphs (web/src/layoutworker.ts) and choose the overview's edges
- *  (web/src/edgeworker.ts) off the page's thread. */
+ *  (web/src/edgeworker.ts) off the page's thread; and the call (web/src/call/main.ts, CallSpec),
+ *  with LiveKit's client, which the page loads only when its window first opens. */
 export async function bundlePage(outdir: string, sourcemap = true): Promise<void> {
   const esbuild = await import("esbuild");
   const srcDir = join(WEB, "src");
@@ -188,7 +189,7 @@ export async function bundlePage(outdir: string, sourcemap = true): Promise<void
     // pdf.js's worker, which reads the library's PDFs for the reference window (AttachmentSpec
     // decision 11), is bundled beside the page's own workers and served as they are: no outside
     // service. Its legacy build, as the page's, for browsers that lack what the modern one uses
-    entryPoints: { app: join(srcDir, "main.ts"), layout: join(srcDir, "layoutworker.ts"), edges: join(srcDir, "edgeworker.ts"), pdfworker: fileURLToPath(import.meta.resolve("pdfjs-dist/legacy/build/pdf.worker.min.mjs")) },
+    entryPoints: { app: join(srcDir, "main.ts"), layout: join(srcDir, "layoutworker.ts"), edges: join(srcDir, "edgeworker.ts"), pdfworker: fileURLToPath(import.meta.resolve("pdfjs-dist/legacy/build/pdf.worker.min.mjs")), call: join(srcDir, "call", "main.ts") },
     bundle: true,
     format: "esm",
     // the owner reads in Safari: what Safari 16 lacks of the syntax (pdf.js's class static blocks; a

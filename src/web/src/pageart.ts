@@ -26,7 +26,7 @@ export function artPart(page: Page): ArtPart {
 
   /** In the artwork mode (ExportSpec decision 19, the owner's decision of 2026-10-15): of the bar,
    *  what is out of reach — all but Share and Search; and the keys that still act. */
-  const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
+  const ART_INERT = "#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .call-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap";
   const ART_KEYS = new Set(["/", "1", "2", "3", "f", "+", "=", "-", "_", "e", "[", "]", "l"]);
   // the board as a picture (ExportSpec decision 19, web/src/artframe.ts): the board itself, drawn
   // with the artwork's settings (`artLook`, drawLook below), a frame over it saying what is saved

@@ -5,6 +5,10 @@
 // bar — to a one-line pill; a click on the pill opens it again. Mouse, pen and touch alike: the
 // pointer is captured until it is let go.
 //
+// A window kind may be maximized by a button of its title bar (the call's, CallSpec decision 5): it
+// then fills the viewport under the page's bars, a margin from its edges, and is neither moved nor
+// resized until the button restores it where it was. Nothing of it is kept.
+//
 // A window stays inside the viewport, a margin from its edges, and snaps to them. Where a window
 // kind is kept in this browser (web/src/store.ts: the conversation's), it is kept by the corner it
 // is nearest, so that it keeps to that corner when the viewport changes. A window may instead be
@@ -269,6 +273,16 @@ export interface FloatOptions {
   /** where its top may be while the page places it (a pinned source window: under the page's
    *  bars); the reader may move it anywhere */
   top?(): number;
+  /** the button that maximizes it, and restores it: a selector inside it; none, no such button */
+  maximizer?: string;
+  /** it was maximized, or restored */
+  maximized?(on: boolean): void;
+}
+
+/** A maximized window's place: the viewport under `top`, a margin from its other edges. */
+export function maximizedRect(vp: Size, top = EDGE): Rect {
+  const y = Math.min(Math.max(top, EDGE), Math.max(EDGE, vp.h - EDGE - 80));
+  return { x: EDGE, y, w: Math.max(vp.w - 2 * EDGE, 120), h: Math.max(vp.h - y - EDGE, 80) };
 }
 
 const EDGES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
@@ -300,6 +314,8 @@ export class FloatWindow {
   /** the reader moved or resized it since its place was last set by the page (`ownPlace`, `unmove`):
    *  what the source and reference windows, paired, keep as the reader's choice */
   byHand = false;
+  /** maximized by its button: it fills the viewport under the bars until restored */
+  maximized = false;
   private watch: ResizeObserver | null = null;
   private resized = () => this.layout();
 
@@ -327,6 +343,7 @@ export class FloatWindow {
       const t = e.target as Element;
       if (t.closest(this.o.collapser)) this.collapse(true);
       else if (t.closest(this.o.opener)) this.collapse(false);
+      else if (this.o.maximizer && t.closest(this.o.maximizer)) this.maximize(!this.maximized);
     });
     window.addEventListener("resize", this.resized);
     // a window fitted to its content keeps to its place as the content changes size
@@ -386,7 +403,8 @@ export class FloatWindow {
     const vp = viewport();
     const k = this.kept();
     this.fitting = false;
-    if (this.own) {
+    if (this.maximized && !this.collapsed) this.rect = maximizedRect(vp, this.o.top?.());
+    else if (this.own) {
       // a place the page gave it stays under the bars as the viewport changes; the reader's is theirs
       const r = clampRect(this.own, vp, this.o.min);
       this.rect = this.o.top && !this.byHand ? underRect(r, vp, this.o.top(), this.o.min) : r;
@@ -458,7 +476,8 @@ export class FloatWindow {
    *  windows too. */
   reset(): void {
     this.collapsed = false;
-    this.el.classList.remove("collapsed");
+    this.maximized = false;
+    this.el.classList.remove("collapsed", "maximized");
     for (const k of ["left", "top", "right", "bottom", "width", "height", "maxWidth", "maxHeight", "minWidth", "minHeight", "zIndex"] as const) this.el.style[k] = "";
     stack = stack.filter((el) => el !== this.el);
     restack();
@@ -483,10 +502,21 @@ export class FloatWindow {
     this.o.collapsed?.(on);
   }
 
+  /** Maximize the window, or restore it where it was: nothing of it is kept. */
+  maximize(on: boolean): void {
+    if (!this.o.live() || on === this.maximized) return;
+    this.maximized = on;
+    this.el.classList.toggle("maximized", on);
+    if (on && this.collapsed) this.setCollapsed(false);
+    else this.layout();
+    this.front();
+    this.o.maximized?.(on);
+  }
+
   /** A press on the title bar moves the window, on an edge or a corner resizes it; mouse, pen or
-   *  touch alike, the pointer captured until it is let go. */
+   *  touch alike, the pointer captured until it is let go. A maximized window stays where it is. */
   private press(e: PointerEvent): void {
-    if (!this.o.live() || this.collapsed || this.dragging || !e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
+    if (!this.o.live() || this.collapsed || this.maximized || this.dragging || !e.isPrimary || (e.pointerType === "mouse" && e.button !== 0)) return;
     // docked on a phone, a tall screen or an upright monitor (style.css; PhoneSpec decisions 12, 21
     // and 35): placed there, not by hand
     if (sheeted() || isMonitor()) return;

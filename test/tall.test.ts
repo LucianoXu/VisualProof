@@ -271,6 +271,11 @@ const PLACES: Record<string, { tall: string; monitor: string }> = {
     tall: "the conversation window docked in the sheet's place, its button in the bar (decisions 18, 21)",
     monitor: "the conversation window in the column, under the reference; its button in the bar (decisions 30, 34)",
   },
+  // the call's window (CallSpec decision 5) docks as the conversation window does, after it
+  call: {
+    tall: "the call window docked in the sheet's place, after the conversation window; its button in the bar (decisions 18, 21)",
+    monitor: "the call window in the column, with the conversation window; its button in the bar (decisions 30, 34)",
+  },
   followingStrip: {
     tall: "above the legend (decision 23)",
     monitor: "above the legend (decision 30)",

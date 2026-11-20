@@ -85,6 +85,13 @@ export interface Options {
   /** --mathlib-cache: the user's Mathlib cache, or the deployment's own (DeploySpec decision 2);
    *  null: shared */
   mathlibCache: MathlibCache | null;
+  /** --livekit-url: where pages reach the LiveKit server the call runs on (CallSpec decision 1);
+   *  null: no call */
+  livekitUrl: string | null;
+  /** --livekit-api: where the server asks LiveKit's room service; null: --livekit-url, as HTTP */
+  livekitApi: string | null;
+  /** --livekit-keys: the file that holds the LiveKit key and its secret, or `env` */
+  livekitKeys: string | null;
 }
 
 /** The usage, to stderr with status 2 for a command line it cannot read; asked for (`--help`),
@@ -98,6 +105,7 @@ function usage(code = 2): never {
                                          [--claude-oauth file|env] [--claude-oauth-name Claude]
                                          [--public-url https://host] [--allowed-host name]... [--library-limit GB]
                                          [--updates auto|notify|off]
+                                         [--livekit-url wss://host --livekit-keys file|env [--livekit-api http://host:7880]]
        visualproof purge-file <lean-project> <sha256> [--site dir] [--cache dir]
        visualproof export <lean-project> -o page.html [--label text] [--root Name]... [--graph saved.json]
                                          [--jobs ${DEFAULT_JOBS}] [--site dir] [--cache dir]
@@ -244,6 +252,15 @@ function usage(code = 2): never {
   --library-limit  the most the project's library of papers and images may take, in GB (default
            ${DEFAULT_LIBRARY_LIMIT / 1024 ** 3}); its files are kept in the site directory, by their hash.
 
+  --livekit-url  turns the call on: a video call among the people here, in a window of the page,
+           on the LiveKit server at this address (wss://…; your own, or LiveKit Cloud). Pages
+           connect to it directly: camera, microphone and screen go through it, never through
+           VisualProof. Without it there is no call.
+  --livekit-keys  the file that holds the LiveKit API key and its secret, one line "<key>: <secret>"
+           (readable by its owner alone), or env for LIVEKIT_API_KEY and LIVEKIT_API_SECRET.
+  --livekit-api  where the server asks LiveKit who is in the call, when that is not --livekit-url
+           (a LiveKit on this machine: http://127.0.0.1:7880).
+
   purge-file  deletes a file's bytes from the library for good (a file added by mistake), and what
            was read of it; its record and its links stay in the review, saying this server lacks it.
            Nothing else deletes a file: removing one from the page archives it.
@@ -267,7 +284,7 @@ export function parseArgs(argv: string[]): Options {
     console.error(`visualproof: VISUALPROOF_UPDATES=${fromEnv}: say auto, notify or off`);
     process.exit(2);
   }
-  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", claudeOAuth: null, claudeOAuthName: null, accessKeyFile: null, jobs: DEFAULT_JOBS, leanFiles: null, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null };
+  const o: Options = { cmd, path: "", roots: [], port: 4173, host: "127.0.0.1", site: null, cache: null, graph: null, out: null, label: "VisualProof", identityHeader: null, editor: null, agents: "full", claudeOAuth: null, claudeOAuthName: null, accessKeyFile: null, jobs: DEFAULT_JOBS, leanFiles: null, publicUrl: null, allowedHosts: [], libraryLimit: DEFAULT_LIBRARY_LIMIT, sha: null, publicRead: false, recipe: null, png: false, svg: false, screen: { w: 1920, h: 1200 }, updates: UPDATE_MODES.includes(fromEnv as UpdateMode) ? (fromEnv as UpdateMode) : "auto", remote: null, branch: null, poll: null, buildHours: null, mathlibCache: null, livekitUrl: null, livekitApi: null, livekitKeys: null };
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     const val = () => rest[++i] ?? usage();
@@ -385,6 +402,31 @@ export function parseArgs(argv: string[]): Options {
       if (!Number.isFinite(gb) || gb <= 0 || gb > 10000) usage();
       o.libraryLimit = Math.round(gb * 1024 ** 3);
     }
+    // the call (CallSpec decision 1): each said in a line, as --public-url is
+    else if (a === "--livekit-url" && cmd === "serve") {
+      const u = val();
+      if (!/^wss?:\/\/[^\s/?#@]+(\/[^\s?#]*)?$/.test(u)) {
+        console.error(`visualproof: --livekit-url ${u.slice(0, 200)}: give the address pages reach the LiveKit server at, wss://host (or ws://host for one on this machine), with its path if it has one`);
+        process.exit(2);
+      }
+      o.livekitUrl = u.replace(/\/+$/, "");
+    }
+    else if (a === "--livekit-api" && cmd === "serve") {
+      const u = val();
+      if (!/^https?:\/\/[^\s/?#@]+(\/[^\s?#]*)?$/.test(u)) {
+        console.error(`visualproof: --livekit-api ${u.slice(0, 200)}: give the address the server asks LiveKit at, http(s)://host:port, e.g. http://127.0.0.1:7880`);
+        process.exit(2);
+      }
+      o.livekitApi = u.replace(/\/+$/, "");
+    }
+    else if (a === "--livekit-keys" && cmd === "serve") {
+      const v = rest[++i];
+      if (v === undefined || v.startsWith("-")) {
+        console.error('visualproof: --livekit-keys takes the file that holds the LiveKit API key and its secret, one line "<key>: <secret>", or env for LIVEKIT_API_KEY and LIVEKIT_API_SECRET');
+        process.exit(2);
+      }
+      o.livekitKeys = v === "env" ? "env" : resolve(v);
+    }
     else if (a.startsWith("-")) usage();
     else if (!o.path) o.path = a;
     else if (cmd === "purge-file" && !o.sha) o.sha = a;
@@ -437,6 +479,15 @@ export function parseArgs(argv: string[]): Options {
   }
   if (o.claudeOAuthName !== null && o.claudeOAuth === null) {
     console.error("visualproof: --claude-oauth-name names the agent --claude-oauth runs: give --claude-oauth too");
+    process.exit(2);
+  }
+  // the call is on with its LiveKit server and the keys to it, or off (CallSpec decision 1)
+  if (o.livekitUrl !== null && o.livekitKeys === null) {
+    console.error("visualproof: --livekit-url needs --livekit-keys: the file that holds the LiveKit API key and its secret, or env");
+    process.exit(2);
+  }
+  if (o.livekitUrl === null && (o.livekitKeys !== null || o.livekitApi !== null)) {
+    console.error(`visualproof: ${o.livekitKeys !== null ? "--livekit-keys" : "--livekit-api"} goes with --livekit-url, which turns the call on`);
     process.exit(2);
   }
   // a template that cannot make a link is said at the start, not found out by a reader's click

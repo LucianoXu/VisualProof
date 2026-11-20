@@ -63,7 +63,9 @@ test("on a phone the conversation button is an item of ⋯, after Activity, and 
   assert.ok(hidden.sel.split(",").some((s) => s.trim() === "#talk-btn"), "nor is the conversation button");
   const ids = ITEMS.map((i) => i.id);
   assert.equal(ids.indexOf("talk-btn"), ids.indexOf("activity-btn") + 1, "Conversations follows Activity, as in the bar");
-  assert.deepEqual(ids, ["share-btn", "library-btn", "export-btn", "activity-btn", "talk-btn", "who", "help-btn"]);
+  // the call's button follows the conversations', as in the bar (CallSpec)
+  assert.deepEqual(ids, ["share-btn", "library-btn", "export-btn", "activity-btn", "talk-btn", "call-btn", "who", "help-btn"]);
+  assert.ok(hidden.sel.split(",").some((s) => s.trim() === "#call-btn"), "nor is the call's button");
   // ⋯ carries Activity's count and the conversations' as one, and the mark of a mention
   assert.deepEqual(moreMark(null, null, false), { count: null, at: false });
   assert.deepEqual(moreMark("3", null, false), { count: "3", at: false });

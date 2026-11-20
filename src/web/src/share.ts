@@ -69,7 +69,10 @@ export interface ShareHooks {
   /** the address the page's links are made with: the server's public one (`--public-url`) where it
    *  has one, else the page's own origin (web/src/chatlinks.ts, siteOrigins) */
   base(): string;
-  data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly">;
+  data: Pick<DataSource, "agentShares" | "shareAgent" | "agentPrompt" | "revokeAgent" | "invites" | "invite" | "revokeInvite" | "readOnlyLinks" | "makeReadOnly" | "revokeReadOnly" | "readOnlyCall">;
+  /** the server has a call this reader may join (CallSpec): the guest link's switch Join the call,
+   *  and read-only links that join it */
+  call?(): boolean;
   /** the reader's name as the page knows it, for the agent's default name; null when there is none */
   me(): string | null;
   /** the personal link the reader came by (CollabSpec decision 9), or null: with the name, which
@@ -139,6 +142,10 @@ export class Share {
   /** a Revoke pressed once, waiting for the second press */
   private arming: string | null = null;
   private busy = false;
+  /** the guest link opens the call's pre-join (`?call`, CallSpec decision 6): off until switched */
+  private callLink = false;
+  /** a read-only link made now joins the call (CallSpec decision 4): off until switched */
+  private roCall = false;
 
   constructor(btn: HTMLElement, pop: HTMLElement, hooks: ShareHooks) {
     this.btn = btn;
@@ -150,6 +157,11 @@ export class Share {
       const tab = t.closest<HTMLElement>("[data-tab]");
       if (tab) return void this.show(tab.dataset.tab as Tab);
       if (t.closest("[data-exact]")) void this.setExact(!this.hooks.exact.get());
+      else if (t.closest("[data-call-link]")) void this.setCallLink(!this.callLink);
+      else if (t.closest("[data-ro-call]")) {
+        this.roCall = !this.roCall;
+        this.render();
+      } else if (t.closest("[data-ro-callsw]")) void this.switchReadOnlyCall(t.closest<HTMLElement>("[data-ro-callsw]")!.dataset.roCallsw!);
       else if (t.closest("[data-copy]")) void this.copyAgain(".sh-url", "[data-copy]");
       else if (t.closest("[data-copy-invite]")) void this.copyAgain(".sh-invite-url", "[data-copy-invite]");
       else if (t.closest("[data-copy-ro]")) void this.copyAgain(".sh-ro-url", "[data-copy-ro]");
@@ -215,7 +227,45 @@ export class Share {
    *  read-only reader, the link they came by. */
   async link(): Promise<string> {
     const { path } = await this.shareInfo();
-    return `${this.hooks.base()}${path ?? "/"}${await this.fragment()}`;
+    return `${this.hooks.base()}${path ?? "/"}${this.joinsCall() ? "?call" : ""}${await this.fragment()}`;
+  }
+
+  /** Whether the guest link opens the call's pre-join: switched on, where there is a call. */
+  private joinsCall(): boolean {
+    return this.callLink && !!this.hooks.call?.();
+  }
+
+  /** Join the call switched (CallSpec decision 6): the guest link made again and copied. */
+  private async setCallLink(on: boolean): Promise<void> {
+    this.callLink = on;
+    const url = await this.link();
+    this.person = { url, copied: await copy(url) };
+    this.render();
+    this.pop.querySelector<HTMLElement>("[data-call-link]")?.focus();
+  }
+
+  /** The switch Join the call, where there is a call: whoever opens the link finds its pre-join. */
+  private callRow(): string {
+    if (!this.hooks.call?.()) return "";
+    const on = this.joinsCall();
+    return `<button type="button" class="sh-exact" role="switch" aria-checked="${on}" data-call-link title="Whoever opens the link finds the call ready to join"><span class="sh-switch" aria-hidden="true"></span>Join the call</button>`;
+  }
+
+  /** Whether a read-only link joins the call, switched by anyone let in (CallSpec decision 4). */
+  private async switchReadOnlyCall(id: string): Promise<void> {
+    const l = this.readOnlyLinks?.find((x) => x.id === id);
+    if (!l) return;
+    const r = await this.hooks.data.readOnlyCall(id, !l.call);
+    if (r.links) this.readOnlyLinks = r.links.filter((x) => !x.revoked);
+    const ro = this.readOnly;
+    if (ro.kind === "link" && ro.id === id) {
+      const now = this.readOnlyLinks?.find((x) => x.id === id);
+      if (now) {
+        const base = now.link + (now.call ? "?call" : "");
+        this.readOnly = { ...ro, base, link: base + (await this.fragment()) };
+      }
+    }
+    this.render();
   }
 
   /** What a link carries after `#`: the address, and with Exactly what I see the snapshot of what the
@@ -351,6 +401,7 @@ export class Share {
       body =
         `<input class="sh-url" readonly value="${escapeHtml(url)}" aria-label="The link" spellcheck="false">` +
         this.exactRow() +
+        this.callRow() +
         `<div class="sh-note muted">${copied ? "Copied. " : ""}` +
         (keyed ? "Anyone with it comes in as a guest." : "This server lets in anyone who can reach it.") +
         `</div>` +
@@ -386,6 +437,9 @@ export class Share {
     return (
       `<div class="sh-note muted">Anyone with it can look, unseen, and change nothing, until you revoke it.</div>` +
       this.exactRow() +
+      (this.hooks.call?.()
+        ? `<button type="button" class="sh-exact" role="switch" aria-checked="${this.roCall}" data-ro-call title="Whoever has it may join the call too, under a name they give: seen in the call, nowhere else"><span class="sh-switch" aria-hidden="true"></span>Can join the call</button>`
+        : "") +
       (r.error ? `<div class="modal-err">${escapeHtml(r.error)}</div>` : "") +
       `<div class="modal-actions"><button class="rv-btn" data-close>Close</button><button class="rv-btn primary" data-ro-create${this.busy ? " disabled" : ""}>Create link</button></div>`
     );
@@ -406,7 +460,8 @@ export class Share {
     return (
       `<div class="sh-tok${shown ? " on" : ""}">` +
       `<div class="sh-tok-text" data-ro-show="${id}" title="Show the link again"><div><b>Read-only link</b> <span class="sh-lvl">${id}</span></div>` +
-      `<div class="muted">${l.by ? `by ${escapeHtml(l.by)}, ` : ""}${escapeHtml(ago(l.created))} · ${l.lastUsed ? `last used ${escapeHtml(ago(l.lastUsed))}` : "not used yet"}</div></div>` +
+      `<div class="muted">${l.by ? `by ${escapeHtml(l.by)}, ` : ""}${escapeHtml(ago(l.created))} · ${l.lastUsed ? `last used ${escapeHtml(ago(l.lastUsed))}` : "not used yet"}${l.call ? " · joins the call" : ""}</div></div>` +
+      (this.hooks.call?.() ? `<button class="rv-btn sh-act" data-ro-callsw="${id}" aria-pressed="${!!l.call}" title="${l.call ? "Whoever has it may join the call: press to stop that (they leave it at once)" : "Let whoever has it join the call, under a name they give"}">${l.call ? "Call ✓" : "Call"}</button>` : "") +
       `<button class="rv-btn sh-act" data-ro-show="${id}" aria-pressed="${shown}" title="The link, to give again">Show link</button>` +
       `<button class="rv-btn sh-act${armed ? " bad" : ""}" data-revoke-ro="${id}" title="It lets nobody in any more, and the pages it opened close, at once">${armed ? "Revoke it" : "Revoke"}</button>` +
       `</div>`
@@ -418,15 +473,17 @@ export class Share {
     if (this.busy) return;
     this.busy = true;
     this.render();
-    const r = await this.hooks.data.makeReadOnly();
+    const r = await this.hooks.data.makeReadOnly(this.roCall && !!this.hooks.call?.());
     this.busy = false;
     if ("error" in r) {
       this.readOnly = { kind: "form", error: r.error };
       return this.render();
     }
     this.readOnlyLinks = r.links.filter((l) => !l.revoked);
-    const link = r.made.link + (await this.fragment());
-    this.readOnly = { kind: "link", id: r.made.id, base: r.made.link, link, made: true, copied: await copy(link) };
+    // a link that joins the call opens its pre-join (CallSpec decision 6)
+    const base = r.made.link + (r.made.call ? "?call" : "");
+    const link = base + (await this.fragment());
+    this.readOnly = { kind: "link", id: r.made.id, base, link, made: true, copied: await copy(link) };
     await this.show("readonly");
   }
 
@@ -435,8 +492,9 @@ export class Share {
     this.arming = null;
     const l = this.readOnlyLinks?.find((x) => x.id === id);
     if (!l) return;
-    const link = l.link + (await this.fragment());
-    this.readOnly = { kind: "link", id, base: l.link, link, made: false, copied: await copy(link) };
+    const base = l.link + (l.call ? "?call" : "");
+    const link = base + (await this.fragment());
+    this.readOnly = { kind: "link", id, base, link, made: false, copied: await copy(link) };
     await this.show("readonly");
   }
 

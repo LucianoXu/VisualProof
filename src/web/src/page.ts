@@ -43,6 +43,7 @@ import type { NotesPart } from "./pagenotes.ts";
 import type { KeysPart } from "./pagekeys.ts";
 import type { GuidePart } from "./pageguide.ts";
 import type { PointerPart } from "./pagepointer.ts";
+import type { CallPart } from "./pagecall.ts";
 
 
 export const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
@@ -173,5 +174,5 @@ export interface Page extends
   PageGiven, PageState, ViewsPart, ReviewPart, PanelsPart, BoardPart, ArtPart, SidePart,
   LayoutPart, SchemePart, FollowPart, TalkPart, PeoplePart, TabsPart, SharePart, TimelinePart,
   SelectionPart, AddressPart, LivePart, ToolbarPart, MenuPart, NotesPart, KeysPart, GuidePart,
-  PointerPart
+  PointerPart, CallPart
 {}

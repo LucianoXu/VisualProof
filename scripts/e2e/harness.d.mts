@@ -76,7 +76,7 @@ export interface Person {
   close(): Promise<void>;
 }
 
-export function browser(o?: { headed?: boolean }): Promise<any>;
+export function browser(o?: { headed?: boolean; args?: string[] }): Promise<any>;
 export function camera(dir: string): { dir: string; taken: string[]; shot(person: Person, what: string): Promise<string> };
 export function guest(b: any, server: Server, name: string, look?: Look): Promise<Person>;
 export function invited(b: any, server: Server, name: string, look?: Look, o?: { by?: string }): Promise<Person>;

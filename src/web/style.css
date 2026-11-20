@@ -345,7 +345,7 @@ body.framing #viewbar, body.framing #foot, body.framing #zoom, body.framing #tab
 body.framing #bar [inert] { opacity: 0.32; }
 /* both fading as the mode comes and goes */
 body.art-moving :is(#side, #panel, #selbar, #lensbar, #tm-kept, #viewbar, #foot, #zoom, #tabs, #legend) { transition: opacity 240ms ease, visibility 240ms; }
-body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap) { transition: opacity 240ms ease; }
+body.art-moving :is(#bar .brand, #bar .library-wrap, #export-btn, #activity-btn, #bar .talk-wrap, #bar .call-wrap, #bar .peers-wrap, #bar .who-wrap, #help-btn, #bar .more-wrap) { transition: opacity 240ms ease; }
 
 .glass {
   background: var(--surface);
@@ -1567,6 +1567,161 @@ a.cv-chip:hover { border-color: var(--accent); }
 }
 #talk-notice[hidden] { display: none; }
 #talk-notice b { color: var(--accent); }
+
+/* the call (CallSpec; web/src/pagecall.ts, web/src/call/main.ts): its button — how many are in the
+   call, in the accent's colour while it runs —, the notice under it, its window and what the call
+   draws in it. The stage is near black in every theme, as video is */
+.call-wrap { position: relative; }
+#call-btn[hidden] { display: none; }
+#call-btn[aria-pressed="true"], #call-btn.live { border-color: var(--accent); color: var(--accent); }
+#call-btn.live .act-badge { background: var(--accent); }
+#call-btn.rejoin { background: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
+#call-notice {
+  position: absolute; top: 40px; right: 0; z-index: 40; width: min(320px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 8px; padding: 9px 10px;
+  border-radius: 12px; font: 12.5px/1.4 var(--font); color: var(--text); background: var(--surface-solid); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg);
+}
+#call-notice[hidden] { display: none; }
+#call-notice b { color: var(--accent); }
+.cn-acts { display: flex; align-items: center; gap: 6px; }
+.cn-acts .rv-btn { padding: 4px 12px; font-size: 12.5px; }
+.cn-x { margin-left: auto; width: 22px; height: 22px; border: 0; border-radius: 6px; background: none; color: var(--text-2); cursor: pointer; }
+.cn-x:hover { background: var(--code-bg); color: var(--text); }
+#call {
+  position: fixed; display: flex; flex-direction: column; padding: 0; border-radius: 14px; overflow: visible;
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-lg); font-size: 12.5px; color: var(--text); --c: var(--accent);
+}
+#call[hidden] { display: none; }
+#call:not(.collapsed) > .fl-rz { display: block; position: absolute; z-index: 4; touch-action: none; }
+#call.maximized > .fl-rz { display: none; }
+.cl-head {
+  flex: none; display: flex; align-items: center; gap: 4px; padding: 5px 6px 5px 10px; border-bottom: 1px solid var(--line);
+  cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none;
+}
+#call.moving .cl-head { cursor: grabbing; }
+#call.maximized .cl-head { cursor: default; }
+#call.moving, #call.sizing { user-select: none; -webkit-user-select: none; }
+.cl-head .cl-icon { flex: none; color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.cl-title { font-weight: 600; }
+.cl-count, .cl-clock { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.cl-hgap { flex: 1 1 auto; }
+.cl-head > button, #call .fl-pill > button[data-cl-close], #call .fl-pill > button[data-cl-mic] {
+  display: inline-grid; place-items: center; flex: none; padding: 0; border: 0; background: transparent;
+  color: var(--text-2); cursor: pointer; width: 24px; height: 24px; border-radius: 6px;
+}
+.cl-head > button:hover, #call .fl-pill > button:hover { background: var(--code-bg); color: var(--text); }
+#call [data-cl-close].armed { width: auto; padding: 0 8px; color: #fff; background: var(--bad); }
+#call [data-cl-close].armed::after { content: " Leave?"; font: 600 11.5px var(--font); }
+#call [data-cl-mic].off { color: var(--bad); }
+#call.collapsed { border-radius: 999px; }
+#call.collapsed > .cl-head, #call.collapsed > .cl-body { display: none; }
+#call.collapsed > .fl-pill { display: flex; align-items: center; gap: 2px; min-width: 0; padding-right: 6px; }
+#call .fl-pill-text svg { color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; }
+.cl-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; border-radius: 0 0 14px 14px; overflow: hidden; }
+.cl-root { --stage: #111214; }
+#call .muted { color: var(--text-2); }
+.cl-wait { margin: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.cl-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.cl-err { color: var(--bad); font-size: 12px; }
+.cl-note { font-size: 12px; color: var(--text-2); }
+/* the pre-join: the preview beside its choices, one under the other where the window is narrow */
+.cl-pre { flex: 1 1 auto; min-width: 0; display: flex; gap: 14px; padding: 14px; overflow: auto; }
+.cl-preview { position: relative; flex: 1 1 60%; min-width: 0; min-height: 160px; display: grid; place-items: center; border-radius: 12px; background: var(--stage); overflow: hidden; }
+.cl-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cl-preview video.mirror { transform: scaleX(-1); }
+.cl-pre-toggles { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+.cl-pre-side { flex: 1 1 40%; min-width: 200px; display: flex; flex-direction: column; gap: 9px; }
+.cl-pre-title { font: 600 16px var(--font); }
+.cl-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.cl-field input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-solid); color: var(--text); font: 13px var(--font); }
+.cl-devices { display: flex; flex-direction: column; gap: 6px; }
+.cl-devices label { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--text-2); }
+.cl-devices select { min-width: 0; padding: 4px 6px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-solid); color: var(--text); font: 12px var(--font); }
+.cl-meter { height: 4px; border-radius: 2px; background: var(--code-bg); overflow: hidden; }
+.cl-meter i { display: block; width: 0; height: 100%; background: var(--st-ok, #30a46c); transition: width 60ms linear; }
+.cl-pre .cl-actions { margin-top: auto; }
+@container (max-width: 520px) { .cl-pre { flex-direction: column; } }
+#call .cl-body { container-type: size; }
+/* the call: the stage (and People beside it), a banner, the control row */
+.cl-call { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--stage); color: #f2f2f4; }
+.cl-main { flex: 1 1 auto; min-height: 0; display: flex; }
+.cl-stage { position: relative; flex: 1 1 auto; min-width: 0; margin: 8px; }
+.cl-tile { position: absolute; border-radius: 10px; background: #26272b; overflow: hidden; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.cl-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+.cl-tile.video video { display: block; }
+.cl-tile.screen video { object-fit: contain; background: #000; }
+.cl-tile.mirror video { transform: scaleX(-1); }
+.cl-tile.speaking { box-shadow: 0 0 0 2px #3dd68c; }
+.cl-tile.pinned { box-shadow: 0 0 0 2px var(--accent); }
+.cl-av {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(38%, 96px); aspect-ratio: 1; border-radius: 50%;
+  display: grid; place-items: center; background: var(--c, var(--accent)); color: #fff; font: 600 clamp(12px, 3.2cqmin, 30px) var(--font);
+}
+.cl-tile.video .cl-av { display: none; }
+.cl-av.big { position: static; transform: none; width: 96px; font-size: 32px; }
+.cl-av.small { position: static; transform: none; flex: none; width: 24px; font-size: 10.5px; }
+.cl-tile.unnamed .cl-av { opacity: 0.6; }
+.cl-tag { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); display: flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 6px; background: rgba(0, 0, 0, 0.55); font-size: 11.5px; white-space: nowrap; overflow: hidden; }
+.cl-nm { overflow: hidden; text-overflow: ellipsis; }
+.cl-muted { display: inline-grid; color: #ff8a8a; }
+.cl-ok { color: var(--verified); font-weight: 700; }
+.cl-ro { padding: 0 5px; border-radius: 5px; background: rgba(255, 255, 255, 0.14); font-size: 10.5px; }
+.cl-marks { position: absolute; top: 6px; left: 6px; display: flex; gap: 4px; }
+.cl-hand { font-size: 15px; }
+.cl-poor { display: inline-grid; padding: 2px; border-radius: 5px; background: rgba(0, 0, 0, 0.55); color: #ffb224; }
+.cl-tmenu { position: absolute; top: 6px; right: 6px; display: none; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: rgba(0, 0, 0, 0.55); color: #fff; cursor: pointer; }
+.cl-tile:hover .cl-tmenu, .cl-tile:focus-within .cl-tmenu { display: grid; }
+.cl-react { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; }
+.cl-react span { grid-area: 1 / 1; font-size: clamp(22px, 8cqmin, 48px); animation: cl-rise 4s ease-out forwards; }
+@keyframes cl-rise { 0% { transform: translateY(20%) scale(0.6); opacity: 0; } 12% { transform: none; opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-40%); opacity: 0; } }
+.cl-more { position: absolute; border: 0; border-radius: 10px; background: #26272b; color: #f2f2f4; font: 600 15px var(--font); cursor: pointer; }
+.cl-nav { position: absolute; top: 50%; z-index: 2; width: 28px; height: 44px; transform: translateY(-50%); border: 0; border-radius: 8px; background: rgba(0, 0, 0, 0.5); color: #fff; font-size: 22px; cursor: pointer; }
+.cl-nav.prev { left: 0; }
+.cl-nav.next { right: 0; }
+.cl-pager { position: absolute; left: 50%; bottom: -2px; z-index: 2; transform: translateX(-50%); padding: 1px 8px; border-radius: 8px; background: rgba(0, 0, 0, 0.5); font-size: 11px; }
+.cl-banner { flex: none; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 6px 10px; background: rgba(255, 178, 36, 0.16); color: #ffd58a; font-size: 12px; }
+.cl-banner[hidden] { display: none; }
+.cl-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 10px 10px; overflow-x: auto; scrollbar-width: none; }
+.cl-bar::-webkit-scrollbar { display: none; }
+.cl-gap { flex: 1 1 auto; }
+.cl-grp { display: inline-flex; flex: none; }
+.cl-ctl {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; min-width: 34px; padding: 0 9px; border: 0; border-radius: 9px;
+  background: rgba(255, 255, 255, 0.1); color: #f2f2f4; font: 600 12px var(--font); cursor: pointer;
+}
+.cl-ctl:hover { background: rgba(255, 255, 255, 0.18); }
+.cl-ctl.off { background: color-mix(in srgb, var(--bad) 80%, #000); }
+.cl-ctl[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 70%, #000); }
+.cl-ctl.bad { background: var(--bad); color: #fff; }
+.cl-grp .cl-ctl:first-child { border-radius: 9px 0 0 9px; }
+.cl-grp .cl-ctl.cl-caret { min-width: 22px; padding: 0 3px; border-radius: 0 9px 9px 0; margin-left: 1px; }
+.cl-pre .cl-ctl { width: 40px; height: 40px; border-radius: 50%; background: rgba(0, 0, 0, 0.55); }
+.cl-pre .cl-ctl.off { background: color-mix(in srgb, var(--bad) 85%, #000); }
+/* the compact call: one tile, and its four controls */
+.cl-call.compact .cl-stage { margin: 0; }
+.cl-call.compact .cl-tile { border-radius: 0; box-shadow: none; }
+.cl-call.compact .cl-bar { position: absolute; left: 0; right: 0; bottom: 0; justify-content: center; padding: 6px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.6)); }
+.cl-call.compact .cl-ctl { height: 30px; min-width: 30px; }
+.cl-call.compact .cl-tag { bottom: 48px; }
+/* People: who is in the call, raised hands first; who is here and not in it, each with Invite */
+.cl-side { flex: none; width: 240px; margin: 8px 8px 8px 0; padding: 6px; border-radius: 10px; background: #1c1d20; overflow-y: auto; }
+.cl-side-h { padding: 6px 6px 4px; color: #a8a8ae; font: 600 11px var(--font); text-transform: uppercase; letter-spacing: 0.04em; }
+.cl-row { position: relative; display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 8px; }
+.cl-row:hover { background: rgba(255, 255, 255, 0.06); }
+.cl-row-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-row .cl-tmenu { position: static; display: grid; background: none; }
+.cl-inv { padding: 2px 8px; font-size: 11.5px; }
+/* a popover of the call's: over its control or its tile, inside the window */
+.cl-pop { position: absolute; z-index: 6; min-width: 160px; max-width: 280px; padding: 5px; border-radius: 10px; background: var(--surface-solid); color: var(--text); box-shadow: 0 0 0 0.5px var(--line), var(--shadow-lg); }
+.cl-pop[hidden] { display: none; }
+.cl-pop-h { padding: 5px 8px 3px; color: var(--text-2); font: 600 11px var(--font); }
+.cl-item { display: block; width: 100%; padding: 6px 8px; border: 0; border-radius: 7px; background: none; color: var(--text); font: 12.5px var(--font); text-align: left; cursor: pointer; }
+.cl-item:hover { background: var(--code-bg); }
+.cl-item.on { color: var(--accent); font-weight: 600; }
+.cl-item.bad { color: var(--bad); }
+.cl-reacts { display: flex; gap: 2px; }
+.cl-rx { width: 36px; height: 36px; border: 0; border-radius: 8px; background: none; font-size: 20px; cursor: pointer; }
+.cl-rx:hover { background: var(--code-bg); }
+@media (prefers-reduced-motion: reduce) { .cl-react span { animation: none; } }
 /* the thread fills the window and scrolls, its messages from its foot up, as a conversation reads;
    at its end it stays there however the window is resized (talk.ts), which the browser's own scroll
    anchoring would undo, keeping a message above in place */
@@ -3088,9 +3243,10 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #nav-fwd, .brand .logo { display: none; }
   .brand { align-items: center; gap: 6px; }
   .brand .project { display: inline; font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #share-btn, #library-btn, #export-btn, #activity-btn, #talk-btn, #who, #help-btn { display: none !important; }
+  #share-btn, #library-btn, #export-btn, #activity-btn, #talk-btn, #call-btn, #who, #help-btn { display: none !important; }
   /* what is left of their places is their popovers, under the bar: no place of the bar's, nor a gap */
-  #bar .right > :is(.share-wrap, .library-wrap, .talk-wrap, .who-wrap, .help-wrap) { display: contents; }
+  #bar .right > :is(.share-wrap, .library-wrap, .talk-wrap, .call-wrap, .who-wrap, .help-wrap) { display: contents; }
+  #call-notice { position: fixed; top: 58px; right: 8px; }
   .more-wrap { display: block; position: relative; }
   #more-btn { width: 36px; height: 34px; }
   #more-badge { position: absolute; top: -5px; right: -5px; }
@@ -3298,8 +3454,8 @@ span.tm-row { color: var(--text-2); cursor: default; }
   }
   /* its handle, over the windows while one is open there, sets the dock's height as the sheet's does
      (the same height: web/src/phone.ts) */
-  #windows:has(> :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden])) { padding-top: 14px; }
-  #windows:has(> :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden]))::before {
+  #windows:has(> :is(.sw-win, .pw-win, #convo, #call):not(.collapsed, [hidden])) { padding-top: 14px; }
+  #windows:has(> :is(.sw-win, .pw-win, #convo, #call):not(.collapsed, [hidden]))::before {
     content: ""; position: absolute; top: 0; left: 50%; width: 120px; height: 14px; transform: translateX(-50%);
     pointer-events: auto; cursor: ns-resize; touch-action: none;
     background: linear-gradient(var(--text-3), var(--text-3)) center 4px / 44px 5px no-repeat; opacity: 0.6; border-radius: 3px;
@@ -3308,7 +3464,9 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #windows > .sw-win { order: 1; }
   #windows > .pw-win { order: 2; }
   #windows > #convo { order: 3; }
-  #windows > .sw-win, #windows > .pw-win, #windows > #convo {
+  /* the call's window last: its video wants the room */
+  #windows > #call { order: 4; }
+  #windows > .sw-win, #windows > .pw-win, #windows > #convo, #windows > #call {
     position: relative !important; inset: auto !important; transform: none;
     width: auto !important; height: auto !important; min-width: 0 !important; min-height: 0 !important; max-width: none !important; max-height: none !important;
     flex: 1 1 0; z-index: auto !important;
@@ -3316,7 +3474,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   #windows > .collapsed { flex: none; align-self: flex-start; max-width: min(360px, 100%) !important; }
   #windows .fl-rz { display: none !important; }
   @media (min-width: 960px) { #windows { flex-direction: row; align-items: stretch; } #windows > .collapsed { align-self: flex-end; } }
-  #windows .sw-head, #windows .pw-head, #windows > #convo > .cv-head { cursor: default; }
+  #windows .sw-head, #windows .pw-head, #windows > #convo > .cv-head, #windows > #call > .cl-head { cursor: default; }
   /* Export's window: in the sheet's place too, the outline it arranges above it */
   #export-modal { top: auto; left: 12px; right: 12px; bottom: 12px; }
   #export-modal .ex-box { width: auto; max-height: var(--sheet-h, 50dvh); }
@@ -3376,7 +3534,7 @@ span.tm-row { color: var(--text-2); cursor: default; }
   }
   #windows > .mon-docked.collapsed { width: auto !important; height: auto !important; max-width: 280px !important; }
   #windows .fl-rz { display: none !important; }
-  #windows .sw-head, #windows .pw-head, #windows > #convo > .cv-head { cursor: default; }
+  #windows .sw-head, #windows .pw-head, #windows > #convo > .cv-head, #windows > #call > .cl-head { cursor: default; }
   /* the review strip at the board's top left, beside the selection bar under the modes */
   #lensbar, #tm-kept { left: calc(var(--inset-left, 0px) + 12px); transform: none; max-width: calc(100vw - var(--inset-left, 0px) - 448px); }
   /* the legend and the zoom's box at the foot of the board's room */

@@ -40,6 +40,9 @@ import { App } from "./app.ts";
 import { findClaude, Hosted } from "./hosted.ts";
 import { DEFAULT_SERVER_AGENT_NAME, loadClaudeToken, retire010, serverAgentToken } from "./serveragent.ts";
 import { mcpServerText } from "./agententry.ts";
+import { CallRoom } from "./call.ts";
+import { apiOf, loadLiveKitKeys } from "./livekit.ts";
+import type { LiveKitKeys } from "./livekit.ts";
 
 /** What a stop signal does to a server: end it at once, until it can stop gracefully (serve). */
 let stopNow: () => void = () => process.exit(0);
@@ -73,6 +76,16 @@ async function main(): Promise<void> {
       return endNotTheCode(2);
     }
     claudeToken = c.token;
+  }
+  // the call's LiveKit keys (CallSpec decision 1): read once, now, as the Claude token is
+  let livekitKeys: LiveKitKeys | null = null;
+  if (o.cmd === "serve" && o.livekitUrl && o.livekitKeys) {
+    const k = loadLiveKitKeys(o.livekitKeys);
+    if ("error" in k) {
+      console.error(`visualproof: --livekit-keys ${o.livekitKeys === "env" ? "" : "file "}${k.error}`);
+      return endNotTheCode(2);
+    }
+    livekitKeys = k;
   }
   // following a branch (DeploySpec): its clone in the cache, made at the first start, is the project
   const deploy = o.remote ? await openDeployment(o) : null;
@@ -146,6 +159,21 @@ async function main(): Promise<void> {
 
   const review = new ReviewStore(project.root, dirs.site);
   const live = new Live(project, dirs, o.graph, review, o.editor, o.jobs);
+  // the call, on the LiveKit server the command line names (CallSpec)
+  if (o.livekitUrl && livekitKeys)
+    live.call = new CallRoom({
+      url: o.livekitUrl,
+      api: apiOf(o.livekitUrl, o.livekitApi),
+      keys: livekitKeys,
+      site: dirs.site,
+      hooks: {
+        page: (t) => live.callPage(t),
+        pageById: (id) => live.callPageById(id),
+        send: (e, d) => live.broadcast(e, d),
+        sendTo: (t, e, d) => live.sendTo(t, e, d),
+        log: (l) => console.log(l),
+      },
+    });
   // 0.10's agents run per person, and the Claude tokens they ran on, go (AgentSpec decision 10);
   // the server's own agent's token is kept from one start to the next, else made
   const agentsRoot = join(dirs.cache, "agents");
@@ -287,6 +315,7 @@ async function main(): Promise<void> {
       `  access: ${key ? `by its link only, /k/<the key in ${o.accessKeyFile}>${key.made ? " (a new key was made there)" : ""}${o.publicRead ? "; anyone else read-only (--public)" : ""}` : `anyone who reaches the port, by its address, localhost${[...(o.publicUrl ? [urlHost(o.publicUrl)] : []), ...o.allowedHosts].map((n) => `, ${n}`).join("")} (other names are refused: --allowed-host)`}`,
     );
     console.log(`  version: ${version}; updates ${updatesInWords(o.updates, version, supervised)}`);
+    if (live.call) console.log(`  call: on the LiveKit server at ${live.call.url} (asked at ${apiOf(o.livekitUrl!, o.livekitApi)}), room ${live.call.room}`);
     if (deployment) {
       const d = deployment.status(true);
       console.log(`  following: ${d.branch} of ${d.source ?? deployment.remote.url}, asked every ${o.poll ?? DEFAULT_POLL_MINUTES} min; a build stopped past ${limitInWords(deployment.buildMs)}`);
@@ -337,6 +366,7 @@ async function main(): Promise<void> {
     updates.start();
   });
   live.start();
+  live.call?.start();
   deployment?.start();
 }
 

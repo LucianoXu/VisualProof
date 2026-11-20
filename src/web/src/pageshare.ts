@@ -38,6 +38,8 @@ export function sharePart(page: Page): SharePart {
     snapshot: () => writeSnapshot(followedOf(page.parts.read), page.canvas.screen),
     // the reader's own conversation with the server's agent (AgentSpec decision 10)
     talk: (agent) => page.talk.open(agent),
+    // a call this reader may join (CallSpec decisions 4 and 6)
+    call: () => page.calls.on,
     exact: {
       get: () => S.shareExact !== false,
       set: (on) => {

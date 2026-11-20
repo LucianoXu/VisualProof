@@ -56,6 +56,7 @@ import { schemePart } from "./pagescheme.ts";
 import { followPart } from "./pagefollow.ts";
 import { talkPart } from "./pagetalk.ts";
 import { peoplePart } from "./pagepeople.ts";
+import { callPart } from "./pagecall.ts";
 import { pointerPart } from "./pagepointer.ts";
 import { tabsPart } from "./pagetabs.ts";
 import { sharePart } from "./pageshare.ts";
@@ -193,6 +194,8 @@ async function boot(): Promise<void> {
   Object.assign(page, followPart(page));
   Object.assign(page, talkPart(page));
   Object.assign(page, peoplePart(page));
+  // the call (CallSpec): before the address is written, which takes a call link's `?call` with it
+  Object.assign(page, callPart(page));
   Object.assign(page, pointerPart(page));
   Object.assign(page, tabsPart(page));
   Object.assign(page, sharePart(page));

@@ -17,10 +17,10 @@ import type { App } from "./app.ts";
  *  any address nobody was given. On a server with a key, a browser is shown the page of a link
  *  that does not open the site instead (CollabSpec decision 7), which says neither which it was
  *  nor who revoked it — unless the key or a link of its own lets it in, and it may be told. */
-export function enter(app: App, req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
+export function enter(app: App, req: IncomingMessage, res: ServerResponse, token: string, path: string, to = "/"): void {
   const c = app.ids.header ? null : app.live.invites.check(token);
   if (c && "ok" in c) {
-    res.writeHead(303, { location: "/", "set-cookie": app.live.invites.cookie(c.ok), "cache-control": "no-store", "referrer-policy": "no-referrer" });
+    res.writeHead(303, { location: to, "set-cookie": app.live.invites.cookie(c.ok), "cache-control": "no-store", "referrer-policy": "no-referrer" });
     return void res.end();
   }
   if (app.access && asksForPage(req, path) && (!c || !letIn(app, req))) return sendAccessPage(res, "link", app.publicRead);
@@ -33,10 +33,10 @@ export function enter(app: App, req: IncomingMessage, res: ServerResponse, token
  *  (a fragment) comes along. A revoked link says so; anything else, and any link on a server
  *  open to all or behind a sign-in, which have none, is answered as an address nobody was given;
  *  to a browser, on a server with a key, as a personal link's (enter). */
-export function enterReadOnly(app: App, req: IncomingMessage, res: ServerResponse, token: string, path: string): void {
+export function enterReadOnly(app: App, req: IncomingMessage, res: ServerResponse, token: string, path: string, to = "/"): void {
   const c = app.access && !app.ids.header ? app.live.readOnly.check(token) : null;
   if (c && "ok" in c) {
-    res.writeHead(303, { location: "/", "set-cookie": app.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
+    res.writeHead(303, { location: to, "set-cookie": app.live.readOnly.cookie(c.ok.id), "cache-control": "no-store", "referrer-policy": "no-referrer" });
     return void res.end();
   }
   if (app.access && asksForPage(req, path) && (!c || !letIn(app, req))) return sendAccessPage(res, "link", app.publicRead);
@@ -57,7 +57,9 @@ export function identityGet(app: App, req: IncomingMessage, res: ServerResponse,
   const person = app.ids.person(req);
   const holder = app.ids.taken(req);
   const ended = link && "ended" in link ? link : null;
-  if (reader !== undefined) return sendJson(res, { mode: app.ids.mode, name: null, readOnly: { by: reader === "public" ? "public" : "link" } });
+  // a read-only reader is told whether their link joins the call (CallSpec decision 4)
+  const call = reader !== undefined && reader !== "public" && app.live.call !== null && !!app.live.readOnly.get(reader)?.call;
+  if (reader !== undefined) return sendJson(res, { mode: app.ids.mode, name: null, readOnly: { by: reader === "public" ? "public" : "link", ...(call ? { call: true } : {}) } });
   return sendJson(res, {
     mode: app.ids.mode,
     name: app.ids.who(req),

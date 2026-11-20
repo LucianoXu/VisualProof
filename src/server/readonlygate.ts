@@ -8,7 +8,7 @@ export function readOnlyAllows(method: string, path: string): boolean {
   const read = method === "GET" || method === "HEAD";
   if (read) {
     // the page and its files: its fonts, the tips' clips (GuideSpec decision 6)
-    if (path === "/" || path === "/index.html" || path === "/style.css" || /^\/(app|layout|edges|pdfworker)\.js(\.map)?$/.test(path) || path.startsWith("/pdfjs/") || path.startsWith("/fonts/") || path.startsWith("/tips/")) return true;
+    if (path === "/" || path === "/index.html" || path === "/style.css" || /^\/(app|layout|edges|pdfworker|call)\.js(\.map)?$/.test(path) || path.startsWith("/pdfjs/") || path.startsWith("/fonts/") || path.startsWith("/tips/")) return true;
     // the graph, its sources and Lean's answers, the review, the build status, what happened, the
     // views, the history, the library, the printed document's state and files, who the reader is
     // and the link they came by, VisualProof's version, and the event stream every change comes by
@@ -27,6 +27,9 @@ export function readOnlyAllows(method: string, path: string): boolean {
   // whom the page follows, so as to be sent the pointers of its room (the owner's decisions of
   // 2026-10-20): its own pointer is relayed to nobody, and it is counted nowhere
   if (method === "POST" && path === "/api/pointer") return true;
+  // the call, by a read-only link that joins it (CallSpec decision 4): a token, and leaving; the
+  // route asks the link, and lets them do nothing else there
+  if (method === "POST" && (path === "/api/call/token" || path === "/api/call/leave")) return true;
   return false;
 }
 

@@ -30,6 +30,13 @@ into the latest release only.
 - **Claude Code and Anthropic**, where the server runs its own agent (`--claude-oauth`,
   experimental, off by default): the `claude` program found on the server's PATH (or `~/.local/bin`), as installed,
   and Anthropic's service it talks to.
+- **The LiveKit server**, where the server has a call (`--livekit-url`, off by default;
+  SPEC/CallSpec.md): the pages connect to it directly, and every camera, microphone and screen in
+  the call goes through it (and its TURN relay), never through VisualProof. Whoever runs that
+  LiveKit server, and holds its API keys, can see and hear the call, and let anyone into it: an API
+  key mints tokens for every room of its server, and a key shared with another application grants
+  that application the same (VisualProof's room is `visualproof-<id>`, kept apart by its name
+  alone). The page loads LiveKit's client from the server itself (`call.js`): no outside script.
 - **The npm registry and VisualProof's publisher**, as at the first install, and unattended: with
   `--updates auto` (the default) a server downloads the patch releases of the version it runs,
   through npm, and restarts into them by itself, nobody looking (SPEC/UpdateSpec.md). What it
@@ -260,6 +267,22 @@ into the latest release only.
   sent its room's, and is counted nowhere: the reader it follows is told only that someone unseen
   follows them, never who nor how many, so that their page sends its pointer. There is no way to hide one's pointer from those who
   follow: whoever is followed is watched anyway; going private ends being followed.
+- **The call** (`--livekit-url`; SPEC/CallSpec.md). Everyone let in fully may join it, under the
+  name they go by — a guest's as free as anywhere (a ✓ for a personal link's holder) — and, once in
+  it, end it for everyone, remove a participant and invite someone here: the people let in are
+  equals. A page asks for its token by its event stream's secret (`POST /api/call/token`, at most 10
+  a minute); the token lasts 10 minutes, grants that one room alone, and names the participant by
+  an identity the server makes from the page's own tab (an HMAC under a secret kept in the site), so
+  that no page can take another's place. A read-only reader joins only by a read-only link made to
+  join the call, under a name they give (not a personal link holder's), marked read-only, and does
+  nothing to anyone else; `--public`'s readers and agents have no call. A private reader goes
+  visible to join. Who is in the call — names, and their pages as presence lists them — is told to
+  every page; nothing of a call is recorded or kept. A participant removed, or whose link was
+  revoked or stopped joining the call, is removed from LiveKit again whenever it comes back with a
+  token it had, until it asks for a new one, which a revoked page cannot; one whose page went is
+  removed within a minute. Removing is no ban: whoever is let in may ask for a token again and come
+  back; revoking their link (or replacing the key) is what keeps someone out. The LiveKit key never leaves the server: it is not logged, not sent to a
+  page, and no program the server runs is given `LIVEKIT_*`.
 
 ## Secrets at rest
 
@@ -269,7 +292,9 @@ again, and a personal link is shown again to its holder; of a personal link made
 digest alone, until its holder makes it anew), and the conversations (`chat/`: the public channel 90
 days, the private ones 30, each person's with the server's agent among them); the access key is
 wherever `--access-key-file` names, and the Claude Code token wherever `--claude-oauth` names
-(never in the site: 0.10's `claude-tokens.json` is deleted at the start). Keep them readable by the
+(never in the site: 0.10's `claude-tokens.json` is deleted at the start), and the LiveKit API key
+wherever `--livekit-keys` names (a file its owner alone may read, or the server's environment); the
+site's `call.json` holds the call's room and the secret its identities are made with. Keep them readable by the
 server's user alone, back the site folder up as you would any secret, and never commit it.
 
 ## Code at rest
@@ -294,7 +319,8 @@ dependencies, which the server's Lean programs import; each build's log; and wit
   where whoever can push is trusted with them.
 - Give it `--access-key-file`, or an authenticating proxy that is the only way in; `--public` only
   for a project meant to be public.
-- Put TLS in front of anything that leaves a trusted network.
+- Put TLS in front of anything that leaves a trusted network: a call's LiveKit server too
+  (`wss://`, and its TURN relay over TLS), which browsers require for a camera anyway.
 - Keep the project's toolchain, Poppler and Node up to date. A server takes VisualProof's patches
   by itself (`--updates auto`); a newer minor version is told of in its log, `visualproof doctor`
   and the page's help, and installed by hand. On a machine that must not reach the network, give

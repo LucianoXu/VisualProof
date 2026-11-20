@@ -100,6 +100,7 @@ export const ITEMS: readonly { id: string; label: string }[] = [
   { id: "export-btn", label: "Export" },
   { id: "activity-btn", label: "Activity" },
   { id: "talk-btn", label: "Conversations" },
+  { id: "call-btn", label: "Call" },
   { id: "who", label: "" },
   { id: "help-btn", label: "Help" },
 ];
@@ -144,7 +145,7 @@ const EDGE_PX = 12;
 /** Where the sheets are on a tall screen: the panel, or Activity or the lost-and-found in its place;
  *  then the floating windows docked there (style.css), and Export's window. */
 const SHEETS = ["panel", "activity", "lostfound"];
-const DOCKED = "#windows > :is(.sw-win, .pw-win, #convo):not(.collapsed, [hidden])";
+const DOCKED = "#windows > :is(.sw-win, .pw-win, #convo, #call):not(.collapsed, [hidden])";
 
 /** A tall screen's board room, in px from the screen's edges (web/src/pagelayout.ts, the canvas's insets):
  *  the whole width; under the view bar, the review strip and the selection bar; above the sheet or the
@@ -301,6 +302,8 @@ export class Phone {
     const badges: Record<string, () => string> = {
       "activity-btn": () => shown("activity-badge", "act-badge"),
       "talk-btn": () => shown("talk-badge", "act-badge") + shown("talk-at", "talk-at"),
+      // how many are in the call (CallSpec)
+      "call-btn": () => shown("call-badge", "act-badge"),
       // who follows the reader (the owner's decision of 2026-10-20), as the name's mark says it
       who: () => {
         const said = document.getElementById("who-fol")?.getAttribute("aria-label");

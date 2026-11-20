@@ -62,6 +62,13 @@ it is packed. Pack it, then install the file.
   `scripts/e2e/smoke.mjs`: two people, an agent, a message, a screenshot of each page in each
   theme, a read-only reader, a phone, a public site; copy it to start a scenario of your own. It
   needs Playwright (as below, "Real projects"), and is not part of `npm test`.
+  `node scripts/e2e/call.mjs --project <a built Lean project>` tries the call (SPEC/CallSpec.md):
+  it runs a LiveKit server of its own in dev mode on free ports of 127.0.0.1 (`livekit-server`:
+  `--livekit-server path`, VP_LIVEKIT, `/opt/livekit/livekit-server` or the PATH), Chromium with a
+  fake camera and microphone, and five people — a call started and joined by its link, the window
+  maximized, small and collapsed, a hand, an invite, a read-only reader, a removal, a reload's
+  Rejoin, a phone, the end for everyone. The built fixture serves (copy `test/fixture` to a
+  temporary folder and `lake build` it there).
 
 ## Real projects
 

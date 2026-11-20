@@ -275,6 +275,10 @@ export const YOURS = [
   // link followed from a message — the reader's own tool changing a followed part, which says so
   // itself (web/src/talk.ts) — and Esc; its button and a mention's notice open it
   { id: "conversation", what: "the conversation window — its channels, its thread, its box, a link to what you see —, the conversation button and a mention's notice", where: "#convo, #talk-btn, #talk-notice", whole: true },
+  // the reader's own call (CallSpec decisions 5 and 8): following never opens, closes or moves its
+  // window, and nothing in it ends following — Follow and Ask everyone to follow me in it are the
+  // people's menu's, which start following, as their initials' do
+  { id: "call", what: "the call: its window — the pre-join, the tiles, the controls, People —, its button and its notices", where: "#call, #call-btn, #call-notice", whole: true },
   { id: "followingStrip", what: "the following strip: whom you follow, and its ✕; once following has ended by a move, Follow again", where: "#following", whole: true },
   { id: "hoverCards", what: "hover cards", where: ".hcard" },
   // the InfoView hidden or shown (ReviewSpec, "The InfoView"): how the reader looks at the source

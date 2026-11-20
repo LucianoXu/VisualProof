@@ -7,6 +7,7 @@
 import type { BuildDelta, BuildRev, BuildStatus } from "../../shared/build.ts";
 import type { ChatEvent, ChatStateEvent, Invited, PrivateCount, StreamHello } from "../../shared/collab.ts";
 import type { PointerNews } from "../../shared/pointer.ts";
+import type { CallBy, CallInvite, CallState } from "../../shared/call.ts";
 import type { ViewMeta } from "../../shared/graph.ts";
 import type { ReviewRev } from "../../shared/review.ts";
 import { LiveBuild } from "./buildread.ts";
@@ -185,6 +186,8 @@ export function livePart(page: Page): LivePart {
       if (page.exportModal.isOpen) return "the export window";
       if (page.artLook) return "the artwork mode";
       if (page.linear.shown) return "the linear form";
+      // a reload would leave the call (CallSpec, "Reloading")
+      if (page.calls.inCall) return "the call";
       return null;
     },
     kept: () => ({
@@ -250,6 +253,8 @@ export function livePart(page: Page): LivePart {
       void page.people.connected(hello).then(() => !reader && page.talk.connected());
       // a stream of its own again: a read-only page says again whom it follows
       page.pointers.connected();
+      // a page in the call is named again by its new stream (the server came back)
+      page.calls.connected();
       updatingTo = null;
       reloader.hello(hello.server);
       // the release this page's code is of, once it is the server's (GuideSpec decision 11): a page
@@ -297,6 +302,12 @@ export function livePart(page: Page): LivePart {
     es.addEventListener("ask", (e) => page.asking.asked(JSON.parse((e as MessageEvent).data) as AskFollow));
     es.addEventListener("ask-answer", (e) => page.asking.answered(JSON.parse((e as MessageEvent).data) as AskAnswered));
     es.addEventListener("ask-end", (e) => page.asking.ended((JSON.parse((e as MessageEvent).data) as { id: string }).id));
+    // the call (CallSpec): who is in it, where the server has one; this page invited, removed; the
+    // call ended
+    es.addEventListener("call", (e) => page.calls.heard(JSON.parse((e as MessageEvent).data) as CallState));
+    es.addEventListener("call-invite", (e) => page.calls.invited(JSON.parse((e as MessageEvent).data) as CallInvite));
+    es.addEventListener("call-removed", (e) => page.calls.removed(JSON.parse((e as MessageEvent).data) as CallBy));
+    es.addEventListener("call-ended", (e) => page.calls.ended(JSON.parse((e as MessageEvent).data) as CallBy));
     es.addEventListener("views", (e) => {
       const d = JSON.parse((e as MessageEvent).data);
       if (d.all && !reconnected) {
