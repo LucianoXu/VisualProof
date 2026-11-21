@@ -5,6 +5,12 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.12.1
+
+- Blur your background in the call: None, Blur or Strong blur, chosen before joining (the preview shows it) or from the camera's menu. It runs in your browser, on a model and a runtime your server serves, and your camera is never sent unblurred by surprise.
+- Take the call out of the page: Picture-in-picture, in the call's controls, moves the call into a small window over every other (Chrome, Edge), so that it stays in sight as you switch tabs or apps; in Safari, the large tile's video goes into the browser's own picture-in-picture.
+- The board is drawn again after the graphics card's context is lost and given back, rather than staying blank until the page is reloaded.
+
 ## 0.12.0
 
 - Talk face to face beside the board: start the server with `--livekit-url wss://… --livekit-keys <file>` (a LiveKit server of yours, or LiveKit Cloud), and a camera button in the bar opens the call window — moved, resized, collapsed to a pill, maximized. Before joining you see your camera and choose your devices; in the call, Auto, Grid or Speaker, presenting a screen, a raised hand, reactions, People with Invite, and Follow me, which shows everyone the board itself rather than a shared screen. Nothing of a call is recorded or kept.
