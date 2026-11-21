@@ -5,6 +5,11 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.12.0
+
+- Talk face to face beside the board: start the server with `--livekit-url wss://… --livekit-keys <file>` (a LiveKit server of yours, or LiveKit Cloud), and a camera button in the bar opens the call window — moved, resized, collapsed to a pill, maximized. Before joining you see your camera and choose your devices; in the call, Auto, Grid or Speaker, presenting a screen, a raised hand, reactions, People with Invite, and Follow me, which shows everyone the board itself rather than a shared screen. Nothing of a call is recorded or kept.
+- Bring someone straight into the call: Copy call link in the call window, or Join the call on Share's guest link, gives a link whose holder finds the call one press away. A read-only link can be made to join the call too (Share: Can join the call): its holder joins under a name they give, marked read-only, and is seen in the call alone.
+
 ## 0.11.2
 
 - Widen or narrow the InfoView: drag its left edge beside the code, or double-click it for its own width; every source window takes it, kept in this browser.
