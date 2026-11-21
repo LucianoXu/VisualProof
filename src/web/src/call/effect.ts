@@ -21,7 +21,13 @@ export class EffectUnsupported extends Error {
 export interface EffectEvents {
   /** the effect costs this computer too much: `ms` a frame on average */
   slow(ms: number): void;
+  /** the effect, lost under the camera, could not be put back on */
+  failed(e: unknown): void;
 }
+
+/** how many times an effect lost under the camera is put back on within a minute, at most: past that
+ *  the page holds more WebGL than the browser keeps, and another processor would push out another */
+const HEALS_A_MINUTE = 3;
 
 export class CameraEffect {
   private readonly events: EffectEvents;
@@ -30,6 +36,9 @@ export class CameraEffect {
   private queue: Promise<void> = Promise.resolve();
   private pending = 0;
   private readonly load = new FrameLoad();
+  private heals: number[] = [];
+  /** the frames the effect has drawn on this page (for diagnosis: the call's test reads it) */
+  frames = 0;
 
   constructor(events: EffectEvents) {
     this.events = events;
@@ -38,6 +47,11 @@ export class CameraEffect {
   /** Whether this browser can blur at all: where it cannot, no effect is offered. */
   get supported(): boolean {
     return blur.supported();
+  }
+
+  /** The reader is about to choose an effect: its runtime is fetched meanwhile. */
+  prefetch(): void {
+    blur.prefetch();
   }
 
   /** the effect `track` carries now */
@@ -81,13 +95,33 @@ export class CameraEffect {
       this.on.set(track, effect);
       return;
     }
-    const p = await blur.blurProcessor(blurRadius(effect), (ms) => this.frame(ms));
+    let p: Awaited<ReturnType<typeof blur.blurProcessor>> | null = null;
+    p = await blur.blurProcessor(
+      blurRadius(effect),
+      (ms) => this.frame(ms),
+      () => p && this.lost(track, p),
+    );
     await track.setProcessor(p);
     this.on.set(track, effect);
     this.load.reset(performance.now());
   }
 
+  /** The processor's WebGL context was lost under the camera (the graphics card reset, or the
+   *  browser dropped it for newer ones), which then shows nothing: the effect is put on again, by a
+   *  processor of its own. */
+  private lost(track: LocalVideoTrack, p: unknown): void {
+    const effect = this.of(track);
+    if (effect === "none" || track.getProcessor() !== p) return;
+    const now = performance.now();
+    this.heals = this.heals.filter((t) => now - t < 60_000);
+    if (this.heals.length >= HEALS_A_MINUTE) return this.events.failed(new Error("The background effect keeps losing the graphics card."));
+    this.heals.push(now);
+    this.on.delete(track);
+    this.apply(track, effect).catch((e: unknown) => this.events.failed(e));
+  }
+
   private frame(ms: number): void {
+    this.frames++;
     if (!this.load.add(ms, performance.now())) return;
     const avg = this.load.mean();
     if (avg !== null) this.events.slow(avg);

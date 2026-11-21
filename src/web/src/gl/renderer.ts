@@ -253,6 +253,11 @@ interface Layer {
  *  (shared/collab.ts, ART_MAX_SIDE) */
 const NO_CARD_SIDE = 16384;
 
+/** a lost context not back by itself is asked back after this, then after twice as long each time,
+ *  up to the last */
+const ASK_BACK_FIRST_MS = 1000;
+const ASK_BACK_LAST_MS = 15_000;
+
 /** The board's drawing on the graphics card; or, given no canvas (`new Renderer(null)`: the artwork
  *  command, ExportSpec decision 21), kept to its data — the layers' instances, which an artwork's SVG
  *  reads (`drawn`) — with nothing drawn or uploaded. */
@@ -287,15 +292,43 @@ export class Renderer {
     if (!gl) throw new Error("WebGL2 is not available in this browser");
     this.gl = gl;
     this.setup(gl);
-    // A context can be lost — the graphics card reset, its process restarted (a page that runs
-    // other WebGL beside the board, as the call's background blur does, makes it likelier) — and the
-    // browser gives it back when asked to (preventDefault): everything is put on the card again, and
-    // the board drawn again. Without this the board stayed blank until the page was reloaded.
+    // A context can be lost — the graphics card reset, its process restarted, or the page holding
+    // more contexts than the browser keeps (Chrome: 16), when it drops the oldest, which is the
+    // board's — and the browser gives it back when asked to (preventDefault): everything is put on
+    // the card again, and the board drawn again. Without this the board stayed blank until the page
+    // was reloaded. A context dropped for others is given back by Chrome only once one of those goes
+    // — maybe never — so the board asks for it itself (askBack).
+    this.loseExt = gl.getExtension("WEBGL_lose_context");
     canvas.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
       this.lost = true;
+      this.askBack(ASK_BACK_FIRST_MS);
     });
     canvas.addEventListener("webglcontextrestored", () => this.restore(gl));
+    document.addEventListener("visibilitychange", () => {
+      if (this.lost && document.visibilityState === "visible") this.askBack(ASK_BACK_FIRST_MS);
+    });
+  }
+
+  /** WEBGL_lose_context: what asks the browser for the context back (kept from before it was lost:
+   *  a lost context gives out no extension) */
+  private loseExt: WEBGL_lose_context | null = null;
+  private askTimer = 0;
+
+  /** The context still lost after `ms`, it is asked back — again and again, each time later, while
+   *  it is not back and the page is in sight. A context given back pushes out the oldest other one,
+   *  where there are too many: never the board's again. */
+  private askBack(ms: number): void {
+    clearTimeout(this.askTimer);
+    this.askTimer = window.setTimeout(() => {
+      if (!this.lost || document.visibilityState !== "visible") return;
+      try {
+        this.loseExt?.restoreContext();
+      } catch {
+        // asked too early or not allowed: asked again later
+      }
+      this.askBack(Math.min(ms * 2, ASK_BACK_LAST_MS));
+    }, ms);
   }
 
   /** What every draw uses: the programs, the positions' texture, the corners' buffers. */
@@ -317,6 +350,8 @@ export class Renderer {
    *  again on it; the board told to draw again. */
   private restore(gl: WebGL2RenderingContext): void {
     this.lost = false;
+    clearTimeout(this.askTimer);
+    this.loseExt = gl.getExtension("WEBGL_lose_context");
     this.setup(gl);
     this.uniforms.clear();
     this.posRows = 0;

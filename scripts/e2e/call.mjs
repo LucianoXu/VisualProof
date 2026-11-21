@@ -95,6 +95,19 @@ const tiles = (p) => p.page.locator("#call .cl-tile").count();
 try {
   // ---------------------------------------------------------------- Alice starts the call
   const alice = await media(await guest(b, S, "Alice"));
+  // every WebGL context the page makes from here on, counted (the call's bundle is not loaded yet)
+  await alice.page.evaluate(() => {
+    window.__webgl = 0;
+    for (const C of [HTMLCanvasElement, OffscreenCanvas]) {
+      const get = C.prototype.getContext;
+      const seen = new WeakSet();
+      C.prototype.getContext = function (type, ...rest) {
+        const ctx = get.call(this, type, ...rest);
+        if (/webgl/.test(type) && ctx && !seen.has(ctx)) (seen.add(ctx), window.__webgl++);
+        return ctx;
+      };
+    }
+  });
   out.check(await until(alice, () => !document.getElementById("call-btn").hidden, null, "the call button"), "the bar has the call's button");
   await alice.page.click("#call-btn");
   out.check(await until(alice, () => !!document.querySelector("#call .cl-pre"), null, "the pre-join"), "the button opens the call window on the pre-join");
@@ -109,6 +122,10 @@ try {
     if (u.pathname.startsWith("/mediapipe/") || !u.host.startsWith("127.0.0.1")) fetched.push(`${r.status()} ${u.host}${u.pathname}`);
   });
   if (await alice.page.locator("#call select[data-effect]").count()) {
+    // the pointer on the choice: the runtime fetched ahead, before anything is chosen
+    await alice.page.hover("#call select[data-effect]");
+    for (let k = 0; k < 100 && !fetched.some((f) => /vision_wasm_(nosimd_)?internal\.wasm$/.test(f)); k++) await sleep(100);
+    out.check(fetched.some((f) => /vision_wasm_(nosimd_)?internal\.wasm$/.test(f)), "the pointer on the background's choice fetches the blur's runtime ahead");
     await alice.page.selectOption("#call select[data-effect]", "blur");
     // the runtime fetched (once a page), then the blur put on the preview
     for (let k = 0; k < 300 && !fetched.some((f) => /vision_wasm_(nosimd_)?internal\.wasm$/.test(f)); k++) await sleep(100);
@@ -122,6 +139,32 @@ try {
   await alice.page.click("#call [data-act=join]");
   out.check(await until(alice, () => !!document.querySelector("#call .cl-call .cl-tile.video"), null, "Alice's own tile"), "joined: her own tile shows her camera");
   out.check(await until(alice, () => document.getElementById("call-badge").textContent === "1", null, "the count"), "the button counts 1 in the call");
+  // the blur's check of WebGL asked once, the processor's one context: not one more at each drawing
+  const glMade = await alice.page.evaluate(() => window.__webgl);
+  out.check(glMade <= 3, `blurred and in the call, the page made ${glMade} WebGL contexts (at most 3: the check, the processor's)`);
+  // Alice's blur going on: the frames it draws in 2 s (Alice alone in the call: headless, every page's
+  // WebGL is drawn by one emulated graphics card, which a second page's board slows to a crawl)
+  const blurFrames = async () => {
+    const f0 = await alice.page.evaluate(() => window.visualproof.call.effectFrames());
+    await sleep(2000);
+    return (await alice.page.evaluate(() => window.visualproof.call.effectFrames())) - f0;
+  };
+  const blurBefore = await blurFrames();
+  // more WebGL contexts on the page than the browser keeps (Chrome: 16): it drops the oldest, the
+  // board's and the blur's — the board asks its own back, the blur is put on again by a new processor
+  await alice.page.evaluate(() => {
+    window.__held = [];
+    for (let i = 0; i < 20; i++) window.__held.push(document.createElement("canvas").getContext("webgl2"));
+  });
+  out.check(await until(alice, () => document.getElementById("canvas").getContext("webgl2").isContextLost(), null, "the board's context dropped", 5000), "20 more WebGL contexts: the browser drops the board's");
+  out.check(await until(alice, () => window.visualproof?.canvas?.gl?.restores === 1 && !document.getElementById("canvas").getContext("webgl2").isContextLost(), null, "the board's context asked back", 10_000), "the board asks its context back by itself, and is drawn again");
+  await sleep(2000);
+  const blurAfter = await blurFrames();
+  out.check(blurBefore > 0 && blurAfter > 0, `Alice's blur goes on after its context was dropped: a new processor takes over (${blurAfter} frames in 2 s; before: ${blurBefore})`);
+  out.check(!(await alice.page.locator("#call .cl-err").count()), "no error after the dropped contexts");
+  await alice.page.evaluate(() => window.__held.splice(0).forEach((gl) => gl?.getExtension("WEBGL_lose_context")?.loseContext()));
+  await sleep(500);
+  await cam.shot(alice, "board-after-eviction");
 
   // ---------------------------------------------------------------- Bob comes by a call link
   const bob = await media(await guest(b, S, "Bob"));
@@ -142,9 +185,19 @@ try {
     ext.loseContext();
     setTimeout(() => ext.restoreContext(), 300);
   });
-  out.check(await until(alice, () => window.visualproof?.canvas?.gl?.restores === 1 && !document.getElementById("canvas").getContext("webgl2").isContextLost(), null, "the board's context back"), "the board's WebGL context lost and back: the board is drawn again");
+  out.check(await until(alice, () => window.visualproof?.canvas?.gl?.restores === 2 && !document.getElementById("canvas").getContext("webgl2").isContextLost(), null, "the board's context back"), "the board's WebGL context lost and back: the board is drawn again");
   await sleep(500);
   await cam.shot(alice, "board-restored");
+  // ✕ pressed once asks, on one line, its question in full
+  await alice.page.click("#call .cl-head [data-cl-close]");
+  const armed = await alice.page.evaluate(() => {
+    const x = document.querySelector("#call .cl-head [data-cl-close]");
+    const r = x.getBoundingClientRect();
+    return { armed: x.classList.contains("armed"), w: Math.round(r.width), h: Math.round(r.height), fits: x.scrollWidth <= x.clientWidth + 1 && x.scrollHeight <= x.clientHeight + 1 };
+  });
+  out.check(armed.armed && armed.h <= 26 && armed.w >= 120 && armed.fits, `✕ pressed once: "Leave the call?" on one line, in full (${armed.w}×${armed.h})`);
+  await cam.shot(alice, "close-armed");
+  out.check(await until(alice, () => !document.querySelector("#call .cl-head [data-cl-close]").classList.contains("armed"), null, "the ✕ disarmed", 6000), "not pressed again, ✕ is a cross again");
 
   // ---------------------------------------------------------------- picture-in-picture
   if (await alice.page.evaluate(() => "documentPictureInPicture" in window)) {
