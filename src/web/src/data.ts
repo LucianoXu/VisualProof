@@ -236,10 +236,16 @@ export interface DataSource {
    *  where there are none to have (a snapshot, a server that lets in anyone or is behind a
    *  sign-in, a read-only reader) or the server cannot be reached */
   readOnlyLinks(): Promise<ReadOnlyLinkShown[] | null>;
-  /** a read-only link, made under this reader's name if they have one, or why not */
-  makeReadOnly(): Promise<{ made: ReadOnlyLinkShown; links: ReadOnlyLinkShown[] } | { error: string }>;
+  /** a read-only link, made under this reader's name if they have one — able to join the call where
+   *  `call` (CallSpec decision 4) — or why not */
+  makeReadOnly(call?: boolean): Promise<{ made: ReadOnlyLinkShown; links: ReadOnlyLinkShown[] } | { error: string }>;
   /** revoke a read-only link: the links after, or why not (`who`: a name is needed) */
   revokeReadOnly(id: string): Promise<{ links?: ReadOnlyLinkShown[]; error?: string; who?: boolean }>;
+  /** whether a read-only link joins the call, switched: the links after, or why not */
+  readOnlyCall(id: string, call: boolean): Promise<{ links?: ReadOnlyLinkShown[]; error?: string }>;
+  /** a request of the call's (POST /api/call/…, CallSpec): its status and its body; a snapshot has
+   *  no call */
+  callPost(path: string, body: Record<string, unknown>): Promise<{ status: number; body: Record<string, unknown> }>;
   /** a channel of the conversations (CollabSpec decision 13): `public`, or an agent's private one by
    *  the agent's id in presence; its newest messages (before message `before`), oldest first; null
    *  where it cannot be read (no name, not the reader's, no server) */
@@ -312,7 +318,7 @@ export interface Identity {
   /** the personal link this page came by, made anew since in another browser: when */
   replaced?: { at: string; name: string };
   /** a read-only reader (CollabSpec decision 11): let in by a read-only link, or by --public */
-  readOnly?: { by: "link" | "public" };
+  readOnly?: { by: "link" | "public"; call?: true };
 }
 
 /** What a page may share (`GET /api/share`, web/src/share.ts). */
@@ -504,6 +510,8 @@ function snapshotSource(info: { createdAt: string; label: string }): DataSource 
     readOnlyLinks: async () => null,
     makeReadOnly: async () => ({ error: "a snapshot has no server to share" }),
     revokeReadOnly: async () => ({ error: "a snapshot has no server" }),
+    readOnlyCall: async () => ({ error: "a snapshot has no server" }),
+    callPost: async () => ({ status: 404, body: { error: "a snapshot has no call" } }),
     chat: async () => null,
     sendChat: async () => ({ error: "a snapshot has no server" }),
     newChat: async () => ({ error: "a snapshot has no server" }),
@@ -657,14 +665,22 @@ function serverSource(): DataSource {
         .then((r) => (r.ok ? r.json() : null))
         .then((b: { links?: ReadOnlyLinkShown[] } | null) => b?.links ?? null)
         .catch(() => null),
-    makeReadOnly: () =>
-      fetch("/api/share/readonly", { method: "POST", headers: headers(), body: "{}" })
+    makeReadOnly: (call) =>
+      fetch("/api/share/readonly", { method: "POST", headers: headers(), body: JSON.stringify(call ? { call: true } : {}) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
     revokeReadOnly: (id) =>
       fetch("/api/share/readonly/revoke", { method: "POST", headers: headers(), body: JSON.stringify({ id }) })
         .then((r) => r.json())
         .catch(() => ({ error: "the server could not be reached" })),
+    readOnlyCall: (id, call) =>
+      fetch("/api/share/readonly/call", { method: "POST", headers: headers(), body: JSON.stringify({ id, call }) })
+        .then((r) => r.json())
+        .catch(() => ({ error: "the server could not be reached" })),
+    callPost: (path, body) =>
+      fetch(path, { method: "POST", headers: headers(), body: JSON.stringify(body) })
+        .then(async (r) => ({ status: r.status, body: ((await r.json().catch(() => ({}))) ?? {}) as Record<string, unknown> }))
+        .catch(() => ({ status: 0, body: { error: "the server could not be reached" } })),
     activity: () =>
       fetch("/api/activity")
         .then((r) => (r.ok ? r.json() : { events: [] }))

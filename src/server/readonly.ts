@@ -39,7 +39,7 @@ export type ReadOnlyCheck = { ok: ReadOnlyLink } | { ended: "revoked"; link: Rea
 const sha = (s: string) => createHash("sha256").update(s).digest();
 const cookieValue = (r: Record_) => `${r.id}.${sha(`visualproof read-only cookie\0${r.token}`).toString("base64url")}`;
 const same = (a: string, b: string) => timingSafeEqual(sha(a), sha(b));
-const info = (r: Record_): ReadOnlyLink => ({ id: r.id, path: `${READONLY_PATH}${r.token}`, by: r.by, created: r.created, revoked: r.revoked, revokedBy: r.revokedBy, lastUsed: r.lastUsed });
+const info = (r: Record_): ReadOnlyLink => ({ id: r.id, path: `${READONLY_PATH}${r.token}`, by: r.by, created: r.created, revoked: r.revoked, revokedBy: r.revokedBy, lastUsed: r.lastUsed, ...(r.call ? { call: true as const } : {}) });
 
 export class ReadOnlyLinks {
   private file: string | null;
@@ -71,12 +71,13 @@ export class ReadOnlyLinks {
     }
   }
 
-  /** Make a link, by `by` (null: someone who gave no name). */
-  create(by: string | null, now = Date.now()): ReadOnlyLink {
+  /** Make a link, by `by` (null: someone who gave no name); `call`: its holder may join the call
+   *  (CallSpec decision 4). */
+  create(by: string | null, now = Date.now(), call = false): ReadOnlyLink {
     let id: string;
     do id = randomBytes(5).toString("hex");
     while (this.records.some((r) => r.id === id));
-    const r: Record_ = { id, token: `${READONLY_PREFIX}${id}_${randomBytes(32).toString("base64url")}`, by, created: new Date(now).toISOString(), revoked: null, revokedBy: null, lastUsed: null };
+    const r: Record_ = { id, token: `${READONLY_PREFIX}${id}_${randomBytes(32).toString("base64url")}`, by, created: new Date(now).toISOString(), revoked: null, revokedBy: null, lastUsed: null, ...(call ? { call: true as const } : {}) };
     this.records.push(r);
     this.save();
     return info(r);
@@ -128,6 +129,17 @@ export class ReadOnlyLinks {
   get(id: string): ReadOnlyLink | undefined {
     const r = this.records.find((x) => x.id === id);
     return r ? info(r) : undefined;
+  }
+
+  /** Whether a link in force joins the call, switched (CallSpec decision 4): the link as it is
+   *  now, or null where there is no such link in force. */
+  setCall(id: string, call: boolean): ReadOnlyLink | null {
+    const r = this.records.find((x) => x.id === id);
+    if (!r || r.revoked) return null;
+    if (call) r.call = true;
+    else delete r.call;
+    this.save();
+    return info(r);
   }
 
   /** Revoke a link in force: it lets nobody in from now on, and its pages' streams end. */

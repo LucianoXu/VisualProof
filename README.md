@@ -46,7 +46,8 @@ It follows the repository's default branch and builds each new commit itself ([F
 branch](docs/MANUAL.md#following-a-branch)). Or, for the code you are editing:
 `cd my-lean-project && lake build && visualproof serve .`
 Add `--claude-oauth <file>`, the file holding the token `claude setup-token` prints, for its own AI
-agent on your Claude Code ([how](docs/MANUAL.md#run)).
+agent on your Claude Code ([how](docs/MANUAL.md#run)); `--livekit-url wss://… --livekit-keys <file>`
+for a video call on a [LiveKit](https://docs.livekit.io) server of yours ([how](docs/MANUAL.md#run)).
 
 It needs Node, elan and Poppler, and git to follow a branch ([Requirements](#requirements)). On the
 first visit the page offers a short tour of your own project; `?` holds the tips — a film of a
@@ -85,6 +86,9 @@ project's edge.
 - **A review together**: approve or comment on each declaration, mark targets and their key
   declarations, leave notes, link papers to declarations, and see what changed since an opinion was
   given. Everyone on the page sees it live.
+- **A video call** beside the board (with `--livekit-url`): in a window you move, resize, collapse
+  and maximize; a link that brings whoever opens it one press from the call; and *Follow me*, which
+  shows everyone the board itself rather than a shared screen.
 - **AI agents as reviewers**, through a JSON API and an MCP server. They read, advise and annotate
   under their own names, and their opinions stay advice. Experimentally (`--claude-oauth`), the
   server runs one of its own on your Claude Code, which everyone on the page talks with, each

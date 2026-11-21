@@ -245,6 +245,28 @@ The README says how to install the `visualproof` command. A checkout also runs a
   answer others on a subscription's token, so keep it to a small team that trusts each other that
   far ([SECURITY.md](../SECURITY.md)). A token Claude Code refuses later (expired, revoked) takes
   the agent offline: write a new one in the file and restart.
+- `--livekit-url wss://host` with `--livekit-keys <file>` (or `--livekit-keys env`): **a video
+  call** among the people here, in a window of the page (see Together; [CallSpec.md](../SPEC/CallSpec.md)).
+  It runs on a [LiveKit](https://docs.livekit.io) server of your choosing — your own, or LiveKit
+  Cloud: the pages connect to it directly, and their cameras, microphones and screens go through
+  it, never through VisualProof. Without `--livekit-url` there is no call at all. The keys file is
+  LiveKit's own form, one line `<key>: <secret>`, readable by the server's user alone (`chmod 600`);
+  `env` reads `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. `--livekit-api http://127.0.0.1:7880` is
+  where the server asks LiveKit who is in the call, when that is not `--livekit-url` (a LiveKit on
+  the same machine). A LiveKit of your own for a few people:
+
+  ```bash
+  livekit-server --generate-keys            # prints an API key and its secret
+  # livekit.yaml: port 7880, rtc.tcp_port 7881, rtc.udp_port 7882, keys: {<key>: <secret>},
+  # and a TLS proxy in front (wss://, and TURN over TLS for networks that block UDP)
+  (umask 077; echo "<key>: <secret>" > ~/.config/visualproof/livekit-keys)
+  visualproof serve <project> --livekit-url wss://livekit.example.org \
+    --livekit-keys ~/.config/visualproof/livekit-keys --livekit-api http://127.0.0.1:7880
+  ```
+
+  Several servers may share one LiveKit server, with one key each: each keeps its call in a room of
+  its own (`visualproof-<id>`). Browsers start a camera only on a secure page: serve VisualProof
+  over HTTPS (or on localhost).
 - `--public-url https://host` is the address people reach the server at, when it is not the one
   their browser sends (a proxy in front): every link Share makes (the guest link, read-only and
   personal links) and Copy link are made with it, and the prompt Share makes for an agent tells it
@@ -1591,6 +1613,25 @@ what each one looks at stays their own.
   each migration of what was said of a declaration to another name, leading to the lost-and-found.
   Filter by kind, to the targets you marked, or to people or agents; every event leads to what it
   is about.
+- **The call** (with `--livekit-url`; [CallSpec.md](../SPEC/CallSpec.md)): the camera button in
+  the bar, beside the conversations, counts who is in the call and opens **the call window** — a
+  floating window you move, resize from any edge, collapse to a one-line pill (the call goes on, its
+  microphone at hand) and maximize. It opens on the **pre-join**: your camera's preview, your
+  microphone's level, the devices, who is in the call, and **Join now**. In the call: everyone's
+  tile (their video, or their initials in their colour; a ring while they speak, a raised hand, a
+  muted microphone), in **Auto**, **Grid** or **Speaker**; a tile's ⋯ pins it large, follows its
+  person or asks them to follow you, or removes them from the call. Below: microphone and camera
+  (with their devices), **Present** (a screen, a window or a tab), raise your hand, react, **Follow
+  me** — everyone here asked to follow you, which shows the board better than a shared screen —,
+  **People** (who is in the call; who is here and not, each with **Invite**), the layout, and
+  **Leave**, beside it **End the call for everyone**. Smaller than 640×400 the window shows one
+  tile and four controls. Everyone let in fully joins as an equal; a reader without a name gives one
+  first, and a private reader goes visible. **Copy call link** (🔗 in the window's title) copies the
+  guest link with `?call`: whoever opens it finds the pre-join ready, one press from the call; Share's
+  guest link has the same switch, **Join the call**. A read-only link joins the call only where it
+  was made to (Share: **Can join the call**, also switched later in its row): its holder joins under
+  a name they give, marked read-only, and is seen in the call alone. A page reloaded in the call
+  offers **Rejoin** for five minutes. Nothing of a call is recorded or kept.
 - The server keeps this in the site directory (`<site>`): `views.json` (every kept view: scope, clustering,
   pins, folds and its own notes, who dropped each pin; and the project's notes, beside the views), `view-memory/` (each board's layout memory),
   `history/` (a snapshot of the graph at every build, for good, with the source texts it was
@@ -1601,7 +1642,8 @@ what each one looks at stays their own.
   is; ended ones are forgotten after 30 days), `person-invites.json` (the personal links, so that
   each is shown again to its holder — a digest alone of one made before 0.6.0 —, the names its
   holder had, who made it, when it was last used; readable by the owner alone as the access key is;
-  revoked ones are kept), `chat/public.jsonl` (the public channel, 90 days),
+  revoked ones are kept), `call.json` (with `--livekit-url`: the call's room and the secret its
+  participants' identities are made with, readable by the owner alone), `chat/public.jsonl` (the public channel, 90 days),
   `chat/<token id>.jsonl` (each agent's private channel, 30 days).
 
 ## How the TCB is computed

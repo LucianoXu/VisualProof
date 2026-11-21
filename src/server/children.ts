@@ -53,17 +53,18 @@ export function tracked<C extends ChildProcess>(child: C): C {
 
 /** The environment a program the server runs is given: the server's own, without what is the
  *  server's alone (`VISUALPROOF_*`: the supervisor's word to it, its test hooks; UpdateSpec decision
- *  9) and without Claude's and Anthropic's credentials (CREDENTIAL), with `extra` over it. */
+ *  9) and without Claude's, Anthropic's and LiveKit's credentials (CREDENTIAL), with `extra` over it. */
 export function childEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [k, v] of Object.entries(process.env)) if (!k.startsWith("VISUALPROOF_") && !CREDENTIAL(k)) env[k] = v;
   return { ...env, ...extra };
 }
 
-/** Claude's and Anthropic's credentials, where the server's environment has them: no program the
- *  server runs is given them (Lake, Lean, git, a branch's build, which runs whatever its code says);
- *  the server's own agent is given the --claude-oauth token alone (server/hosted.ts). */
-const CREDENTIAL = (k: string) => k === "CLAUDE_CODE_OAUTH_TOKEN" || k.startsWith("ANTHROPIC_");
+/** Claude's, Anthropic's and LiveKit's credentials, where the server's environment has them: no
+ *  program the server runs is given them (Lake, Lean, git, a branch's build, which runs whatever its
+ *  code says); the server's own agent is given the --claude-oauth token alone (server/hosted.ts),
+ *  and the call's keys (--livekit-keys env) stay the server's (CallSpec). */
+const CREDENTIAL = (k: string) => k === "CLAUDE_CODE_OAUTH_TOKEN" || k.startsWith("ANTHROPIC_") || k.startsWith("LIVEKIT_");
 
 /** How many tracked programs run now. */
 export function childCount(): number {

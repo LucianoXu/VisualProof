@@ -340,7 +340,7 @@ zoom, find and the box tool of the reference window; Share and its switch; Help 
 Library popover; ⚙ Board (`e`, `[`, `]`); Trusted; the Views menu; the focus menu; the build status
 (`b`); the search box (`/`); the filter over the artwork's names; the name, its menu and window; the
 others' initials and a person's menu; the request banner; the conversation window (decision 13) and
-the following strip; hover cards; the InfoView hidden or shown (ReviewSpec, "The InfoView"); the Export window's downloads (the owner's decision of
+the following strip; the call — its window, its button and its notices (CallSpec decisions 5 and 8); hover cards; the InfoView hidden or shown (ReviewSpec, "The InfoView"); the Export window's downloads (the owner's decision of
 2026-10-21: taking the file is reading); the pointer's highlight; the mark at an edge of another's pointer
 scrolled away; the frame meter (`p`). A
 control inside one that changes a followed part is that part's.

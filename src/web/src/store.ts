@@ -94,6 +94,9 @@ export interface Saved {
    *  from an older page. Nothing of the source windows is kept: each opens in the middle of the
    *  screen (decided 2026-10-09) */
   chat?: Kept;
+  /** the call window (web/src/pagecall.ts, CallSpec decision 5): where the reader put it and how
+   *  large; read back with care, as the conversation window's is */
+  call?: Kept;
   /** the conversation window left open by the reader, and the channel on show in it (`public`, or an
    *  agent's id in presence) */
   chatOpen?: true;

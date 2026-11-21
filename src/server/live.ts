@@ -75,6 +75,7 @@ import type { DeployStatus } from "../shared/deploy.ts";
 import { OutsideSources } from "./outside.ts";
 import type { Hosted, Turns } from "./hosted.ts";
 import type { OutsideFile } from "./outside.ts";
+import type { CallPage, CallRoom } from "./call.ts";
 
 const TICK = 1000;
 /** outputs quiet this long, and no compile running: the build is over */
@@ -263,6 +264,8 @@ export class Live {
   /** the requests to follow going on (CollabSpec decision 10, server/askfollow.ts): relayed to the
    *  pages asked through their streams, and their answers to the page that asked */
   readonly asks: Asks;
+  /** the call (CallSpec), where the server has one (--livekit-url): null without */
+  call: CallRoom | null = null;
   /** the "Open in editor" template the server was started with (shared/editor.ts) */
   readonly editor: string | null;
   /** the usage pass, `jobs` workers at a time (0: none) */
@@ -313,11 +316,23 @@ export class Live {
     // given the new cookie, come back as they were
     this.invites.onChanged = () => this.send("people", this.invites.people());
     this.invites.onEnded = (r, keep) => {
-      for (const st of [...this.streams.values()]) if (st.person === r.id && (keep === undefined || st.token !== keep)) this.close(st);
+      // revoked (not made anew): its participants leave the call at once, wherever their pages are
+      if (keep === undefined) this.call?.cutPerson(r.id);
+      for (const st of [...this.streams.values()])
+        if (st.person === r.id && (keep === undefined || st.token !== keep)) {
+          // a revoked link's page leaves the call at once, kept out (CallSpec, "As built")
+          this.call?.cutPage(st.token);
+          this.close(st);
+        }
     };
     this.readOnly = new ReadOnlyLinks(dirs.site);
     this.readOnly.onEnded = (l) => {
-      for (const st of [...this.streams.values()]) if (st.readOnly === l.id) this.close(st);
+      this.call?.cutLink(l.id);
+      for (const st of [...this.streams.values()])
+        if (st.readOnly === l.id) {
+          this.call?.cutPage(st.token);
+          this.close(st);
+        }
     };
     this.talk = new Talk(dirs.site);
     // the server's own agent hears what is written to it as it is written, and says its state itself
@@ -414,6 +429,29 @@ export class Live {
   pageStream(token: unknown): { id: string; private: boolean } | null {
     const st = typeof token === "string" ? this.byToken.get(token) : undefined;
     return st ? { id: st.id, private: st.private } : null;
+  }
+
+  /** The open page whose stream holds secret `token`, as the call needs it (server/call.ts). */
+  callPage(token: string): CallPage | null {
+    const st = this.byToken.get(token);
+    return st ? callPageOf(st) : null;
+  }
+
+  /** The open page presence lists as `id`, as the call needs it. */
+  callPageById(id: string): CallPage | null {
+    for (const st of this.streams.values()) if (st.id === id) return callPageOf(st);
+    return null;
+  }
+
+  /** Every open page is told (the call's news). */
+  broadcast(event: string, data: unknown): void {
+    this.send(event, data);
+  }
+
+  /** The page whose stream holds secret `token` is told, and no other. */
+  sendTo(token: string, event: string, data: unknown): void {
+    const st = this.byToken.get(token);
+    if (st) this.write(st.res, event, data);
   }
 
   /** The list of who is here goes out now, or with the next one if one went out just now: at most
@@ -1427,6 +1465,8 @@ export class Live {
   end(why: { update: { from: string; to: string } } | { stopped: true }): void {
     // the server's own agent stops with it; a turn cut short is answered at the next start
     this.hosted?.close();
+    // the call goes on on LiveKit: the pages come back to it with the server
+    this.call?.stop();
     const text = "update" in why ? `event: update\ndata: ${JSON.stringify(why.update)}\n\n` : `event: bye\ndata: ${JSON.stringify({ why: "stopped" })}\n\n`;
     for (const st of [...this.streams.values()]) {
       this.streams.delete(st.res);
@@ -1493,6 +1533,8 @@ export class Live {
     this.write(res, "presence", this.presence.list());
     this.write(res, "private", this.privateNow(st));
     this.write(res, "people", this.invites.people());
+    // who is in the call, where the server has one (CallSpec)
+    if (this.call) this.write(res, "call", this.call.state());
     // the views as they are: a page that was away (a restart, a lost connection) catches up, and
     // reads again the boards it has open
     this.write(res, "views", { views: this.views.list(), changes: [], all: true });
@@ -1622,6 +1664,8 @@ export class Live {
     this.streams.delete(st.res);
     this.byToken.delete(st.token);
     this.presence.drop(st.id);
+    // its participant in the call has a while to come back (a reload) before it goes
+    this.call?.streamClosed(st.token);
     // what its page was asked goes unanswered, and what it asked is withdrawn
     this.asks.closed(st.token);
     st.res.destroy();
@@ -1670,4 +1714,9 @@ function mayRead(st: Pick<Stream, "readOnly" | "name" | "person">, t: TokenRecor
   if (!t) return st.name !== null || st.person !== null;
   if (isPersonal(channel)) return personalChannel(t.id, { name: st.name, person: st.person }) === channel;
   return madeBy(t, { name: st.name, person: st.person });
+}
+
+/** An open stream as the call needs it (server/call.ts). */
+function callPageOf(st: Stream): CallPage {
+  return { token: st.token, id: st.id, private: st.private, readOnly: st.readOnly, name: st.name, person: st.person };
 }

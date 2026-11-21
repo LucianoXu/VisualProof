@@ -145,9 +145,11 @@ async function myLink(app: App, req: IncomingMessage, res: ServerResponse, path:
   return sendJson(res, { invite: Invites.info(made.record), link: `${address}${INVITE_PATH}${made.token}` });
 }
 
-/** Read-only links (CollabSpec decision 11), for people: every link (GET), a new one (POST), and
- *  revoking one (POST …/revoke). Anyone let in may make one; revoking needs a name, which Share
- *  says beside the link. A server open to all, or behind a sign-in, has none. */
+/** Read-only links (CollabSpec decision 11), for people: every link (GET), a new one (POST
+ *  {call?}), revoking one (POST …/revoke), and whether one joins the call (POST …/call {id, call};
+ *  CallSpec decision 4: a link that stops joining it takes its holders out of the call). Anyone let
+ *  in may make one; revoking needs a name, which Share says beside the link. A server open to all,
+ *  or behind a sign-in, has none. */
 export async function shareReadOnly(app: App, req: IncomingMessage, res: ServerResponse, url: URL): Promise<void> {
   if (app.ids.kind(req) === "agent") return sendJson(res, { error: "Read-only links are for people: an agent cannot make, list or revoke them." }, 403);
   if (!app.access || app.ids.header) return sendJson(res, { error: app.ids.header ? "Who comes in is the sign-in's, in front of this server: it has no read-only links." : "This server lets in whoever reaches it: a read-only link would let in no one more." }, 404);
@@ -166,7 +168,22 @@ export async function shareReadOnly(app: App, req: IncomingMessage, res: ServerR
     if (typeof id !== "string" || !links.revoke(id, me)) return sendJson(res, { error: "There is no such read-only link in force." }, 404);
     return sendJson(res, { ok: true, links: list() });
   }
+  if (path === "/api/share/readonly/call") {
+    const call = app.live.call;
+    if (!call) return sendJson(res, { error: "This server has no call." }, 404);
+    const r = await app.json(req, 4096);
+    if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
+    const b = (r.body ?? {}) as { id?: unknown; call?: unknown };
+    if (typeof b.id !== "string" || typeof b.call !== "boolean") return sendJson(res, { error: "Say which link (id) and whether it joins the call (call: true or false)." }, 400);
+    if (!links.setCall(b.id, b.call)) return sendJson(res, { error: "There is no such read-only link in force." }, 404);
+    if (!b.call) call.cutLink(b.id);
+    return sendJson(res, { ok: true, links: list() });
+  }
   if (path !== "/api/share/readonly") return sendJson(res, { error: "not found" }, 404);
-  const made = links.create(me);
+  const r = await app.json(req, 4096);
+  if (r.error !== undefined) return sendJson(res, { error: `The body is ${r.error}.` }, 400);
+  // a link made to join the call, where the server has one (CallSpec decision 4)
+  const joins = (r.body as { call?: unknown } | null)?.call === true && app.live.call !== null;
+  const made = links.create(me, Date.now(), joins);
   return sendJson(res, { made: { ...made, link: `${address}${made.path}` }, links: list() });
 }

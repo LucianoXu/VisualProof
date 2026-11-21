@@ -220,8 +220,9 @@ export async function serve(o) {
 }
 
 /** Chromium, with WebGL in software for the board (`--use-angle=swiftshader`); `headed` to watch
- *  it. VP_CHROMIUM: a Chromium of your own. */
-export async function browser({ headed = false } = {}) {
+ *  it; `args`, more of Chromium's (the call's scenario: a fake camera and microphone). VP_CHROMIUM:
+ *  a Chromium of your own. */
+export async function browser({ headed = false, args = [] } = {}) {
   let playwright;
   try {
     playwright = await import("playwright");
@@ -230,7 +231,7 @@ export async function browser({ headed = false } = {}) {
   }
   return playwright.chromium.launch({
     headless: !headed,
-    args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", ...args],
     ...(process.env.VP_CHROMIUM ? { executablePath: process.env.VP_CHROMIUM } : {}),
   });
 }

@@ -86,6 +86,8 @@ export interface ReadOnlyLink {
   revoked: string | null;
   revokedBy: string | null;
   lastUsed: string | null;
+  /** its holder may join the call (CallSpec decision 4) */
+  call?: true;
 }
 
 /** What every page is told of the people invited by a personal link (`people`), so that what one

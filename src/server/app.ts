@@ -5,7 +5,8 @@
 // answers each request is by area: who comes in and who they are (server/appaccess.ts), Share
 // (server/appshare.ts), people on the page with one another (server/apptalk.ts), what pages record
 // in the site (server/appsite.ts), the agents' API and the exported document (server/appagent.ts),
-// the project as pages read it (server/appgraph.ts); server/send.ts sends the answers.
+// the project as pages read it (server/appgraph.ts), the call (server/appcall.ts); server/send.ts
+// sends the answers.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
@@ -36,6 +37,7 @@ import { ask, chat, chatNew, chatStop, pointer, presence } from "./apptalk.ts";
 import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsite.ts";
 import { agentRoute, exportRoute } from "./appagent.ts";
 import { git, graphParts, hover, source, status } from "./appgraph.ts";
+import { callRoute } from "./appcall.ts";
 
 /** The server's answers to requests: exported so that the tests serve them as the server does. */
 export class App {
@@ -178,10 +180,10 @@ export class App {
       // a personal link (CollabSpec decision 9, server/invites.ts): it lets its holder in, as who
       // it says, and its cookie does from then on; a revoked one's cookie is forgotten, and lets
       // nobody in
-      if (path.startsWith(INVITE_PATH)) return enter(this, req, res, path.slice(INVITE_PATH.length), path);
+      if (path.startsWith(INVITE_PATH)) return enter(this, req, res, path.slice(INVITE_PATH.length), path, landing(url));
       // a read-only link (CollabSpec decision 11, server/readonly.ts): its cookie lets its holder
       // read, where nothing else lets them in
-      if (path.startsWith(READONLY_PATH)) return enterReadOnly(this, req, res, path.slice(READONLY_PATH.length), path);
+      if (path.startsWith(READONLY_PATH)) return enterReadOnly(this, req, res, path.slice(READONLY_PATH.length), path, landing(url));
       const link = this.ids.link(req);
       // a link that ended: its cookie is forgotten as a page loads, once the page has said so. Not
       // before: the page's requests meanwhile are told (a browser the key lets in too, as a guest,
@@ -239,8 +241,9 @@ export class App {
           }
         } else if (a !== "in") {
           // the link: the browser keeps the cookie, and the key leaves the address (a fragment
-          // after the key, a place in the page, comes along to "/")
-          res.writeHead(303, { location: "/", "set-cookie": [a.enter, ...cookies], "cache-control": "no-store", "referrer-policy": "no-referrer" });
+          // after the key, a place in the page, comes along to "/"); a call link's `?call` too
+          // (CallSpec decision 6)
+          res.writeHead(303, { location: landing(url), "set-cookie": [a.enter, ...cookies], "cache-control": "no-store", "referrer-policy": "no-referrer" });
           return void res.end();
         } else {
           // let in by the cookie every server used to share: the browser is given this one's own
@@ -271,7 +274,8 @@ export class App {
       // the page, and its workers: the one that lays out the Time Machine's past graphs
       // (web/src/layoutworker.ts), the one that chooses the overview's edges (web/src/edgeworker.ts),
       // and pdf.js's, which reads the library's PDFs for the reference window (AttachmentSpec decision 11)
-      if (/^\/(app|layout|edges|pdfworker)\.js(\.map)?$/.test(path)) return sendFile(req, res, join(bundleDir(), path.slice(1)));
+      // and the call's own bundle (CallSpec, "As built"), loaded when the call window first opens
+      if (/^\/(app|layout|edges|pdfworker|call)\.js(\.map)?$/.test(path)) return sendFile(req, res, join(bundleDir(), path.slice(1)));
       if (path.startsWith("/pdfjs/")) return pdfjsAsset(res, path);
       if (path === "/api/status") return status(this, req, res, url);
       // VisualProof's own version, and what of its releases those let in fully are told (UpdateSpec
@@ -292,6 +296,8 @@ export class App {
       if (path === "/api/chat/new") return chatNew(this, req, res);
       if (path === "/api/chat/stop") return chatStop(this, req, res);
       if (path === "/api/ask" || path === "/api/ask/answer") return ask(this, req, res, url);
+      // the call (CallSpec): a page's token, leaving, ending, removing, inviting
+      if (path.startsWith("/api/call/")) return callRoute(this, req, res, url);
       if (path === "/api/agent" || path.startsWith("/api/agent/")) return agentRoute(this, req, res, url);
       // the views, each a shared board (ViewSpec.md)
       if (path === "/api/views" || path.startsWith("/api/views/")) return views(this, req, res, url);
@@ -333,6 +339,12 @@ export class App {
       sendJson(res, { error: "not found" }, 404);
     }
   }
+}
+
+/** Where a link that lets someone in goes on to: the page, with `?call` where the link had it — a
+ *  call link opens the call's pre-join (CallSpec decision 6). */
+export function landing(url: URL): string {
+  return url.searchParams.has("call") ? "/?call" : "/";
 }
 
 /** an artwork's font file (assets/webfonts/) */

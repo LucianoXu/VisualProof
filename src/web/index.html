@@ -75,6 +75,16 @@
         </button>
         <button id="talk-notice" class="glass" type="button" hidden></button>
       </div>
+      <!-- the call (CallSpec, web/src/pagecall.ts): opens the reader's own call window; how many are
+           in the call, in the accent's colour while it runs; under it, a notice: someone started it,
+           invites the reader, removed them, ended it; Rejoin after a reload -->
+      <div class="call-wrap">
+        <button id="call-btn" class="act-btn act-icon" title="The call" aria-label="Call" aria-pressed="false" hidden>
+          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1.8" y="4.2" width="8.6" height="7.6" rx="1.6"/><path d="M10.4 7.1 14.2 5v6l-3.8-2.1"/></svg>
+          <span id="call-badge" class="act-badge" hidden></span>
+        </button>
+        <div id="call-notice" class="glass" role="status" aria-live="polite" hidden></div>
+      </div>
       <!-- the others' initials: a person's opens their menu, to follow them or ask them to follow
            you; under them, what your request to follow came to (web/src/peermenu.ts,
            web/src/askfollow.ts) -->
@@ -263,6 +273,23 @@
         </form>
       </div>
       <div class="fl-pill"><button class="fl-pill-open" type="button"><span class="fl-pill-text"></span><span class="fl-new" title="Something new"></span></button><button data-cv-close type="button" title="Close the conversations" aria-label="Close">✕</button></div>
+    </div>
+    <!-- the call window, the reader's own (CallSpec decision 5): its title — how many are in the call,
+         for how long — Copy call link, maximize, collapse, close; the pre-join or the call in its
+         body (web/src/call/main.ts, loaded when it first opens); the pill it collapses to, with the
+         microphone (web/src/pagecall.ts, which adds the edges that resize it) -->
+    <div id="call" class="glass" role="region" aria-label="The call" hidden>
+      <div class="cl-head">
+        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" class="cl-icon"><rect x="1.8" y="4.2" width="8.6" height="7.6" rx="1.6"/><path d="M10.4 7.1 14.2 5v6l-3.8-2.1"/></svg>
+        <span class="cl-title">Call</span><span class="cl-count"></span><span class="cl-clock"></span>
+        <span class="cl-hgap"></span>
+        <button data-cl-link type="button" title="Copy call link: whoever opens it finds the call ready to join" aria-label="Copy call link"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6.5 9.5l3-3M7 4.5l1.2-1.2a2.6 2.6 0 0 1 3.7 3.7L10.7 8.2M9 11.5l-1.2 1.2a2.6 2.6 0 0 1-3.7-3.7L5.3 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+        <button data-cl-max type="button" title="Maximize the window" aria-label="Maximize the window"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"/></svg></button>
+        <button data-collapse type="button" title="Collapse to one line (or double-click the title bar)" aria-label="Collapse"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 8.5h8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></button>
+        <button data-cl-close type="button" title="Close (in the call: leave it, pressed twice)" aria-label="Close">✕</button>
+      </div>
+      <div class="cl-body"></div>
+      <div class="fl-pill"><button class="fl-pill-open" type="button"><span class="fl-pill-text"></span></button><button data-cl-mic type="button" aria-label="Microphone" hidden></button><button data-cl-close type="button" title="Leave the call and close" aria-label="Close">✕</button></div>
     </div>
   </div>
   <!-- someone asks you to follow them (CollabSpec decision 10, web/src/askfollow.ts): at the top
