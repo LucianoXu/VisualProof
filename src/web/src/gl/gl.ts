@@ -85,7 +85,7 @@ export class Instances {
   data: Float32Array;
   count = 0;
   readonly stride: number;
-  readonly buffer: WebGLBuffer | null;
+  buffer: WebGLBuffer | null;
   private gl: WebGL2RenderingContext | null;
   private uploaded = -1;
   private version = 0;
@@ -95,6 +95,14 @@ export class Instances {
     this.stride = stride;
     this.data = new Float32Array(stride * capacity);
     this.buffer = gl ? gl.createBuffer()! : null;
+  }
+
+  /** The context was lost and is back (web/src/gl/renderer.ts): a buffer of the new context's, its
+   *  instances uploaded again at the next draw. */
+  restore(): void {
+    if (!this.gl) return;
+    this.buffer = this.gl.createBuffer()!;
+    this.uploaded = -1;
   }
 
   clear(): void {

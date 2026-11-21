@@ -299,6 +299,64 @@ export function parseReaction(payload: Uint8Array | string): Reaction | null {
 /** Whether a participant's attributes say its hand is raised. */
 export const handRaised = (attributes: Readonly<Record<string, string>> | undefined): boolean => attributes?.[HAND_ATTRIBUTE] === "1";
 
+// ---------------------------------------------------------------- the camera's background
+
+export const BACKGROUND_EFFECTS = ["none", "blur", "strong"] as const;
+export type BackgroundEffect = (typeof BACKGROUND_EFFECTS)[number];
+export const isBackgroundEffect = (v: unknown): v is BackgroundEffect => typeof v === "string" && (BACKGROUND_EFFECTS as readonly string[]).includes(v);
+export const EFFECT_LABELS: Record<BackgroundEffect, string> = { none: "None", blur: "Blur", strong: "Strong blur" };
+
+/** The blur's radius, in pixels of the camera's frame: Blur softens the room, Strong blur leaves
+ *  only its colours. */
+export const blurRadius = (e: Exclude<BackgroundEffect, "none">): number => (e === "strong" ? 36 : 12);
+
+/** what an effect may take of each frame, on average, before the reader is told it is too much for
+ *  this computer: a camera gives a frame every 33 ms, and the page needs the rest of the time */
+export const SLOW_FRAME_MS = 30;
+/** the average is over the frames of this long */
+export const LOAD_WINDOW_MS = 4000;
+/** the first frames after the effect starts are not counted: the model and its shaders warm up */
+export const LOAD_WARMUP_MS = 2500;
+/** the fewest frames an average is taken of */
+const LOAD_MIN_FRAMES = 20;
+
+/** The time an effect takes a frame, watched: the average over the last few seconds, and whether it
+ *  has gone above the limit — said once, until the effect starts again (`reset`). */
+export class FrameLoad {
+  private readonly samples: Array<{ t: number; ms: number }> = [];
+  private since = 0;
+  private told = false;
+  private readonly limit: number;
+
+  constructor(limit = SLOW_FRAME_MS) {
+    this.limit = limit;
+  }
+
+  /** the effect (re)started at `now`: nothing measured yet, nothing told */
+  reset(now: number): void {
+    this.samples.length = 0;
+    this.since = now;
+    this.told = false;
+  }
+
+  /** A frame took `ms` at `now`: true the first time the average goes above the limit. */
+  add(ms: number, now: number): boolean {
+    if (now - this.since < LOAD_WARMUP_MS || !Number.isFinite(ms)) return false;
+    this.samples.push({ t: now, ms });
+    while (this.samples.length && now - this.samples[0].t > LOAD_WINDOW_MS) this.samples.shift();
+    const avg = this.mean();
+    if (this.told || avg === null || avg <= this.limit) return false;
+    this.told = true;
+    return true;
+  }
+
+  /** the average time of a frame over the window, or null before there are enough frames */
+  mean(): number | null {
+    if (this.samples.length < LOAD_MIN_FRAMES) return null;
+    return this.samples.reduce((a, s) => a + s.ms, 0) / this.samples.length;
+  }
+}
+
 // ---------------------------------------------------------------- the People panel
 
 export interface PersonRow {

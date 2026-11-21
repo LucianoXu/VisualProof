@@ -1632,6 +1632,14 @@ what each one looks at stays their own.
   was made to (Share: **Can join the call**, also switched later in its row): its holder joins under
   a name they give, marked read-only, and is seen in the call alone. A page reloaded in the call
   offers **Rejoin** for five minutes. Nothing of a call is recorded or kept.
+  **Background**: None, **Blur** or **Strong blur**, in the pre-join (under the camera) and in the
+  camera's menu in the call; kept in this browser. It runs in your browser — on the graphics card,
+  or the processor where there is none — on a model and a runtime your server serves (about 10 MB,
+  fetched the first time); your camera is never sent unblurred by surprise, and the page says so
+  if your computer finds it too much. **Picture-in-picture** (in the call's controls): in Chrome
+  and Edge the call itself moves into a small window over every other — switch tabs or apps and
+  it stays in sight, with its controls; the call window says where it went, with **Back into the
+  page**. In Safari the large tile's video goes into the browser's own picture-in-picture.
 - The server keeps this in the site directory (`<site>`): `views.json` (every kept view: scope, clustering,
   pins, folds and its own notes, who dropped each pin; and the project's notes, beside the views), `view-memory/` (each board's layout memory),
   `history/` (a snapshot of the graph at every build, for good, with the source texts it was

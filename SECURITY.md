@@ -36,7 +36,10 @@ into the latest release only.
   LiveKit server, and holds its API keys, can see and hear the call, and let anyone into it: an API
   key mints tokens for every room of its server, and a key shared with another application grants
   that application the same (VisualProof's room is `visualproof-<id>`, kept apart by its name
-  alone). The page loads LiveKit's client from the server itself (`call.js`): no outside script.
+  alone). The page loads LiveKit's client from the server itself (`call.js`): no outside script;
+  and the background blur's model and MediaPipe's WebAssembly runtime too (`/mediapipe/…`, five
+  files by name, the runtime from `@mediapipe/tasks-vision` as installed): the camera's frames are
+  blurred in the browser, and go nowhere else to be.
 - **The npm registry and VisualProof's publisher**, as at the first install, and unattended: with
   `--updates auto` (the default) a server downloads the patch releases of the version it runs,
   through npm, and restarts into them by itself, nobody looking (SPEC/UpdateSpec.md). What it

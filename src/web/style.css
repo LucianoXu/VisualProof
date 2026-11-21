@@ -1617,8 +1617,13 @@ a.cv-chip:hover { border-color: var(--accent); }
 #call.collapsed > .fl-pill { display: flex; align-items: center; gap: 2px; min-width: 0; padding-right: 6px; }
 #call .fl-pill-text svg { color: var(--accent); fill: none; stroke: currentColor; stroke-width: 1.5; }
 .cl-body { position: relative; flex: 1 1 auto; min-height: 0; display: flex; border-radius: 0 0 14px 14px; overflow: hidden; }
-.cl-root { --stage: #111214; }
-#call .muted { color: var(--text-2); }
+.cl-root { --stage: #111214; flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; container-type: size; }
+.cl-root[hidden], .cl-away[hidden] { display: none; }
+#call .muted, .cl-root .muted { color: var(--text-2); }
+/* the call in its own picture-in-picture window (Document Picture-in-Picture): the whole of it; and
+   what the call window says in its place meanwhile */
+body.cl-pip { margin: 0; height: 100vh; display: flex; overflow: hidden; background: #111214; font: 13px var(--font); color: var(--text); }
+.cl-away { margin: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; color: var(--text-2); }
 .cl-wait { margin: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .cl-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .cl-err { color: var(--bad); font-size: 12px; }
@@ -1640,7 +1645,6 @@ a.cv-chip:hover { border-color: var(--accent); }
 .cl-meter i { display: block; width: 0; height: 100%; background: var(--st-ok, #30a46c); transition: width 60ms linear; }
 .cl-pre .cl-actions { margin-top: auto; }
 @container (max-width: 520px) { .cl-pre { flex-direction: column; } }
-#call .cl-body { container-type: size; }
 /* the call: the stage (and People beside it), a banner, the control row */
 .cl-call { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--stage); color: #f2f2f4; }
 .cl-main { flex: 1 1 auto; min-height: 0; display: flex; }

@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { callFrame, callMode, clockText, compactFocus, gridShape, MORE_KEY, namesLine, nextSpeaker, parseReaction, peopleOrder, reactionPayload, screenKey, stageLayout, subscriptions } from "../src/web/src/call/model.ts";
+import { blurRadius, callFrame, callMode, clockText, compactFocus, FrameLoad, gridShape, isBackgroundEffect, LOAD_WARMUP_MS, MORE_KEY, namesLine, nextSpeaker, parseReaction, peopleOrder, reactionPayload, screenKey, SLOW_FRAME_MS, stageLayout, subscriptions } from "../src/web/src/call/model.ts";
 import type { TileInfo } from "../src/web/src/call/model.ts";
 import { callTab, newTab } from "../src/web/src/call/tab.ts";
 import { CALL_TAB } from "../src/shared/call.ts";
@@ -96,6 +96,29 @@ test("People: raised hands first, the earliest first; then the reader; then by n
     { identity: "d", name: "Ann", local: false, hand: null },
   ];
   assert.deepEqual(peopleOrder(rows).map((r) => r.identity), ["a", "b", "me", "d", "c"]);
+});
+
+test("the background: three effects, Blur softer than Strong blur; what one costs said once, past its warm-up", () => {
+  assert.ok(isBackgroundEffect("none") && isBackgroundEffect("blur") && isBackgroundEffect("strong"));
+  assert.ok(!isBackgroundEffect("Blur") && !isBackgroundEffect(null));
+  assert.ok(blurRadius("blur") < blurRadius("strong"));
+  const load = new FrameLoad();
+  load.reset(0);
+  // the warm-up is not counted, however slow
+  for (let t = 0; t < LOAD_WARMUP_MS; t += 33) assert.equal(load.add(200, t), false);
+  assert.equal(load.mean(), null);
+  // cheap frames: nothing said
+  let t = LOAD_WARMUP_MS;
+  for (let k = 0; k < 40; k++, t += 33) assert.equal(load.add(SLOW_FRAME_MS / 2, t), false);
+  // too dear: said once
+  let said = 0;
+  for (let k = 0; k < 200; k++, t += 33) if (load.add(SLOW_FRAME_MS * 2, t)) said++;
+  assert.equal(said, 1);
+  // started again: said again when it is
+  load.reset(t);
+  t += LOAD_WARMUP_MS;
+  for (let k = 0; k < 200; k++, t += 33) if (load.add(SLOW_FRAME_MS * 2, t)) said++;
+  assert.equal(said, 2);
 });
 
 test("words: a running time, who is in the call", () => {

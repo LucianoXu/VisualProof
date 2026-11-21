@@ -20,6 +20,9 @@ const TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".map": "application/json",
+  // the call's background effect (server/mediapipe.ts): MediaPipe's runtime and its model
+  ".wasm": "application/wasm",
+  ".tflite": "application/octet-stream",
 };
 
 /** The tag naming a content. */

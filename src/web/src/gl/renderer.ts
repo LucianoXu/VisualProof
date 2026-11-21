@@ -269,6 +269,14 @@ export class Renderer {
   private order: string[] = [];
   private circleCorners!: WebGLBuffer;
   private lineCorners!: WebGLBuffer;
+  /** the context is lost: nothing is drawn until it is back */
+  private lost = false;
+  /** the positions last set, uploaded again when the context is back */
+  private lastPositions: Float32Array | null = null;
+  /** how many times the context came back (for diagnosis: the call's test reads it) */
+  restores = 0;
+  /** told when the context is back and everything is on the card again: the board is drawn again */
+  onRestored: () => void = () => {};
 
   constructor(canvas: HTMLCanvasElement | null) {
     if (!canvas) {
@@ -278,6 +286,20 @@ export class Renderer {
     const gl = canvas.getContext("webgl2", { antialias: false, premultipliedAlpha: true, alpha: true });
     if (!gl) throw new Error("WebGL2 is not available in this browser");
     this.gl = gl;
+    this.setup(gl);
+    // A context can be lost — the graphics card reset, its process restarted (a page that runs
+    // other WebGL beside the board, as the call's background blur does, makes it likelier) — and the
+    // browser gives it back when asked to (preventDefault): everything is put on the card again, and
+    // the board drawn again. Without this the board stayed blank until the page was reloaded.
+    canvas.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      this.lost = true;
+    });
+    canvas.addEventListener("webglcontextrestored", () => this.restore(gl));
+  }
+
+  /** What every draw uses: the programs, the positions' texture, the corners' buffers. */
+  private setup(gl: WebGL2RenderingContext): void {
     this.circleProg = program(gl, CIRCLE_VS, CIRCLE_FS);
     this.pointProg = program(gl, POINT_VS, POINT_FS);
     this.bundleProg = program(gl, BUNDLE_VS, LINE_FS);
@@ -289,6 +311,23 @@ export class Renderer {
     this.lineCorners = gl.createBuffer()!;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.lineCorners);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, -1, 1, -1, 0, 1, 1, 1]), gl.STATIC_DRAW);
+  }
+
+  /** The context is back: the programs, the buffers, the positions and every layer's arrays made
+   *  again on it; the board told to draw again. */
+  private restore(gl: WebGL2RenderingContext): void {
+    this.lost = false;
+    this.setup(gl);
+    this.uniforms.clear();
+    this.posRows = 0;
+    // the bundled edges read the positions from their texture: uploaded again first
+    if (this.lastPositions) this.setPositions(this.lastPositions);
+    for (const L of this.layers.values()) {
+      L.inst.restore();
+      L.vao = this.vaoFor(gl, L.kind, L.inst);
+    }
+    this.restores++;
+    this.onRestored();
   }
 
   /** A layer, created on first use; layers draw in the order they were first asked for. */
@@ -303,6 +342,14 @@ export class Renderer {
       this.order.push(name);
       return inst;
     }
+    this.layers.set(name, { kind, inst, vao: this.vaoFor(gl, kind, inst), visible: true });
+    this.order.push(name);
+    return inst;
+  }
+
+  /** A layer's vertex arrays: its corners and its instances' attributes. */
+  private vaoFor(gl: WebGL2RenderingContext, kind: Kind, inst: Instances): WebGLVertexArrayObject {
+    const stride = inst.stride;
     const vao = gl.createVertexArray()!;
     gl.bindVertexArray(vao);
     if (kind === "circles" || kind === "lines") {
@@ -319,15 +366,15 @@ export class Renderer {
       gl.vertexAttribDivisor(1 + a, kind === "points" ? 0 : 1);
     }
     gl.bindVertexArray(null);
-    this.layers.set(name, { kind, inst, vao, visible: true });
-    this.order.push(name);
-    return inst;
+    return vao;
   }
 
   /** World positions the bundled edges read: (x, y) pairs, 1024 per texture row. */
   setPositions(xy: Float32Array): void {
     const gl = this.gl;
     if (!gl) return;
+    this.lastPositions = xy;
+    if (this.lost) return;
     const count = xy.length / 2;
     const rows = Math.max(1, Math.ceil(count / 1024));
     gl.bindTexture(gl.TEXTURE_2D, this.posTex);
@@ -371,7 +418,9 @@ export class Renderer {
   /** The most pixels a side of what this context draws at once can have. */
   maxSide(): number {
     const gl = this.gl;
+    // a lost context answers nothing: what a card has at least, until it is back
     if (!gl) return NO_CARD_SIDE;
+    if (this.lost || gl.isContextLost()) return 4096;
     const dims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
     return Math.min(dims[0], dims[1], gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number);
   }
@@ -381,7 +430,7 @@ export class Renderer {
    *  screen's (an artwork's PNG) keeps it as wide in pixels as the screen does. */
   render(cam: { x: number; y: number; k: number }, w: number, h: number, dpr: number, dotPx: number, aa = 0.35): void {
     const gl = this.gl;
-    if (!gl) return;
+    if (!gl || this.lost) return;
     gl.viewport(0, 0, Math.round(w * dpr), Math.round(h * dpr));
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);

@@ -76,6 +76,8 @@ const people = [];
 const media = async (p) => {
   await p.ctx.grantPermissions(["camera", "microphone", "clipboard-read", "clipboard-write"], { origin: S.url });
   p.page.on("dialog", (d) => void d.accept());
+  // VP_DEBUG: the pages' warnings too, as they come
+  if (process.env.VP_DEBUG) p.page.on("console", (m) => m.type() === "warning" && console.log(`  [${p.name} warns] ${m.text().slice(0, 200)}`));
   people.push(p);
   return p;
 };
@@ -98,6 +100,25 @@ try {
   out.check(await until(alice, () => !!document.querySelector("#call .cl-pre"), null, "the pre-join"), "the button opens the call window on the pre-join");
   out.check(await until(alice, () => !!document.querySelector("#call .cl-preview video"), null, "the camera's preview"), "the pre-join shows the camera's preview");
   await cam.shot(alice, "pre-join");
+  // the background blurred, from the pre-join on: MediaPipe's runtime and model from this server
+  const fetched = [];
+  alice.page.on("response", (r) => {
+    const u = new URL(r.url());
+    // the page's own blob: URLs (the runtime, kept once fetched) are no fetch
+    if (u.protocol === "blob:" || u.protocol === "data:") return;
+    if (u.pathname.startsWith("/mediapipe/") || !u.host.startsWith("127.0.0.1")) fetched.push(`${r.status()} ${u.host}${u.pathname}`);
+  });
+  if (await alice.page.locator("#call select[data-effect]").count()) {
+    await alice.page.selectOption("#call select[data-effect]", "blur");
+    // the runtime fetched (once a page), then the blur put on the preview
+    for (let k = 0; k < 300 && !fetched.some((f) => /vision_wasm_(nosimd_)?internal\.wasm$/.test(f)); k++) await sleep(100);
+    out.check(await until(alice, () => !document.querySelector("#call label")?.textContent?.includes("blurring") && !!document.querySelector("#call .cl-preview video"), null, "the blur on", 60_000), "Blur chosen in the pre-join: the preview goes on, blurred");
+    await sleep(2000);
+    out.check(!(await alice.page.locator("#call .cl-err").count()), "no error putting the blur on");
+    out.check(fetched.some((f) => /^200 .*\/mediapipe\/vision_wasm_(nosimd_)?internal\.wasm$/.test(f)) && fetched.some((f) => /^200 .*selfie_segmenter\.tflite$/.test(f)), `the runtime and the model came from this server (${fetched.join(", ")})`);
+    out.check(!fetched.some((f) => !/^\d+ 127\.0\.0\.1/.test(f)), "nothing was fetched from a third party");
+    await cam.shot(alice, "pre-join-blur");
+  } else out.check(false, "this browser offers the background effect");
   await alice.page.click("#call [data-act=join]");
   out.check(await until(alice, () => !!document.querySelector("#call .cl-call .cl-tile.video"), null, "Alice's own tile"), "joined: her own tile shows her camera");
   out.check(await until(alice, () => document.getElementById("call-badge").textContent === "1", null, "the count"), "the button counts 1 in the call");
@@ -113,6 +134,41 @@ try {
   out.check(await until(alice, () => document.querySelectorAll("#call .cl-tile.video").length >= 2, null, "two videos on Alice's page"), "Alice sees Bob's video");
   out.check(await until(alice, () => [...document.querySelectorAll("#call .cl-nm")].some((e) => e.textContent === "Bob"), null, "Bob's name"), "Bob's tile is named by the server");
   await cam.shot(alice, "full-call");
+  out.check(await until(bob, () => document.querySelectorAll("#call .cl-tile.video").length >= 2, null, "Alice's blurred video on Bob's page"), "Bob receives Alice's camera, blurred");
+  // the board's WebGL context lost and given back (a page that blurs runs other WebGL beside the
+  // board, which makes a reset of the graphics likelier): the board is drawn again
+  await alice.page.evaluate(() => {
+    const ext = document.getElementById("canvas").getContext("webgl2").getExtension("WEBGL_lose_context");
+    ext.loseContext();
+    setTimeout(() => ext.restoreContext(), 300);
+  });
+  out.check(await until(alice, () => window.visualproof?.canvas?.gl?.restores === 1 && !document.getElementById("canvas").getContext("webgl2").isContextLost(), null, "the board's context back"), "the board's WebGL context lost and back: the board is drawn again");
+  await sleep(500);
+  await cam.shot(alice, "board-restored");
+
+  // ---------------------------------------------------------------- picture-in-picture
+  if (await alice.page.evaluate(() => "documentPictureInPicture" in window)) {
+    await alice.page.click("#call [data-act=pip]");
+    out.check(await until(alice, () => !document.querySelector("#call .cl-root") && !document.querySelector("#call .cl-away")?.hidden, null, "the call out of the page"), "picture-in-picture: the call leaves the page, the call window says where it went");
+    out.check(
+      await until(alice, () => {
+        const d = window.documentPictureInPicture?.window?.document;
+        const vs = d ? [...d.querySelectorAll(".cl-tile.video video")] : [];
+        return vs.length >= 1 && vs.every((v) => v.readyState >= 2 && !v.paused);
+      }, null, "videos playing in the picture-in-picture window"),
+      "in its own window, the call's videos play",
+    );
+    // the window's size is the browser's to give (headless Chromium gives its own, 1280×720): the
+    // call fits it, compact below 640×400
+    const fit = await alice.page.evaluate(() => {
+      const w = window.documentPictureInPicture?.window;
+      return w ? { w: w.innerWidth, h: w.innerHeight, compact: !!w.document.querySelector(".cl-call.compact") } : null;
+    });
+    out.check(!!fit && fit.compact === (fit.w < 640 || fit.h < 400), `the call fits its own window (${fit?.w}×${fit?.h}: ${fit?.compact ? "compact" : "full"})`);
+    await cam.shot(alice, "pip-away");
+    await alice.page.evaluate(() => window.documentPictureInPicture?.window?.document.querySelector("[data-act=pip-back]")?.click());
+    out.check(await until(alice, () => !!document.querySelector("#call .cl-root .cl-tile.video") && !!document.querySelector("#call .cl-away")?.hidden, null, "the call back in the page"), "Back into the page: the call is in its window again");
+  } else out.check(false, "this browser has Document Picture-in-Picture");
 
   // ---------------------------------------------------------------- Alice's window
   await alice.page.click("#call [data-cl-max]");

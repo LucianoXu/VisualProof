@@ -19,6 +19,8 @@ const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 execFileSync(process.execPath, [tsc, "-p", join(REPO, "tsconfig.build.json"), "--outDir", out], { stdio: "inherit" });
 for (const dir of ["extractor", "mcp", "assets"]) cpSync(join(REPO, "src", dir), join(out, dir), { recursive: true });
 for (const file of ["index.html", "style.css"]) cpSync(join(REPO, "src", "web", file), join(out, "web", file));
+// the call's background effect: its model (the runtime is served from @mediapipe/tasks-vision)
+cpSync(join(REPO, "src", "web", "mediapipe"), join(out, "web", "mediapipe"), { recursive: true });
 // no source maps: the bundle is not minified, and they would double its size
 await bundlePage(join(out, "web", "bundle"), false);
 console.log(`built ${out}`);

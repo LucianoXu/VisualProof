@@ -52,8 +52,14 @@ The owner's decisions of 2026-11-20.
    their own link with `?call`; Share shows a read-only link that joins the call with it.
 7. **Nothing is kept of a call**: no recording, no transcript, nothing in the timeline nor the
    site, as the following room keeps nothing. The server tells the pages who is in it (`call`).
-   There is no transcription (the owner's decision); recording and a background effect are for
-   later, if decided.
+   There is no transcription (the owner's decision); recording is for later, if decided.
+9. **The camera's background blurred, and the call out of the page** (the owner's decision of
+   2026-11-21, 0.12.1): the background None, Blur or Strong blur, chosen in the pre-join and in the
+   camera's menu, run in the browser on a model and a runtime this server serves (never a third
+   party's); and *Picture-in-picture*, which takes the call out of the page into a small window over
+   every other — the call itself where the browser has Document Picture-in-Picture (Chrome, Edge),
+   the large tile's video in the browser's own picture-in-picture elsewhere (Safari). No layout of
+   its own for phones (the owner's decision).
 8. **Following is how a call shows the board**: the call's controls hold *Ask everyone to follow
    me*, and a participant's menu holds *Follow* and *Ask to follow*, as their initials' does
    (web/src/peermenu.ts). Screen share is for anything else.
@@ -152,3 +158,25 @@ whether their link joins the call (`readOnly.call`).
   reload would cut short).
 - **Lost**: a connection lost says so in the window, with *Rejoin*; LiveKit's own reconnection is
   shown while it tries.
+- **The background** (web/src/call/effect.ts, blur.ts; from Cocoding's meetings): LiveKit's track
+  processor around MediaPipe's selfie segmentation, which finds the person in each frame so that
+  only what is behind them is blurred (Blur 12 px, Strong blur 36 px); kept in this browser, and put
+  on the pre-join's preview, whose track is the one sent — what the others see is what the preview
+  showed. The camera is never sent bare by surprise: joining waits for the effect, and a camera
+  turned on in the call goes out only once it carries it; where it cannot be put on, the camera is
+  not sent, and the page says so. The runtime (MediaPipe's WebAssembly, about 9.4 MB, from
+  `@mediapipe/tasks-vision`) and the model (`web/mediapipe/selfie_segmenter.tflite`, 250 KB) are
+  served at `/mediapipe/…` (server/mediapipe.ts) where the server has a call, fetched once a page;
+  the segmentation runs on the graphics card, or on the processor where the browser draws in
+  software. Where a frame takes more than 30 ms on average, the page says so once, so that the
+  reader may turn it off. A browser that cannot blur (no WebGL 2, no video frames) is offered none.
+- **Picture-in-picture**, in the control row where the browser has it: with Document
+  Picture-in-Picture the call itself moves into a window of its own over every other (420×300
+  asked: the compact call; made larger, the full call), the page's look and theme with it; the
+  call window says it is there, with *Back into the page*, as the window's button is too; closing
+  that window brings the call back. Its videos go on while the page is in the background. Elsewhere
+  the large tile's video goes into the browser's own picture-in-picture, with the microphone, the
+  camera and leaving offered there where the browser lets a page offer them.
+- **The board's drawing survives the graphics card's reset** (web/src/gl/renderer.ts): a WebGL
+  context lost — likelier on a page that blurs, which runs WebGL beside the board — is asked back,
+  and everything is put on the card again and drawn; before, the board stayed blank until reloaded.
