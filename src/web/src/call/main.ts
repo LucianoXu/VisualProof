@@ -15,6 +15,9 @@ import { callFrame, callMode, clockText, handRaised, HAND_ATTRIBUTE, LAYOUTS, MO
 import type { Box, Reaction, Speaking, StageLayout, TileInfo } from "./model.ts";
 import { callPrefs, cameraCapture, canChooseSpeaker, deviceName, devices, mediaError, micCapture, publishDefaults, screenCapture, screenPublish } from "./media.ts";
 import { callGone, quietLiveKit } from "./noise.ts";
+import { CameraEffect, EffectUnsupported } from "./effect.ts";
+import { compactFocus, EFFECT_LABELS, BACKGROUND_EFFECTS } from "./model.ts";
+import type { BackgroundEffect } from "./model.ts";
 
 /** text as HTML: the bundle takes none of the page's highlighter for it */
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -29,8 +32,22 @@ const btn = (act: string, ic: CallIcon, label: string, o: { on?: boolean; presse
 export const startCall: StartCall = (env: CallEnv): CallView => {
   quietLiveKit();
   const prefs = callPrefs();
-  const root = env.el;
-  root.classList.add("cl-root");
+  /** the window's body; the call draws in `root`, which picture-in-picture takes into its own window,
+   *  `away` saying so in its place */
+  const host = env.el;
+  const root = document.createElement("div");
+  root.className = "cl-root";
+  const away = document.createElement("div");
+  away.className = "cl-away";
+  away.hidden = true;
+  // what the window said while the call's bundle came ("Loading the call…") goes
+  host.replaceChildren(root, away);
+  /** the camera's background effect; where this browser cannot run it, none is offered or kept */
+  const effect = new CameraEffect({
+    slow: (ms) => say(`Blurring takes ${Math.round(ms)} ms a frame on this computer, more than it can spare: choose None for the background, in the camera's menu.`),
+  });
+  const wantedEffect = (): BackgroundEffect => (effect.supported ? prefs.effect.get() : "none");
+  const effectError = (e: unknown) => (e instanceof EffectUnsupported ? e.message : `The background could not be blurred: ${e instanceof Error ? e.message : String(e)}`);
   let room: Room | null = null;
   let joined = false;
   let joining = false;
@@ -85,6 +102,15 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     } else if (!prefs.mic.get() && p.audio) {
       p.audio.stop();
       p.audio = null;
+    }
+    // the background as chosen, on the preview: what the others will receive is what it shows
+    if (p.video && effect.of(p.video) !== wantedEffect()) {
+      drawPre();
+      try {
+        await effect.apply(p.video, wantedEffect());
+      } catch (e) {
+        p.error = (p.error ? p.error + " " : "") + effectError(e);
+      }
     }
     if (pre !== p) {
       p.video?.stop();
@@ -160,6 +186,7 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
       (me.private ? `<div class="cl-note">You are private: joining makes you visible, as everyone in a call is.</div>` : "") +
       `<div class="cl-devices">` +
       `<label>Camera<select data-dev="videoinput"></select></label>` +
+      (effect.supported ? `<label>Background${effect.busy ? " <span class=\"muted\">· blurring…</span>" : ""}<select data-effect>${BACKGROUND_EFFECTS.map((e) => `<option value="${e}"${e === wantedEffect() ? " selected" : ""}>${EFFECT_LABELS[e]}</option>`).join("")}</select></label>` : "") +
       `<label>Microphone<select data-dev="audioinput"></select></label>` +
       (canChooseSpeaker() ? `<label>Speaker<select data-dev="audiooutput"></select></label>` : "") +
       `</div>` +
@@ -249,7 +276,15 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     for (const p of r.remoteParticipants.values()) seen(p);
     try {
       if (tracks.audio) await r.localParticipant.publishTrack(tracks.audio, { source: Track.Source.Microphone });
-      if (tracks.video) await r.localParticipant.publishTrack(tracks.video, { source: Track.Source.Camera });
+      if (tracks.video) {
+        // an effect still being put on is waited for: the camera is never sent bare by surprise
+        await effect.idle();
+        if (effect.of(tracks.video) === wantedEffect()) await r.localParticipant.publishTrack(tracks.video, { source: Track.Source.Camera });
+        else {
+          tracks.video.stop();
+          say("Your camera was not sent: its background could not be blurred. Turn the camera on to send it, or choose None for the background.");
+        }
+      }
     } catch (e) {
       say(`Your camera or microphone could not be sent: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -293,6 +328,8 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     } catch (e) {
       say(mediaError(e, "camera"));
     }
+    // the background as chosen, before the camera goes out (join waits for it)
+    if (video) void effect.apply(video, wantedEffect()).catch((e: unknown) => say(effectError(e)));
     if (!(await join({ audio, video }))) {
       audio?.stop();
       video?.stop();
@@ -392,6 +429,8 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
         if (reason === DisconnectReason.DUPLICATE_IDENTITY) return env.dropped("elsewhere");
         if (reason === DisconnectReason.ROOM_DELETED) return env.dropped("ended");
         if (reason === DisconnectReason.PARTICIPANT_REMOVED) return env.dropped("removed");
+        // lost: said in the call window, back in the page
+        closePip();
         drawLost();
         env.dropped("lost");
       })
@@ -438,14 +477,117 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     area = stage = side = bar = pop = null;
   };
 
-  let scheduled = 0;
+  let scheduled = false;
+  /** Draw again at the next frame of the window the call is in: in picture-in-picture, its own (the
+   *  page's frames stop while it is in the background). */
   const schedule = () => {
     if (scheduled || disposed) return;
-    scheduled = requestAnimationFrame(() => {
-      scheduled = 0;
+    scheduled = true;
+    (root.ownerDocument.defaultView ?? window).requestAnimationFrame(() => {
+      scheduled = false;
       draw();
     });
   };
+
+  // ---------------------------------------------------------------- picture-in-picture
+
+  /** Document Picture-in-Picture (Chrome, Edge): a window of the page's own, over every other. */
+  type DocPip = { requestWindow(o: { width: number; height: number }): Promise<Window>; window: Window | null };
+  const docPip = (): DocPip | undefined => (window as unknown as { documentPictureInPicture?: DocPip }).documentPictureInPicture;
+  /** Whether this browser takes the call, or its large tile, out of the page. */
+  const pipSupported = (): boolean => !!docPip() || !!document.pictureInPictureEnabled;
+  /** the picture-in-picture window the call is in, or null */
+  let pipWin: Window | null = null;
+  /** whether the call is seen: in its own window, or in the page's, shown */
+  const seenNow = (): boolean => pipWin !== null || !!document.pictureInPictureElement || env.seen();
+
+  /** Videos taken from one document to another may stop: they play again. */
+  const replay = () => {
+    for (const v of root.querySelectorAll("video")) void v.play().catch(() => undefined);
+  };
+
+  /** Take the call out of the page (CallSpec, "Picture-in-picture"): with Document
+   *  Picture-in-Picture, the call itself into a small window over every other — the compact call,
+   *  or the full call made large there —, the call window saying where it went; elsewhere (Safari),
+   *  the large tile's video in the browser's own picture-in-picture. Called from a press: the
+   *  browser asks one for either. */
+  const enterPip = async () => {
+    if (!room || pipWin) return;
+    const d = docPip();
+    if (!d) return videoPip();
+    let w: Window;
+    try {
+      w = await d.requestWindow({ width: 420, height: 300 });
+    } catch (e) {
+      return say(`The call could not be taken out of the page: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    // the page's look: its style sheets, its theme
+    for (const s of document.querySelectorAll<HTMLLinkElement | HTMLStyleElement>('link[rel="stylesheet"], style')) {
+      const c = s.cloneNode(true) as Element;
+      // a link's address made whole: the new window's document has none of its own to resolve it by
+      if (s instanceof HTMLLinkElement) c.setAttribute("href", s.href);
+      w.document.head.append(c);
+    }
+    for (const a of document.documentElement.attributes) w.document.documentElement.setAttribute(a.name, a.value);
+    w.document.title = `Call — ${document.title}`;
+    w.document.body.className = "cl-pip";
+    w.document.body.append(root);
+    pipWin = w;
+    away.hidden = false;
+    away.innerHTML = `<div>The call is in its own window, over every other.</div><button type="button" class="rv-btn" data-act="pip-back">Back into the page</button>`;
+    w.addEventListener("pagehide", () => backFromPip(w));
+    w.addEventListener("resize", () => schedule());
+    w.document.addEventListener("pointerdown", outsidePop);
+    scheduled = false;
+    replay();
+    schedule();
+    env.changed();
+  };
+
+  /** The picture-in-picture window closed: the call back in the call window. */
+  const backFromPip = (w: Window) => {
+    if (pipWin !== w) return;
+    pipWin = null;
+    host.insertBefore(root, away);
+    away.hidden = true;
+    away.innerHTML = "";
+    scheduled = false;
+    replay();
+    schedule();
+    env.changed();
+  };
+
+  /** Safari and the others: the large tile's video in the browser's own picture-in-picture, the
+   *  microphone, the camera and leaving offered there where the browser lets a page offer them. */
+  const videoPip = () => {
+    const r = room;
+    if (!r) return;
+    const key = compactFocus(tileInfos(r), pinned, speaker?.key ?? null);
+    const v = (key ? tiles.get(key) : undefined)?.querySelector("video");
+    if (!v || !v.srcObject) return say("There is no video to take out of the page: nobody's camera is on.");
+    v.requestPictureInPicture().catch((e: unknown) => say(`The video could not be taken out of the page: ${e instanceof Error ? e.message : String(e)}`));
+    try {
+      const ms = navigator.mediaSession as MediaSession & { setMicrophoneActive?(on: boolean): void; setCameraActive?(on: boolean): void };
+      ms.setActionHandler("togglemicrophone" as MediaSessionAction, () => void setMic(!room?.localParticipant.isMicrophoneEnabled));
+      ms.setActionHandler("togglecamera" as MediaSessionAction, () => void setCam(!room?.localParticipant.isCameraEnabled));
+      ms.setActionHandler("hangup" as MediaSessionAction, () => void leave());
+    } catch {
+      // the browser offers none of them: its own window's play and close alone
+    }
+  };
+
+  /** Close whatever picture-in-picture the call is in. */
+  const closePip = () => {
+    if (pipWin) {
+      const w = pipWin;
+      backFromPip(w);
+      w.close();
+    }
+    if (document.pictureInPictureElement && root.contains(document.pictureInPictureElement)) void document.exitPictureInPicture().catch(() => undefined);
+  };
+  away.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest("[data-act=pip-back]")) pipWin?.close();
+  });
 
   /** Who a participant is, as the server says it. */
   const said = (id: string): CallParticipant | undefined => env.state()?.participants.find((p) => p.id === id);
@@ -501,7 +643,7 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     // the stage's own box, the control row and the side panel left out
     const sb: Box = { w: stage.clientWidth, h: stage.clientHeight };
     const infos = tileInfos(r);
-    const frame = callFrame({ tiles: infos, mode: prefs.layout.get(), pinned, speaker: speaker?.key ?? null, spoke, page: gridPage, box: sb, seen: env.seen(), call: mode });
+    const frame = callFrame({ tiles: infos, mode: prefs.layout.get(), pinned, speaker: speaker?.key ?? null, spoke, page: gridPage, box: sb, seen: seenNow(), call: mode });
     if (frame.layout) gridPage = frame.layout.page;
     // the tiles shown, where the layout puts them; the others gone from the stage
     const keep = new Set<string>();
@@ -565,7 +707,7 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
         videos.push({ sid: pub.trackSid, tile: pub.source === Track.Source.ScreenShare ? screenKey(p.identity) : p.identity });
         pubs.set(pub.trackSid, pub);
       }
-    for (const [sid, on] of subscriptions(videos, frame.shown, document.visibilityState === "visible")) {
+    for (const [sid, on] of subscriptions(videos, frame.shown, pipWin !== null || !!document.pictureInPictureElement || document.visibilityState === "visible")) {
       const pub = pubs.get(sid);
       if (pub && pub.isEnabled !== on) pub.setEnabled(on);
     }
@@ -600,12 +742,15 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     const hand = handSince.has(lp.identity);
     const me = env.me();
     const n = r.remoteParticipants.size + 1;
+    // picture-in-picture, where the browser has it: out of the page, or back into it
+    const pip = pipWin ? btn("pip-back", "pip", "Back into the page") : pipSupported() ? btn("pip", "pip", docPip() ? "Picture-in-picture: the call in a small window over every other" : "Picture-in-picture: the large tile's video over every other window") : "";
     let html: string;
     if (mode === "compact")
       html =
         btn("mic", mic ? "mic" : "micOff", mic ? "Turn the microphone off" : "Turn the microphone on", { on: mic }) +
         btn("cam", cam ? "call" : "camOff", cam ? "Turn the camera off" : "Turn the camera on", { on: cam }) +
         btn("hand", "hand", hand ? "Lower your hand" : "Raise your hand", { pressed: hand }) +
+        pip +
         `<span class="cl-gap"></span>` +
         btn("leave", "leave", "Leave the call", { cls: "bad" });
     else
@@ -618,6 +763,7 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
         (me.readOnly ? "" : btn("follow-me", "follow", "Follow me", { text: true, title: "Ask everyone here to follow you: they see the board as you do (CallSpec decision 8)" })) +
         btn("people", "people", `People in the call (${n})`, { pressed: peopleOpen, text: false }) +
         btn("menu-layout", "layout", "Layout") +
+        pip +
         `<span class="cl-gap"></span>` +
         `<span class="cl-grp">${btn("leave", "leave", "Leave the call", { cls: "bad", text: true })}${me.readOnly ? "" : btn("menu-leave", "up", "End the call for everyone", { cls: "cl-caret bad" })}</span>`;
     if (bar!.dataset.sig !== html) {
@@ -691,6 +837,9 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
       html += `<div class="cl-pop-h">${title}</div>`;
       if (kind === "audiooutput") html += `<button type="button" class="cl-item${chosen === "" ? " on" : ""}" data-act="device" data-kind="${kind}" data-id="">The system's</button>`;
       html += list.length ? list.map((d, i) => `<button type="button" class="cl-item${d.deviceId === chosen ? " on" : ""}" data-act="device" data-kind="${kind}" data-id="${esc(d.deviceId)}">${esc(deviceName(d, i))}</button>`).join("") : `<div class="cl-item muted">None found</div>`;
+      // the camera's background, where this browser can blur
+      if (kind === "videoinput" && effect.supported)
+        html += `<div class="cl-pop-h">Background</div>` + BACKGROUND_EFFECTS.map((x) => `<button type="button" class="cl-item${x === wantedEffect() ? " on" : ""}" data-act="effect" data-effect="${x}">${EFFECT_LABELS[x]}</button>`).join("");
     }
     return html;
   };
@@ -725,16 +874,52 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     env.changed();
   };
 
+  /** The camera's published track, where it has one. */
+  const cameraTrack = (): LocalVideoTrack | undefined => room?.localParticipant.getTrackPublication(Track.Source.Camera)?.track as LocalVideoTrack | undefined;
+
+  /** The camera on or off. On, it goes out with the background chosen, never bare by surprise: a
+   *  track that has it is turned on again; else a new one is made, the effect put on it, and only
+   *  then published. */
   const setCam = async (on: boolean) => {
     if (!room) return;
+    const lp = room.localParticipant;
     prefs.cam.set(on);
     try {
-      await room.localParticipant.setCameraEnabled(on, cameraCapture(prefs));
+      const want = wantedEffect();
+      const old = cameraTrack();
+      if (!on || want === "none" || (old && effect.of(old) === want)) {
+        if (on && want === "none" && old && effect.of(old) !== "none") await effect.apply(old, "none");
+        await lp.setCameraEnabled(on, cameraCapture(prefs));
+      } else {
+        if (old) await lp.unpublishTrack(old);
+        const t = await createLocalVideoTrack(cameraCapture(prefs));
+        try {
+          await effect.apply(t, want);
+        } catch (e) {
+          t.stop();
+          prefs.cam.set(false);
+          say(`${effectError(e)} Your camera was not sent: choose None for the background to send it without blur.`);
+          return;
+        }
+        await lp.publishTrack(t, { source: Track.Source.Camera });
+      }
     } catch (e) {
       say(mediaError(e, "camera"));
     }
     schedule();
     env.changed();
+  };
+
+  /** The background chosen in the call: put on the camera's track where it has one, in place. */
+  const setEffect = async (e: BackgroundEffect) => {
+    prefs.effect.set(e);
+    const t = cameraTrack();
+    if (!t) return;
+    try {
+      await effect.apply(t, e);
+    } catch (err) {
+      say(effectError(err));
+    }
   };
 
   const react = (id: string, emoji: Reaction) => {
@@ -750,6 +935,7 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     leaving = true;
     callGone();
     closePop();
+    closePip();
     const r = room;
     room = null;
     joined = false;
@@ -775,6 +961,11 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
   });
   root.addEventListener("change", async (e) => {
     const sel = e.target as HTMLSelectElement;
+    // the pre-join's background: on its preview at once
+    if (sel.matches("[data-effect]")) {
+      prefs.effect.set(sel.value as BackgroundEffect);
+      return void preview();
+    }
     const kind = sel.dataset.dev as MediaDeviceKind | undefined;
     if (!kind) return;
     if (kind === "videoinput") {
@@ -788,9 +979,12 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     } else prefs.speakerDevice.set(sel.value);
     await preview();
   });
-  document.addEventListener("pointerdown", (e) => {
+  /** A press outside a popover of the call's closes it — in the page, or in the picture-in-picture
+   *  window the call is in. */
+  function outsidePop(e: Event): void {
     if (pop && !pop.hidden && !pop.contains(e.target as Node) && !(e.target as Element).closest?.("[data-act^=menu-], [data-act=tile], [data-act=row]")) closePop();
-  });
+  }
+  document.addEventListener("pointerdown", outsidePop);
   root.addEventListener("click", async (e) => {
     const b = (e.target as HTMLElement).closest<HTMLElement>("[data-act]");
     if (!b || !root.contains(b)) return;
@@ -870,6 +1064,13 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
         if (r) await r.switchActiveDevice(kind, id || "default").catch((err: unknown) => say(mediaError(err, kind === "videoinput" ? "camera" : "microphone")));
         return;
       }
+      case "effect":
+        closePop();
+        return void setEffect(b.dataset.effect as BackgroundEffect);
+      case "pip":
+        return void enterPip();
+      case "pip-back":
+        return pipWin?.close();
       case "menu-leave":
         armed = null;
         return void openPop(act, b, `<button type="button" class="cl-item bad" data-act="end">End the call for everyone</button>`);
@@ -973,6 +1174,7 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     dispose() {
       disposed = true;
       callGone();
+      closePip();
       stopPreview(false);
       resize.disconnect();
       document.removeEventListener("visibilitychange", visible);
@@ -983,7 +1185,8 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
         void r.disconnect().catch(() => undefined);
       }
       audioBox.remove();
-      root.innerHTML = "";
+      root.remove();
+      away.remove();
     },
   };
 };

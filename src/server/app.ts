@@ -38,6 +38,7 @@ import { history, layoutUndo, libraryRequest, reviewPost, views } from "./appsit
 import { agentRoute, exportRoute } from "./appagent.ts";
 import { git, graphParts, hover, source, status } from "./appgraph.ts";
 import { callRoute } from "./appcall.ts";
+import { MEDIAPIPE_PATH, serveMediapipe } from "./mediapipe.ts";
 
 /** The server's answers to requests: exported so that the tests serve them as the server does. */
 export class App {
@@ -276,6 +277,8 @@ export class App {
       // and pdf.js's, which reads the library's PDFs for the reference window (AttachmentSpec decision 11)
       // and the call's own bundle (CallSpec, "As built"), loaded when the call window first opens
       if (/^\/(app|layout|edges|pdfworker|call)\.js(\.map)?$/.test(path)) return sendFile(req, res, join(bundleDir(), path.slice(1)));
+      // the call's background effect: MediaPipe's runtime and its model, where the server has a call
+      if (path.startsWith(MEDIAPIPE_PATH) && live.call) return serveMediapipe(req, res, path);
       if (path.startsWith("/pdfjs/")) return pdfjsAsset(res, path);
       if (path === "/api/status") return status(this, req, res, url);
       // VisualProof's own version, and what of its releases those let in fully are told (UpdateSpec

@@ -4,7 +4,8 @@
 
 import { AudioPresets, ScreenSharePresets, VideoPresets } from "livekit-client";
 import type { AudioCaptureOptions, BackupVideoCodec, ScreenShareCaptureOptions, TrackPublishDefaults, TrackPublishOptions, VideoCaptureOptions, VideoCodec } from "livekit-client";
-import type { LayoutMode } from "./model.ts";
+import { isBackgroundEffect } from "./model.ts";
+import type { BackgroundEffect, LayoutMode } from "./model.ts";
 
 /** One choice kept in this browser: read back with care, and the page works where storage is
  *  blocked (it then keeps the choice while it is open). */
@@ -53,6 +54,8 @@ export function callPrefs() {
     camDevice: kept("visualproof:call:cam-device", "", isString),
     speakerDevice: kept("visualproof:call:speaker-device", "", isString),
     layout: kept<LayoutMode>("visualproof:call:layout", "auto", isLayout),
+    /** the camera's background effect (web/src/call/effect.ts) */
+    effect: kept<BackgroundEffect>("visualproof:call:background", "none", isBackgroundEffect),
   };
 }
 export type CallPrefs = ReturnType<typeof callPrefs>;

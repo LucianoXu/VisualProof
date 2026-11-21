@@ -504,6 +504,8 @@ export class GraphCanvas {
     this.headless = !!host;
     this.canvas = canvas as HTMLCanvasElement;
     this.gl = new Renderer(host ? null : canvas);
+    // the graphics card's context lost and given back (web/src/gl/renderer.ts): the board drawn again
+    this.gl.onRestored = () => this.request();
     this.labels = labels as HTMLCanvasElement;
     this.ctx = host ? host.ctx : labels!.getContext("2d")!;
     // layers draw in this order

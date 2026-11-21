@@ -9,6 +9,8 @@ export function readOnlyAllows(method: string, path: string): boolean {
   if (read) {
     // the page and its files: its fonts, the tips' clips (GuideSpec decision 6)
     if (path === "/" || path === "/index.html" || path === "/style.css" || /^\/(app|layout|edges|pdfworker|call)\.js(\.map)?$/.test(path) || path.startsWith("/pdfjs/") || path.startsWith("/fonts/") || path.startsWith("/tips/")) return true;
+    // the call's background effect (a reader whose link joins the call blurs too)
+    if (path.startsWith("/mediapipe/")) return true;
     // the graph, its sources and Lean's answers, the review, the build status, what happened, the
     // views, the history, the library, the printed document's state and files, who the reader is
     // and the link they came by, VisualProof's version, and the event stream every change comes by

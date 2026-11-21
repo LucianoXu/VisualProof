@@ -390,8 +390,19 @@ describe("the call", () => {
     assert.equal(r.headers.get("location"), "/?call");
   });
 
+  test("the background effect's runtime and model, served by the server itself, by name alone", async () => {
+    for (const [name, type] of [["vision_wasm_internal.wasm", "application/wasm"], ["vision_wasm_nosimd_internal.js", "text/javascript; charset=utf-8"], ["selfie_segmenter.tflite", "application/octet-stream"]]) {
+      const r = await fetch(`${S.base}/mediapipe/${name}`, { headers: KEY });
+      assert.equal(r.status, 200, name);
+      assert.equal(r.headers.get("content-type"), type, name);
+      assert.ok((await r.arrayBuffer()).byteLength > 100_000, name);
+    }
+    for (const name of ["vision_bundle.mjs", "..%2F..%2Fpackage.json", "../package.json", "selfie_segmenter.tflite.bak"]) assert.equal((await fetch(`${S.base}/mediapipe/${name}`, { headers: KEY })).status, 404, name);
+  });
+
   test("the call's bundle is the page's, a read-only reader's too", async () => {
     const { readOnlyAllows } = await import("../src/server/readonlygate.ts");
+    assert.ok(readOnlyAllows("GET", "/mediapipe/vision_wasm_internal.wasm"));
     assert.ok(readOnlyAllows("GET", "/call.js"));
     assert.ok(readOnlyAllows("POST", "/api/call/token"));
     assert.ok(readOnlyAllows("POST", "/api/call/leave"));
@@ -407,6 +418,8 @@ test("without --livekit-url there is no call: its paths answer 404, and the page
     await s.until(() => !!s.last("hello"));
     assert.equal(s.last("call"), undefined);
     assert.equal((await S.ask("POST", "/api/call/token", { token: s.last("hello")!.token, tab: "tab-of-alice-0001" }, name("Alice"))).status, 404);
+    // nor anything of its background effect
+    assert.equal((await fetch(`${S.base}/mediapipe/vision_wasm_internal.wasm`)).status, 404);
     s.close();
   } finally {
     await S.close();
