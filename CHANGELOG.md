@@ -5,6 +5,12 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.12.2
+
+- The board no longer goes blank after a call: with the background blurred, the page made a WebGL context each time it checked whether the browser can blur, and the browser dropped the oldest one, the board's. It now checks once, gives back what it no longer needs, and the board asks for its drawing back if it is ever dropped.
+- Choosing Blur for the first time no longer makes the page stall, and the blur's files are fetched as soon as your pointer is on the choice.
+- The call window's ✕, pressed once, asks "Leave the call?" on one line, in full.
+
 ## 0.12.1
 
 - Blur your background in the call: None, Blur or Strong blur, chosen before joining (the preview shows it) or from the camera's menu. It runs in your browser, on a model and a runtime your server serves, and your camera is never sent unblurred by surprise.
