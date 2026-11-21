@@ -166,10 +166,17 @@ whether their link joins the call (`readOnly.call`).
   turned on in the call goes out only once it carries it; where it cannot be put on, the camera is
   not sent, and the page says so. The runtime (MediaPipe's WebAssembly, about 9.4 MB, from
   `@mediapipe/tasks-vision`) and the model (`web/mediapipe/selfie_segmenter.tflite`, 250 KB) are
-  served at `/mediapipe/…` (server/mediapipe.ts) where the server has a call, fetched once a page;
-  the segmentation runs on the graphics card, or on the processor where the browser draws in
-  software. Where a frame takes more than 30 ms on average, the page says so once, so that the
-  reader may turn it off. A browser that cannot blur (no WebGL 2, no video frames) is offered none.
+  served at `/mediapipe/…` (server/mediapipe.ts) where the server has a call, fetched once a page
+  — ahead, as soon as the pointer is on the background's choice or the camera's menu; the
+  segmentation runs on the graphics card, or on the processor where the browser draws in software.
+  Where a frame takes more than 30 ms on average, the page says so once, so that the reader may turn
+  it off. A browser that cannot blur (no WebGL 2, no video frames) is offered none. WebGL contexts
+  are few (0.12.2): whether the browser can blur is asked once a page, of a context given back at
+  once (before, the processor's own check made one at every drawing of the pre-join and of the
+  camera's menu, kept until collected: a wait on the graphics process each — the first Blur
+  stalled — and past 16 the browser dropped the oldest, the board's); a processor's context is given
+  back when it is done; one lost under the camera (the graphics card reset, or dropped for newer
+  ones) is replaced by a new processor, at most three times a minute.
 - **Picture-in-picture**, in the control row where the browser has it: with Document
   Picture-in-Picture the call itself moves into a window of its own over every other (420×300
   asked: the compact call; made larger, the full call), the page's look and theme with it; the
@@ -178,5 +185,9 @@ whether their link joins the call (`readOnly.call`).
   the large tile's video goes into the browser's own picture-in-picture, with the microphone, the
   camera and leaving offered there where the browser lets a page offer them.
 - **The board's drawing survives the graphics card's reset** (web/src/gl/renderer.ts): a WebGL
-  context lost — likelier on a page that blurs, which runs WebGL beside the board — is asked back,
-  and everything is put on the card again and drawn; before, the board stayed blank until reloaded.
+  context lost — the graphics card reset, or dropped by the browser for newer ones (Chrome keeps 16
+  a page and drops the oldest, the board's) — is asked back, and everything is put on the card
+  again and drawn; before, the board stayed blank until reloaded. Chrome gives a dropped context
+  back only once another goes, maybe never: the board asks for it itself (`restoreContext`), after
+  a second, then later and later, up to every 15 seconds, while it is not back and the page is in
+  sight.

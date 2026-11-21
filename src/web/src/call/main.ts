@@ -45,10 +45,14 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
   /** the camera's background effect; where this browser cannot run it, none is offered or kept */
   const effect = new CameraEffect({
     slow: (ms) => say(`Blurring takes ${Math.round(ms)} ms a frame on this computer, more than it can spare: choose None for the background, in the camera's menu.`),
+    failed: (e) => say(effectError(e)),
   });
   const wantedEffect = (): BackgroundEffect => (effect.supported ? prefs.effect.get() : "none");
   const effectError = (e: unknown) => (e instanceof EffectUnsupported ? e.message : `The background could not be blurred: ${e instanceof Error ? e.message : String(e)}`);
   let room: Room | null = null;
+  // a handle for diagnosis from the console (the call's test reads it): window.visualproof.call
+  const diag = (window as unknown as { visualproof?: Record<string, unknown> }).visualproof;
+  if (diag) diag.call = { effectFrames: () => effect.frames, room: () => room };
   let joined = false;
   let joining = false;
   let leaving = false;
@@ -959,6 +963,13 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
       closePop();
     } else if (e.key === "Enter" && (e.target as HTMLElement).matches("[data-name]")) void joinFromPre();
   });
+  // the pointer on the background's choice, or the camera's menu: the effect's runtime fetched
+  // meanwhile, so that choosing it waits for less
+  const aboutToChoose = (e: Event) => {
+    if ((e.target as Element).closest?.("[data-effect], [data-act=menu-cam]")) effect.prefetch();
+  };
+  root.addEventListener("pointerover", aboutToChoose);
+  root.addEventListener("focusin", aboutToChoose);
   root.addEventListener("change", async (e) => {
     const sel = e.target as HTMLSelectElement;
     // the pre-join's background: on its preview at once
@@ -1173,6 +1184,7 @@ export const startCall: StartCall = (env: CallEnv): CallView => {
     },
     dispose() {
       disposed = true;
+      if (diag) delete diag.call;
       callGone();
       closePip();
       stopPreview(false);
