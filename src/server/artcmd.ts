@@ -121,9 +121,10 @@ export function makeArtwork(prep: Prepared, review: ReviewData | null, project: 
   if ("error" in read) return { problems: [`${read.error} ${read.hint}`] };
   const r: ArtRecipe = read.recipe;
   if (r.view && r.view !== PROJECT) return { problems: [`the command draws the Project view: the recipe names the view ${r.view}`] };
-  const meta: ViewMeta = JSON.parse(gunzipSync(prep.metaGz).toString("utf8"));
-  const raw = gunzipSync(prep.edgesGz);
-  const g = new Graph(meta, new Int32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4));
+  // the view in hand, as the command's own pipeline gives it; else as a cache keeps it
+  const meta: ViewMeta = prep.view ? prep.view.meta : JSON.parse(gunzipSync(prep.metaGz).toString("utf8"));
+  const raw = prep.view ? null : gunzipSync(prep.edgesGz);
+  const g = new Graph(meta, raw ? new Int32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4) : prep.view!.edges);
   const data = review ?? emptyReview();
   // the board: the Project's, on the server's layout under the levels it hides
   const mode = project.clustering;

@@ -15,6 +15,7 @@ import { memoryOf } from "../shared/layout.ts";
 import type { LayoutMemory } from "../shared/layout.ts";
 import type { Project } from "./project.ts";
 import { buildViewOffThread } from "./view.ts";
+import type { View } from "./view.ts";
 import { cacheHome } from "./dirs.ts";
 import { packageVersion } from "./version.ts";
 import type { Dirs } from "./dirs.ts";
@@ -61,6 +62,10 @@ export interface Prepared {
   cached: boolean;
   metaGz: Buffer;
   edgesGz: Buffer;
+  /** the view itself, where it was laid out for a reader that keeps nothing (`readOnlySite`: the
+   *  artwork command): `metaGz` and `edgesGz` are then empty. A project of a million declarations
+   *  has a view whose JSON no string holds (512 MB at most), and a picture needs none. */
+  view?: View;
   /** what the usage pass found, where it was merged into the extraction (server/usage.ts): the
    *  exact contexts the server serves with each source */
   usage?: RawUsage | null;
@@ -128,16 +133,15 @@ export async function prepare(
   const completing = memory !== null && opts.completes !== undefined && memory.fingerprint === opts.completes && memory.before !== undefined;
   const against = completing ? (memory.before ?? null) : (memory?.layouts ?? null);
   const view = await buildViewOffThread(project, ex, log, against);
-  if (!opts.readOnlySite) saveMemory(dirs.site, ex.fingerprint, view.meta, opts.provisional ? against : undefined);
+  if (opts.readOnlySite) return { fingerprint: ex.fingerprint, cached: ex.cached, metaGz: Buffer.alloc(0), edgesGz: Buffer.alloc(0), usage, view };
+  saveMemory(dirs.site, ex.fingerprint, view.meta, opts.provisional ? against : undefined);
   const metaGz = gzipSync(JSON.stringify(view.meta));
   const edgesGz = gzipSync(Buffer.from(view.edges.buffer, view.edges.byteOffset, view.edges.byteLength));
-  if (!opts.readOnlySite) {
-    mkdirSync(viewDir, { recursive: true });
-    writeFileSync(metaFile, metaGz);
-    writeFileSync(edgeFile, edgesGz);
-    prune(viewDir, /\.meta\.json\.gz$/, 3);
-    prune(viewDir, /\.edges\.bin\.gz$/, 3);
-  }
+  mkdirSync(viewDir, { recursive: true });
+  writeFileSync(metaFile, metaGz);
+  writeFileSync(edgeFile, edgesGz);
+  prune(viewDir, /\.meta\.json\.gz$/, 3);
+  prune(viewDir, /\.edges\.bin\.gz$/, 3);
   return { fingerprint: ex.fingerprint, cached: ex.cached, metaGz, edgesGz, usage };
 }
 

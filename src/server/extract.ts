@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import type { RawGraph } from "../shared/graph.ts";
 import type { Project } from "./project.ts";
 import type { Dirs } from "./dirs.ts";
+import { readGraph, readGraphFile } from "./graphfile.ts";
 
 export const EXTRACTOR = join(dirname(fileURLToPath(import.meta.url)), "..", "extractor", "Extract.lean");
 /** The usage pass's worker (server/usage.ts). */
@@ -195,10 +196,10 @@ export function prune(dir: string, pattern: RegExp, keep: number): void {
 /** A saved extraction, served as it is: for a snapshot of a project that is not on this
  *  machine, or not built right now. */
 export function loadSaved(file: string): Extraction {
-  const text = readFileSync(file, "utf8");
+  const read = readGraphFile(file);
   return {
-    graph: JSON.parse(text),
-    fingerprint: createHash("sha256").update(text).digest("hex").slice(0, 16),
+    graph: read.graph,
+    fingerprint: read.sha256.slice(0, 16),
     at: statSync(file).mtime.toISOString(),
     cached: true,
   };
@@ -208,7 +209,7 @@ export function loadSaved(file: string): Extraction {
 export function cachedExtraction(cacheDir: string, fp: string): Extraction | null {
   const file = join(cacheDir, "extract", `${fp}.json`);
   if (!existsSync(file)) return null;
-  return { graph: JSON.parse(readFileSync(file, "utf8")), fingerprint: fp, at: statSync(file).mtime.toISOString(), cached: true };
+  return { graph: readGraph(file), fingerprint: fp, at: statSync(file).mtime.toISOString(), cached: true };
 }
 
 export async function extract(
@@ -222,7 +223,7 @@ export async function extract(
   const file = join(dir, `${fp}.json`);
   if (existsSync(file)) {
     return {
-      graph: JSON.parse(readFileSync(file, "utf8")),
+      graph: readGraph(file),
       fingerprint: fp,
       at: statSync(file).mtime.toISOString(),
       cached: true,
@@ -240,5 +241,5 @@ export async function extract(
   await runExtractor(p, tmp, { bin, cache: join(dirs.cache, "modules"), salt }, log);
   renameSync(tmp, file);
   prune(dir, /^[0-9a-f]{16}\.json$/, 3);
-  return { graph: JSON.parse(readFileSync(file, "utf8")), fingerprint: fp, at: new Date().toISOString(), cached: false };
+  return { graph: readGraph(file), fingerprint: fp, at: new Date().toISOString(), cached: false };
 }

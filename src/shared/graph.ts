@@ -33,6 +33,10 @@ export interface RawGraph {
   externals: { name: string; kind: Kind; module: string; ax: number; doc?: string; range?: [number, number, number, number] }[];
   /** [src, dst, sites]; dst indexes nodes, then externals */
   edges: [number, number, number][];
+  /** the edges of a graph read from a file too large to read whole (server/graphfile.ts), packed
+   *  [src, dst, sites] × their number; `edges` is then empty. Such a graph is drawn (the artwork
+   *  command), and not yet served, exported or given a usage pass. */
+  packed?: Int32Array;
   axioms: string[];
   axiomSets: number[][];
   /** `generated`: declarations Lean generated from a command, folded into their unit; `notation`:
