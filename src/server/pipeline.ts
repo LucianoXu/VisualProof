@@ -10,6 +10,7 @@ import { gzipSync } from "node:zlib";
 import type { ClusterMode, RawUsage, ViewMeta } from "../shared/graph.ts";
 import { LAYOUT_VERSION } from "../shared/graph.ts";
 import { cachedExtraction, extract, loadSaved, prune } from "./extract.ts";
+import { TOO_LARGE } from "./graphfile.ts";
 import type { Extraction } from "./extract.ts";
 import { memoryOf } from "../shared/layout.ts";
 import type { LayoutMemory } from "../shared/layout.ts";
@@ -117,6 +118,8 @@ export async function prepare(
   if (opts.reuse && !held) throw new Error("the graph on screen is no longer cached; it is laid out afresh at the next build");
   const ex = held ?? (saved ? loadSaved(saved) : await extract(project, dirs, log));
   if (!opts.extraction) log(ex.cached ? `extraction ${ex.fingerprint} reused` : `extraction ${ex.fingerprint} done`);
+  // a graph read in pieces is drawn, by a reader that keeps nothing: nothing else reads its edges yet
+  if (ex.graph.packed && !opts.readOnlySite) throw new Error(TOO_LARGE);
   const usage = ex.graph.usage ?? null;
   const viewDir = join(dirs.cache, "view");
   const metaFile = join(viewDir, `${ex.fingerprint}-v${VIEW_VERSION}.meta.json.gz`);

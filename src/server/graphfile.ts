@@ -26,6 +26,10 @@ export function readGraphFile(file: string, whole = WHOLE, piece = CHUNK): { gra
   return readInPieces(file, piece);
 }
 
+/** What is said where a graph read in pieces reaches what cannot take it yet: a server, an exported
+ *  snapshot, the usage pass. Its edges are packed (RawGraph.packed), and those read `edges`. */
+export const TOO_LARGE = "this project's graph is too large to be served, exported or given a usage pass yet (its extraction is read in pieces): `visualproof artwork --jobs 0` draws it";
+
 /** The graph alone. */
 export function readGraph(file: string, whole = WHOLE): RawGraph {
   return readGraphFile(file, whole).graph;

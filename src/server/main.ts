@@ -483,7 +483,10 @@ async function artwork(project: Project, o: Options, fail: (why: string) => neve
   mkdirSync(dirs.cache, { recursive: true });
   const log = (l: string) => console.log(l);
   let ex = o.graph ? undefined : await extract(project, dirs, log);
-  if (ex && o.jobs > 0) {
+  // a graph read in pieces takes no usage pass yet (server/graphfile.ts): it is drawn without the
+  // notation's edges, and says so
+  if (ex?.graph.packed && o.jobs > 0) log(`usage pass: left out, the graph is too large for it yet (${ex.graph.nodes.length} declarations): drawn as --jobs 0 draws it`);
+  else if (ex && o.jobs > 0) {
     const pass = new UsagePass(project, dirs, o.jobs, log);
     const plan = pass.plan(ex.graph);
     if (plan.todo.length) log(`usage pass: elaborating ${plan.todo.length} of ${plan.modules.length} modules, ${o.jobs} at a time`);

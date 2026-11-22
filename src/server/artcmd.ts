@@ -283,16 +283,101 @@ export function bandSvg(svg: string, y0: number, rows: number): string {
     .replace(`<g clip-path="url(#inside)">`, `<g clip-path="url(#inside)"><rect x="${-Number(board[1])}" y="${-Number(board[2])}" width="${W}" height="${H}" fill="#000" fill-opacity="0"/>`);
 }
 
+/** The most elements of a picture drawn at once. resvg refuses an SVG of more than a million
+ *  elements ("nodes limit reached"), and a board of a million declarations is two million circles: a
+ *  picture of more is drawn a layer of LAYER_ELEMENTS at a time (svgLayers), each over the last. */
+export const LAYER_ELEMENTS = 400_000;
+
+/** An artwork's SVG (artSvg's) as layers of at most `most` elements each, which drawn one over the
+ *  other in order are the picture: its head (the root, the definitions) in each, then the elements
+ *  in the order they are drawn, cut wherever `most` are reached, the groups open there closed and
+ *  opened again in the next. Its groups only clip and move what they hold, so that a group cut in
+ *  two draws as it did whole; an SVG with any other group, or of at most `most` elements, is its own
+ *  only layer. */
+export function svgLayers(svg: string, most = LAYER_ELEMENTS): string[] {
+  const at = svg.indexOf("</defs>");
+  if (at < 0) return [svg];
+  const start = at + "</defs>".length;
+  const head = svg.slice(0, start);
+  const layers: string[] = [];
+  /** the groups open where the scan is, by their opening tags, and those open where the layer began */
+  const open: string[] = [];
+  let before: string[] = [];
+  let from = start;
+  let count = 0;
+  const cut = (to: number) => {
+    layers.push(head + before.join("") + svg.slice(from, to) + "</g>".repeat(open.length) + "</svg>");
+    before = [...open];
+    from = to;
+    count = 0;
+  };
+  // every tag is found by its `<`: text and attributes are written escaped (web/src/artwork.ts, esc)
+  const tag = /<(\/?)([A-Za-z]+)([^>]*?)(\/?)>/g;
+  tag.lastIndex = start;
+  let end = svg.length;
+  for (let m = tag.exec(svg); m; m = tag.exec(svg)) {
+    const [whole, closing, name, attrs, selfClosing] = m;
+    if (closing) {
+      if (name === "svg") {
+        end = m.index;
+        break;
+      }
+      if (name !== "g" || !open.length) return [svg];
+      open.pop();
+      continue;
+    }
+    if (name === "g" && !selfClosing) {
+      if (!/^(\s+(clip-path|transform)="[^"]*")*\s*$/.test(attrs)) return [svg];
+      open.push(whole);
+      continue;
+    }
+    // an element: itself, or with what it holds (a text and its spans) up to its closing tag
+    if (!selfClosing) {
+      const close = svg.indexOf(`</${name}>`, tag.lastIndex);
+      if (close < 0) return [svg];
+      tag.lastIndex = close + name.length + 3;
+    }
+    if (++count === most) cut(tag.lastIndex);
+  }
+  if (open.length) return [svg];
+  if (!layers.length) return [svg];
+  // what is left: the last elements, or nothing but the closing tags the last cut wrote already
+  if (count > 0) layers.push(head + before.join("") + svg.slice(from, end) + "</svg>");
+  return layers;
+}
+
+/** A layer's pixels over those drawn before it, in place: both premultiplied, as resvg gives them. */
+function over(under: Uint8Array, top: Uint8Array): void {
+  for (let i = 0; i < top.length; i += 4) {
+    const a = top[i + 3];
+    if (a === 0) continue;
+    if (a === 255) {
+      under[i] = top[i];
+      under[i + 1] = top[i + 1];
+      under[i + 2] = top[i + 2];
+      under[i + 3] = 255;
+    } else {
+      const k = 255 - a;
+      under[i] = top[i] + Math.floor((under[i] * k + 127) / 255);
+      under[i + 1] = top[i + 1] + Math.floor((under[i + 1] * k + 127) / 255);
+      under[i + 2] = top[i + 2] + Math.floor((under[i + 2] * k + 127) / 255);
+      under[i + 3] = a + Math.floor((under[i + 3] * k + 127) / 255);
+    }
+  }
+}
+
 /** An SVG drawn as a PNG at the size its root says, by resvg. A picture of more than `most` pixels
- *  is drawn in bands of about `band` pixels (bandSvg) and written as one PNG, row by row: the same
- *  picture, its pixels a few levels apart where translucent shapes overlap (resvg's layers round
- *  otherwise than one drawing). */
-export async function pngOf(svg: string, most = PNG_PIXELS, band = BAND_PIXELS): Promise<Uint8Array> {
+ *  is drawn in bands of about `band` pixels (bandSvg), one of more than `elements` elements a layer
+ *  at a time (svgLayers), and written as one PNG, row by row: the same picture, its pixels a few
+ *  levels apart where translucent shapes overlap (resvg's layers round otherwise than one drawing,
+ *  and so does a layer laid over another). */
+export async function pngOf(svg: string, most = PNG_PIXELS, band = BAND_PIXELS, elements = LAYER_ELEMENTS): Promise<Uint8Array> {
   const render = await renderer();
   const m = /^<svg [^>]*?width="(\d+)" height="(\d+)"/.exec(svg);
   const [w, h] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
   const failed = (e: unknown) => new Error(`the PNG${m ? `, ${w} × ${h},` : ""} could not be drawn (${e instanceof Error ? e.message : String(e)})`);
-  if (!m || w * h <= most) {
+  const layers = m ? svgLayers(svg, elements) : [svg];
+  if (!m || (w * h <= most && layers.length === 1)) {
     const r = render(svg);
     let png: Uint8Array;
     try {
@@ -315,21 +400,28 @@ export async function pngOf(svg: string, most = PNG_PIXELS, band = BAND_PIXELS):
     deflate.on("end", ok);
     deflate.on("error", fail);
   });
-  // bands of even heights, so that none is a sliver
-  const count = Math.ceil(h / Math.max(1, Math.floor(band / w)));
+  // bands of even heights, so that none is a sliver; a picture of few enough pixels is one band,
+  // drawn as it is
+  const count = w * h <= most ? 1 : Math.ceil(h / Math.max(1, Math.floor(band / w)));
   const rows = Math.ceil(h / count);
   for (let y = 0; y < h; y += rows) {
     const n = Math.min(rows, h - y);
-    const r = render(bandSvg(svg, y, n));
-    let px: Uint8Array;
-    try {
-      const image = r.render();
-      px = image.pixels;
-      image.free();
-    } catch (e) {
-      throw failed(e);
+    let px: Uint8Array | null = null;
+    for (const layer of layers) {
+      const r = render(count === 1 ? layer : bandSvg(layer, y, n));
+      let top: Uint8Array;
+      try {
+        const image = r.render();
+        top = image.pixels;
+        image.free();
+      } catch (e) {
+        throw failed(e);
+      }
+      r.free();
+      if (px) over(px, top);
+      else px = top;
     }
-    r.free();
+    if (!px) throw failed("nothing to draw");
     const lines = Buffer.alloc(n * (w * 4 + 1));
     for (let row = 0; row < n; row++) {
       const o = row * (w * 4 + 1) + 1, from = row * w * 4;
