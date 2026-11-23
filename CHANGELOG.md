@@ -5,6 +5,10 @@
 What changed in each release of VisualProof, newest first. How releases are made:
 [CONTRIBUTING.md](CONTRIBUTING.md), "Branches and releases".
 
+## 0.12.3
+
+- Draw a project of a million declarations as a poster: `visualproof artwork` reads an extraction of several GB a piece at a time and draws its PNG in layers, where it failed on both before. A graph that large is drawn only, for now: `serve`, `export` and the usage pass say they cannot take it yet, so give `--jobs 0`.
+
 ## 0.12.2
 
 - The board no longer goes blank after a call: with the background blurred, the page made a WebGL context each time it checked whether the browser can blur, and the browser dropped the oldest one, the board's. It now checks once, gives back what it no longer needs, and the board asks for its drawing back if it is ever dropped.
