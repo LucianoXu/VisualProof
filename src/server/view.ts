@@ -84,12 +84,14 @@ function viewParts(p: Project, ex: Extraction): { nodes: ViewNode[]; edges: Int3
   for (const e of g.externals) nodes.push({ name: e.name, kind: e.kind, module: e.module, ax: e.ax, ext: true, ...(e.doc ? { doc: e.doc } : {}), ...(e.range ? { range: e.range } : {}) });
   notationStatements(p, nodes);
 
-  const edges = new Int32Array(g.edges.length * 3);
-  g.edges.forEach(([s, d, m], i) => {
-    edges[3 * i] = s;
-    edges[3 * i + 1] = d;
-    edges[3 * i + 2] = m;
-  });
+  // a graph read in pieces has them packed already (server/graphfile.ts)
+  const edges = g.packed ?? new Int32Array(g.edges.length * 3);
+  if (!g.packed)
+    g.edges.forEach(([s, d, m], i) => {
+      edges[3 * i] = s;
+      edges[3 * i + 1] = d;
+      edges[3 * i + 2] = m;
+    });
 
   return { nodes, edges };
 }
@@ -117,7 +119,7 @@ function assemble(p: Project, ex: Extraction, nodes: ViewNode[], edges: Int32Arr
     axioms: g.axioms,
     axiomSets: g.axiomSets,
     layouts,
-    edgeCount: g.edges.length,
+    edgeCount: g.packed ? g.packed.length / 3 : g.edges.length,
   };
   return { meta, edges };
 }

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { gzipSync, inflateSync } from "node:zlib";
-import { makeArtwork, pngOf, projectView } from "../src/server/artcmd.ts";
+import { makeArtwork, pngOf, projectView, svgLayers } from "../src/server/artcmd.ts";
 import type { Prepared } from "../src/server/pipeline.ts";
 import type { ClusterMode, Layout, RawGraph, ViewMeta, ViewNode } from "../src/shared/graph.ts";
 import { LAYOUT_VERSION, SITE_STMT } from "../src/shared/graph.ts";
@@ -150,6 +150,29 @@ test("the board drawn without a browser: its circles, points and edges as vector
         most = Math.max(most, d);
       }
       assert.ok(apart < whole.length / 50 && most <= 16, `${apart} of ${whole.length} bytes apart, by ${most} at most`);
+    }
+    // a picture of more elements than resvg takes at once, drawn a layer at a time (here of 5
+    // elements each), each over the last: every element once, in its order, no layer of more; the
+    // same picture, whole or in bands
+    for (const svg of [a.svg, clear.svg]) {
+      const elements = (t: string) => t.slice(t.indexOf("</defs>")).match(/<(?!\/|g[ >])[A-Za-z]+[^>]*?\/?>/g) ?? [];
+      const layers = svgLayers(svg, 5);
+      assert.ok(layers.length > 3, `${layers.length} layers`);
+      for (const l of layers) assert.ok(elements(l).filter((e) => !e.startsWith("<tspan") && !e.startsWith("<textPath")).length <= 5);
+      assert.deepEqual(layers.flatMap(elements), elements(svg));
+      assert.deepEqual(svgLayers(svg, 1_000_000), [svg], "few enough elements: the picture as it is");
+      const whole = pixelsOf(await pngOf(svg));
+      for (const [label, png] of [["layers", await pngOf(svg, undefined, undefined, 5)], ["layers in bands", await pngOf(svg, 400 * 60, 400 * 60, 5)]] as const) {
+        const got = pixelsOf(png);
+        let apart = 0, most = 0;
+        for (let i = 0; i < whole.length; i++) {
+          const k = i - (i % 4) + 3;
+          const d = i === k ? Math.abs(whole[i] - got[i]) : Math.round(Math.abs(whole[i] * whole[k] - got[i] * got[k]) / 255);
+          if (d) apart++;
+          most = Math.max(most, d);
+        }
+        assert.ok(apart < whole.length / 50 && most <= 16, `${label}: ${apart} of ${whole.length} bytes apart, by ${most} at most`);
+      }
     }
     // what the recipe names that the board has not
     const bad = makeArtwork(prepared(dir), null, projectView(null), { ...ask, recipe: { selection: { name: "N.gone" } } });

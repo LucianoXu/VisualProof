@@ -31,6 +31,7 @@ import { SITE_BODY, SITE_GRAMMAR, SITE_PROOF, SITE_TCB } from "../shared/graph.t
 import { USAGE, USAGE_PROGRAM, leanProgram, prune } from "./extract.ts";
 import type { Dirs } from "./dirs.ts";
 import type { Extraction } from "./extract.ts";
+import { TOO_LARGE } from "./graphfile.ts";
 import type { Project } from "./project.ts";
 import { compiledTextHash, lakeTextHash } from "./status.ts";
 
@@ -442,6 +443,7 @@ export class UsagePass {
  *  without one): a new graph, under a fingerprint that names both. */
 export function mergeUsage(ex: Extraction, plan: Plan, results: Map<string, Entry>, failed: { module: string; error: string }[], ms: number): Extraction {
   const graph = ex.graph;
+  if (graph.packed) throw new Error(TOO_LARGE);
   const n = graph.nodes.length;
   // a unit by any name it answers to: its own, its Lean constant's, and those of what its command
   // generated
