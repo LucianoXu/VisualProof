@@ -319,7 +319,14 @@ The README says how to install the `visualproof` command. A checkout also runs a
   the laid-out views the cache keeps for a server); the same build, site and recipe make the same
   bytes. An A2 poster at 300 dpi of a project of 15,000 declarations takes about 20 seconds and
   1.2 GB of memory, most of it drawing the PNG; a picture of more than 80 million pixels is drawn in
-  bands, in 2 GB at most but three times as long (16,384 pixels a side: 3½ minutes). Notes are not
+  bands, in 2 GB at most but three times as long (16,384 pixels a side: 3½ minutes). A project of
+  a million declarations is drawn too, and for now only drawn — a server, `export` and the usage
+  pass refuse it, so give `--jobs 0`: its extraction, several GB, is read a piece at a time, and its
+  PNG is drawn a layer of 400,000 shapes at a time, each over the last. One of 175,000 modules
+  (1,063,562 declarations, 108 million edges, an extraction of 3.2 GB) took 5 hours to extract, 40
+  minutes to lay out and 1½ to draw, with `node --max-old-space-size` raised to hold it; on Linux,
+  importing more modules than `vm.max_map_count` allows (65,530 by default; Mathlib alone takes
+  52,000) makes Lean fail with `failed to read file`, so raise it for such a project. Notes are not
   drawn yet. A poster step by step, the recipe's choices explained: [A poster from the command
   line](#a-poster-from-the-command-line).
 
